@@ -1306,6 +1306,45 @@ def api_workflow_skip_step(request, run_id: int):
 @csrf_exempt
 @login_required
 @require_http_methods(["POST"])
+def api_workflow_skip_specific_step(request, run_id: int):
+    """Пропустить конкретный шаг по индексу"""
+    run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
+    data = _parse_json_request(request)
+    if run.status not in ("failed", "paused"):
+        return JsonResponse({"error": "Can only skip steps for failed/paused workflows"}, status=400)
+    step_idx = data.get("step_idx")
+    if not step_idx:
+        return JsonResponse({"error": "step_idx is required"}, status=400)
+    steps = (run.workflow.script or {}).get("steps", [])
+    if step_idx < 1 or step_idx > len(steps):
+        return JsonResponse({"error": f"Invalid step index: {step_idx}"}, status=400)
+    step_results = run.step_results or []
+    step_results = [r for r in step_results if r.get("step_idx") != step_idx]
+    step_title = steps[step_idx - 1].get("title", f"Шаг {step_idx}")
+    step_results.append({"step_idx": step_idx, "step": step_title, "status": "skipped", "retries": 0})
+    run.step_results = step_results
+    run.logs = (run.logs or "") + f"\n[Шаг {step_idx} ({step_title}) пропущен пользователем]\n"
+    completed_or_skipped = {r.get("step_idx") for r in step_results if r.get("status") in ("completed", "skipped")}
+    next_step = None
+    for i in range(1, len(steps) + 1):
+        if i not in completed_or_skipped:
+            next_step = i
+            break
+    if next_step is None:
+        run.status = "succeeded"
+        run.finished_at = timezone.now()
+        run.save(update_fields=["step_results", "logs", "status", "finished_at"])
+        return JsonResponse({"success": True, "message": "Workflow completed (all steps done or skipped)"})
+    run.status = "queued"
+    run.save(update_fields=["step_results", "logs", "status"])
+    thread = threading.Thread(target=_continue_workflow_run, args=(run.id, next_step), daemon=True)
+    thread.start()
+    return JsonResponse({"success": True, "message": f"Step {step_idx} skipped, continuing from step {next_step}"})
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["POST"])
 def api_workflow_continue(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
     data = _parse_json_request(request)

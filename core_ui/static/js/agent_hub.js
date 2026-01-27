@@ -119,16 +119,50 @@
             .then(function (data) {
                 var content = document.getElementById('workflowLogsContent');
                 var meta = document.getElementById('workflowLogsMeta');
-                if (content) content.textContent = data.logs || 'Логи пока пусты...';
-                if (content) content.scrollTop = content.scrollHeight;
-                var icon = '⏳', cls = 'text-gray-400';
-                if (data.status === 'running') { icon = '🔄'; cls = 'text-primary'; }
-                else if (data.status === 'completed') { icon = '✅'; cls = 'text-green-400'; }
-                else if (data.status === 'failed') { icon = '❌'; cls = 'text-red-400'; }
+                var stepsList = document.getElementById('workflowStepsList');
+                var actionsContainer = document.getElementById('workflowLogsActions');
+                var retryInfo = document.getElementById('workflowLogsRetryInfo');
+                if (content) { content.textContent = data.logs || 'Логи пока пусты...'; content.scrollTop = content.scrollHeight; }
+                var icon = '⏳', cls = 'text-gray-400', statusText = 'Ожидание';
+                if (data.status === 'running') { icon = '🔄'; cls = 'text-primary'; statusText = 'Выполняется'; }
+                else if (data.status === 'succeeded') { icon = '✅'; cls = 'text-green-400'; statusText = 'Завершено'; }
+                else if (data.status === 'failed') { icon = '❌'; cls = 'text-red-400'; statusText = 'Ошибка'; }
+                else if (data.status === 'paused') { icon = '⏸️'; cls = 'text-yellow-400'; statusText = 'Пауза'; }
                 var total = data.total_steps || 0, cur = data.current_step || 0, title = data.current_step_title || 'Ожидание...';
-                var bad = (data.verified || (data.logs && data.logs.indexOf('<promise>PASS</promise>') >= 0))
-                    ? '<span class="mx-2 text-green-400">✓ Verified</span>' : '';
-                if (meta) meta.innerHTML = '<span class="' + cls + '">' + icon + ' ' + (data.status || 'unknown') + '</span><span class="mx-2">•</span><span>Шаг ' + cur + ' из ' + total + '</span><span class="mx-2">•</span><span class="text-gray-300">' + title + '</span>' + bad;
+                if (meta) meta.innerHTML = '<span class="' + cls + '">' + icon + ' ' + statusText + '</span><span class="mx-2">•</span><span>Шаг ' + cur + ' из ' + total + '</span><span class="mx-2">•</span><span class="text-gray-300">' + (title || '') + '</span>';
+                if (retryInfo) {
+                    if (data.status === 'running' && data.retry_count > 0)
+                        retryInfo.textContent = 'Попытка ' + (data.retry_count + 1) + ' из ' + (data.max_retries + 1);
+                    else retryInfo.textContent = '';
+                }
+                if (stepsList && data.steps && data.steps.length) {
+                    var workflowStatus = data.status;
+                    stepsList.innerHTML = data.steps.map(function (step) {
+                        var stepIcon = '⏳', stepBg = 'bg-white/5 hover:bg-white/10', stepBorder = 'border-white/10';
+                        if (step.status === 'completed') { stepIcon = '✅'; stepBg = 'bg-green-500/10 hover:bg-green-500/20'; stepBorder = 'border-green-500/30'; }
+                        else if (step.status === 'running') { stepIcon = '🔄'; stepBg = 'bg-primary/10'; stepBorder = 'border-primary/30'; }
+                        else if (step.status === 'failed') { stepIcon = '❌'; stepBg = 'bg-red-500/10 hover:bg-red-500/20'; stepBorder = 'border-red-500/30'; }
+                        else if (step.status === 'skipped') { stepIcon = '⏭️'; stepBg = 'bg-yellow-500/10 hover:bg-yellow-500/20'; stepBorder = 'border-yellow-500/30'; }
+                        var retryBadge = (step.retries > 0) ? '<span class="text-[10px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">' + step.retries + ' retry</span>' : '';
+                        var err = step.error ? ('<div class="text-[10px] text-red-400 mt-1">' + step.error + '</div>') : '';
+                        var canAct = workflowStatus === 'failed' || workflowStatus === 'paused';
+                        var isClick = canAct && step.status !== 'running';
+                        var clickAttr = isClick ? ('onclick="toggleStepActions(this, ' + runId + ', ' + step.idx + ', \'' + (step.status || '') + '\')"') : '';
+                        return '<div class="step-card p-2 rounded-lg ' + stepBg + ' border ' + stepBorder + ' ' + (isClick ? 'cursor-pointer' : '') + ' transition-all" data-step-idx="' + step.idx + '" data-step-status="' + (step.status || '') + '" ' + clickAttr + '>' +
+                            '<div class="flex items-center gap-2"><span class="text-sm">' + stepIcon + '</span><span class="flex-1 text-xs text-white font-medium truncate">' + (step.title || '') + '</span><span class="text-[10px] text-gray-500">#' + step.idx + '</span>' + (isClick ? '<span class="text-gray-500 text-xs">▼</span>' : '') + '</div>' +
+                            '<div class="mt-1 flex items-center gap-2"><span class="text-[10px] text-gray-400 truncate flex-1">' + (step.prompt || '').substring(0, 80) + '</span>' + retryBadge + '</div>' + err +
+                            '<div class="step-actions hidden mt-2 pt-2 border-t border-white/10 flex gap-2 flex-wrap"></div></div>';
+                    }).join('');
+                }
+                if (actionsContainer) {
+                    if (data.status === 'failed' || data.status === 'paused') {
+                        actionsContainer.innerHTML = '<button type="button" onclick="retryCurrentStep(' + runId + ')" class="px-3 py-1.5 text-xs bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg">🔄 Повторить шаг</button>' +
+                            '<button type="button" onclick="skipCurrentStep(' + runId + ')" class="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg">⏭️ Пропустить</button>' +
+                            '<button type="button" onclick="continueFromStep(' + runId + ', ' + cur + ')" class="px-3 py-1.5 text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg">▶️ Продолжить</button>';
+                    } else if (data.status === 'running') {
+                        actionsContainer.innerHTML = '<button type="button" onclick="stopWorkflow(' + runId + ')" class="px-3 py-1.5 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg">⏹️ Остановить</button>';
+                    } else actionsContainer.innerHTML = '';
+                }
                 if (data.status !== 'running' && data.status !== 'queued' && workflowLogsInterval) {
                     clearInterval(workflowLogsInterval);
                     workflowLogsInterval = null;
@@ -136,6 +170,98 @@
             })
             .catch(function (e) { console.error('Failed to fetch logs:', e); });
     }
+
+    window.retryCurrentStep = function (runId) {
+        if (typeof showLoadingOverlay === 'function') showLoadingOverlay('Повтор шага...');
+        fetch('/agents/api/workflows/run/' + runId + '/retry/', { method: 'POST', headers: { 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay();
+                if (data.success) { if (workflowLogsInterval) clearInterval(workflowLogsInterval); workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000); fetchWorkflowLogs(runId); }
+                else if (window.showToast) window.showToast(data.error || 'Ошибка', 'error');
+            })
+            .catch(function (e) { if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e && e.message || e), 'error'); });
+    };
+    window.skipCurrentStep = function (runId) {
+        if (!confirm('Пропустить текущий шаг и перейти к следующему?')) return;
+        if (typeof showLoadingOverlay === 'function') showLoadingOverlay('Пропуск шага...');
+        fetch('/agents/api/workflows/run/' + runId + '/skip/', { method: 'POST', headers: { 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay();
+                if (data.success) { if (workflowLogsInterval) clearInterval(workflowLogsInterval); workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000); fetchWorkflowLogs(runId); }
+                else if (window.showToast) window.showToast(data.error || 'Ошибка', 'error');
+            })
+            .catch(function (e) { if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e && e.message || e), 'error'); });
+    };
+    window.continueFromStep = function (runId, fromStep) {
+        var step = prompt('Продолжить с шага:', String(fromStep));
+        if (step != null && step !== '') continueFromStepDirect(runId, parseInt(step, 10));
+    };
+    window.continueFromStepDirect = function (runId, stepIdx) {
+        if (typeof showLoadingOverlay === 'function') showLoadingOverlay('Продолжение...');
+        fetch('/agents/api/workflows/run/' + runId + '/continue/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' },
+            body: JSON.stringify({ from_step: stepIdx })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay();
+                if (data.success) { if (workflowLogsInterval) clearInterval(workflowLogsInterval); workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000); fetchWorkflowLogs(runId); }
+                else if (window.showToast) window.showToast(data.error || 'Ошибка', 'error');
+            })
+            .catch(function (e) { if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e && e.message || e), 'error'); });
+    };
+    window.toggleStepActions = function (element, runId, stepIdx, stepStatus) {
+        document.querySelectorAll('.step-card .step-actions').forEach(function (el) {
+            if (el.parentElement !== element) { el.classList.add('hidden'); el.innerHTML = ''; }
+        });
+        var actionsDiv = element.querySelector('.step-actions');
+        if (!actionsDiv) return;
+        if (!actionsDiv.classList.contains('hidden')) { actionsDiv.classList.add('hidden'); actionsDiv.innerHTML = ''; return; }
+        var buttons = [];
+        if (stepStatus === 'failed' || stepStatus === 'completed' || stepStatus === 'skipped') {
+            buttons.push('<button type="button" onclick="event.stopPropagation(); retryStep(' + runId + ', ' + stepIdx + ')" class="px-2 py-1 text-[10px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded">🔄 Повторить</button>');
+        }
+        if (stepStatus === 'pending' || stepStatus === 'failed') {
+            buttons.push('<button type="button" onclick="event.stopPropagation(); skipStep(' + runId + ', ' + stepIdx + ')" class="px-2 py-1 text-[10px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded">⏭️ Пропустить</button>');
+        }
+        buttons.push('<button type="button" onclick="event.stopPropagation(); continueFromStepDirect(' + runId + ', ' + stepIdx + ')" class="px-2 py-1 text-[10px] bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded">▶️ Продолжить отсюда</button>');
+        actionsDiv.innerHTML = buttons.join('');
+        actionsDiv.classList.remove('hidden');
+    };
+    window.retryStep = function (runId, stepIdx) {
+        if (typeof showLoadingOverlay === 'function') showLoadingOverlay('Повтор шага ' + stepIdx + '...');
+        fetch('/agents/api/workflows/run/' + runId + '/continue/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' },
+            body: JSON.stringify({ from_step: stepIdx })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay();
+                if (data.success) { if (workflowLogsInterval) clearInterval(workflowLogsInterval); workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000); fetchWorkflowLogs(runId); }
+                else if (window.showToast) window.showToast(data.error || 'Ошибка', 'error');
+            })
+            .catch(function (e) { if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e && e.message || e), 'error'); });
+    };
+    window.skipStep = function (runId, stepIdx) {
+        if (!confirm('Пропустить шаг ' + stepIdx + '?')) return;
+        if (typeof showLoadingOverlay === 'function') showLoadingOverlay('Пропуск шага ' + stepIdx + '...');
+        fetch('/agents/api/workflows/run/' + runId + '/skip-step/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' },
+            body: JSON.stringify({ step_idx: stepIdx })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay();
+                if (data.success) { if (workflowLogsInterval) clearInterval(workflowLogsInterval); workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000); fetchWorkflowLogs(runId); }
+                else if (window.showToast) window.showToast(data.error || 'Ошибка', 'error');
+            })
+            .catch(function (e) { if (typeof hideLoadingOverlay === 'function') hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e && e.message || e), 'error'); });
+    };
 
     window.openAgentLogs = function (runId) {
         var m = document.getElementById('agentLogsModal');
