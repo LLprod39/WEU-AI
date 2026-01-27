@@ -143,6 +143,33 @@
                 </div>
             </div>
 
+            <!-- Папка для файлов агента -->
+            <div class="glass-card rounded-xl p-6" id="tour-agent-output-path" title="Куда сохранять код и артефакты, которые создаёт агент (workflow, чат)">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-emerald-400">folder</span>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-lg font-semibold text-white">Папка для файлов агента</h2>
+                        <p class="text-sm text-gray-500">Куда сохранять код, артефакты и результаты workflow и чата</p>
+                    </div>
+                </div>
+                <div class="space-y-3">
+                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Папка по умолчанию</label>
+                    <select id="default-agent-output-path" class="input-field w-full md:max-w-md" aria-label="Выбор папки для файлов агента">
+                        <option value="">— Не задано (каждый раз выбирать вручную) —</option>
+                        <option value="__load__" disabled>Загрузка…</option>
+                    </select>
+                    <p class="text-xs text-gray-500">Используется при создании новых workflow и быстром старте, если не указана своя папка.</p>
+                </div>
+                <div class="flex justify-end mt-4 pt-4 border-t border-white/5">
+                    <button type="button" id="btn-save-output-path" class="btn-primary" title="Сохранить вместе с остальными настройками">
+                        <span class="material-icons-round text-lg">save</span>
+                        Сохранить папку
+                    </button>
+                </div>
+            </div>
+
             <!-- Session -->
             <div class="glass-card rounded-xl p-6">
                 <div class="flex items-center gap-3 mb-6">
@@ -270,6 +297,30 @@
             const defProvider = document.getElementById('default-provider');
             if (defProvider) defProvider.value = cfg.default_provider || 'gemini';
 
+            // Папка для файлов агента: загрузка списка проектов
+            const outputPathSel = document.getElementById('default-agent-output-path');
+            if (outputPathSel) {
+                try {
+                    const projRes = await fetch('/agents/api/projects/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    const projData = await projRes.json();
+                    const projects = (projData.projects || []).slice();
+                    const loadOpt = outputPathSel.querySelector('option[value="__load__"]');
+                    if (loadOpt) loadOpt.remove();
+                    const firstOpt = outputPathSel.querySelector('option[value=""]');
+                    projects.forEach(function(p) {
+                        const o = document.createElement('option');
+                        o.value = (p.path || p.name || '');
+                        o.textContent = (p.name || p.path || '') + (p.full_path ? ' — ' + p.full_path : '');
+                        if (firstOpt && firstOpt.nextSibling) outputPathSel.insertBefore(o, firstOpt.nextSibling);
+                        else outputPathSel.appendChild(o);
+                    });
+                    outputPathSel.value = (cfg.default_agent_output_path || '').trim();
+                } catch (e) {
+                    const loadOpt = outputPathSel.querySelector('option[value="__load__"]');
+                    if (loadOpt) { loadOpt.value = ''; loadOpt.textContent = '— Ошибка загрузки списка —'; loadOpt.disabled = false; }
+                }
+            }
+
             // Chat / Agent selects: use lists from API, preserve current value
             fillSelect('chat-model-gemini', gemini, cfg.chat_model_gemini || cur.chat_gemini);
             fillSelect('chat-model-grok', grok, cfg.chat_model_grok || cur.chat_grok);
@@ -303,7 +354,8 @@
             chat_model_grok: document.getElementById('chat-model-grok').value,
             agent_model_gemini: document.getElementById('agent-model-gemini').value,
             agent_model_grok: document.getElementById('agent-model-grok').value,
-            rag_model: ragVal
+            rag_model: ragVal,
+            default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || ''
         };
         try {
             const r = await fetch('/api/settings/', {
@@ -354,6 +406,8 @@
     });
     var btnSave = document.getElementById('btn-save-models');
     if (btnSave) btnSave.addEventListener('click', saveSettings);
+    var btnSavePath = document.getElementById('btn-save-output-path');
+    if (btnSavePath) btnSavePath.addEventListener('click', saveSettings);
     const btnClear = document.getElementById('btn-clear-history');
     if (btnClear) btnClear.addEventListener('click', clearHistory);
 })();

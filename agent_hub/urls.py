@@ -29,6 +29,9 @@ urlpatterns = [
     path("api/workflows/run/<int:run_id>/status/", views.api_workflow_run_status, name="api_workflow_run_status"),
     path("api/workflows/run/<int:run_id>/stop/", views.api_workflow_stop, name="api_workflow_stop"),
     path("api/workflows/run/<int:run_id>/restart/", views.api_workflow_restart, name="api_workflow_restart"),
+    path("api/workflows/run/<int:run_id>/skip/", views.api_workflow_skip_step, name="api_workflow_skip_step"),
+    path("api/workflows/run/<int:run_id>/continue/", views.api_workflow_continue, name="api_workflow_continue"),
+    path("api/workflows/run/<int:run_id>/retry/", views.api_workflow_retry_step, name="api_workflow_retry_step"),
     path("api/workflows/run/<int:run_id>/delete/", views.api_workflow_run_delete, name="api_workflow_run_delete"),
     path("api/assist-auto/", views.api_assist_auto, name="api_assist_auto"),
 ]

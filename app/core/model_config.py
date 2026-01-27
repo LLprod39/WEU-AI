@@ -27,6 +27,10 @@ class ModelConfig(BaseModel):
     # Current provider
     default_provider: str = "grok"  # gemini or grok
 
+    # Папка по умолчанию для сохранения файлов агента (код, артефакты workflow).
+    # Относительный путь внутри AGENT_PROJECTS_DIR или пусто = не задано.
+    default_agent_output_path: str = ""
+
 
 
 class ModelManager:

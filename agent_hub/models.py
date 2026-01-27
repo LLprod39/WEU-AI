@@ -135,6 +135,7 @@ class AgentWorkflowRun(models.Model):
         ("running", "Running"),
         ("succeeded", "Succeeded"),
         ("failed", "Failed"),
+        ("paused", "Paused"),
     ]
 
     workflow = models.ForeignKey(AgentWorkflow, on_delete=models.CASCADE, related_name="runs")
@@ -144,6 +145,9 @@ class AgentWorkflowRun(models.Model):
     logs = models.TextField(blank=True)
     output_text = models.TextField(blank=True)
     meta = models.JSONField(default=dict, blank=True)
+    step_results = models.JSONField(default=list, blank=True, help_text="Results for each step")
+    retry_count = models.IntegerField(default=0, help_text="Number of retries for current step")
+    max_retries = models.IntegerField(default=3, help_text="Max retries per step")
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

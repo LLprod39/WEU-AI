@@ -61,8 +61,15 @@ def _create_project_folder(name: str) -> str:
 
 def _get_workspace_path(workflow: AgentWorkflow) -> str:
     """Возвращает путь к workspace для workflow"""
-    if workflow.project_path:
-        full_path = settings.AGENT_PROJECTS_DIR / workflow.project_path
+    path = (workflow.project_path or "").strip()
+    if not path:
+        try:
+            from app.core.model_config import model_manager
+            path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+        except Exception:
+            path = ""
+    if path:
+        full_path = settings.AGENT_PROJECTS_DIR / path
         full_path.mkdir(parents=True, exist_ok=True)
         return str(full_path)
     return str(settings.BASE_DIR)
@@ -650,6 +657,12 @@ def api_workflow_generate(request):
         if not safe_name:
             safe_name = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         project_path = _create_project_folder(safe_name)
+    elif not project_path:
+        try:
+            from app.core.model_config import model_manager
+            project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+        except Exception:
+            pass
 
     parsed = _generate_workflow_script(task, runtime)
 
@@ -734,33 +747,191 @@ def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], worksp
     return cmd + cli_args + [prompt]
 
 
-def _run_cli_stream(cmd: list, run_obj: AgentWorkflowRun, step_label: str, process_env: dict = None) -> Dict[str, Any]:
-    run_obj.logs = (run_obj.logs or "") + f"[CMD] {' '.join(cmd)}\n"
+# Сколько строк лога накапливать перед записью в БД (снижает "database is locked" при SQLite)
+_LOG_SAVE_BATCH_SIZE = 10
+
+
+def _get_cursor_cli_extra_env() -> dict:
+    """Переменные окружения для Cursor CLI (напр. HTTP/1.0)."""
+    env = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None)
+    return env if isinstance(env, dict) and env else {}
+
+
+def _short_path(path: str, max_len: int = 50) -> str:
+    if len(path) <= max_len:
+        return path
+    parts = path.replace("\\", "/").split("/")
+    if len(parts) > 3:
+        return f"{parts[0]}/.../{'/'.join(parts[-2:])}"
+    return f"...{path[-(max_len - 3):]}"
+
+
+def _format_tool_started(tool_call: Dict[str, Any]) -> str:
+    if "writeToolCall" in tool_call:
+        path = tool_call["writeToolCall"].get("args", {}).get("path", "?")
+        return f"📝 Записываю: {_short_path(path)}"
+    if "readToolCall" in tool_call:
+        path = tool_call["readToolCall"].get("args", {}).get("path", "?")
+        return f"📖 Читаю: {_short_path(path)}"
+    if "strReplaceToolCall" in tool_call:
+        path = tool_call["strReplaceToolCall"].get("args", {}).get("path", "?")
+        return f"✏️ Редактирую: {_short_path(path)}"
+    if "shellToolCall" in tool_call:
+        cmd = tool_call["shellToolCall"].get("args", {}).get("command", "?")
+        if len(cmd) > 80:
+            cmd = cmd[:77] + "..."
+        return f"🖥️ Команда: {cmd}"
+    if "globToolCall" in tool_call:
+        pattern = tool_call["globToolCall"].get("args", {}).get("glob_pattern", "?")
+        return f"🔍 Поиск файлов: {pattern}"
+    if "grepToolCall" in tool_call:
+        pattern = tool_call["grepToolCall"].get("args", {}).get("pattern", "?")
+        return f"🔎 Поиск в коде: {pattern}"
+    if "lsToolCall" in tool_call:
+        path = tool_call["lsToolCall"].get("args", {}).get("target_directory", "?")
+        return f"📁 Листинг: {_short_path(path)}"
+    if "deleteToolCall" in tool_call:
+        path = tool_call["deleteToolCall"].get("args", {}).get("path", "?")
+        return f"🗑️ Удаляю: {_short_path(path)}"
+    return "🔧 Операция..."
+
+
+def _format_tool_completed(tool_call: Dict[str, Any]) -> str:
+    if "writeToolCall" in tool_call:
+        result = tool_call["writeToolCall"].get("result", {}).get("success", {})
+        lines = result.get("linesCreated", 0)
+        size = result.get("fileSize", 0)
+        return f"   ✅ Создано {lines} строк ({size} байт)"
+    if "readToolCall" in tool_call:
+        result = tool_call["readToolCall"].get("result", {}).get("success", {})
+        return f"   ✅ Прочитано {result.get('totalLines', 0)} строк"
+    if "strReplaceToolCall" in tool_call:
+        result = tool_call["strReplaceToolCall"].get("result", {})
+        if result.get("success"):
+            return "   ✅ Изменено"
+        return f"   ⚠️ {(result.get('error') or {}).get('message', 'Ошибка')[:50]}"
+    if "shellToolCall" in tool_call:
+        result = tool_call["shellToolCall"].get("result", {}).get("success", {})
+        exit_code = result.get("exit_code", -1)
+        return "   ✅ Выполнено" if exit_code == 0 else f"   ⚠️ Код выхода: {exit_code}"
+    return None
+
+
+def _format_stream_json_log(data: Dict[str, Any], run_obj: AgentWorkflowRun) -> str:
+    msg_type = data.get("type")
+    subtype = data.get("subtype")
+    if msg_type == "system" and subtype == "init":
+        return f"🤖 Модель: {data.get('model', 'unknown')}"
+    if msg_type == "assistant":
+        content = data.get("message", {}).get("content", [])
+        if content and isinstance(content, list) and content[0].get("text"):
+            text = content[0].get("text", "")
+            return f"💬 {text[:100]}..." if len(text) > 100 else f"💬 {text}"
+    if msg_type == "tool_call":
+        tool_call = data.get("tool_call", {})
+        if subtype == "started":
+            return _format_tool_started(tool_call)
+        if subtype == "completed":
+            return _format_tool_completed(tool_call)
+    if msg_type == "result":
+        return f"⏱️ Завершено за {data.get('duration_ms', 0)}ms"
+    return None
+
+
+def _run_cli_stream(
+    cmd: list,
+    run_obj: AgentWorkflowRun,
+    step_label: str,
+    process_env: dict = None,
+    extra_env: dict = None,
+) -> Dict[str, Any]:
+    """Запуск CLI с парсингом stream-json для детального логирования."""
+    spawn_env = extra_env or process_env
+    if spawn_env and os.environ:
+        spawn_env = {**os.environ, **spawn_env}
+    run_obj.logs = (run_obj.logs or "") + f"\n{'='*50}\n[CMD] {' '.join(cmd)}\n{'='*50}\n"
     run_obj.save(update_fields=["logs"])
-    popen_kw = {"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT, "text": True, "bufsize": 1}
-    if process_env:
-        popen_kw["env"] = process_env
+    popen_kw = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "bufsize": 1,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if spawn_env:
+        popen_kw["env"] = spawn_env
     process = subprocess.Popen(cmd, **popen_kw)
     run_obj.meta = {**(run_obj.meta or {}), f"pid_{step_label}": process.pid}
     run_obj.save(update_fields=["meta"])
     output_chunks = []
+    accumulated_text = ""
+    tool_count = 0
+    pending_lines = 0
+
+    def maybe_flush():
+        nonlocal pending_lines
+        if pending_lines >= _LOG_SAVE_BATCH_SIZE:
+            run_obj.save(update_fields=["logs"])
+            pending_lines = 0
+
     for line in process.stdout:
         output_chunks.append(line)
-        run_obj.logs = (run_obj.logs or "") + line
-        run_obj.save(update_fields=["logs"])
+        line_stripped = line.strip()
+        if line_stripped.startswith("{"):
+            try:
+                data = json.loads(line_stripped)
+                log_line = _format_stream_json_log(data, run_obj)
+                if data.get("type") == "tool_call" and data.get("subtype") == "started":
+                    tool_count += 1
+                if data.get("type") == "assistant":
+                    content = data.get("message", {}).get("content", [])
+                    if content and isinstance(content, list) and content[0].get("text"):
+                        accumulated_text += content[0].get("text", "")
+                if log_line:
+                    run_obj.logs = (run_obj.logs or "") + log_line + "\n"
+                    pending_lines += 1
+                    maybe_flush()
+            except json.JSONDecodeError:
+                run_obj.logs = (run_obj.logs or "") + line
+                pending_lines += 1
+                maybe_flush()
+        else:
+            if line_stripped:
+                run_obj.logs = (run_obj.logs or "") + line
+                pending_lines += 1
+                maybe_flush()
+
+    timeout_sec = getattr(settings, "CLI_RUNTIME_TIMEOUT_SECONDS", None)
     try:
-        exit_code = process.wait(timeout=settings.CLI_RUNTIME_TIMEOUT_SECONDS)
+        exit_code = process.wait(timeout=timeout_sec) if timeout_sec else process.wait()
     except subprocess.TimeoutExpired:
         process.kill()
         run_obj.logs = (run_obj.logs or "") + "[TIMEOUT] Process killed after timeout\n"
-        run_obj.status = "failed"
-        run_obj.save(update_fields=["logs", "status"])
-        logger.warning("[TIMEOUT] Process killed after timeout")
+        run_obj.save(update_fields=["logs"])
         return {"success": False, "output": "".join(output_chunks), "exit_code": -1}
+
+    summary = f"\n{'─'*40}\n📊 Итого: {tool_count} операций, {len(accumulated_text)} символов\n"
+    summary += "✅ Успешно завершено\n" if exit_code == 0 else f"❌ Завершено с ошибкой (код {exit_code})\n"
+    summary += f"{'─'*40}\n"
+    run_obj.logs = (run_obj.logs or "") + summary
+    run_obj.save(update_fields=["logs"])
     return {"success": exit_code == 0, "output": "".join(output_chunks), "exit_code": exit_code}
 
 
 def _resolve_cli_command(runtime: str) -> str:
+    env_var = _cli_env_var(runtime)
+    # Для cursor в Docker/на хосте явно учитываем CURSOR_CLI_PATH при каждом вызове
+    if runtime == "cursor":
+        path_from_env = (os.getenv("CURSOR_CLI_PATH") or "").strip()
+        if path_from_env:
+            if Path(path_from_env).exists():
+                return path_from_env
+            raise RuntimeError(
+                f"CURSOR_CLI_PATH задан, но файл не найден: {path_from_env}. "
+                "Проверь путь в .env (в Docker — путь внутри контейнера, например к смонтированному бинарнику)."
+            )
+
     runtime_cfg = settings.CLI_RUNTIME_CONFIG.get(runtime) or {}
     command = runtime_cfg.get("command", "")
     if not command:
@@ -769,15 +940,21 @@ def _resolve_cli_command(runtime: str) -> str:
         if not Path(command).exists():
             raise RuntimeError(
                 f"CLI для '{runtime}' не найден: {command}. "
-                f"Проверь путь или переменную окружения {_cli_env_var(runtime)}"
+                f"Проверь путь или переменную окружения {env_var}"
             )
         return command
 
     resolved = shutil.which(command)
     if not resolved:
+        if runtime == "cursor":
+            raise RuntimeError(
+                "CLI для 'cursor' не найден (бинарник agent). "
+                "В Docker в .env задай CURSOR_CLI_PATH=/полный/путь/к/agent (бинарник должен быть в образе или смонтирован). "
+                "На хосте добавь agent в PATH или задай CURSOR_CLI_PATH."
+            )
         raise RuntimeError(
             f"CLI для '{runtime}' не найден: {command}. "
-            f"Добавь в PATH или задай переменную окружения {_cli_env_var(runtime)}"
+            f"Добавь в PATH или задай переменную окружения {env_var}"
         )
     return resolved
 
@@ -889,65 +1066,80 @@ def _run_steps_with_backend(
     workflow: AgentWorkflow,
     step_results: list,
     workspace: str = None,
+    start_from_step: int = 1,
 ) -> None:
-    # Для Cursor CLI подмешиваем CURSOR_CLI_EXTRA_ENV (HTTP/1 и т.п.), если задано
-    process_env = None
-    if runtime == "cursor":
-        extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
-        if extra:
-            process_env = {**os.environ, **extra}
+    extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else None
+    max_retries = getattr(run_obj, "max_retries", None) or 3
+    step_results_existing = list(run_obj.step_results or [])
 
     for idx, step in enumerate(steps, start=1):
+        if idx < start_from_step:
+            existing = [r for r in step_results_existing if r.get("step_idx") == idx]
+            if existing and existing[-1].get("status") in ("completed", "skipped"):
+                continue
         run_obj.current_step = idx
-        run_obj.save(update_fields=["current_step"])
+        run_obj.retry_count = 0
+        run_obj.save(update_fields=["current_step", "retry_count"])
 
+        step_title = step.get("title", f"Step {idx}")
         step_prompt = step.get("prompt", "")
         completion_promise = step.get("completion_promise", "STEP_DONE")
         max_iterations = step.get("max_iterations", 5)
         verify_prompt = step.get("verify_prompt")
         verify_promise = step.get("verify_promise", "PASS")
-
         config = {
             "use_ralph_loop": True,
             "completion_promise": completion_promise,
             "max_iterations": max_iterations,
         }
-        # Для cursor модель всегда auto (уже в args), для других runtime можно передать
         if runtime != "cursor":
             config["model"] = (workflow.script or {}).get("model")
             config["specific_model"] = (workflow.script or {}).get("specific_model")
 
-        if completion_promise:
-            step_prompt = (
-                f"{step_prompt}\n\n"
-                f"When complete output exactly: <promise>{completion_promise}</promise>."
-            )
-
-        cmd = _build_cli_command(runtime, step_prompt, config, workspace)
-        result = _run_cli_stream(cmd, run_obj, step_label=step.get("title", f"Step {idx}"), process_env=process_env)
-        step_results.append({"step": step.get("title", f"Step {idx}"), "result": result})
-
-        if verify_prompt:
-            if verify_promise:
-                verify_prompt = (
-                    f"{verify_prompt}\n\n"
-                    f"When verified output exactly: <promise>{verify_promise}</promise>."
-                )
-            verify_cmd = _build_cli_command(
-                runtime,
-                verify_prompt,
-                {**config, "completion_promise": verify_promise},
-                workspace,
-            )
-            verify_result = _run_cli_stream(
-                verify_cmd,
-                run_obj,
-                step_label=f"{step.get('title', f'Step {idx}')} - verify",
-                process_env=process_env,
-            )
-            step_results.append({"step": f"{step.get('title', f'Step {idx}')} - verify", "result": verify_result})
-            if verify_promise and not _promise_found(verify_result.get("output", ""), verify_promise):
-                raise RuntimeError("Verification failed")
+        step_success = False
+        last_error = None
+        retry_attempt = 0
+        while retry_attempt <= max_retries and not step_success:
+            try:
+                run_obj.retry_count = retry_attempt
+                run_obj.save(update_fields=["retry_count"])
+                current_prompt = step_prompt
+                if retry_attempt > 0:
+                    current_prompt = (
+                        f"Previous attempt failed with error: {last_error}\n\n"
+                        f"Please fix the issue and try again.\n\nOriginal task:\n{step_prompt}"
+                    )
+                    run_obj.logs = (run_obj.logs or "") + f"\n[Retry {retry_attempt}/{max_retries} for {step_title}]\n"
+                    run_obj.save(update_fields=["logs"])
+                if completion_promise:
+                    current_prompt = f"{current_prompt}\n\nWhen complete output exactly: <promise>{completion_promise}</promise>."
+                cmd = _build_cli_command(runtime, current_prompt, config, workspace)
+                result = _run_cli_stream(cmd, run_obj, step_label=step_title, extra_env=extra_env)
+                if verify_prompt:
+                    verify_text = f"{verify_prompt}\n\nWhen verified output exactly: <promise>{verify_promise}</promise>." if verify_promise else verify_prompt
+                    verify_cmd = _build_cli_command(runtime, verify_text, {**config, "completion_promise": verify_promise}, workspace)
+                    verify_result = _run_cli_stream(verify_cmd, run_obj, step_label=f"{step_title} - verify", extra_env=extra_env)
+                    if verify_promise and not _promise_found(verify_result.get("output", ""), verify_promise):
+                        last_error = f"Verification failed: expected {verify_promise}"
+                        retry_attempt += 1
+                        continue
+                step_success = True
+                sr = {"step_idx": idx, "step": step_title, "status": "completed", "retries": retry_attempt, "result": result}
+                step_results.append(sr)
+                step_results_existing.append(sr)
+                run_obj.step_results = step_results_existing
+                run_obj.save(update_fields=["step_results"])
+            except Exception as e:
+                last_error = str(e)
+                retry_attempt += 1
+                run_obj.logs = (run_obj.logs or "") + f"\n[Error in {step_title}]: {last_error}\n"
+                run_obj.save(update_fields=["logs"])
+        if not step_success:
+            sr = {"step_idx": idx, "step": step_title, "status": "failed", "retries": retry_attempt, "error": last_error}
+            step_results_existing.append(sr)
+            run_obj.step_results = step_results_existing
+            run_obj.save(update_fields=["step_results"])
+            raise RuntimeError(f"Step {idx} ({step_title}) failed after {max_retries} retries: {last_error}")
 
 
 def _start_workflow_run(workflow: AgentWorkflow, user) -> AgentWorkflowRun:
@@ -966,8 +1158,11 @@ def _start_workflow_run(workflow: AgentWorkflow, user) -> AgentWorkflowRun:
 @login_required
 @require_http_methods(["GET"])
 def api_workflow_run_status(request, run_id: int):
-    run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
-    # Получаем информацию о шагах
+    run = get_object_or_404(
+        AgentWorkflowRun.objects.select_related("workflow"),
+        id=run_id,
+        initiated_by=request.user,
+    )
     script = run.workflow.script or {}
     steps = script.get("steps", [])
     total_steps = len(steps)
@@ -975,17 +1170,35 @@ def api_workflow_run_status(request, run_id: int):
     if steps and 0 < run.current_step <= total_steps:
         step = steps[run.current_step - 1]
         current_step_title = step.get("title") or step.get("prompt", "")[:50]
-    
-    logs = run.logs[-8000:] if run.logs else ""
+    step_results_map = {r.get("step_idx"): r for r in (run.step_results or [])}
+    steps_info = []
+    for idx, step in enumerate(steps, start=1):
+        info = {
+            "idx": idx,
+            "title": step.get("title") or f"Шаг {idx}",
+            "prompt": (step.get("prompt") or "")[:200],
+            "has_verify": bool(step.get("verify_prompt")),
+            "status": "pending",
+        }
+        if idx in step_results_map:
+            r = step_results_map[idx]
+            info["status"] = r.get("status", "unknown")
+            info["retries"] = r.get("retries", 0)
+            info["error"] = r.get("error")
+        elif idx == run.current_step and run.status == "running":
+            info["status"] = "running"
+            info["retries"] = getattr(run, "retry_count", 0)
+        steps_info.append(info)
     return JsonResponse(
         {
             "status": run.status,
             "current_step": run.current_step,
             "total_steps": total_steps,
             "current_step_title": current_step_title,
-            "logs": logs,
-            "output": (run.output_text or "")[-16000:] if run.output_text else "",
-            "verified": "<promise>PASS</promise>" in (logs or ""),
+            "retry_count": getattr(run, "retry_count", 0),
+            "max_retries": getattr(run, "max_retries", 3),
+            "steps": steps_info,
+            "logs": (run.logs or "")[-8000:] if run.logs else "",
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         }
     )
@@ -1021,6 +1234,113 @@ def api_workflow_restart(request, run_id: int):
     workflow = old_run.workflow
     new_run = _start_workflow_run(workflow, request.user)
     return JsonResponse({"success": True, "run_id": new_run.id})
+
+
+def _continue_workflow_run(run_id: int, from_step: int):
+    run_obj = AgentWorkflowRun.objects.get(pk=run_id)
+    workflow = run_obj.workflow
+    run_obj.status = "running"
+    if not run_obj.started_at:
+        run_obj.started_at = timezone.now()
+    workspace = _get_workspace_path(workflow)
+    run_obj.save(update_fields=["status", "started_at"])
+    steps = (workflow.script or {}).get("steps", [])
+    step_results = []
+    try:
+        if workflow.runtime == "ralph":
+            backend = (
+                ((workflow.script or {}).get("ralph_yml") or {}).get("cli", {}).get("backend")
+                or (workflow.script or {}).get("backend")
+                or "cursor"
+            )
+            _run_steps_with_backend(
+                run_obj=run_obj, steps=steps, runtime=backend, workflow=workflow,
+                step_results=step_results, workspace=workspace, start_from_step=from_step,
+            )
+        else:
+            _run_steps_with_backend(
+                run_obj=run_obj, steps=steps, runtime=workflow.runtime, workflow=workflow,
+                step_results=step_results, workspace=workspace, start_from_step=from_step,
+            )
+        run_obj.status = "succeeded"
+        run_obj.output_text = json.dumps(step_results, ensure_ascii=False)
+    except Exception as exc:
+        run_obj.status = "failed"
+        run_obj.logs = (run_obj.logs or "") + f"\n{exc}\n"
+        run_obj.output_text = json.dumps(step_results, ensure_ascii=False)
+    finally:
+        run_obj.finished_at = timezone.now()
+        run_obj.save()
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["POST"])
+def api_workflow_skip_step(request, run_id: int):
+    run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
+    if run.status not in ("failed", "paused"):
+        return JsonResponse({"error": "Can only skip steps for failed/paused workflows"}, status=400)
+    current_step = run.current_step
+    steps = (run.workflow.script or {}).get("steps", [])
+    if current_step >= len(steps):
+        return JsonResponse({"error": "No more steps to skip"}, status=400)
+    step_results = run.step_results or []
+    step_title = steps[current_step - 1].get("title", f"Шаг {current_step}")
+    step_results.append({"step_idx": current_step, "step": step_title, "status": "skipped", "retries": 0})
+    run.step_results = step_results
+    run.logs = (run.logs or "") + f"\n[Шаг {current_step} ({step_title}) пропущен пользователем]\n"
+    run.save(update_fields=["step_results", "logs"])
+    next_step = current_step + 1
+    if next_step > len(steps):
+        run.status = "succeeded"
+        run.finished_at = timezone.now()
+        run.save(update_fields=["status", "finished_at"])
+        return JsonResponse({"success": True, "message": "Workflow completed (last step skipped)"})
+    run.status = "queued"
+    run.save(update_fields=["status"])
+    thread = threading.Thread(target=_continue_workflow_run, args=(run.id, next_step), daemon=True)
+    thread.start()
+    return JsonResponse({"success": True, "message": f"Step {current_step} skipped, continuing from step {next_step}"})
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["POST"])
+def api_workflow_continue(request, run_id: int):
+    run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
+    data = _parse_json_request(request)
+    if run.status not in ("failed", "paused"):
+        return JsonResponse({"error": "Can only continue failed/paused workflows"}, status=400)
+    from_step = data.get("from_step", run.current_step)
+    steps = (run.workflow.script or {}).get("steps", [])
+    if from_step < 1 or from_step > len(steps):
+        return JsonResponse({"error": f"Invalid step number: {from_step}"}, status=400)
+    run.status = "queued"
+    run.logs = (run.logs or "") + f"\n[Продолжение с шага {from_step}]\n"
+    run.save(update_fields=["status", "logs"])
+    thread = threading.Thread(target=_continue_workflow_run, args=(run.id, from_step), daemon=True)
+    thread.start()
+    return JsonResponse({"success": True, "message": f"Continuing from step {from_step}"})
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["POST"])
+def api_workflow_retry_step(request, run_id: int):
+    run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
+    if run.status not in ("failed", "paused"):
+        return JsonResponse({"error": "Can only retry failed/paused workflows"}, status=400)
+    current_step = run.current_step
+    step_results = run.step_results or []
+    step_results = [r for r in step_results if r.get("step_idx") != current_step]
+    run.step_results = step_results
+    run.retry_count = 0
+    run.status = "queued"
+    run.logs = (run.logs or "") + f"\n[Повтор шага {current_step}]\n"
+    run.save(update_fields=["step_results", "retry_count", "status", "logs"])
+    thread = threading.Thread(target=_continue_workflow_run, args=(run.id, current_step), daemon=True)
+    thread.start()
+    return JsonResponse({"success": True, "message": f"Retrying step {current_step}"})
 
 
 @csrf_exempt
@@ -1067,6 +1387,12 @@ def api_assist_auto(request):
             if not safe_name:
                 safe_name = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             project_path = _create_project_folder(safe_name)
+    elif not project_path:
+        try:
+            from app.core.model_config import model_manager
+            project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+        except Exception:
+            pass
 
     profile_id = None
     workflow_id = None
@@ -1223,6 +1549,12 @@ def api_workflow_create_manual(request):
             if not safe_name:
                 safe_name = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             project_path = _create_project_folder(safe_name)
+    elif not project_path:
+        try:
+            from app.core.model_config import model_manager
+            project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+        except Exception:
+            pass
     
     # Формируем script
     script = {

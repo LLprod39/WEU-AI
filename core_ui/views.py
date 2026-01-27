@@ -120,12 +120,15 @@ def docs_ui_guide_view(request):
 def index(request):
     """Main chat interface"""
     default_provider = model_manager.config.default_provider
+    rag = get_rag_engine()
     context = {
         'default_provider': default_provider,
         'is_gemini_default': default_provider == 'gemini',
         'is_grok_default': default_provider == 'grok',
+        'rag_available': rag.available,
+        'rag_build': getattr(rag, 'rag_build', 'full'),
     }
-    
+
     # Check for start_task_id
     task_id = request.GET.get('task_id')
     if task_id:
@@ -156,14 +159,13 @@ def orchestrator_view(request):
 def knowledge_base_view(request):
     """Knowledge Base (RAG) management - optimized for fast loading"""
     rag = get_rag_engine()
-    
-    # Don't load all documents on page load - load via AJAX instead
-    # This makes the page load much faster
+    rag_type = 'Qdrant' if (hasattr(rag, 'use_qdrant') and rag.use_qdrant) else ('InMemory' if rag.available else 'mini')
     context = {
-        'documents': [],  # Empty initially, loaded via AJAX
-        'doc_count': 0,  # Will be updated via AJAX
+        'documents': [],
+        'doc_count': 0,
         'rag_available': rag.available,
-        'rag_type': 'Qdrant' if (hasattr(rag, 'use_qdrant') and rag.use_qdrant) else 'InMemory',
+        'rag_type': rag_type,
+        'rag_build': getattr(rag, 'rag_build', 'full'),
     }
     return render(request, 'knowledge_base.html', context)
 
@@ -474,6 +476,7 @@ def api_settings(request):
                     'rag_model': c.rag_model,
                     'agent_model_gemini': c.agent_model_gemini,
                     'agent_model_grok': c.agent_model_grok,
+                    'default_agent_output_path': getattr(c, 'default_agent_output_path', '') or '',
                 },
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
@@ -489,6 +492,7 @@ def api_settings(request):
             allowed = {
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
+                'default_agent_output_path',
             }
             for key, value in data.items():
                 if key in allowed and value is not None:

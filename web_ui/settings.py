@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-@b9idj_4skbcph+21q6^bc0qbs*$qs&@7r2sqfn*1#)z5_i%my
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()] or []
 
 
 # Application definition
@@ -84,13 +84,33 @@ ASGI_APPLICATION = 'web_ui.asgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# MVP: PostgreSQL для конкурентной работы (много агентов/воркеров без блокировок SQLite).
+# Задайте POSTGRES_HOST (или POSTGRES_DB) в .env — будет использоваться PostgreSQL.
+# Иначе — SQLite для локального старта без Docker.
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+def _get_database_config():
+    use_postgres = os.getenv("POSTGRES_HOST") or os.getenv("POSTGRES_DB")
+    if use_postgres:
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "weu_platform"),
+            "USER": os.getenv("POSTGRES_USER", "weu"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": 60,  # переиспользование соединений при нагрузке
+            "OPTIONS": {
+                "connect_timeout": 10,
+                "options": "-c statement_timeout=30000",  # 30s макс. на запрос
+            },
+        }
+    return {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
-}
+
+
+DATABASES = {"default": _get_database_config()}
 
 
 # Password validation
@@ -164,6 +184,7 @@ CURSOR_CLI_HTTP_1 = _raw_http1 not in ("0", "false", "no", "off")
 
 def _parse_cursor_cli_extra_env():
     """Extra env vars for Cursor CLI. When CURSOR_CLI_HTTP_1 is True, adds CURSOR_DISABLE_HTTP2=1.
+    CURSOR_API_KEY (отдельно в .env) — headless-вход без Google; ключ в Cursor → Settings → API Access.
     Override via CURSOR_CLI_EXTRA_ENV JSON, e.g. CURSOR_CLI_EXTRA_ENV='{"KEY":"VALUE"}'."""
     raw = os.getenv("CURSOR_CLI_EXTRA_ENV", "").strip()
     if raw:
@@ -187,7 +208,10 @@ def _cli_command(env_var: str, default_name: str) -> str:
 CLI_RUNTIME_CONFIG = {
     "cursor": {
         "command": _cli_command("CURSOR_CLI_PATH", "agent"),
-        "args": ["-p", "--output-format", "text", "--workspace", "{workspace}", "--model", "auto"],
+        # --force: агент может менять файлы без подтверждения
+        # --output-format stream-json: стриминг для детальных логов по шагам
+        # --stream-partial-output: прогресс по шагам
+        "args": ["-p", "--force", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}", "--model", "auto"],
         "prompt_style": "positional",
         "allowed_args": [],  # Модель всегда auto, нельзя изменить
     },
