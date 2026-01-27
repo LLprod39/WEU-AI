@@ -5,9 +5,11 @@ Full-featured web interface for AI Agent system
 import asyncio
 import json
 import os
+import shutil
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import AsyncGenerator
 from django.shortcuts import render
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -123,6 +125,7 @@ def index(request):
     rag = get_rag_engine()
     context = {
         'default_provider': default_provider,
+        'is_auto_default': default_provider == 'auto',
         'is_gemini_default': default_provider == 'gemini',
         'is_grok_default': default_provider == 'grok',
         'rag_available': rag.available,
@@ -177,6 +180,89 @@ def settings_view(request):
 
 
 # ============================================
+# Cursor CLI (Ask mode) — только ответы, без изменений файлов
+# Вызов: agent --mode=ask -p "вопрос" --output-format text
+# ============================================
+
+def _resolve_cursor_cli_command() -> str:
+    """Путь к бинарнику Cursor CLI (agent). Аналогично agent_hub."""
+    path_from_env = (os.getenv("CURSOR_CLI_PATH") or "").strip()
+    if path_from_env:
+        if Path(path_from_env).exists():
+            return path_from_env
+        raise FileNotFoundError(
+            f"CURSOR_CLI_PATH задан, но файл не найден: {path_from_env}"
+        )
+    cfg = getattr(settings, "CLI_RUNTIME_CONFIG", None) or {}
+    cursor_cfg = cfg.get("cursor") or {}
+    cmd = cursor_cfg.get("command", "agent")
+    if os.path.isabs(cmd):
+        if not Path(cmd).exists():
+            raise FileNotFoundError(f"Cursor CLI не найден: {cmd}")
+        return cmd
+    resolved = shutil.which(cmd)
+    if not resolved:
+        raise FileNotFoundError(
+            "Cursor CLI (agent) не найден. Добавьте agent в PATH или задайте CURSOR_CLI_PATH."
+        )
+    return resolved
+
+
+async def _stream_cursor_ask(
+    message: str,
+    workspace: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Запускает Cursor CLI в режиме Ask (--mode=ask): только ответы, без изменений файлов.
+    Стримит stdout процесса в виде чанков.
+    """
+    cmd_path = _resolve_cursor_cli_command()
+    base_dir = str(Path(workspace).resolve()) if workspace else str(Path(settings.BASE_DIR).resolve())
+    env = dict(os.environ)
+    extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
+    env.update(extra)
+
+    proc = await asyncio.create_subprocess_exec(
+        cmd_path,
+        "--mode=ask",
+        "-p",
+        message,
+        "--output-format",
+        "text",
+        "--workspace",
+        base_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=base_dir,
+        env=env,
+    )
+    try:
+        if proc.stdout:
+            while True:
+                chunk = await asyncio.wait_for(proc.stdout.read(8192), timeout=120.0)
+                if not chunk:
+                    break
+                part = chunk.decode("utf-8", errors="replace")
+                if part:
+                    yield part
+    except asyncio.TimeoutError:
+        proc.kill()
+        yield "\n\n⚠️ Cursor CLI превысил время ожидания (120 с)."
+    finally:
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        if proc.returncode and proc.returncode != 0 and proc.stderr:
+            err = (await proc.stderr.read()).decode("utf-8", errors="replace").strip()
+            if err:
+                yield f"\n\n⚠️ Cursor CLI exit {proc.returncode}: {err[:500]}"
+
+
+# ============================================
 # API Endpoints
 # ============================================
 
@@ -185,7 +271,8 @@ def settings_view(request):
 async def chat_api(request):
     """
     Async API endpoint for chat streaming.
-    Expects JSON: { "message": "user input", "model": "gemini/grok" }
+    Expects JSON: { "message": "user input", "model": "auto|gemini|grok" }
+    model=auto → Cursor CLI --mode=ask (только ответы, без агента).
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -200,10 +287,14 @@ async def chat_api(request):
         if not user_message:
             return JsonResponse({'error': 'Empty message'}, status=400)
 
-        orchestrator = await get_orchestrator()
-
         async def event_stream():
             try:
+                if model == "auto":
+                    workspace = getattr(settings, "BASE_DIR", "")
+                    async for chunk in _stream_cursor_ask(user_message, workspace):
+                        yield chunk
+                    return
+                orchestrator = await get_orchestrator()
                 async for chunk in orchestrator.process_user_message(
                     user_message,
                     model_preference=model,
@@ -211,6 +302,8 @@ async def chat_api(request):
                     specific_model=specific_model
                 ):
                     yield chunk
+            except FileNotFoundError as e:
+                yield f"\n\n❌ {e}"
             except Exception as e:
                 yield f"\n\n❌ Error: {str(e)}"
 

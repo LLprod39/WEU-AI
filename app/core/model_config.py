@@ -24,8 +24,8 @@ class ModelConfig(BaseModel):
     agent_model_gemini: str = "models/gemini-3-flash-preview"
     agent_model_grok: str = "grok-3"
     
-    # Current provider
-    default_provider: str = "grok"  # gemini or grok
+    # Current provider: auto = Cursor CLI (Ask), gemini, grok
+    default_provider: str = "auto"
 
     # Папка по умолчанию для сохранения файлов агента (код, артефакты workflow).
     # Относительный путь внутри AGENT_PROJECTS_DIR или пусто = не задано.
