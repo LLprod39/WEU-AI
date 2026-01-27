@@ -112,9 +112,10 @@ class CliRuntimeManager:
 
         subprocess_env = None
         if runtime == "cursor":
+            # Headless: CURSOR_API_KEY из .env — без входа по Google. Ключ: Cursor → Settings → API Access.
+            subprocess_env = dict(os.environ)
             extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
-            if extra:
-                subprocess_env = {**os.environ, **extra}
+            subprocess_env.update(extra)
 
         create_kw = {"stdout": asyncio.subprocess.PIPE, "stderr": asyncio.subprocess.PIPE}
         if subprocess_env is not None:

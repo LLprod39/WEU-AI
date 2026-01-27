@@ -45,13 +45,36 @@
 - **RAG по желанию** — включил в чате, загрузил документы — ответы уже с опорой на твои данные.
 - **Воркфлоу из коробки** — многошаговые сценарии, запуск Cursor/Ralph, просмотр логов и остановка из интерфейса.
 - **Задачи с AI** — не только трекер, но и помощь по формулировкам и разбиению на шаги.
-- **Без лишней инфраструктуры** — SQLite, опционально Docker только для Qdrant. Для старта хватает `pip install` и двух ключей в `.env`.
+- **Без лишней инфраструктуры** — для MVP рекомендуется PostgreSQL (Docker), чтобы при многих подключениях и агентах не упираться в блокировки SQLite. Опционально Docker только для Qdrant. Для быстрого ознакомления можно оставить SQLite.
+
+---
+
+## Две сборки: mini и full
+
+- **Mini (по умолчанию)** — для тестов и быстрого старта: без PyTorch, без моделей RAG, без тяжёлых зависимостей. Чат, задачи, агенты, пароли, серверы работают; RAG отключён.
+- **Full** — всё из mini плюс RAG (sentence-transformers, эмбеддинги), Qdrant, OCR, DOCX, расширенный PDF.
+
+Подробнее: [docs/BUILDS.md](docs/BUILDS.md).
 
 ---
 
 ## Быстрый старт
 
-**Требования:** Python 3.10+, при желании Docker для Qdrant.
+**Требования:** Python 3.10+, при желании Docker.
+
+### Один запуск в Docker
+
+```bash
+docker compose up --build
+```
+
+Открой `http://localhost:8000`. При первом старте автоматически создаётся суперпользователь **admin** / **admin** (логин/пароль можно переопределить в `.env`: `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_PASSWORD`). Для продакшена обязательно задай свои значения.
+
+Стартуют postgres, qdrant, web и **agent-runner** (контейнер для запуска агентов Cursor CLI / Ralph; общий volume `agent_projects_data`).
+
+По умолчанию используется **mini**-сборка. Для RAG и эмбеддингов: `WEU_BUILD=full docker compose up --build` или задай в `.env` строку `WEU_BUILD=full`.
+
+### Локально (без Docker)
 
 ```bash
 git clone https://github.com/LLprod39/WEU-AI.git
@@ -62,6 +85,8 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
+По умолчанию ставится **mini**. Для RAG: `pip install -r requirements-full.txt`.
+
 В корне создай `.env`:
 
 ```env
@@ -69,7 +94,12 @@ GEMINI_API_KEY=your_gemini_key
 GROK_API_KEY=your_grok_key
 ```
 
-Миграции и пользователь:
+База данных и пользователь:
+
+- **Рекомендуется для MVP:** поднять PostgreSQL: `docker compose up -d postgres`, в `.env` задать `POSTGRES_HOST=localhost` и `POSTGRES_PASSWORD=...` (подробнее — [docs/DATABASE.md](docs/DATABASE.md)).
+- Без Docker используется SQLite (`db.sqlite3`).
+
+Миграции и суперпользователь:
 
 ```bash
 python manage.py migrate
@@ -107,6 +137,8 @@ python manage.py runserver
 
 Основное — в `.env`: `GEMINI_API_KEY`, `GROK_API_KEY`. По желанию: `DJANGO_PORT`, `NICEGUI_PORT`, `CLI_RUNTIME_TIMEOUT_SECONDS`, `CURSOR_CLI_PATH`, `RALPH_CLI_PATH`.
 
+**Cursor CLI в Docker без входа по Google:** добавь в `.env` строку `CURSOR_API_KEY=...`. Ключ создаётся в Cursor → Settings → API Access (или Dashboard → Background Agents). Тогда агенты Cursor CLI работают headless, без интерактивного логина. Бинарник `agent` при сборке образа ставится автоматически ([cursor.com/install](https://cursor.com/install)); для воркфлоу «orchestrate via Cursor CLI» достаточно `CURSOR_API_KEY`. Если установка в образе не сработала — см. [docs/CURSOR_CLI_DOCKER.md](docs/CURSOR_CLI_DOCKER.md) (CURSOR_CLI_PATH и volume).
+
 Для Cursor CLI из-под прокси/ограничений по HTTP/2 можно включить режим HTTP/1 в настройках Django: `CURSOR_CLI_HTTP_1=1` (по умолчанию уже включён), подробности в `web_ui/settings.py`.
 
 Модели для чата и агентов задаются в Settings и при первом выборе сохраняются в `.model_config.json`.
@@ -116,6 +148,9 @@ python manage.py runserver
 ## Документация в репо
 
 - [QUICK_START.md](QUICK_START.md) — установка и первый запуск  
+- [docs/BUILDS.md](docs/BUILDS.md) — две сборки (mini / full), когда что ставить  
+- [docs/CURSOR_CLI_DOCKER.md](docs/CURSOR_CLI_DOCKER.md) — Cursor CLI в Docker без входа по Google (CURSOR_API_KEY)  
+- [docs/DATABASE.md](docs/DATABASE.md) — PostgreSQL для MVP, разделение нагрузки  
 - [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — структура каталогов  
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — как устроен выбор моделей и оркестрация  
 - [docs/UI_GUIDE.md](docs/UI_GUIDE.md) — интерфейс и настройки моделей  

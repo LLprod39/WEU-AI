@@ -1,34 +1,80 @@
 # Быстрый старт
 
+## Вариант 1: Один запуск в Docker
+
+```bash
+docker compose up --build
+```
+
+Открой `http://localhost:8000`. **Логин и пароль:** при первом старте автоматически создаётся пользователь **admin** / **admin** (если в `.env` не заданы `DJANGO_SUPERUSER_USERNAME` и `DJANGO_SUPERUSER_PASSWORD`). Для продакшена задай в `.env` свои значения.
+
+Поднимаются контейнеры: **postgres**, **qdrant**, **web**, **agent-runner**. Контейнер `weu-agent-runner` предназначен для запуска агентов (Cursor CLI / Ralph); общая папка воркспейсов — volume `agent_projects_data`.
+
+**Cursor CLI в Docker без входа по Google:** создай API-ключ в [Cursor → Settings → API Access](https://cursor.com/settings) (или Dashboard → Background Agents). В `.env` добавь строку `CURSOR_API_KEY=твой_ключ`. Тогда агенты Cursor CLI работают headless, без интерактивного логина и без промптов в браузере.
+
+По умолчанию используется **mini**-сборка (без RAG, без PyTorch). Для полной версии с RAG: `WEU_BUILD=full docker compose up --build` или добавь в `.env`: `WEU_BUILD=full`. Подробнее: [docs/BUILDS.md](docs/BUILDS.md).
+
+---
+
+## Вариант 2: Локально (без Docker)
+
 ## Шаг 1: Установка зависимостей
+
+По умолчанию ставится **мини**-сборка (для тестов, без RAG и тяжёлых моделей):
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Примечание:** Некоторые зависимости опциональны:
-- `pytesseract` - для OCR (требует установки Tesseract отдельно)
-- `python-docx` - для работы с DOCX файлами
-- `PyPDF2` / `pdfplumber` - для работы с PDF
+Для **полной** сборки (RAG, эмбеддинги, OCR, DOCX, pdfplumber):
 
-Система будет работать без них, но с ограниченной функциональностью.
+```bash
+pip install -r requirements-full.txt
+```
 
-## Шаг 2: Настройка переменных окружения
+См. [docs/BUILDS.md](docs/BUILDS.md).
 
-Создайте файл `.env` в корне проекта:
+## Шаг 2: База данных (MVP — рекомендуется PostgreSQL)
+
+Для нормальной работы при нескольких пользователях и активных агентах используйте **PostgreSQL** (SQLite блокируется при параллельных запросах).
+
+### Вариант A: PostgreSQL через Docker
+
+```bash
+docker compose up -d postgres
+```
+
+В `.env` добавьте (значения по умолчанию уже в docker-compose):
+
+```env
+POSTGRES_HOST=localhost
+POSTGRES_PASSWORD=weu_secret_change_me
+```
+
+Подробнее: [docs/DATABASE.md](docs/DATABASE.md).
+
+### Вариант B: Только SQLite (без Docker)
+
+Ничего не добавляйте в `.env` — будет использоваться `db.sqlite3`. Подходит для первого знакомства; при нагрузке возможны задержки.
+
+## Шаг 3: Настройка переменных окружения
+
+Создайте или дополните файл `.env` в корне проекта:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GROK_API_KEY=your_grok_api_key_here
 ```
 
-## Шаг 3: Применение миграций
+При использовании PostgreSQL — см. шаг 2.
+
+## Шаг 4: Применение миграций
 
 ```bash
 python manage.py migrate
 ```
 
-## Шаг 4: Создание суперпользователя
+## Шаг 5: Создание суперпользователя
 
 ```bash
 python manage.py createsuperuser
@@ -36,13 +82,13 @@ python manage.py createsuperuser
 
 Следуйте инструкциям для создания учетной записи администратора.
 
-## Шаг 5: Запуск сервера
+## Шаг 6: Запуск сервера
 
 ```bash
 python manage.py runserver
 ```
 
-## Шаг 6: Доступ к приложению
+## Шаг 7: Доступ к приложению
 
 Откройте браузер и перейдите по адресу:
 ```

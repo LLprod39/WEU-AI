@@ -1,65 +1,36 @@
 {
-  "name": "Snake Game Network Setup",
-  "description": "Create a networked version of the classic Snake game using CLI tools.",
-  "runtime": "gemini",
-  "prompt": "Develop a networked Snake game that allows multiple players to compete over a local network using command-line interface tools.",
+  "name": "змейкеа на html",
+  "runtime": "ralph",
   "steps": [
     {
-      "title": "Setup Project Structure",
-      "prompt": "Create a project directory named 'snake-game-network' with subdirectories for source code, assets, and documentation. Initialize a git repository in the project folder.",
+      "title": "змейкеа на html",
+      "prompt": "змейкеа на html",
       "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Check if the directory structure and git repository are correctly initialized. Output <promise>PASS</promise> if everything is set up.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Install Dependencies",
-      "prompt": "Install necessary dependencies for network programming and game logic, such as Python libraries (e.g., socket for networking, curses for CLI display) using pip. Document the installed packages in a requirements.txt file.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Verify that all dependencies are installed and listed in requirements.txt. Output <promise>PASS</promise> if successful.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Develop Game Logic",
-      "prompt": "Write the core game logic for the Snake game in Python, including snake movement, collision detection, and food spawning. Save the code in a file named 'game_logic.py' under the source directory.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Test the game logic for basic functionality (movement and collision). Output <promise>PASS</promise> if tests pass.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Implement Network Server",
-      "prompt": "Create a server script in Python to handle multiple client connections for the Snake game using sockets. Save it as 'server.py' in the source directory. The server should manage game state and synchronize data with clients.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Run the server script and ensure it starts without errors. Output <promise>PASS</promise> if the server is operational.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Implement Client Logic",
-      "prompt": "Develop a client script in Python to connect to the server, display the game using the curses library, and handle user input. Save it as 'client.py' in the source directory.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Test the client script by connecting to the server and verifying input handling and game display. Output <promise>PASS</promise> if successful.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Integrate and Test Multiplayer",
-      "prompt": "Integrate the server and client scripts to enable multiplayer gameplay over a local network. Ensure multiple clients can join and play simultaneously without conflicts.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Run multiple client instances and connect them to the server. Verify that multiplayer gameplay works as expected. Output <promise>PASS</promise> if successful.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Document Usage",
-      "prompt": "Write a README.md file in the documentation directory with instructions on how to set up, run the server, and connect clients to play the networked Snake game.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Check if the README.md file contains clear instructions for setup and gameplay. Output <promise>PASS</promise> if complete.",
-      "verify_promise": "PASS"
+      "max_iterations": 5
     }
   ],
-  "script_file": "C:\\work_ai\\media\\workflows\\workflow-2.json"
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Step 1",
+        "description": "змейкеа на html",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "змейкеа на html"
+      }
+    }
+  },
+  "script_file": "C:\\work_ai\\agent_projects\\web_rA\\media\\workflows\\workflow-2.json"
 }

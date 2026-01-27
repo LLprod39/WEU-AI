@@ -1,0 +1,13 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Step 1"
+    description: "змейкеа на html"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "змейкеа на html"

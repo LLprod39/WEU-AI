@@ -38,6 +38,18 @@
             </span>
         </div>
 
+        {% if not rag_available %}
+        <div class="kb-full-build-banner" role="alert" style="background: linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(251,191,36,0.05) 100%); border: 1px solid rgba(251,191,36,0.3); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;">
+            <span class="material-icons-round" style="color: rgb(251,191,36); font-size: 1.5rem;">info</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-amber-200/90 text-sm font-medium m-0">Для использования RAG нужна полная сборка (модели эмбеддингов, PyTorch).</p>
+                <p class="text-gray-400 text-xs mt-1 mb-0"><code class="bg-black/20 px-1.5 py-0.5 rounded">pip install -r requirements-full.txt</code></p>
+                <p class="text-gray-500 text-xs mt-1 mb-0">См. <a href="{% url 'docs_ui_guide' %}" class="text-primary hover:underline">инструкцию</a> и README / docs/BUILDS.md — раздел «Две сборки».</p>
+            </div>
+            <button type="button" onclick="location.reload()" class="kb-empty-btn" style="flex-shrink: 0;">Обновить страницу</button>
+        </div>
+        {% endif %}
+
         <p class="text-gray-400 text-sm mb-3">Search and manage documents in your RAG knowledge base.</p>
 
         <!-- Semantic search (by content) -->
