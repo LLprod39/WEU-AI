@@ -22,6 +22,9 @@ aiofiles
 django
 daphne
 
+# Qdrant client (нужен для импорта RAGEngine; RAG-эмбеддинги только в full)
+qdrant-client
+
 # Файлы (лёгкие; OCR/DOCX/расширенный PDF — в full)
 Pillow
 PyPDF2
