@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Tasks - AI Agent{% endblock %}
+{% block header_title %}Tasks{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Tasks</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col p-6 overflow-hidden">
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Project Tasks</h1>
+            <p class="text-gray-400 text-sm mt-1">Create and track tasks across your project.</p>
+        </div>
+        <button onclick="document.getElementById('createTaskModal').classList.remove('hidden')"
+            class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2">
+            <span class="material-icons-round text-sm">add</span>
+            New Task
+        </button>
+    </div>
+
+    <!-- Empty state -->
+    <div id="tasks-empty-state" class="empty-state flex-1 flex flex-col items-center justify-center min-h-[16rem] {% if tasks_todo or tasks_in_progress or tasks_done %}hidden{% endif %}">
+        <span class="material-icons-round empty-state-icon">assignment</span>
+        <p class="empty-state-text text-gray-300">No tasks</p>
+        <button type="button" onclick="document.getElementById('createTaskModal').classList.remove('hidden')" class="empty-state-btn px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2">
+            <span class="material-icons-round text-sm">add</span>
+            Create task
+        </button>
+    </div>
+
+    <!-- Kanban Board -->
+    <div id="tasks-kanban" class="flex-1 grid grid-cols-3 gap-6 overflow-hidden min-h-0 {% if not tasks_todo and not tasks_in_progress and not tasks_done %}hidden{% endif %}">
+
+        <!-- To Do Column -->
+        <div class="flex flex-col bg-bg-surface/50 rounded-2xl border border-white/5 h-full">
+            <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+                    <span class="font-medium text-gray-300">To Do</span>
+                </div>
+                <span class="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{{ tasks_todo.count }}</span>
+            </div>
+            <div class="p-4 space-y-3 overflow-y-auto flex-1 custom-scrollbar" ondrop="drop(event, 'TODO')"
+                ondragover="allowDrop(event)">
+                <div class="task-column-skeletons space-y-3" id="skeletons-todo">
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                </div>
+                {% for task in tasks_todo %}
+                {% include 'tasks/task_card.html' with task=task %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- In Progress Column -->
+        <div class="flex flex-col bg-bg-surface/50 rounded-2xl border border-white/5 h-full">
+            <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                    <span class="font-medium text-gray-300">In Progress</span>
+                </div>
+                <span class="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{{ tasks_in_progress.count
+                    }}</span>
+            </div>
+            <div class="p-4 space-y-3 overflow-y-auto flex-1 custom-scrollbar" ondrop="drop(event, 'IN_PROGRESS')"
+                ondragover="allowDrop(event)">
+                <div class="task-column-skeletons space-y-3" id="skeletons-inprogress">
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                </div>
+                {% for task in tasks_in_progress %}
+                {% include 'tasks/task_card.html' with task=task %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Done Column -->
+        <div class="flex flex-col bg-bg-surface/50 rounded-2xl border border-white/5 h-full">
+            <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-400"></div>
+                    <span class="font-medium text-gray-300">Done</span>
+                </div>
+                <span class="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded-full">{{ tasks_done.count }}</span>
+            </div>
+            <div class="p-4 space-y-3 overflow-y-auto flex-1 custom-scrollbar" ondrop="drop(event, 'DONE')"
+                ondragover="allowDrop(event)">
+                <div class="task-column-skeletons space-y-3" id="skeletons-done">
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                    <div class="skeleton skeleton-card w-full"></div>
+                </div>
+                {% for task in tasks_done %}
+                {% include 'tasks/task_card.html' with task=task %}
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Create Task Modal -->
+<div id="createTaskModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="this.parentElement.classList.add('hidden')">
+    </div>
+    <div
+        class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 class="text-xl font-bold text-white mb-4">Create New Task</h2>
+        <form id="createTaskForm" action="{% url 'tasks:task_create' %}" method="POST" onsubmit="return window.validateCreateTaskForm ? window.validateCreateTaskForm(event) : true;">
+            {% csrf_token %}
+            <div class="space-y-4">
+                <div>
+                    <label for="create-task-title" class="block text-xs font-medium text-gray-400 mb-1">Название <span class="text-red-400/80">*</span></label>
+                    <input type="text" name="title" id="create-task-title" required
+                        class="input-field w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
+                        placeholder="Кратко опишите задачу"
+                        autocomplete="off">
+                    <span class="field-error mt-1" id="create-task-title-error" style="display:none;" role="alert">Введите название задачи</span>
+                </div>
+                <div>
+                    <label for="create-task-desc" class="block text-xs font-medium text-gray-400 mb-1">Описание</label>
+                    <textarea name="description" id="create-task-desc" rows="3" placeholder="Детали (необязательно)"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="document.getElementById('createTaskModal').classList.add('hidden')"
+                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Отмена</button>
+                <button type="submit"
+                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">Создать задачу</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>window.TASKS_UI_CONFIG = { csrfToken: "{{ csrf_token }}" };</script>
+<script src="{% static 'js/tasks_ui.js' %}"></script>
+{% endblock %}

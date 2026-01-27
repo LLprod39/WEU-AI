@@ -1,0 +1,22 @@
+
+google-genai
+qdrant-client
+sentence-transformers
+httpx
+python-dotenv
+loguru
+pydantic
+paramiko  # SSH client
+asyncssh  # Async SSH
+mcp  # Model Context Protocol SDK
+beautifulsoup4  # Web scraping
+aiofiles  # Async file operations
+django
+daphne
+nicegui
+Pillow  # Image processing
+pytesseract  # OCR for images
+python-docx  # DOCX files
+PyPDF2  # PDF files
+pdfplumber  # Better PDF extraction
+cryptography  # Encryption for passwords

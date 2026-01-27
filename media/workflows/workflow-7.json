@@ -1,0 +1,57 @@
+{
+  "name": "Multiplayer Snake Game Workflow",
+  "description": "Create a networked Snake game for up to 4 players using CLI tools.",
+  "runtime": "cursor",
+  "prompt": "Develop a multiplayer Snake game playable over a network for up to 4 players with real-time interaction.",
+  "steps": [
+    {
+      "title": "Setup Project Structure",
+      "prompt": "Create a new project directory for a multiplayer Snake game. Initialize it with necessary folders for source code, assets, and configuration files. Use a suitable programming language or framework for CLI-based networked games (e.g., Python with sockets or Node.js).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Check if the project directory and initial files are created correctly. Output <promise>PASS</promise> if the structure is set up.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Implement Core Snake Game Logic",
+      "prompt": "Write the core logic for a single-player Snake game, including snake movement, food spawning, collision detection, and game over conditions. Ensure the game runs in a terminal/console environment.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the single-player Snake game in the terminal to ensure movement, food collection, and collision detection work as expected. Output <promise>PASS</promise> if the game functions correctly.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Add Network Support for Multiplayer",
+      "prompt": "Integrate network functionality using sockets or a similar technology to support up to 4 players. Implement a server to handle player connections and a client to connect to the server. Ensure real-time updates for snake positions and game state.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the network setup by connecting multiple clients (up to 4) to the server. Verify that player movements are synchronized across clients. Output <promise>PASS</promise> if multiplayer works.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Handle Player Identification and Scoring",
+      "prompt": "Add logic to identify each player uniquely (e.g., by color or name) and maintain individual scores. Display scores in the game interface for all connected players.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the game with multiple players to ensure each player is uniquely identified and scores are updated and displayed correctly. Output <promise>PASS</promise> if scoring works.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Implement Game Over and Restart Logic",
+      "prompt": "Add multiplayer-specific game over conditions (e.g., last player standing wins) and provide an option to restart the game without disconnecting. Ensure all clients are notified of game over and restart events.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the game over and restart functionality with multiple players. Confirm that all clients receive game over notifications and can restart seamlessly. Output <promise>PASS</promise> if this works.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Polish and Document",
+      "prompt": "Add final touches like clear terminal output formatting, instructions for running the server and client, and error handling for network issues. Write a README with setup and gameplay instructions.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Review the game for user experience in the terminal and check the README for clarity. Output <promise>PASS</promise> if the game is polished and documentation is complete.",
+      "verify_promise": "PASS"
+    }
+  ],
+  "script_file": "C:\\work_ai\\media\\workflows\\workflow-7.json"
+}

@@ -1,0 +1,43 @@
+cli:
+  backend: "gemini"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Step 1"
+    description: "Setup Project Structure"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "Initialize a new project repository for the Snake Game with necessary directories and files for a networked multiplayer game using a suitable programming language and framework."
+  step_2:
+    name: "Step 2"
+    description: "Implement Core Game Logic"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "Develop the core mechanics of the Snake game including snake movement, food spawning, collision detection, and game over conditions for a single player."
+  step_3:
+    name: "Step 3"
+    description: "Add Multiplayer Functionality"
+    triggers: ["step_2.done"]
+    publishes: ["step_3.done"]
+    instructions: "Integrate multiplayer functionality to allow multiple players to join the game using network sockets or a similar technology for real-time interaction."
+  step_4:
+    name: "Step 4"
+    description: "Implement Network Synchronization"
+    triggers: ["step_3.done"]
+    publishes: ["step_4.done"]
+    instructions: "Ensure game state synchronization across all connected clients to maintain a consistent game environment, handling latency and data consistency."
+  step_5:
+    name: "Step 5"
+    description: "Create User Interface"
+    triggers: ["step_4.done"]
+    publishes: ["step_5.done"]
+    instructions: "Design and implement a user-friendly interface for the Snake game, including menus for starting the game, joining multiplayer sessions, and displaying scores."
+  step_6:
+    name: "Step 6"
+    description: "Final Testing and Debugging"
+    triggers: ["step_5.done"]
+    publishes: ["step_6.done"]
+    instructions: "Perform comprehensive testing of the entire game, including multiplayer scenarios, to identify and fix any remaining bugs or performance issues."

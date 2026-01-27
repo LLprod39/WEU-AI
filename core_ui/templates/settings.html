@@ -1,0 +1,361 @@
+{% extends 'base.html' %}
+
+{% block header_title %}Settings{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Settings</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-4xl mx-auto space-y-6">
+
+        <!-- Header -->
+        <div>
+            <h1 class="text-2xl font-bold text-white" style="font-size: var(--text-2xl); font-weight: var(--font-weight-bold);">Settings</h1>
+            <p class="text-gray-400 text-sm mt-1" style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--spacing-xs);">Configure API keys, models, and providers here.</p>
+        </div>
+
+        <div id="settings-loading" class="glass-card rounded-xl p-8 text-center text-gray-400">
+            <span class="material-icons-round animate-pulse text-4xl mb-2">hourglass_empty</span>
+            <p>Loading settings…</p>
+        </div>
+
+        <div id="settings-content" class="hidden space-y-6">
+            <!-- API Keys -->
+            <div class="glass-card rounded-xl p-6" id="tour-settings-keys" title="API-ключи задаются в .env в корне проекта — не храните их в браузере">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-amber-400">key</span>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-lg font-semibold text-white">API Keys</h2>
+                        <p class="text-sm text-gray-500">Key status (configured in .env)</p>
+                    </div>
+                    <span class="help-badge" title="Безопасно: ключи только в .env, не в интерфейсе" aria-label="Подсказка по ключам">?</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <span class="material-icons-round text-blue-400">auto_awesome</span>
+                            <span class="font-medium text-white">Google Gemini</span>
+                        </div>
+                        <span id="api-gemini-status" class="text-xs font-medium px-2 py-1 rounded-lg">—</span>
+                    </div>
+                    <div class="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <span class="material-icons-round text-gray-400">smart_toy</span>
+                            <span class="font-medium text-white">xAI Grok</span>
+                        </div>
+                        <span id="api-grok-status" class="text-xs font-medium px-2 py-1 rounded-lg">—</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="api-key-gemini">API key Gemini</label>
+                        <input type="password" id="api-key-gemini" class="input-field w-full" placeholder="Enter key" autocomplete="off" data-required="1" title="Ключ задаётся в .env как GEMINI_API_KEY" aria-label="API-ключ Gemini (из .env)" />
+                        <span class="field-error" id="api-key-gemini-error" style="display:none;">Required field</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="api-key-grok">API key Grok</label>
+                        <input type="password" id="api-key-grok" class="input-field w-full" placeholder="Enter key" autocomplete="off" data-required="1" title="Ключ задаётся в .env как GROK_API_KEY" aria-label="API-ключ Grok (из .env)" />
+                        <span class="field-error" id="api-key-grok-error" style="display:none;">Required field</span>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Keys are configured in the .env file in the project root.</p>
+            </div>
+
+            <!-- Models -->
+            <div class="glass-card rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                        <span class="material-icons-round text-primary">memory</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Models</h2>
+                        <p class="text-sm text-gray-500">Chat, agent, and RAG — providers and models</p>
+                    </div>
+                </div>
+
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Default provider</label>
+                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="grok">xAI Grok</option>
+                        </select>
+                        <span class="field-error" id="default-provider-error" style="display:none;">Required field</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Gemini</label>
+                            <select id="chat-model-gemini" class="input-field w-full" data-required="1"></select>
+                            <span class="field-error" id="chat-model-gemini-error" style="display:none;">Required field</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Grok</label>
+                            <select id="chat-model-grok" class="input-field w-full" data-required="1"></select>
+                            <span class="field-error" id="chat-model-grok-error" style="display:none;">Required field</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Gemini</label>
+                            <select id="agent-model-gemini" class="input-field w-full" data-required="1"></select>
+                            <span class="field-error" id="agent-model-gemini-error" style="display:none;">Required field</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Grok</label>
+                            <select id="agent-model-grok" class="input-field w-full" data-required="1"></select>
+                            <span class="field-error" id="agent-model-grok-error" style="display:none;">Required field</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">RAG · embeddings model (Gemini)</label>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <select id="rag-model" class="input-field flex-1 min-w-0 md:max-w-md" data-required="1"></select>
+                            <input type="text" id="rag-model-custom" placeholder="or custom model id" class="input-field flex-1 min-w-[200px] md:max-w-xs" data-required-rag="1" />
+                        </div>
+                        <span class="field-error" id="rag-model-error" style="display:none;">Required field</span>
+                        <p class="text-xs text-gray-500 mt-1">Used for indexing and search in the knowledge base.</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-end mt-6 pt-4 border-t border-white/5">
+                    <button type="button" id="btn-save-models" class="btn-primary">
+                        <span class="material-icons-round text-lg">save</span>
+                        Save model settings
+                    </button>
+                </div>
+            </div>
+
+            <!-- Session -->
+            <div class="glass-card rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-red-400">history</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Session</h2>
+                        <p class="text-sm text-gray-500">Chat history</p>
+                    </div>
+                </div>
+                <button type="button" id="btn-clear-history" class="btn-ghost">
+                    <span class="material-icons-round text-lg">delete_sweep</span>
+                    Clear chat history
+                </button>
+            </div>
+
+            <!-- About -->
+            <div class="glass-card rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-cyan-400">info</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">About</h2>
+                        <p class="text-sm text-gray-500">Version and stack</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div class="p-3 bg-white/5 rounded-lg">
+                        <div class="text-gray-500 text-xs mb-1">Version</div>
+                        <div class="text-white font-medium">1.0.0</div>
+                    </div>
+                    <div class="p-3 bg-white/5 rounded-lg">
+                        <div class="text-gray-500 text-xs mb-1">Framework</div>
+                        <div class="text-white font-medium">Django 5.x</div>
+                    </div>
+                    <div class="p-3 bg-white/5 rounded-lg">
+                        <div class="text-gray-500 text-xs mb-1">Agent pattern</div>
+                        <div class="text-white font-medium">ReAct</div>
+                    </div>
+                    <div class="p-3 bg-white/5 rounded-lg">
+                        <div class="text-gray-500 text-xs mb-1">RAG</div>
+                        <div class="text-white font-medium">Qdrant / InMemory</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% load static %}
+<script src="{% static 'js/validate.js' %}"></script>
+<script>
+(function() {
+    var getCookie = window.getCookie || function() { return null; };
+    var showToast = window.showToast || function() {};
+
+    if (window.SettingsValidation) {
+        window.SettingsValidation.setOptions({
+            apiKeyIds: [['api-key-gemini','api-key-gemini-error'],['api-key-grok','api-key-grok-error']],
+            requiredFieldIds: [['default-provider','default-provider-error'],['chat-model-gemini','chat-model-gemini-error'],['chat-model-grok','chat-model-grok-error'],['agent-model-gemini','agent-model-gemini-error'],['agent-model-grok','agent-model-grok-error']],
+            rag: { selId: 'rag-model', customId: 'rag-model-custom', errId: 'rag-model-error' }
+        });
+    }
+
+    function fillSelect(id, options, value) {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = '';
+        const added = new Set();
+        options.forEach(function(opt) {
+            const v = typeof opt === 'string' ? opt : (opt.value !== undefined ? opt.value : opt.id);
+            if (added.has(v)) return;
+            added.add(v);
+            const o = document.createElement('option');
+            o.value = v;
+            o.textContent = typeof opt === 'string' ? opt : (opt.label || opt.name || v);
+            if (String(v) === String(value)) o.selected = true;
+            sel.appendChild(o);
+        });
+        if (value && !added.has(value)) {
+            const o = document.createElement('option');
+            o.value = value;
+            o.textContent = value + ' (current)';
+            o.selected = true;
+            sel.insertBefore(o, sel.firstChild);
+        }
+    }
+
+    var loadSettings = async function() {
+        const loading = document.getElementById('settings-loading');
+        const content = document.getElementById('settings-content');
+        try {
+            const [settingsRes, modelsRes] = await Promise.all([
+                fetch('/api/settings/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
+                fetch('/api/models/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            ]);
+            const settings = await settingsRes.json();
+            const models = await modelsRes.json();
+
+            if (!settings.success) throw new Error(settings.error || 'Failed to load settings');
+            if (models.error) throw new Error(models.error || 'Failed to load models');
+
+            const cfg = settings.config || {};
+            const apiKeys = settings.api_keys || {};
+            const cur = models.current || {};
+            const gemini = models.gemini || [];
+            const grok = models.grok || [];
+            const ragDefaults = models.rag_defaults || ['models/text-embedding-004'];
+
+            // API status
+            const geminiStatus = document.getElementById('api-gemini-status');
+            const grokStatus = document.getElementById('api-grok-status');
+            if (geminiStatus) {
+                geminiStatus.textContent = apiKeys.gemini_set ? 'Configured' : 'Not set';
+                geminiStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.gemini_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
+            }
+            if (grokStatus) {
+                grokStatus.textContent = apiKeys.grok_set ? 'Configured' : 'Not set';
+                grokStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.grok_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
+            }
+
+            // Default provider
+            const defProvider = document.getElementById('default-provider');
+            if (defProvider) defProvider.value = cfg.default_provider || 'gemini';
+
+            // Chat / Agent selects: use lists from API, preserve current value
+            fillSelect('chat-model-gemini', gemini, cfg.chat_model_gemini || cur.chat_gemini);
+            fillSelect('chat-model-grok', grok, cfg.chat_model_grok || cur.chat_grok);
+            fillSelect('agent-model-gemini', gemini, cfg.agent_model_gemini || cur.agent_model_gemini);
+            fillSelect('agent-model-grok', grok, cfg.agent_model_grok || cur.agent_model_grok);
+            fillSelect('rag-model', ragDefaults, cfg.rag_model || cur.rag_model);
+            const ragCustom = document.getElementById('rag-model-custom');
+            if (ragCustom && (cfg.rag_model || cur.rag_model)) {
+                const r = cfg.rag_model || cur.rag_model;
+                if (ragDefaults.indexOf(r) === -1) ragCustom.value = r;
+            }
+
+            loading.classList.add('hidden');
+            content.classList.remove('hidden');
+        } catch (e) {
+            loading.classList.add('hidden');
+            content.classList.remove('hidden');
+            showToast('Load error: ' + (e.message || e), 'error');
+        }
+    };
+
+    var saveSettings = async function() {
+        if (!(window.SettingsValidation && window.SettingsValidation.validateAllRequired())) return;
+        const btn = document.getElementById('btn-save-models');
+        if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
+        const ragCustom = document.getElementById('rag-model-custom');
+        const ragVal = (ragCustom && ragCustom.value.trim()) ? ragCustom.value.trim() : document.getElementById('rag-model').value;
+        const payload = {
+            default_provider: document.getElementById('default-provider').value,
+            chat_model_gemini: document.getElementById('chat-model-gemini').value,
+            chat_model_grok: document.getElementById('chat-model-grok').value,
+            agent_model_gemini: document.getElementById('agent-model-gemini').value,
+            agent_model_grok: document.getElementById('agent-model-grok').value,
+            rag_model: ragVal
+        };
+        try {
+            const r = await fetch('/api/settings/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(payload)
+            });
+            var data = await r.json();
+            if (data.success) showToast('Settings saved', 'success');
+            else showToast('Error: ' + (data.error || 'failed to save'), 'error');
+        } catch (e) {
+            showToast('Error: ' + (e.message || e), 'error');
+        } finally {
+            if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; }
+        }
+    };
+
+    var clearHistory = async function() {
+        if (!confirm('Clear all chat history?')) return;
+        const btn = document.getElementById('btn-clear-history');
+        if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
+        try {
+            const r = await fetch('/api/clear-history/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            var data = await r.json();
+            if (data.success) showToast('History cleared', 'success');
+            else showToast('Error: ' + (data.error || 'failed to clear'), 'error');
+        } catch (e) {
+            showToast('Error: ' + (e.message || e), 'error');
+        } finally {
+            if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSettings();
+        if (window.SettingsValidation && window.SettingsValidation.setupValidation) window.SettingsValidation.setupValidation();
+    });
+    var btnSave = document.getElementById('btn-save-models');
+    if (btnSave) btnSave.addEventListener('click', saveSettings);
+    const btnClear = document.getElementById('btn-clear-history');
+    if (btnClear) btnClear.addEventListener('click', clearHistory);
+})();
+</script>
+{% endblock %}

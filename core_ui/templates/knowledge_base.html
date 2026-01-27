@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block header_title %}Knowledge Base{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Knowledge Base</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="kb-page h-full overflow-y-auto">
+    <div class="kb-container">
+
+        <!-- Status bar -->
+        <div class="kb-status-bar">
+            <span class="kb-status-pill" id="doc-count-wrap">
+                <span class="material-icons-round kb-status-icon">description</span>
+                <span id="doc-count">...</span> docs
+            </span>
+            <span class="kb-status-pill {% if rag_available %}kb-status-ok{% else %}kb-status-err{% endif %}">
+                <span class="material-icons-round kb-status-icon">{% if rag_available %}check_circle{% else %}error{% endif %}</span>
+                {% if rag_available %}RAG active{% else %}RAG offline{% endif %}
+            </span>
+            <span class="kb-status-pill kb-status-muted">
+                <span class="material-icons-round kb-status-icon">storage</span>
+                {{ rag_type }}
+            </span>
+        </div>
+
+        <p class="text-gray-400 text-sm mb-3">Search and manage documents in your RAG knowledge base.</p>
+
+        <!-- Semantic search (by content) -->
+        <section class="kb-search-section" title="Семантический поиск по содержимому документов">
+            <div class="kb-search-box">
+                <span class="material-icons-round kb-search-icon">search</span>
+                <input type="text" id="search-query" class="kb-search-input" placeholder="Search your knowledge..."
+                    autocomplete="off" aria-label="Поиск по базе знаний">
+                <button type="button" id="kb-search-btn" onclick="RAGUI.searchKnowledge()" class="kb-search-btn" title="Выполнить поиск" aria-label="Искать">
+                    <span class="material-icons-round">search</span>
+                    Search
+                </button>
+            </div>
+            <div id="search-results" class="kb-results hidden">
+                <div class="kb-results-title">Results</div>
+                <div id="results-list" class="kb-results-list"></div>
+            </div>
+        </section>
+
+        <!-- Hints: Как подготовить документы + ограничения -->
+        <section class="kb-hints-section" aria-label="Подсказки и ограничения">
+            <details class="kb-hints-details">
+                <summary class="kb-hints-summary">
+                    <span class="material-icons-round kb-hints-icon">lightbulb_outline</span>
+                    Как подготовить документы и ограничения
+                </summary>
+                <div class="kb-hints-body">
+                    <p class="kb-hints-title">Как подготовить документы</p>
+                    <ul class="kb-hints-list">
+                        <li>Используйте чёткую структуру: заголовки, списки, короткие абзацы.</li>
+                        <li>Добавляйте документы через «Add document» (вставка текста) или загрузку в чате.</li>
+                        <li>Указывайте осмысленный источник (manual, file, upload:имя_файла) — так проще фильтровать.</li>
+                        <li>Текст разбивается на чанки для эмбеддингов; длинные документы обрабатываются частями.</li>
+                    </ul>
+                    <p class="kb-hints-title">Ограничения</p>
+                    <ul class="kb-hints-list">
+                        <li>Лимит документов в списке: до 500; отображение по фильтрам — на клиенте.</li>
+                        <li>Максимальная длина одного документа — ограничена памятью и эмбеддинг-моделью.</li>
+                        <li>Поддерживаются форматы загрузки из чата: PDF, TXT, DOCX и др. (см. настройки FileProcessor).</li>
+                        <li>Дата добавления в текущей версии не сохраняется — в колонке отображается «—».</li>
+                    </ul>
+                </div>
+            </details>
+        </section>
+
+        <!-- Documents: header + filters + table -->
+        <section class="kb-docs-section">
+            <div class="kb-docs-head">
+                <h2 class="kb-docs-title">Documents</h2>
+                <div class="kb-docs-actions">
+                    <button type="button" onclick="RAGUI.resetDatabase()" class="kb-link-danger" title="Delete all documents">
+                        <span class="material-icons-round">delete_forever</span>
+                        Reset
+                    </button>
+                    <button type="button" onclick="RAGUI.openAddModal()" class="kb-btn-add" title="Добавить документ" aria-label="Добавить документ">
+                        <span class="material-icons-round">add</span>
+                        Add document
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters: search in list, source -->
+            <div class="kb-filters-bar">
+                <div class="kb-filter-group">
+                    <span class="material-icons-round kb-filter-icon">filter_list</span>
+                    <input type="text" id="kb-filter-query" class="kb-filter-input" placeholder="Filter by source or text…" aria-label="Filter list">
+                    <select id="kb-filter-source" class="kb-filter-select" aria-label="Filter by source">
+                        <option value="">All sources</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="kb-docs-table-wrap">
+                <div class="kb-doc-head-row">
+                    <div class="kb-doc-cell kb-doc-source">Source</div>
+                    <div class="kb-doc-cell kb-doc-date">Date</div>
+                    <div class="kb-doc-cell kb-doc-size">Size</div>
+                    <div class="kb-doc-cell kb-doc-preview">Preview</div>
+                    <div class="kb-doc-cell kb-doc-actions">Actions</div>
+                </div>
+                <div id="documents-list" class="kb-doc-body">
+                    <div id="documents-loading" class="kb-docs-loading-skeletons">
+                        <div class="kb-skeleton-row"><span class="skeleton skeleton-text kb-skel-source"></span><span class="skeleton skeleton-text kb-skel-date"></span><span class="skeleton skeleton-text kb-skel-size"></span><span class="skeleton skeleton-text kb-skel-preview"></span><span class="skeleton skeleton-text kb-skel-actions"></span></div>
+                        <div class="kb-skeleton-row"><span class="skeleton skeleton-text kb-skel-source"></span><span class="skeleton skeleton-text kb-skel-date"></span><span class="skeleton skeleton-text kb-skel-size"></span><span class="skeleton skeleton-text kb-skel-preview"></span><span class="skeleton skeleton-text kb-skel-actions"></span></div>
+                        <div class="kb-skeleton-row"><span class="skeleton skeleton-text kb-skel-source"></span><span class="skeleton skeleton-text kb-skel-date"></span><span class="skeleton skeleton-text kb-skel-size"></span><span class="skeleton skeleton-text kb-skel-preview"></span><span class="skeleton skeleton-text kb-skel-actions"></span></div>
+                        <div class="kb-skeleton-row"><span class="skeleton skeleton-text kb-skel-source"></span><span class="skeleton skeleton-text kb-skel-date"></span><span class="skeleton skeleton-text kb-skel-size"></span><span class="skeleton skeleton-text kb-skel-preview"></span><span class="skeleton skeleton-text kb-skel-actions"></span></div>
+                        <div class="kb-skeleton-row"><span class="skeleton skeleton-text kb-skel-source"></span><span class="skeleton skeleton-text kb-skel-date"></span><span class="skeleton skeleton-text kb-skel-size"></span><span class="skeleton skeleton-text kb-skel-preview"></span><span class="skeleton skeleton-text kb-skel-actions"></span></div>
+                    </div>
+                    <div id="documents-empty" class="kb-empty-state hidden">
+                        <span class="material-icons-round kb-empty-icon">description</span>
+                        <p class="kb-empty-text">Knowledge base is empty</p>
+                        <button type="button" onclick="RAGUI.openAddModal()" class="kb-empty-btn">Add document</button>
+                    </div>
+                    <div id="documents-filter-empty" class="kb-empty-state kb-empty-filter hidden">
+                        <span class="material-icons-round kb-empty-icon">search_off</span>
+                        <p class="kb-empty-text">No documents match the filter</p>
+                        <button type="button" onclick="document.getElementById('kb-filter-query')&&(document.getElementById('kb-filter-query').value=''); document.getElementById('kb-filter-source')&&(document.getElementById('kb-filter-source').value=''); if(window.RAGUI)RAGUI.applyFilter();" class="kb-empty-btn">Clear filters</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Add document modal -->
+<div id="add-modal" class="kb-modal hidden" role="dialog" aria-modal="true" aria-labelledby="kb-modal-title" aria-hidden="true">
+    <div class="kb-modal-backdrop" onclick="RAGUI.closeAddModal()" aria-hidden="true"></div>
+    <div class="kb-modal-panel">
+        <div class="kb-modal-head">
+            <h3 id="kb-modal-title" class="kb-modal-title">Add document</h3>
+            <button type="button" onclick="RAGUI.closeAddModal()" class="kb-modal-close" aria-label="Close">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="kb-modal-body">
+            <label class="kb-field-label">Source</label>
+            <input type="text" id="doc-source" class="kb-input" placeholder="e.g. manual, file, web" value="manual">
+
+            <label class="kb-field-label">Content</label>
+            <textarea id="doc-content" class="kb-textarea" rows="6" placeholder="Paste or type text…"></textarea>
+        </div>
+        <div class="kb-modal-foot">
+            <button type="button" onclick="RAGUI.closeAddModal()" class="btn-secondary">Cancel</button>
+            <button type="button" id="kb-add-doc-btn" onclick="RAGUI.addDocument()" class="btn-primary">Add</button>
+        </div>
+    </div>
+</div>
+
+{# kb-* styles — core_ui/static/css/style.css #}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/rag_ui.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.RAGUI && window.RAGUI.init) window.RAGUI.init();
+});
+</script>
+{% endblock %}

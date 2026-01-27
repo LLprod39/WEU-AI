@@ -1,0 +1,69 @@
+<div id="task-{{ task.id }}" draggable="true" ondragstart="typeof drag === 'function' && drag(event)"
+    class="bg-bg-base hover:bg-bg-elevated border border-white/5 p-4 rounded-xl cursor-move transition-all group">
+    <div class="flex justify-between items-start gap-2 mb-2">
+        <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
+                <span class="task-priority-badge priority-{{ task.get_priority_color }} text-[10px] font-medium px-1.5 py-0.5 rounded"
+                    title="Приоритет: {{ task.get_priority_display }}">{{ task.get_priority_display }}</span>
+                <span class="task-status-badge text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded" title="Статус">{{ task.get_status_display }}</span>
+            </div>
+            <h3 class="font-medium text-white text-sm">{{ task.title }}</h3>
+        </div>
+        <div class="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            <a href="{% url 'tasks:task_delete' task.id %}" class="text-gray-500 hover:text-red-400" title="Удалить" aria-label="Удалить задачу">
+                <span class="material-icons-round text-sm">close</span>
+            </a>
+        </div>
+    </div>
+
+    {% if task.label_relations.all %}
+    <div class="flex flex-wrap gap-1 mb-2">
+        {% for rel in task.label_relations.all %}
+        <span class="task-label inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium" style="background: {{ rel.label.color }}22; color: {{ rel.label.color }};">{{ rel.label.name }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <p class="text-xs text-gray-400 mb-3 task-desc line-clamp-3">{{ task.description|default:"—" }}</p>
+
+    <div class="subtasks-list space-y-1 mb-3 {% if not task.subtasks.exists %}hidden{% endif %}">
+        {% for subtask in task.subtasks.all %}
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span
+                class="material-icons-round text-[10px] {% if subtask.is_completed %}text-green-500{% else %}text-primary{% endif %}">
+                {% if subtask.is_completed %}check_circle{% else %}check_circle_outline{% endif %}
+            </span>
+            <span>{{ subtask.title }}</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-white/5">
+        <a href="/chat/?task_id={{ task.id }}"
+            class="task-action-discuss flex items-center gap-1 px-2 py-1.5 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-[11px] font-medium transition-colors border border-primary/20"
+            title="Обсудить в чате: уточнить требования, разбить на шаги, согласовать с ИИ перед выполнением"
+            aria-label="Обсудить задачу в чате">
+            <span class="material-icons-round text-xs">chat</span>
+            <span>Обсудить</span>
+        </a>
+        <button type="button" data-task-id="{{ task.id }}" data-action="improve"
+            class="task-action-ai flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 transition-colors">
+            <span class="material-icons-round text-xs btn-icon-default">auto_fix_high</span>
+            <span class="btn-text">Improve</span>
+        </button>
+        <button type="button" data-task-id="{{ task.id }}" data-action="breakdown"
+            class="task-action-ai flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 transition-colors">
+            <span class="material-icons-round text-xs btn-icon-default">account_tree</span>
+            <span class="btn-text">Breakdown</span>
+        </button>
+        <a href="/?task_id={{ task.id }}"
+            class="flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 transition-colors"
+            title="Выполнить задачу">
+            <span class="material-icons-round text-xs">rocket_launch</span>
+            Execute
+        </a>
+    </div>
+    <div class="task-discuss-hint text-[10px] text-gray-500 mt-1.5 pl-1 border-l-2 border-primary/30" role="note">
+        Обсудить в чате: уточнить требования, разбить на шаги и согласовать с ИИ перед выполнением.
+    </div>
+</div>

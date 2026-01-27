@@ -1,0 +1,385 @@
+{% extends 'base.html' %}
+
+{% block header_title %}Orchestrator{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Orchestrator</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white">Orchestrator</h1>
+                <p class="text-gray-400 text-sm mt-1">Manage AI agent tools and configure workflows.</p>
+            </div>
+            <div class="flex gap-3">
+                <button type="button" onclick="refreshTools()" id="refresh-btn"
+                    class="btn-ghost flex items-center gap-2 px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors" aria-label="Refresh tools list">
+                    <span class="material-icons-round text-lg" aria-hidden="true">refresh</span>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="glass-card rounded-xl p-5">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
+                        <span class="material-icons-round text-primary text-2xl">build</span>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="tool-count">0</div>
+                        <div class="text-sm text-gray-400">Available tools</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-xl p-5">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-emerald-400 text-2xl">check_circle</span>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="active-count">0</div>
+                        <div class="text-sm text-gray-400">Active</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-xl p-5">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-amber-400 text-2xl">memory</span>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white">Gemini</div>
+                        <div class="text-sm text-gray-400">Active model</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-xl p-5">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-cyan-400 text-2xl">hub</span>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white">ReAct</div>
+                        <div class="text-sm text-gray-400">Agent pattern</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="glass-card rounded-xl p-4">
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+                <div class="flex-1 w-full">
+                    <div class="relative">
+                        <span class="material-icons-round absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">search</span>
+                        <input type="text" id="search-input" placeholder="Search tools..."
+                            class="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all">
+                    </div>
+                </div>
+                <div class="flex gap-2 flex-wrap" role="group" aria-label="Filter tools by category">
+                    <button type="button" onclick="filterByCategory('all')" data-category="all"
+                        class="filter-btn active px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-sm"
+                        aria-label="Filter: All" aria-pressed="true">
+                        All
+                    </button>
+                    <button type="button" onclick="filterByCategory('filesystem')" data-category="filesystem"
+                        class="filter-btn px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-sm"
+                        aria-label="Filter: Filesystem" aria-pressed="false">
+                        Filesystem
+                    </button>
+                    <button type="button" onclick="filterByCategory('ssh')" data-category="ssh"
+                        class="filter-btn px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-sm"
+                        aria-label="Filter: SSH" aria-pressed="false">
+                        SSH
+                    </button>
+                    <button type="button" onclick="filterByCategory('web')" data-category="web"
+                        class="filter-btn px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-sm"
+                        aria-label="Filter: Web" aria-pressed="false">
+                        Web
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="text-center py-12">
+            <div class="inline-flex items-center gap-3 text-gray-400">
+                <div class="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <span>Loading tools...</span>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden glass-card rounded-xl p-6 text-center">
+            <span class="material-icons-round text-red-400 text-4xl mb-2">error_outline</span>
+            <p class="text-red-400 mb-4">Failed to load tools</p>
+            <button onclick="loadTools()" class="px-4 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-primary transition-colors">
+                Try again
+            </button>
+        </div>
+
+        <!-- Tools Grid -->
+        <div id="tools-section" class="hidden space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <span class="material-icons-round text-primary">extension</span>
+                    Available tools
+                </h2>
+                <div class="text-sm text-gray-400">
+                    Показано: <span id="shown-count">0</span> из <span id="total-count">0</span>
+                </div>
+            </div>
+
+            <div id="tools-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Tools will be loaded here -->
+            </div>
+
+            <div id="no-results" class="hidden text-center py-12 text-gray-500">
+                <span class="material-icons-round text-4xl mb-2">search_off</span>
+                <p>Инструменты не найдены</p>
+            </div>
+        </div>
+
+        <!-- Workflow Info -->
+        <div class="glass-card rounded-xl p-6" title="ReAct: анализ запроса → планирование → вызов инструментов → ответ" id="tour-workflow-info">
+            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <span class="material-icons-round text-primary">account_tree</span>
+                ReAct Workflow
+                <span class="help-badge" title="Workflow: ввод → анализ → действие инструментами → ответ" aria-label="Подсказка про Workflow">?</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="flex items-center gap-3 p-4 bg-white/5 rounded-xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-sm">
+                        1</div>
+                    <div>
+                        <div class="font-medium text-white text-sm">Получение</div>
+                        <div class="text-xs text-gray-500">Ввод пользователя</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-4 bg-white/5 rounded-xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold text-sm">
+                        2</div>
+                    <div>
+                        <div class="font-medium text-white text-sm">Анализ</div>
+                        <div class="text-xs text-gray-500">Планирование действий</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-4 bg-white/5 rounded-xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-sm">
+                        3</div>
+                    <div>
+                        <div class="font-medium text-white text-sm">Действие</div>
+                        <div class="text-xs text-gray-500">Выполнение инструментов</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-4 bg-white/5 rounded-xl">
+                    <div
+                        class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 font-bold text-sm">
+                        4</div>
+                    <div>
+                        <div class="font-medium text-white text-sm">Ответ</div>
+                        <div class="text-xs text-gray-500">Финальный результат</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allTools = [];
+    let currentCategory = 'all';
+    let currentSearch = '';
+
+    // Load tools on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTools();
+        
+        // Search input handler
+        const searchInput = document.getElementById('search-input');
+        searchInput.addEventListener('input', function(e) {
+            currentSearch = e.target.value.toLowerCase();
+            filterTools();
+        });
+    });
+
+    async function loadTools() {
+        const loadingState = document.getElementById('loading-state');
+        const errorState = document.getElementById('error-state');
+        const toolsSection = document.getElementById('tools-section');
+        const refreshBtn = document.getElementById('refresh-btn');
+        
+        loadingState.classList.remove('hidden');
+        errorState.classList.add('hidden');
+        toolsSection.classList.add('hidden');
+        refreshBtn.disabled = true;
+        
+        try {
+            const response = await fetch('/api/tools/');
+            if (!response.ok) throw new Error('Failed to load tools');
+            
+            const data = await response.json();
+            allTools = data.tools || [];
+            
+            updateStats();
+            renderTools();
+            
+            loadingState.classList.add('hidden');
+            toolsSection.classList.remove('hidden');
+        } catch (error) {
+            console.error('Error loading tools:', error);
+            loadingState.classList.add('hidden');
+            errorState.classList.remove('hidden');
+        } finally {
+            refreshBtn.disabled = false;
+        }
+    }
+
+    function updateStats() {
+        document.getElementById('tool-count').textContent = allTools.length;
+        const activeCount = allTools.filter(t => !t.disabled).length;
+        document.getElementById('active-count').textContent = activeCount;
+    }
+
+    function renderTools() {
+        const toolsGrid = document.getElementById('tools-grid');
+        const noResults = document.getElementById('no-results');
+        
+        // Filter tools
+        const filtered = allTools.filter(tool => {
+            const matchesCategory = currentCategory === 'all' || tool.category === currentCategory;
+            const matchesSearch = !currentSearch || 
+                tool.name.toLowerCase().includes(currentSearch) ||
+                tool.description.toLowerCase().includes(currentSearch) ||
+                tool.category.toLowerCase().includes(currentSearch);
+            return matchesCategory && matchesSearch;
+        });
+        
+        // Update counts
+        document.getElementById('shown-count').textContent = filtered.length;
+        document.getElementById('total-count').textContent = allTools.length;
+        
+        if (filtered.length === 0) {
+            toolsGrid.innerHTML = '';
+            noResults.classList.remove('hidden');
+            return;
+        }
+        
+        noResults.classList.add('hidden');
+        
+        // Render tools
+        toolsGrid.innerHTML = filtered.map(tool => `
+            <div class="glass-card rounded-xl p-5 hover:border-primary/30 transition-all group" data-category="${tool.category}">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                            ${getCategoryIcon(tool.category)}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-semibold text-white text-sm truncate">${escapeHtml(tool.name)}</h3>
+                            <span class="text-[10px] text-gray-500 uppercase tracking-wider">${escapeHtml(tool.category)}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="toggleTool('${tool.name}')" 
+                            class="tool-toggle p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                            title="${tool.disabled ? 'Включить' : 'Выключить'}"
+                            aria-label="${(tool.disabled ? 'Enable ' : 'Disable ') + escapeHtml(tool.name)}">
+                            <span class="material-icons-round text-sm ${tool.disabled ? 'text-gray-500' : 'text-emerald-400'}">
+                                ${tool.disabled ? 'toggle_off' : 'toggle_on'}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-gray-400 text-xs leading-relaxed mb-3">${escapeHtml(tool.description)}</p>
+                
+                ${tool.parameters && tool.parameters.length > 0 ? `
+                    <div class="pt-3 border-t border-white/5">
+                        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Параметры</div>
+                        <div class="flex flex-wrap gap-1">
+                            ${tool.parameters.map(param => `
+                                <span class="px-2 py-0.5 bg-white/5 rounded text-[10px] text-gray-400">
+                                    ${escapeHtml(param.name)}${param.required ? '<span class="text-red-400">*</span>' : ''}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+    }
+
+    function getCategoryIcon(category) {
+        const icons = {
+            'ssh': '<span class="material-icons-round text-emerald-400">terminal</span>',
+            'filesystem': '<span class="material-icons-round text-amber-400">folder</span>',
+            'web': '<span class="material-icons-round text-cyan-400">language</span>',
+        };
+        return icons[category] || '<span class="material-icons-round text-gray-400">build</span>';
+    }
+
+    function filterByCategory(category) {
+        currentCategory = category;
+        
+        // Update button states and aria-pressed
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-primary/20', 'border-primary/30');
+            btn.setAttribute('aria-pressed', btn.dataset.category === category ? 'true' : 'false');
+        });
+        var activeBtn = document.querySelector('[data-category="' + category + '"]');
+        if (activeBtn) activeBtn.classList.add('active', 'bg-primary/20', 'border-primary/30');
+        
+        filterTools();
+    }
+
+    function filterTools() {
+        renderTools();
+    }
+
+    function toggleTool(toolName) {
+        // This is a placeholder - in real implementation, you'd send a request to backend
+        const tool = allTools.find(t => t.name === toolName);
+        if (tool) {
+            tool.disabled = !tool.disabled;
+            updateStats();
+            renderTools();
+        }
+    }
+
+    function refreshTools() {
+        loadTools();
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+
+{# .filter-btn.active, .tool-toggle — core_ui/static/css/style.css #}
+{% endblock %}

@@ -1,0 +1,583 @@
+{% extends 'base.html' %}
+
+{% block title %}Server Management - WEU AI{% endblock %}
+{% block header_title %}Servers{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Servers</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col p-6 overflow-hidden">
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Servers</h1>
+            <p class="text-gray-400 text-sm mt-1">Manage server groups, SSH hosts, and bulk actions.</p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="openGroupModal()"
+                class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 rounded-xl transition-all flex items-center gap-2">
+                <span class="material-icons-round text-sm">group</span>
+                New Group
+            </button>
+            <button onclick="openCreateModal()"
+                class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2">
+                <span class="material-icons-round text-sm">add</span>
+                Add Server
+            </button>
+        </div>
+    </div>
+
+    <div class="flex items-center justify-between mb-4 bg-bg-surface/50 rounded-xl p-3 border border-white/5">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500">Group filter</span>
+            <select id="group-filter" class="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-gray-300" onchange="applyGroupFilter()">
+                <option value="">All</option>
+                {% for group in groups %}
+                <option value="{{ group.id }}" {% if request.GET.group == group.id|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span class="material-icons-round text-sm">playlist_add_check</span>
+            <span id="selected-count">0 selected</span>
+            <select id="bulk-action" class="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-300">
+                <option value="">Bulk action</option>
+                <option value="set_group">Move to group</option>
+                <option value="set_tags">Set tags</option>
+                <option value="deactivate">Deactivate</option>
+            </select>
+            <button onclick="applyBulkAction()" class="px-3 py-1.5 bg-primary/20 text-primary rounded-lg">Apply</button>
+        </div>
+    </div>
+
+    <!-- Groups Panel -->
+    <div class="mb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for group in groups %}
+        <div class="bg-bg-surface/50 rounded-2xl border border-white/5 p-4">
+            <div class="flex items-start justify-between mb-2">
+                <div>
+                    <h3 class="text-white font-semibold">{{ group.name }}</h3>
+                    <p class="text-xs text-gray-400">{{ group.description|default:"No description" }}</p>
+                </div>
+                <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">Group</span>
+            </div>
+            <div class="flex flex-wrap gap-1 mb-3">
+                {% for tag in group.tags.all %}
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{{ tag.name }}</span>
+                {% empty %}
+                <span class="text-[10px] text-gray-500">No tags</span>
+                {% endfor %}
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openMemberModal({{ group.id }})"
+                    class="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300">Members</button>
+                <button onclick="subscribeGroup({{ group.id }}, 'favorite')"
+                    class="px-3 py-2 bg-primary/20 text-primary rounded-lg text-xs">Favorite</button>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-span-full text-center text-gray-500 py-4">
+            No groups yet. Create one to organize servers.
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Servers List -->
+    <div class="flex-1 overflow-y-auto custom-scrollbar">
+        <div id="servers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for server in servers %}
+            <div class="bg-bg-surface/50 rounded-2xl border border-white/5 p-4 hover:border-primary/30 transition-all">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                            <span class="material-icons-round text-emerald-400">dns</span>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-white">{{ server.name }}</h3>
+                            <p class="text-xs text-gray-400">{{ server.host }}:{{ server.port }}</p>
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-gray-400">
+                        <input type="checkbox" class="server-select" value="{{ server.id }}" onchange="updateSelectedCount()">
+                        {% if server.is_active %}
+                        <span class="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400">Active</span>
+                        {% else %}
+                        <span class="px-2 py-1 rounded-full bg-red-500/20 text-red-400">Inactive</span>
+                        {% endif %}
+                    </label>
+                </div>
+                <div class="space-y-2 mb-4">
+                    <div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="material-icons-round text-sm">person</span>
+                        <span>{{ server.username }}</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="material-icons-round text-sm">vpn_key</span>
+                        <span>{{ server.get_auth_method_display }}</span>
+                    </div>
+                    {% if server.group %}
+                    <div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="material-icons-round text-sm">group</span>
+                        <span>{{ server.group.name }}</span>
+                    </div>
+                    {% endif %}
+                    {% if server.tags %}
+                    <div class="flex items-center gap-2 text-xs text-gray-400">
+                        <span class="material-icons-round text-sm">label</span>
+                        <span>{{ server.tags }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="testConnection({{ server.id }})"
+                        class="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300 transition-colors flex items-center justify-center gap-1">
+                        <span class="material-icons-round text-sm">check_circle</span>
+                        Test
+                    </button>
+                    <button onclick="executeCommand({{ server.id }})"
+                        class="flex-1 px-3 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs text-primary transition-colors flex items-center justify-center gap-1">
+                        <span class="material-icons-round text-sm">terminal</span>
+                        Execute
+                    </button>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-span-full flex flex-col items-center justify-center py-16 text-center">
+                <span class="material-icons-round text-6xl text-gray-600 mb-4">dns</span>
+                <h3 class="text-xl font-semibold text-gray-400 mb-2">No servers configured</h3>
+                <p class="text-gray-500 mb-6">Add your first server to get started</p>
+                <button onclick="openCreateModal()"
+                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg">
+                    Add Server
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Create Group Modal -->
+<div id="groupModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeGroupModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 class="text-xl font-bold text-white mb-4">Create Group</h2>
+        <form id="groupForm" onsubmit="saveGroup(event)">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Name *</label>
+                    <input type="text" id="group-name" required
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Description</label>
+                    <textarea id="group-description" rows="2"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Color</label>
+                    <input type="color" id="group-color" value="#3b82f6"
+                        class="w-full h-10 bg-bg-base border border-white/10 rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Tags</label>
+                    <select id="group-tags" multiple
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                        {% for tag in group_tags %}
+                        <option value="{{ tag.id }}">{{ tag.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Use Ctrl/Cmd to select multiple tags.</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="closeGroupModal()"
+                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button type="submit"
+                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Members Modal -->
+<div id="memberModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeMemberModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 class="text-xl font-bold text-white mb-4">Manage Members</h2>
+        <input type="hidden" id="member-group-id">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Username or Email</label>
+                <input type="text" id="member-identifier"
+                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Role</label>
+                <select id="member-role"
+                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+            <button type="button" onclick="closeMemberModal()"
+                class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+            <button type="button" onclick="addMember()"
+                class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
+                Add Member
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Server Modal -->
+<div id="serverModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 class="text-xl font-bold text-white mb-4">Add Server</h2>
+        <form id="serverForm" onsubmit="saveServer(event)">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Name *</label>
+                    <input type="text" id="server-name" required
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Host *</label>
+                        <input type="text" id="server-host" required
+                            class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Port</label>
+                        <input type="number" id="server-port" value="22"
+                            class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Username *</label>
+                    <input type="text" id="server-username" required
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Group</label>
+                    <select id="server-group"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                        <option value="">No group</option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Auth Method *</label>
+                    <select id="server-auth-method" required
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
+                        onchange="toggleAuthFields()">
+                        <option value="password">Password</option>
+                        <option value="key">SSH Key</option>
+                        <option value="key_password">SSH Key + Password</option>
+                    </select>
+                </div>
+                <div id="password-field" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Password</label>
+                    <input type="password" id="server-password"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                    <p class="text-xs text-gray-500 mt-1">Master password for encryption</p>
+                    <input type="password" id="server-master-password" placeholder="Master Password"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50 mt-2">
+                </div>
+                <div id="key-field" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">SSH Key Path</label>
+                    <input type="text" id="server-key-path"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
+                        placeholder="/path/to/key">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Notes</label>
+                    <textarea id="server-notes" rows="2"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Tags</label>
+                    <input type="text" id="server-tags" placeholder="prod, staging, db"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="closeModal()"
+                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button type="submit"
+                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let activeMemberGroupId = null;
+function openCreateModal() {
+    document.getElementById('serverModal').classList.remove('hidden');
+    toggleAuthFields();
+}
+
+function openGroupModal() {
+    document.getElementById('groupModal').classList.remove('hidden');
+}
+
+function closeGroupModal() {
+    document.getElementById('groupModal').classList.add('hidden');
+    document.getElementById('groupForm').reset();
+}
+
+function openMemberModal(groupId) {
+    activeMemberGroupId = groupId;
+    document.getElementById('member-group-id').value = groupId;
+    document.getElementById('memberModal').classList.remove('hidden');
+}
+
+function closeMemberModal() {
+    document.getElementById('memberModal').classList.add('hidden');
+    document.getElementById('member-identifier').value = '';
+}
+
+function closeModal() {
+    document.getElementById('serverModal').classList.add('hidden');
+    document.getElementById('serverForm').reset();
+}
+
+function toggleAuthFields() {
+    const authMethod = document.getElementById('server-auth-method').value;
+    const passwordField = document.getElementById('password-field');
+    const keyField = document.getElementById('key-field');
+    
+    passwordField.classList.add('hidden');
+    keyField.classList.add('hidden');
+    
+    if (authMethod === 'password' || authMethod === 'key_password') {
+        passwordField.classList.remove('hidden');
+    }
+    if (authMethod === 'key' || authMethod === 'key_password') {
+        keyField.classList.remove('hidden');
+    }
+}
+
+async function saveServer(e) {
+    e.preventDefault();
+    const formData = {
+        name: document.getElementById('server-name').value,
+        host: document.getElementById('server-host').value,
+        port: parseInt(document.getElementById('server-port').value) || 22,
+        username: document.getElementById('server-username').value,
+        group_id: document.getElementById('server-group').value || null,
+        auth_method: document.getElementById('server-auth-method').value,
+        password: document.getElementById('server-password').value,
+        master_password: document.getElementById('server-master-password').value,
+        key_path: document.getElementById('server-key-path').value,
+        notes: document.getElementById('server-notes').value,
+        tags: document.getElementById('server-tags').value
+    };
+
+    try {
+        const response = await fetch('/servers/api/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            closeModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+        }
+    } catch (e) {
+        console.error('Error saving server:', e);
+        alert('Error saving server');
+    }
+}
+
+async function saveGroup(e) {
+    e.preventDefault();
+    const tagSelect = document.getElementById('group-tags');
+    const tagIds = Array.from(tagSelect.selectedOptions).map(opt => parseInt(opt.value, 10));
+
+    const payload = {
+        name: document.getElementById('group-name').value,
+        description: document.getElementById('group-description').value,
+        color: document.getElementById('group-color').value,
+        tag_ids: tagIds
+    };
+
+    const response = await fetch('/servers/api/groups/create/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (data.success) {
+        closeGroupModal();
+        location.reload();
+    } else {
+        alert(data.error || 'Failed to create group');
+    }
+}
+
+async function addMember() {
+    const groupId = document.getElementById('member-group-id').value;
+    const identifier = document.getElementById('member-identifier').value.trim();
+    if (!identifier) return;
+    const role = document.getElementById('member-role').value;
+
+    const response = await fetch(`/servers/api/groups/${groupId}/add-member/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ user: identifier, role })
+    });
+    const data = await response.json();
+    if (data.success) {
+        closeMemberModal();
+        alert('Member added');
+    } else {
+        alert(data.error || 'Failed to add member');
+    }
+}
+
+function applyGroupFilter() {
+    const groupId = document.getElementById('group-filter').value;
+    const url = groupId ? `?group=${groupId}` : window.location.pathname;
+    window.location.href = url;
+}
+
+function updateSelectedCount() {
+    const selected = document.querySelectorAll('.server-select:checked').length;
+    document.getElementById('selected-count').textContent = `${selected} selected`;
+}
+
+async function applyBulkAction() {
+    const action = document.getElementById('bulk-action').value;
+    const selectedIds = Array.from(document.querySelectorAll('.server-select:checked')).map(el => parseInt(el.value, 10));
+    if (!action || selectedIds.length === 0) {
+        alert('Select servers and an action');
+        return;
+    }
+
+    const payload = { server_ids: selectedIds };
+    if (action === 'set_group') {
+        const groupId = prompt('Enter group ID:');
+        if (!groupId) return;
+        payload.group_id = parseInt(groupId, 10);
+    } else if (action === 'set_tags') {
+        const tags = prompt('Enter tags (comma-separated):');
+        if (!tags) return;
+        payload.tags = tags;
+    } else if (action === 'deactivate') {
+        payload.is_active = false;
+    }
+
+    const response = await fetch('/servers/api/bulk-update/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (data.success) {
+        location.reload();
+    } else {
+        alert(data.error || 'Bulk update failed');
+    }
+}
+
+async function subscribeGroup(groupId, kind) {
+    const response = await fetch(`/servers/api/groups/${groupId}/subscribe/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ kind })
+    });
+    const data = await response.json();
+    if (!data.success) {
+        alert(data.error || 'Subscription failed');
+    }
+}
+
+async function testConnection(serverId) {
+    const masterPassword = prompt('Enter master password:');
+    if (!masterPassword) return;
+
+    try {
+        const response = await fetch(`/servers/api/${serverId}/test/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ master_password: masterPassword })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert('Connection successful!');
+        } else {
+            alert('Connection failed: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        console.error('Error testing connection:', e);
+        alert('Error testing connection');
+    }
+}
+
+function executeCommand(serverId) {
+    alert('Command execution coming soon');
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

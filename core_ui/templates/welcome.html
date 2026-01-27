@@ -1,0 +1,294 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WEU AI Agent — Enterprise AI Platform</title>
+    <meta name="description" content="Chat, Agents, RAG, Tasks, Servers — единая платформа для команд и предприятий.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        display: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        bg: { deep: '#050507', base: '#09090b', surface: '#111113', elevated: '#18181b' },
+                        primary: { DEFAULT: '#6366f1', hover: '#4f46e5', light: '#818cf8' },
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #050507; font-family: 'Inter', system-ui, sans-serif; }
+        .font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
+        .aurora-bg { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+        .aurora-blob { position: absolute; border-radius: 50%; filter: blur(140px); opacity: 0.5; }
+        .aurora-blob-1 { top: -20%; left: -10%; width: 55%; height: 55%; background: radial-gradient(circle, rgba(99, 102, 241, 0.4) 0%, transparent 65%); animation: float1 22s ease-in-out infinite; }
+        .aurora-blob-2 { bottom: -30%; right: -15%; width: 60%; height: 60%; background: radial-gradient(circle, rgba(139, 92, 246, 0.35) 0%, transparent 65%); animation: float2 28s ease-in-out infinite; }
+        .aurora-blob-3 { top: 45%; left: 50%; width: 35%; height: 35%; background: radial-gradient(circle, rgba(6, 182, 212, 0.2) 0%, transparent 65%); animation: float3 18s ease-in-out infinite; }
+        @keyframes float1 { 0%,100%{ transform: translate(0,0) scale(1); } 50%{ transform: translate(4%,8%) scale(1.08); } }
+        @keyframes float2 { 0%,100%{ transform: translate(0,0) scale(1); } 50%{ transform: translate(-6%,-4%) scale(1.06); } }
+        @keyframes float3 { 0%,100%{ transform: translate(-50%,-50%) scale(1); } 50%{ transform: translate(-50%,-50%) scale(1.15); } }
+
+        .glass-panel { background: rgba(17, 17, 19, 0.65); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border: 1px solid rgba(255,255,255,0.07); }
+        .card-hover { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05); }
+
+        .landing-fade-in { opacity: 0; transform: translateY(20px); }
+        .landing-fade-in.visible { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
+        .landing-delay-1 { transition-delay: 0.1s; }
+        .landing-delay-2 { transition-delay: 0.2s; }
+        .landing-delay-3 { transition-delay: 0.3s; }
+        .landing-delay-4 { transition-delay: 0.4s; }
+        .landing-delay-5 { transition-delay: 0.5s; }
+
+        .mock-screen { background: linear-gradient(145deg, #0c0c0e 0%, #131316 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .mock-screen-header { height: 36px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; padding: 0 12px; gap: 6px; }
+        .mock-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .mock-dot-r { background: #ef4444; }
+        .mock-dot-y { background: #eab308; }
+        .mock-dot-g { background: #22c55e; }
+
+        .btn-start { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); box-shadow: 0 4px 24px rgba(99,102,241,0.35); transition: all 0.2s ease; }
+        .btn-start:hover { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(99,102,241,0.45); }
+        .noise-overlay::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); opacity: 0.02; pointer-events: none; z-index: 1; }
+    </style>
+</head>
+<body class="min-h-screen text-gray-100 antialiased noise-overlay">
+
+    <div class="aurora-bg">
+        <div class="aurora-blob aurora-blob-1"></div>
+        <div class="aurora-blob aurora-blob-2"></div>
+        <div class="aurora-blob aurora-blob-3"></div>
+    </div>
+
+    <!-- Top bar -->
+    <header class="fixed top-0 left-0 right-0 z-50 glass-panel border-b border-white/5">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
+                    <span class="material-icons-round text-primary text-lg">auto_awesome</span>
+                </div>
+                <span class="font-display font-bold text-white tracking-tight">WEU AI</span>
+            </div>
+            <nav class="flex items-center gap-1 sm:gap-3">
+                <a href="{% url 'docs_ui_guide' %}" class="text-sm text-gray-400 hover:text-white px-3 py-2 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-1.5">
+                    <span class="material-icons-round text-lg">menu_book</span>
+                    <span class="hidden sm:inline">Documentation</span>
+                </a>
+                <a href="https://github.com/your-org/web_rA/issues" target="_blank" rel="noopener noreferrer" class="text-sm text-gray-400 hover:text-white px-3 py-2 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-1.5">
+                    <span class="material-icons-round text-lg">feedback</span>
+                    <span class="hidden sm:inline">Feedback</span>
+                </a>
+                <a href="{% url 'login' %}" class="btn-start text-white font-semibold px-5 py-2.5 rounded-xl text-sm ml-2 flex items-center gap-2">
+                    Start
+                    <span class="material-icons-round text-lg">arrow_forward</span>
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="relative z-10 pt-28 pb-24 px-4 sm:px-6">
+        <div class="max-w-6xl mx-auto">
+
+            <!-- Hero -->
+            <section class="text-center mb-24">
+                <h1 class="font-display font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-white mb-5 landing-fade-in">
+                    Enterprise AI.<br>One platform.
+                </h1>
+                <p class="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 landing-fade-in landing-delay-1">
+                    Chat, agents, RAG, tasks and servers — secure, auditable, under your control.
+                </p>
+                <div class="landing-fade-in landing-delay-2">
+                    <a href="{% url 'login' %}" class="btn-start inline-flex items-center gap-2 text-white font-semibold px-8 py-3.5 rounded-xl text-base">
+                        Start
+                        <span class="material-icons-round text-xl">arrow_forward</span>
+                    </a>
+                </div>
+            </section>
+
+            <!-- Screenshot gallery (mock) -->
+            <section class="mb-28">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6" role="list">
+                    <div class="landing-fade-in landing-delay-1 mock-screen aspect-video" style="max-height: 280px;" role="listitem">
+                        <div class="mock-screen-header">
+                            <span class="mock-dot mock-dot-r"></span>
+                            <span class="mock-dot mock-dot-y"></span>
+                            <span class="mock-dot mock-dot-g"></span>
+                        </div>
+                        <div class="p-5 space-y-3">
+                            <div class="h-3 w-3/4 rounded bg-white/10"></div>
+                            <div class="h-3 w-full rounded bg-white/5"></div>
+                            <div class="h-3 w-5/6 rounded bg-white/5"></div>
+                            <div class="h-8 rounded-lg bg-primary/20 border border-primary/20 mt-4"></div>
+                        </div>
+                    </div>
+                    <div class="landing-fade-in landing-delay-2 mock-screen aspect-video md:mt-8" style="max-height: 280px;" role="listitem">
+                        <div class="mock-screen-header">
+                            <span class="mock-dot mock-dot-r"></span>
+                            <span class="mock-dot mock-dot-y"></span>
+                            <span class="mock-dot mock-dot-g"></span>
+                        </div>
+                        <div class="p-5 space-y-3">
+                            <div class="flex gap-2">
+                                <div class="h-6 w-16 rounded bg-white/10"></div>
+                                <div class="h-6 w-20 rounded bg-primary/30"></div>
+                                <div class="h-6 w-16 rounded bg-white/5"></div>
+                            </div>
+                            <div class="h-20 rounded-lg border border-white/10 bg-white/[0.02]"></div>
+                            <div class="h-3 w-2/3 rounded bg-white/5"></div>
+                        </div>
+                    </div>
+                    <div class="landing-fade-in landing-delay-3 mock-screen aspect-video" style="max-height: 280px;" role="listitem">
+                        <div class="mock-screen-header">
+                            <span class="mock-dot mock-dot-r"></span>
+                            <span class="mock-dot mock-dot-y"></span>
+                            <span class="mock-dot mock-dot-g"></span>
+                        </div>
+                        <div class="p-5 space-y-3">
+                            <div class="h-4 w-1/2 rounded bg-white/10"></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="h-12 rounded-lg bg-white/5"></div>
+                                <div class="h-12 rounded-lg bg-white/5"></div>
+                            </div>
+                            <div class="h-3 w-full rounded bg-white/5"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5 blocks: Chat, Agents, RAG, Tasks, Servers -->
+            <section class="mb-28">
+                <h2 class="font-display font-bold text-2xl sm:text-3xl text-white mb-10 text-center landing-fade-in">What’s inside</h2>
+                <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
+                    <div class="glass-panel rounded-2xl p-6 card-hover landing-fade-in landing-delay-1">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+                            <span class="material-icons-round text-primary text-xl">chat</span>
+                        </div>
+                        <h3 class="font-display font-semibold text-white text-lg mb-1">Chat</h3>
+                        <p class="text-sm text-gray-500">Диалог с ИИ, выбор моделей и RAG в одном месте.</p>
+                    </div>
+                    <div class="glass-panel rounded-2xl p-6 card-hover landing-fade-in landing-delay-2">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+                            <span class="material-icons-round text-primary text-xl">hub</span>
+                        </div>
+                        <h3 class="font-display font-semibold text-white text-lg mb-1">Agents</h3>
+                        <p class="text-sm text-gray-500">Workflow-агенты с инструментами и оркестрацией.</p>
+                    </div>
+                    <div class="glass-panel rounded-2xl p-6 card-hover landing-fade-in landing-delay-3">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+                            <span class="material-icons-round text-primary text-xl">storage</span>
+                        </div>
+                        <h3 class="font-display font-semibold text-white text-lg mb-1">RAG</h3>
+                        <p class="text-sm text-gray-500">База знаний и семантический поиск по документам.</p>
+                    </div>
+                    <div class="glass-panel rounded-2xl p-6 card-hover landing-fade-in landing-delay-4">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+                            <span class="material-icons-round text-primary text-xl">check_circle</span>
+                        </div>
+                        <h3 class="font-display font-semibold text-white text-lg mb-1">Tasks</h3>
+                        <p class="text-sm text-gray-500">Задачи, подзадачи, метки и связь с агентами.</p>
+                    </div>
+                    <div class="glass-panel rounded-2xl p-6 card-hover landing-fade-in landing-delay-5">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-4">
+                            <span class="material-icons-round text-primary text-xl">terminal</span>
+                        </div>
+                        <h3 class="font-display font-semibold text-white text-lg mb-1">Servers</h3>
+                        <p class="text-sm text-gray-500">Подключения и управление серверами в одном интерфейсе.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Trust -->
+            <section class="mb-20">
+                <div class="glass-panel rounded-2xl overflow-hidden">
+                    <div class="grid sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/5">
+                        <div class="p-8 sm:p-10 flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
+                                <span class="material-icons-round text-emerald-400 text-2xl">lock</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-semibold text-white text-lg mb-1">Безопасность и шифрование</h3>
+                                <p class="text-sm text-gray-500">Данные и учётные записи защищены, чувствительные поля шифруются.</p>
+                            </div>
+                        </div>
+                        <div class="p-8 sm:p-10 flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+                            <div class="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+                                <span class="material-icons-round text-amber-400 text-2xl">history</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-semibold text-white text-lg mb-1">Аудит</h3>
+                                <p class="text-sm text-gray-500">История действий и прозрачность для контроля и расследований.</p>
+                            </div>
+                        </div>
+                        <div class="p-8 sm:p-10 flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+                            <div class="w-12 h-12 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                                <span class="material-icons-round text-blue-400 text-2xl">admin_panel_settings</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-semibold text-white text-lg mb-1">Контроль доступа</h3>
+                                <p class="text-sm text-gray-500">Роли и права для команд и предприятий.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CTA again + footer links -->
+            <section class="text-center">
+                <p class="text-gray-400 mb-6">Ready to run your workflows in one place?</p>
+                <a href="{% url 'login' %}" class="btn-start inline-flex items-center gap-2 text-white font-semibold px-8 py-3.5 rounded-xl text-base">
+                    Start
+                    <span class="material-icons-round text-xl">arrow_forward</span>
+                </a>
+                <div class="mt-14 pt-8 border-t border-white/5 flex flex-wrap justify-center gap-x-8 gap-y-2 text-sm">
+                    <a href="{% url 'docs_ui_guide' %}" class="text-gray-500 hover:text-white transition-colors flex items-center gap-1.5">
+                        <span class="material-icons-round text-lg">menu_book</span>
+                        Documentation (UI guide)
+                    </a>
+                    <a href="https://github.com/your-org/web_rA/issues" target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-white transition-colors flex items-center gap-1.5">
+                        <span class="material-icons-round text-lg">feedback</span>
+                        Feedback
+                    </a>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <script>
+        (function () {
+            var els = document.querySelectorAll('.landing-fade-in');
+            function run() {
+                var win = window; var scroll = win.scrollY; var innerH = win.innerHeight;
+                els.forEach(function (el) {
+                    var top = el.getBoundingClientRect().top + scroll;
+                    if (scroll + innerH * 0.85 > top) el.classList.add('visible');
+                });
+            }
+            run();
+            window.addEventListener('scroll', run, { passive: true });
+            window.addEventListener('load', function () {
+                setTimeout(function () {
+                    els.forEach(function (el) {
+                        var top = el.getBoundingClientRect().top + window.scrollY;
+                        if (window.scrollY + window.innerHeight * 0.9 > top) el.classList.add('visible');
+                    });
+                }, 80);
+            });
+        })();
+    </script>
+</body>
+</html>

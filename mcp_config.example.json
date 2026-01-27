@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"],
+      "description": "Filesystem MCP server for file operations"
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_token_here"
+      },
+      "description": "GitHub MCP server for repository operations"
+    },
+    "postgres": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+      "description": "PostgreSQL MCP server for database operations"
+    },
+    "custom-sse": {
+      "type": "sse",
+      "url": "http://localhost:8000/sse",
+      "description": "Custom SSE-based MCP server"
+    }
+  }
+}

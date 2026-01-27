@@ -1,0 +1,49 @@
+{
+  "name": "Snake Game Network Workflow",
+  "description": "Automates the setup and deployment of a networked Snake game.",
+  "runtime": "gemini",
+  "prompt": "Develop a simple networked Snake game with multiplayer capabilities using a command-line interface.",
+  "steps": [
+    {
+      "title": "Setup Project Structure",
+      "prompt": "Create a new project directory for the Snake game with folders for source code, assets, and documentation. Initialize a git repository and create a basic README.md file.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Check if the project directory structure is created with source, assets, and documentation folders. Verify that a git repository is initialized and README.md exists. Output <promise>PASS</promise> if correct.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Implement Core Game Logic",
+      "prompt": "Write the core logic for the Snake game in a suitable programming language (e.g., Python). Include snake movement, collision detection, and food spawning in a single-player mode.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Run the game logic code to ensure the snake moves, detects collisions, and spawns food correctly. Output <promise>PASS</promise> if the core mechanics work as expected.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Add Network Multiplayer Support",
+      "prompt": "Integrate networking capabilities using a library like sockets or a framework to enable multiplayer mode. Allow at least two players to connect and play simultaneously.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the multiplayer mode by connecting two players and verifying that they can see each other's snakes and play together. Output <promise>PASS</promise> if multiplayer works.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Create CLI Interface",
+      "prompt": "Develop a command-line interface for the Snake game that allows users to start the game, join a multiplayer session, and control the snake using keyboard inputs.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the CLI interface to ensure users can start the game, join multiplayer sessions, and control the snake via keyboard inputs. Output <promise>PASS</promise> if the interface functions correctly.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Document and Test",
+      "prompt": "Write documentation for setting up and playing the game, including multiplayer instructions. Add basic unit tests for core game logic if applicable.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Verify that documentation is complete and clear. Run any unit tests to ensure core logic is stable. Output <promise>PASS</promise> if documentation and tests are satisfactory.",
+      "verify_promise": "PASS"
+    }
+  ],
+  "script_file": "C:\\work_ai\\media\\workflows\\workflow-6.json"
+}

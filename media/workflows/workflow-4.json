@@ -1,0 +1,154 @@
+{
+  "name": "Snake Game Network Workflow",
+  "description": "Build a networked version of the classic Snake game.",
+  "runtime": "ralph",
+  "prompt": "Create a multiplayer Snake game with network capabilities allowing players to compete online.",
+  "steps": [
+    {
+      "title": "Setup Project Structure",
+      "prompt": "Initialize a new project for a networked Snake game. Set up the basic directory structure, install necessary dependencies, and create a README file.",
+      "completion_promise": "PROJECT_SETUP_DONE",
+      "max_iterations": 3,
+      "verify_prompt": "Check if the project structure is created, dependencies are installed, and README exists. Output <promise>PASS</promise> if everything is in place.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Implement Core Snake Game Logic",
+      "prompt": "Develop the core mechanics of the Snake game including snake movement, food spawning, collision detection, and game over conditions.",
+      "completion_promise": "CORE_LOGIC_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the core game logic to ensure snake moves correctly, food spawns, collisions are detected, and game over conditions work. Output <promise>PASS</promise> if tests pass.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Add Network Functionality",
+      "prompt": "Integrate network capabilities using a suitable framework (e.g., WebSocket or Socket.IO) to support multiplayer gameplay. Implement server-side logic for handling multiple players.",
+      "completion_promise": "NETWORK_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Verify that the server can handle multiple client connections and synchronize game state across players. Output <promise>PASS</promise> if network tests pass.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Develop Client-Side Interface",
+      "prompt": "Create a simple client-side interface for the Snake game using a suitable library (e.g., Pygame or HTML5 Canvas) to render the game and handle user input.",
+      "completion_promise": "CLIENT_UI_DONE",
+      "max_iterations": 4,
+      "verify_prompt": "Test the client interface to ensure it renders the game correctly and processes user input. Output <promise>PASS</promise> if the interface works as expected.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Integrate Client and Server",
+      "prompt": "Connect the client-side interface with the server to enable real-time multiplayer gameplay. Ensure game state updates are reflected across all connected clients.",
+      "completion_promise": "INTEGRATION_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Test the integration by running multiple clients and verifying that game state is consistent and gameplay is synchronized. Output <promise>PASS</promise> if integration tests pass.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Add Scoring and Leaderboard",
+      "prompt": "Implement a scoring system for players and a leaderboard to display top scores across sessions.",
+      "completion_promise": "SCORING_DONE",
+      "max_iterations": 3,
+      "verify_prompt": "Verify that scores are tracked correctly and the leaderboard displays accurate data. Output <promise>PASS</promise> if tests pass.",
+      "verify_promise": "PASS"
+    },
+    {
+      "title": "Final Testing and Debugging",
+      "prompt": "Perform end-to-end testing of the networked Snake game to identify and fix any bugs or performance issues.",
+      "completion_promise": "FINAL_TESTING_DONE",
+      "max_iterations": 5,
+      "verify_prompt": "Run comprehensive tests to ensure the game is stable, multiplayer works seamlessly, and no major bugs remain. Output <promise>PASS</promise> if the game is ready.",
+      "verify_promise": "PASS"
+    }
+  ],
+  "ralph_yml": {
+    "cli": {
+      "backend": "gemini"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Step 1",
+        "description": "Setup Project Structure",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Initialize a new project for a networked Snake game. Set up the basic directory structure, install necessary dependencies, and create a README file."
+      },
+      "step_2": {
+        "name": "Step 2",
+        "description": "Implement Core Snake Game Logic",
+        "triggers": [
+          "step_1.done"
+        ],
+        "publishes": [
+          "step_2.done"
+        ],
+        "instructions": "Develop the core mechanics of the Snake game including snake movement, food spawning, collision detection, and game over conditions."
+      },
+      "step_3": {
+        "name": "Step 3",
+        "description": "Add Network Functionality",
+        "triggers": [
+          "step_2.done"
+        ],
+        "publishes": [
+          "step_3.done"
+        ],
+        "instructions": "Integrate network capabilities using a suitable framework (e.g., WebSocket or Socket.IO) to support multiplayer gameplay. Implement server-side logic for handling multiple players."
+      },
+      "step_4": {
+        "name": "Step 4",
+        "description": "Develop Client-Side Interface",
+        "triggers": [
+          "step_3.done"
+        ],
+        "publishes": [
+          "step_4.done"
+        ],
+        "instructions": "Create a simple client-side interface for the Snake game using a suitable library (e.g., Pygame or HTML5 Canvas) to render the game and handle user input."
+      },
+      "step_5": {
+        "name": "Step 5",
+        "description": "Integrate Client and Server",
+        "triggers": [
+          "step_4.done"
+        ],
+        "publishes": [
+          "step_5.done"
+        ],
+        "instructions": "Connect the client-side interface with the server to enable real-time multiplayer gameplay. Ensure game state updates are reflected across all connected clients."
+      },
+      "step_6": {
+        "name": "Step 6",
+        "description": "Add Scoring and Leaderboard",
+        "triggers": [
+          "step_5.done"
+        ],
+        "publishes": [
+          "step_6.done"
+        ],
+        "instructions": "Implement a scoring system for players and a leaderboard to display top scores across sessions."
+      },
+      "step_7": {
+        "name": "Step 7",
+        "description": "Final Testing and Debugging",
+        "triggers": [
+          "step_6.done"
+        ],
+        "publishes": [
+          "step_7.done"
+        ],
+        "instructions": "Perform end-to-end testing of the networked Snake game to identify and fix any bugs or performance issues."
+      }
+    }
+  },
+  "script_file": "C:\\work_ai\\media\\workflows\\workflow-4.json"
+}

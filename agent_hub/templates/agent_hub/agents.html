@@ -1,0 +1,724 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body_extra_class %}page-agent-hub{% endblock %}
+{% block title %}Agents - WEU AI{% endblock %}
+{% block header_title %}Agents{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Agents</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="agent-hub min-h-screen p-6 pb-20">
+    <!-- Active runs banner -->
+    <div id="active-runs-banner" class="mb-4 hidden">
+        <div class="glass-card rounded-2xl p-4 border-2 border-primary/50 running-indicator">
+            <div class="flex items-center gap-3">
+                <svg class="w-5 h-5 text-primary spinner" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-white font-medium">Task running...</span>
+                <span id="active-runs-info" class="text-sm text-gray-400"></span>
+                <button onclick="scrollToActiveRuns()" class="ml-auto text-xs text-primary hover:underline">Go to logs</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col gap-4 mb-6">
+        <div class="flex items-start justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white">Agent Hub</h1>
+                <p class="text-gray-400 text-sm mt-1">Run agents, manage profiles, and view execution logs.</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openAssistModal()" class="px-4 py-2 bg-accent/20 text-accent rounded-xl border border-accent/30 hover:bg-accent/30 transition-all">
+                    AI Assistant
+                </button>
+                <button onclick="openProfileModal()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary">
+                    New profile
+                </button>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div class="glass-card rounded-2xl p-4 lg:col-span-2">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold text-white">Quick start</h2>
+                    <span class="text-xs text-gray-400">Auto-create</span>
+                </div>
+                <textarea id="quick-task" rows="2" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="What do you need? e.g. Create Django API and test"></textarea>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                    <select id="quick-runtime" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="ralph">Ralph Orchestrator</option>
+                        <option value="cursor">Cursor CLI</option>
+                    </select>
+                    <select id="quick-project" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="__new__">📁 New project</option>
+                        {% for project in projects_data %}
+                        <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <input id="quick-project-name" type="text" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Project name (optional)">
+                </div>
+                <div class="flex gap-3 mt-3">
+                    <button id="btn-auto-create-all" onclick="autoCreateAll()" class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Create all automatically</button>
+                    <button id="btn-auto-workflow" onclick="autoGenerateWorkflow()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-sm text-gray-200 rounded-lg">Workflow only</button>
+                </div>
+                <p class="section-hint mt-2">Workspace is the project folder where commands run. Run starts a profile or workflow.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-4">
+                <div class="text-xs text-gray-400">Last run</div>
+                {% if recent_runs %}
+                <div class="text-sm text-white mt-1">{{ recent_runs.0.runtime|title }} • {{ recent_runs.0.status|title }}</div>
+                <div class="text-xs text-gray-500 mt-2 line-clamp-2">{{ recent_runs.0.input_task }}</div>
+                {% else %}
+                <div class="text-sm text-gray-500 mt-2">No runs yet</div>
+                {% endif %}
+            </div>
+            <div class="glass-card rounded-2xl p-4">
+                <div class="text-xs text-gray-400">Active workflow</div>
+                {% if workflow_runs %}
+                <div class="text-sm text-white mt-1">{{ workflow_runs.0.run.workflow.name }}</div>
+                <div class="text-xs text-gray-500 mt-2">Status: {{ workflow_runs.0.run.status|title }}</div>
+                {% else %}
+                <div class="text-sm text-gray-500 mt-2">No runs yet</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div class="lg:col-span-3 flex flex-col space-y-4">
+            <div class="glass-card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Workflows</h2>
+                        <p class="section-hint">Step-by-step workflows. Create via Import, Builder, or AI.</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="openImportModal()" class="btn-unified btn-unified-secondary text-xs">📥 Import</button>
+                        <button type="button" onclick="openTaskBuilderDirect()" class="btn-unified btn-unified-secondary text-xs">🛠️ Builder</button>
+                        <button type="button" onclick="openWorkflowModal()" class="btn-unified btn-unified-primary text-xs">✨ AI generate</button>
+                    </div>
+                </div>
+                <div class="space-y-3 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
+                    {% for workflow in workflows %}
+                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="text-sm text-white">{{ workflow.name }}</div>
+                                <div class="text-xs text-gray-400">{{ workflow.description|default:"" }}</div>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">{{ workflow.runtime|title }}</span>
+                        </div>
+                        {% if workflow.project_path %}
+                        <div class="mt-2 flex items-center gap-1 text-[10px] text-primary/70">
+                            <span>📁</span>
+                            <span>{{ workflow.project_path }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="flex justify-between items-center mt-3">
+                            <div class="text-[10px] text-gray-500">{% if workflow.project_path %}Project: {{ workflow.project_path }}{% else %}Ready to run{% endif %}</div>
+                            <div class="flex gap-2 flex-wrap">
+                                <button type="button" onclick="editWorkflow({{ workflow.id }})" class="text-xs text-accent hover:underline" title="Edit in Builder">Edit</button>
+                                <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="text-xs text-gray-300">Script</button>
+                                <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="text-xs text-red-400">Delete</button>
+                                <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="text-xs text-primary">Run</button>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-state py-10">
+                        <span class="material-icons-round empty-state-icon" aria-hidden="true">account_tree</span>
+                        <p class="empty-state-text">No workflows yet</p>
+                        <p class="section-hint mb-3">Create a workflow via Import, Builder, or AI generate.</p>
+                        <button type="button" onclick="openTaskBuilderDirect()" class="empty-state-btn">🛠️ Builder</button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-white">Workflow runs</h2>
+                </div>
+                <div id="workflow-runs-list" class="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
+                    {% for item in workflow_runs %}
+                    <div class="bg-bg-surface/60 rounded-xl border {% if item.run.status == 'running' %}border-primary/50 running-indicator{% else %}border-white/5{% endif %} p-3 workflow-run-card" data-run-id="{{ item.run.id }}" data-status="{{ item.run.status }}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                {% if item.run.status == 'running' %}
+                                <svg class="w-4 h-4 text-primary spinner" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                {% elif item.run.status == 'completed' %}
+                                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                {% elif item.run.status == 'failed' %}
+                                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                {% else %}
+                                <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/></svg>
+                                {% endif %}
+                                <span class="text-sm text-white">{{ item.run.workflow.name }}</span>
+                            </div>
+                            <span class="text-xs px-2 py-0.5 rounded-full {% if item.run.status == 'running' %}bg-primary/20 text-primary{% elif item.run.status == 'completed' %}bg-green-500/20 text-green-400{% elif item.run.status == 'failed' %}bg-red-500/20 text-red-400{% else %}bg-white/10 text-gray-400{% endif %}">
+                                {{ item.run.status|title }}
+                            </span>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <div class="flex justify-between text-[10px] text-gray-400 mb-1">
+                                <span>Step {{ item.run.current_step }} of {{ item.total_steps|default:0 }}</span>
+                                <span>{{ item.progress_pct }}%</span>
+                            </div>
+                            <div class="h-2 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full {% if item.run.status == 'running' %}bg-primary{% elif item.run.status == 'completed' %}bg-green-500{% elif item.run.status == 'failed' %}bg-red-500{% else %}bg-gray-500{% endif %} transition-all duration-500" style="width: {{ item.progress_pct }}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2 text-xs text-gray-300">
+                            <span class="text-gray-500">Current stage:</span> {{ item.current_step_title|default:"Waiting" }}
+                        </div>
+                        
+                        <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/5">
+                            <div class="flex gap-2">
+                                <button onclick="openWorkflowLogs({{ item.run.id }})" class="px-2 py-1 text-xs bg-primary/20 text-primary rounded hover:bg-primary/30">Logs</button>
+                                {% if item.run.status == 'running' %}
+                                <button onclick="stopWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30">Stop</button>
+                                {% else %}
+                                <button onclick="restartWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/10 text-gray-300 rounded hover:bg-white/20">Restart</button>
+                                <button onclick="deleteWorkflowRun({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/5 text-gray-500 rounded hover:bg-white/10">Delete</button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-state py-10">
+                        <span class="material-icons-round empty-state-icon" aria-hidden="true">play_circle_outline</span>
+                        <p class="empty-state-text">No workflow runs yet</p>
+                        <p class="section-hint mb-3">Create a workflow above and click Run.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 flex flex-col space-y-4">
+            <div class="glass-card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Профили</h2>
+                        <p class="section-hint">Настройки агента (модель, рантайм). Шаблон для запуска задач.</p>
+                    </div>
+                    <select id="filter-runtime" class="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200">
+                        <option value="">Все рантаймы</option>
+                        <option value="cursor">Cursor</option>
+                        <option value="ralph">Ralph Orchestrator</option>
+                    </select>
+                </div>
+                <div id="profile-list" class="grid grid-cols-1 gap-3 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
+                    {% for profile in profiles %}
+                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">{{ profile.name }}</h3>
+                                <p class="text-xs text-gray-400">{{ profile.description|default:"No description" }}</p>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">{{ profile.get_runtime_display }}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] text-gray-500 mt-2">
+                            <span>{{ profile.get_agent_type_display }}</span>
+                            <span>•</span>
+                            <span>{{ profile.mode|title }}</span>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                            <button onclick="runProfile({{ profile.id }}, event)" class="flex-1 px-3 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs text-primary">Run</button>
+                            <button onclick="editProfile({{ profile.id }})" class="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300">Configure</button>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-span-full empty-state py-10">
+                        <span class="material-icons-round empty-state-icon" aria-hidden="true">smart_toy</span>
+                        <p class="empty-state-text">Нет профилей агентов</p>
+                        <p class="section-hint mb-3">Создайте профиль для запуска задач.</p>
+                        <button type="button" onclick="openProfileModal()" class="empty-state-btn">
+                            <span class="material-icons-round" style="font-size:1rem;">add</span>
+                            Create profile
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-4">
+                <h2 class="text-lg font-semibold text-white mb-3">Presets</h2>
+                <div class="space-y-3 max-h-[22vh] overflow-y-auto custom-scrollbar pr-1">
+                    {% for preset in presets %}
+                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-white">{{ preset.name }}</div>
+                                <div class="text-xs text-gray-400">{{ preset.description|default:"" }}</div>
+                            </div>
+                            <button onclick="usePreset('{{ preset.name|escapejs }}')" class="text-xs text-primary">Use</button>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-gray-500 text-sm">No presets found.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-4">
+                <h2 class="text-lg font-semibold text-white mb-3">Agent runs</h2>
+                <div class="space-y-3 max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
+                    {% for run in recent_runs %}
+                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-gray-400">{{ run.runtime|title }} • {{ run.status|title }}</span>
+                            <span class="text-[10px] text-gray-500">{{ run.created_at }}</span>
+                        </div>
+                        <div class="text-xs text-gray-200 mt-2 line-clamp-2">{{ run.input_task }}</div>
+                        <div class="flex items-center justify-between mt-2">
+                            <div class="flex gap-3">
+                                <button onclick="openAgentLogs({{ run.id }})" class="text-xs text-primary">Logs</button>
+                                <button onclick="stopAgentRun({{ run.id }})" class="text-xs text-red-400">Stop</button>
+                                <button onclick="deleteAgentRun({{ run.id }})" class="text-xs text-gray-400">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-state py-6">
+                        <span class="material-icons-round empty-state-icon" aria-hidden="true">history</span>
+                        <p class="empty-state-text">No runs yet</p>
+                        <p class="section-hint mb-2">Run a profile or workflow.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Workflow Logs Modal -->
+<div id="workflowLogsModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="workflowLogsTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWorkflowLogs()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-4xl max-h-[90vh] transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 id="workflowLogsTitle" class="text-xl font-bold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Execution logs
+                </h2>
+                <div id="workflowLogsMeta" class="text-sm text-gray-400 mt-1 flex items-center gap-2">Loading...</div>
+            </div>
+            <button type="button" onclick="closeWorkflowLogs()" class="px-3 py-1 text-sm bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition" aria-label="Close">Close</button>
+        </div>
+        <pre id="workflowLogsContent" class="flex-1 bg-bg-base border border-white/10 rounded-xl p-4 text-xs text-gray-200 overflow-y-auto custom-scrollbar font-mono leading-relaxed" style="max-height: 60vh; white-space: pre-wrap; word-break: break-word;">Loading logs...</pre>
+    </div>
+</div>
+
+<!-- Agent Logs Modal -->
+<div id="agentLogsModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="agentLogsTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAgentLogs()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-3xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <div class="flex items-center justify-between mb-3">
+        <div>
+            <h2 id="agentLogsTitle" class="text-xl font-bold text-white">Agent logs</h2>
+            <div id="agentLogsMeta" class="text-xs text-gray-400 mt-1">Loading...</div>
+        </div>
+        <button type="button" onclick="closeAgentLogs()" class="text-xs text-gray-400" aria-label="Close">Close</button>
+        </div>
+        <pre id="agentLogsContent" class="bg-bg-base border border-white/10 rounded-xl p-3 text-xs text-gray-200 max-h-[60vh] overflow-y-auto"></pre>
+    </div>
+</div>
+
+<!-- Workflow Script Modal -->
+<div id="workflowScriptModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="workflowScriptTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWorkflowScript()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-4xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <div class="flex items-center justify-between mb-3">
+            <h2 id="workflowScriptTitle" class="text-xl font-bold text-white">Workflow script</h2>
+            <div class="flex gap-2">
+                <button type="button" onclick="exportWorkflow()" class="px-3 py-1.5 text-xs bg-primary/20 text-primary rounded-lg hover:bg-primary/30">📤 Export JSON</button>
+                <button type="button" onclick="closeWorkflowScript()" class="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg" aria-label="Close">Close</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+                <div class="text-xs text-gray-400 mb-2">JSON</div>
+                <pre id="workflowScriptJson" class="bg-bg-base border border-white/10 rounded-xl p-3 text-xs text-gray-200 max-h-[55vh] overflow-y-auto"></pre>
+            </div>
+            <div>
+                <div class="text-xs text-gray-400 mb-2">Ralph Script</div>
+                <pre id="workflowScriptRalph" class="bg-bg-base border border-white/10 rounded-xl p-3 text-xs text-gray-200 max-h-[55vh] overflow-y-auto"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Workflow Modal -->
+<div id="importModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="importModalTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeImportModal()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 id="importModalTitle" class="text-xl font-bold text-white mb-3">📥 Импорт Workflow из файла</h2>
+        <p class="text-sm text-gray-400 mb-4">Загрузите JSON с полями name, steps и опционально runtime.</p>
+        <form id="importForm" onsubmit="submitImport(event)">
+            <div class="mb-4">
+                <label class="block text-xs font-medium text-gray-400 mb-2">Файл workflow (JSON)</label>
+                <input type="file" id="import-file" accept=".json" required class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-3 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-primary/20 file:text-primary hover:file:bg-primary/30">
+                <div id="import-file-info" class="text-xs text-gray-500 mt-2 hidden"></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта (Workspace)</label>
+                    <select id="import-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="__new__">📁 New project</option>
+                        {% for project in projects_data %}
+                        <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="import-new-project-container">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
+                    <input id="import-new-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="По названию workflow">
+                </div>
+            </div>
+            <div id="import-preview" class="mb-4 hidden">
+                <div class="text-xs font-medium text-gray-400 mb-2">Предпросмотр</div>
+                <div class="bg-bg-base border border-white/10 rounded-lg p-3 max-h-60 overflow-y-auto">
+                    <div id="import-preview-content" class="text-sm text-gray-200"></div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeImportModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
+                <button type="submit" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Импортировать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Profile Modal -->
+<div id="profileModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeProfileModal()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-3xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 class="text-xl font-bold text-white mb-4" id="profileModalTitle">Новый профиль</h2>
+        <form id="profileForm" onsubmit="saveProfile(event)">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Название</label>
+                    <input id="profile-name" required class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
+                    <select id="profile-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="ralph">Ralph Orchestrator</option>
+                        <option value="cursor">Cursor</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Тип агента</label>
+                    <select id="profile-agent-type" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="react">ReAct</option>
+                        <option value="simple">Simple</option>
+                        <option value="complex">Complex</option>
+                        <option value="ralph">Ralph Wiggum</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Режим</label>
+                    <select id="profile-mode" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="simple">Простой</option>
+                        <option value="advanced">Продвинутый</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание</label>
+                    <textarea id="profile-description" rows="2" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm"></textarea>
+                </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="profile-model-container">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Модель</label>
+                    <select id="profile-model" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="gpt-5">GPT-5</option>
+                        <option value="sonnet-4">Sonnet 4</option>
+                        <option value="sonnet-4-thinking">Sonnet 4 Thinking</option>
+                    </select>
+                </div>
+                <div id="profile-specific-model-container">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Конкретная модель (опционально)</label>
+                    <input id="profile-specific-model" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                </div>
+                <div id="cursor-model-info" class="md:col-span-2 hidden">
+                    <div class="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs text-primary">
+                        <span class="font-medium">ℹ️ Для Cursor CLI модель всегда выбирается автоматически (auto)</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Ralph Backend</label>
+                    <select id="profile-ralph-backend" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="">Auto</option>
+                        <option value="cursor">Cursor CLI</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="profile-use-rag" checked class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
+                    <label for="profile-use-rag" class="text-xs text-gray-400">Use RAG</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="profile-is-default" class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
+                    <label for="profile-is-default" class="text-xs text-gray-400">Сделать по умолчанию</label>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Макс. итераций</label>
+                    <input id="profile-max-iterations" type="number" value="10" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Completion Promise (Ralph)</label>
+                    <input id="profile-completion-promise" placeholder="DONE" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Расширенный конфиг (JSON)</label>
+                    <textarea id="profile-config-json" rows="3" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="closeProfileModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
+                <button type="submit" id="btn-save-profile" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- AI Assist Modal -->
+<div id="assistModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="assistModalTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAssistModal()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 id="assistModalTitle" class="text-xl font-bold text-white mb-3">AI помощник</h2>
+        <p class="text-sm text-gray-400 mb-4">Опишите задачу, и ассистент предложит настройки профиля.</p>
+        <textarea id="assist-task" rows="4" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-4" placeholder="Опишите задачу..."></textarea>
+        <div class="flex justify-end gap-3">
+            <button type="button" onclick="closeAssistModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
+            <button type="button" id="btn-generate-config" onclick="generateConfig()" class="px-4 py-2 bg-accent/20 text-accent rounded-lg border border-accent/30">Сгенерировать</button>
+        </div>
+    </div>
+</div>
+
+<!-- Workflow Modal (AI генерация) -->
+<div id="workflowModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="workflowModalTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWorkflowModal()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <h2 id="workflowModalTitle" class="text-xl font-bold text-white mb-3">Генерация workflow (AI)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
+                <select id="workflow-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                    <option value="ralph">Ralph Orchestrator</option>
+                    <option value="cursor">Cursor CLI</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта</label>
+                <select id="workflow-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                    <option value="__new__">📁 New project</option>
+                    {% for project in projects_data %}
+                    <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
+                <input id="workflow-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Автоматически">
+            </div>
+        </div>
+        <textarea id="workflow-task" rows="5" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-4" placeholder="Опишите workflow..."></textarea>
+        <div class="flex justify-end gap-3">
+            <button type="button" onclick="closeWorkflowModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
+            <button type="button" onclick="openTaskBuilder()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg">Создать вручную</button>
+            <button type="button" id="btn-generate-workflow" onclick="generateWorkflow()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сгенерировать (AI)</button>
+        </div>
+    </div>
+</div>
+
+<!-- Task Builder Modal (Визуальный редактор задач) -->
+<div id="taskBuilderModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="taskBuilderTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeTaskBuilder()" aria-hidden="true"></div>
+    <div class="absolute inset-4 md:inset-8 lg:inset-12 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-4 border-b border-white/10">
+            <div class="flex items-center gap-4">
+                <h2 id="taskBuilderTitle" class="text-xl font-bold text-white">🛠️ Конструктор задач</h2>
+                <span class="text-xs text-gray-400">Визуальное создание workflow</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="aiGenerateTasks()" class="px-3 py-1.5 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30 flex items-center gap-2">
+                    <span>✨</span> AI генерация
+                </button>
+                <button type="button" onclick="closeTaskBuilder()" class="text-gray-400 hover:text-white" aria-label="Close Task Builder">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left Panel: Settings -->
+            <div class="w-80 border-r border-white/10 p-4 flex flex-col gap-4 overflow-y-auto">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Название workflow</label>
+                    <input id="tb-workflow-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Мой Workflow">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание проекта (для AI)</label>
+                    <textarea id="tb-project-description" rows="4" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Опишите проект чтобы AI сгенерировал задачи..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
+                    <select id="tb-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="ralph">Ralph Orchestrator</option>
+                        <option value="cursor">Cursor CLI</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта</label>
+                    <select id="tb-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="__new__">📁 New project</option>
+                        {% for project in projects_data %}
+                        <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="tb-new-project-container">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
+                    <input id="tb-new-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Автоматически">
+                </div>
+                
+                <div class="mt-auto pt-4 border-t border-white/10">
+                    <div class="text-xs text-gray-500 mb-2">Статистика</div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">Задач:</span>
+                        <span id="tb-tasks-count" class="text-white font-medium">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">С тестами:</span>
+                        <span id="tb-tests-count" class="text-white font-medium">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Tasks -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- Tasks Header -->
+                <div class="p-4 border-b border-white/10 flex items-center justify-between">
+                    <div class="text-sm text-gray-400">Перетаскивайте задачи для изменения порядка</div>
+                    <button onclick="addNewTask()" class="px-3 py-1.5 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30 flex items-center gap-2">
+                        <span>+</span> Добавить задачу
+                    </button>
+                </div>
+                
+                <!-- Tasks List -->
+                <div id="tb-tasks-container" class="flex-1 p-4 overflow-y-auto space-y-3">
+                    <!-- Tasks будут добавляться сюда динамически -->
+                    <div id="tb-empty-state" class="flex flex-col items-center justify-center h-full text-gray-500">
+                        <svg class="w-16 h-16 mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        <p class="text-lg mb-2">Задач пока нет</p>
+                        <p class="text-sm text-gray-600 mb-4">Добавьте задачу вручную или используйте AI генерацию</p>
+                        <div class="flex gap-3">
+                            <button onclick="addNewTask()" class="px-4 py-2 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30">+ Добавить задачу</button>
+                            <button onclick="aiGenerateTasks()" class="px-4 py-2 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30">✨ AI генерация</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="p-4 border-t border-white/10 flex justify-between items-center">
+            <button onclick="clearAllTasks()" class="px-4 py-2 text-sm text-red-400 hover:text-red-300">Очистить все</button>
+            <div class="flex gap-3">
+                <button onclick="closeTaskBuilder()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
+                <button id="btn-save-workflow" onclick="saveTaskBuilderWorkflow()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сохранить workflow</button>
+                <button id="btn-save-run-workflow" onclick="saveAndRunTaskBuilderWorkflow()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg">Сохранить и запустить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Task Template (hidden) -->
+<template id="task-card-template">
+    <div class="task-card bg-bg-base border border-white/10 rounded-xl p-4 cursor-move hover:border-primary/50 transition-all" draggable="true">
+        <div class="flex items-start gap-3">
+            <!-- Drag Handle -->
+            <div class="drag-handle text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing pt-1">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                </svg>
+            </div>
+            
+            <!-- Task Number -->
+            <div class="task-number flex-shrink-0 w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center text-sm font-bold">1</div>
+            
+            <!-- Task Content -->
+            <div class="flex-1 space-y-3">
+                <input type="text" class="task-title w-full bg-transparent border-b border-white/10 pb-1 text-white text-sm font-medium focus:outline-none focus:border-primary" placeholder="Название задачи">
+                <textarea class="task-prompt w-full bg-bg-surface border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none" rows="2" placeholder="Описание задачи (что должен сделать агент)..."></textarea>
+                
+                <!-- Test Section -->
+                <div class="task-test-section">
+                    <button class="toggle-test-btn text-xs text-gray-400 hover:text-primary flex items-center gap-1" onclick="toggleTestSection(this)">
+                        <span class="test-icon">▶</span> Добавить тест
+                    </button>
+                    <div class="test-content hidden mt-2 p-3 bg-bg-surface/50 rounded-lg border border-white/5">
+                        <label class="block text-xs text-gray-400 mb-1">Verify step — проверка (verify_prompt)</label>
+                        <textarea class="task-verify w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none" rows="2" placeholder="Что должен вывести агент для перехода дальше (напр. &lt;promise&gt;PASS&lt;/promise&gt;). Запусти тесты если нужно." title="Verify step — шаг проверки: что должен вывести агент (например &lt;promise&gt;PASS&lt;/promise&gt;) для перехода к следующему шагу."></textarea>
+                        <div class="flex gap-4 mt-2">
+                            <div class="flex-1">
+                                <label class="block text-xs text-gray-400 mb-1">Completion Promise</label>
+                                <input type="text" class="task-promise w-full bg-bg-base border border-white/10 rounded px-2 py-1 text-white text-xs" value="STEP_DONE">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-xs text-gray-400 mb-1">Verify Promise</label>
+                                <input type="text" class="task-verify-promise w-full bg-bg-base border border-white/10 rounded px-2 py-1 text-white text-xs" value="PASS">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Delete Button -->
+            <button class="delete-task-btn text-gray-600 hover:text-red-400 transition-colors" onclick="deleteTask(this)">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+</template>
+
+{{ presets_data|json_script:"preset-data" }}
+{{ workflows_data|json_script:"workflows-data" }}
+{{ projects_data|json_script:"projects-data" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/agent_hub.js' %}"></script>
+{% endblock %}
