@@ -1,6 +1,29 @@
-version: '3.8'
-
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: weu-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-weu_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-weu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weu} -d ${POSTGRES_DB:-weu_platform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Лимиты для стабильной работы при многих подключениях
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=128MB"
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: weu-qdrant
@@ -17,3 +40,65 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Всегда mini по умолчанию. Для full задайте WEU_BUILD=full в .env
+        BUILD: ${WEU_BUILD:-mini}
+    container_name: weu-web
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-weu_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-weu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
+      ALLOWED_HOSTS: "*"
+      DJANGO_SETTINGS_MODULE: web_ui.settings
+      # Автосоздание суперпользователя при первом старте (задай в .env для продакшена)
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
+      # Cursor CLI headless: без входа по Google. Ключ в .env из Cursor → Settings → API Access.
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+    ports:
+      - "${WEU_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - agent_projects_data:/app/agent_projects
+  # Контейнер для запуска агентов (Cursor CLI / Ralph). Веб вызывает его при необходимости.
+  agent-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Всегда mini по умолчанию. Для full задайте WEU_BUILD=full в .env
+        BUILD: ${WEU_BUILD:-mini}
+    container_name: weu-agent-runner
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-weu_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-weu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
+      DJANGO_SETTINGS_MODULE: web_ui.settings
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - agent_projects_data:/app/agent_projects
+    # Держим контейнер живым; агенты запускаются через docker exec из веба при настройке DOCKER_AGENT_RUNNER=weu-agent-runner
+    command: ["sleep", "infinity"]
+
+volumes:
+  postgres_data:
+  agent_projects_data:

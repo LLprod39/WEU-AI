@@ -1,0 +1,42 @@
+# Git и env
+.git
+.gitignore
+.env
+.env.*
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.venv
+venv
+env
+
+# Данные и кэш
+db.sqlite3
+*.sqlite
+qdrant_data
+media
+.model_config.json
+
+# Тесты и проверочные скрипты (не нужны в образе)
+test_*.py
+check_*.py
+verify_*.py
+*_test.py
+regression_test.py
+smoke_test.py
+full_test_suite.py
+run_check.py
+simple_check.py
+final_check.py
+
+# Документация (опционально — раскомментируйте, если хотите уменьшить образ)
+# docs
+# *.md
+
+# IDE
+.idea
+.vscode
+.cursor

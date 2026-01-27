@@ -1,0 +1,16 @@
+# WEU MVP — полная сборка: PyTorch, модели RAG (sentence-transformers), Qdrant, OCR, DOCX, расширенный PDF.
+# Всё из mini + RAG-эмбеддинги, токенизация, база знаний, загрузка документов в RAG.
+
+-r requirements-mini.txt
+
+# RAG и эмбеддинги (тянут PyTorch)
+qdrant-client
+sentence-transformers
+
+# Доп. обработка файлов
+pytesseract
+python-docx
+pdfplumber
+
+# UI (опционально для desktop-режима)
+nicegui

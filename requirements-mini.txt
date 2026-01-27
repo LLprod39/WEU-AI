@@ -1,0 +1,29 @@
+# WEU MVP — мини-сборка для тестов: без PyTorch, без моделей RAG, без тяжёлых зависимостей.
+# Чат, задачи, пароли, серверы, оркестратор — работают. RAG и эмбеддинги — только в full.
+
+# БД
+psycopg[binary]>=3.1.8
+
+# LLM
+google-genai
+httpx
+python-dotenv
+loguru
+pydantic
+
+# Агенты и инструменты
+paramiko
+asyncssh
+mcp
+beautifulsoup4
+aiofiles
+
+# Web
+django
+daphne
+
+# Файлы (лёгкие; OCR/DOCX/расширенный PDF — в full)
+Pillow
+PyPDF2
+cryptography
+numpy
