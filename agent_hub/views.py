@@ -492,7 +492,7 @@ def api_agent_run(request):
     config = data.get("config") or (profile.config if profile else {})
     if runtime not in ALLOWED_RUNTIMES:
         return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
-    # Для cursor модель всегда auto (уже в args), убираем из config
+    # Для cursor модель всегда auto; sandbox/approve-mcps/browser — через allowed_args
     if runtime == "cursor":
         config = {k: v for k, v in config.items() if k not in ["model", "specific_model"]}
     if agent_type == "ralph" and runtime not in ["internal", "ralph"]:

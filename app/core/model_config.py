@@ -38,6 +38,10 @@ class ModelConfig(BaseModel):
 
     # Режим Cursor CLI в чате при выборе «Авто»: ask — только ответы, agent — агент с правкой файлов.
     cursor_chat_mode: str = "ask"
+    # Sandbox для Cursor CLI: пусто = не передавать, "enabled" | "disabled".
+    cursor_sandbox: str = ""
+    # В headless/чате автоматически одобрять MCP (--approve-mcps).
+    cursor_approve_mcps: bool = False
 
 
 

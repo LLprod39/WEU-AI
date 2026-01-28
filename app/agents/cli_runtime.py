@@ -108,6 +108,7 @@ class CliRuntimeManager:
                 if isinstance(value, bool):
                     if value:
                         cli_args.append(f"--{arg_name}")
+                    # для False флаг не передаём
                 else:
                     cli_args.extend([f"--{arg_name}", str(value)])
 

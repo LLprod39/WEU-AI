@@ -249,7 +249,7 @@ def settings_permissions_view(request):
 
 # ============================================
 # Cursor CLI — Ask (--mode=ask) или Agent (без --mode; флаги -p --force stream-json ...)
-# ask: agent --mode=ask -p "..." --output-format text --workspace ...
+# ask: agent --mode=ask -p --output-format text --workspace ... --model auto "..."
 # agent: agent -p --force --output-format stream-json --stream-partial-output --workspace ... --model auto "..."
 # ============================================
 
@@ -331,13 +331,13 @@ async def _stream_cursor_cli(
     message: str,
     workspace: str,
     mode: str = "ask",
+    sandbox: str = "",
+    approve_mcps: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
-    Запускает Cursor CLI:
-    - ask: agent --mode=ask -p "..." --output-format text --workspace ...
+    Запускает Cursor CLI. Модель всегда auto.
+    - ask: agent --mode=ask -p --output-format text --workspace ... --model auto "..."
     - agent: agent -p --force --output-format stream-json --stream-partial-output --workspace ... --model auto "..."
-      (у CLI нет --mode=agent, только plan/ask; для агента с правкой файлов используется этот набор флагов)
-    Стримит stdout процесса в виде чанков.
     """
     is_agent_mode = (mode or "").strip().lower() == "agent"
     cmd_path = _resolve_cursor_cli_command()
@@ -345,6 +345,12 @@ async def _stream_cursor_cli(
     env = dict(os.environ)
     extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
     env.update(extra)
+
+    extra_flags = []
+    if sandbox and (sandbox.strip().lower() in ("enabled", "disabled")):
+        extra_flags.extend(["--sandbox", sandbox.strip().lower()])
+    if approve_mcps:
+        extra_flags.append("--approve-mcps")
 
     if is_agent_mode:
         args = [
@@ -358,6 +364,7 @@ async def _stream_cursor_cli(
             base_dir,
             "--model",
             "auto",
+            *extra_flags,
             message,
         ]
     else:
@@ -365,11 +372,14 @@ async def _stream_cursor_cli(
             cmd_path,
             "--mode=ask",
             "-p",
-            message,
             "--output-format",
             "text",
             "--workspace",
             base_dir,
+            "--model",
+            "auto",
+            *extra_flags,
+            message,
         ]
 
     proc = await asyncio.create_subprocess_exec(
@@ -422,6 +432,13 @@ def _load_session(user_id, chat_id):
     return ChatSession.objects.filter(user_id=user_id, id=chat_id).select_related().first()
 
 
+@sync_to_async
+def _get_server_names_for_user(user_id: int):
+    """Синхронный запрос к ORM — вызывать только через sync_to_async из async-контекста."""
+    from servers.models import Server
+    return list(Server.objects.filter(user_id=user_id).values_list("name", flat=True))
+
+
 async def _try_server_command_by_name(user_id: int, message: str):
     """
     Если в сообщении упомянут сервер из вкладки Servers по имени — выполнить команду по его данным и вернуть вывод.
@@ -429,7 +446,6 @@ async def _try_server_command_by_name(user_id: int, message: str):
     """
     import re
     try:
-        from servers.models import Server
         from app.tools.server_tools import ServerExecuteTool
     except Exception:
         return None
@@ -438,7 +454,7 @@ async def _try_server_command_by_name(user_id: int, message: str):
     try:
         msg = (message or "").strip().lower()
         # Список имён серверов пользователя (длинные первыми, чтобы «WEU SERVER» матчился раньше «WEU»)
-        raw = list(Server.objects.filter(user_id=user_id).values_list("name", flat=True))
+        raw = await _get_server_names_for_user(user_id)
         names = sorted([n for n in raw if (n or "").strip()], key=lambda x: len((x or "").strip()), reverse=True)
         if not names:
             return None
@@ -608,12 +624,20 @@ async def chat_api(request):
                         return
                     workspace = getattr(settings, "BASE_DIR", "")
                     cursor_mode = getattr(model_manager.config, "cursor_chat_mode", "ask") or "ask"
+                    cursor_sandbox = getattr(model_manager.config, "cursor_sandbox", "") or ""
+                    cursor_approve_mcps = getattr(model_manager.config, "cursor_approve_mcps", False)
                     # Добавляем контекст серверов пользователя в промпт для Cursor CLI
                     servers_ctx = await asyncio.to_thread(_get_servers_context_for_prompt, user_id) if user_id else ""
                     prompt_with_servers = (servers_ctx + "\n\n" + user_message) if servers_ctx else user_message
                     if created_session_id is not None:
                         yield f"CHAT_ID:{created_session_id}\n"
-                    async for chunk in _stream_cursor_cli(prompt_with_servers, workspace, mode=cursor_mode):
+                    async for chunk in _stream_cursor_cli(
+                        prompt_with_servers,
+                        workspace,
+                        mode=cursor_mode,
+                        sandbox=cursor_sandbox,
+                        approve_mcps=cursor_approve_mcps,
+                    ):
                         accumulated.append(chunk)
                         yield chunk
                     full_text = "".join(accumulated)
@@ -941,6 +965,8 @@ def api_settings(request):
                     'agent_model_grok': c.agent_model_grok,
                     'default_agent_output_path': getattr(c, 'default_agent_output_path', '') or '',
                     'cursor_chat_mode': getattr(c, 'cursor_chat_mode', 'ask') or 'ask',
+                    'cursor_sandbox': getattr(c, 'cursor_sandbox', '') or '',
+                    'cursor_approve_mcps': getattr(c, 'cursor_approve_mcps', False),
                     'delegate_ui': delegate_ui,
                 },
                 'api_keys': {
@@ -957,7 +983,8 @@ def api_settings(request):
             allowed = {
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
-                'default_agent_output_path', 'cursor_chat_mode',
+                'default_agent_output_path',                 'cursor_chat_mode',
+                'cursor_sandbox', 'cursor_approve_mcps',
                 'internal_llm_provider',  # Провайдер для внутренних вызовов (workflow, анализ)
             }
             for key, value in data.items():

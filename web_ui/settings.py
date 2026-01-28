@@ -216,7 +216,8 @@ CLI_RUNTIME_CONFIG = {
         # --stream-partial-output: прогресс по шагам
         "args": ["-p", "--force", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}", "--model", "auto"],
         "prompt_style": "positional",
-        "allowed_args": [],  # Модель всегда auto, нельзя изменить
+        # Модель всегда auto; доп. аргументы: sandbox (enabled|disabled), approve-mcps (bool), browser (bool)
+        "allowed_args": ["sandbox", "approve-mcps", "browser"],
     },
     "ralph": {
         "command": _cli_command("RALPH_CLI_PATH", "ralph"),
