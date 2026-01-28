@@ -23,8 +23,8 @@ class BaseAgent(ABC):
     def tool_manager(self):
         """Lazy load tool manager"""
         if self._tool_manager is None:
-            from app.tools.manager import ToolManager
-            self._tool_manager = ToolManager()
+            from app.tools.manager import get_tool_manager
+            self._tool_manager = get_tool_manager()
         return self._tool_manager
     
     @property

@@ -9,6 +9,7 @@
     var presetData = [];
     var workflowsData = [];
     var projectsData = [];
+    var serversData = [];
     var editingProfileId = null;
     var workflowLogsInterval = null;
     var agentLogsInterval = null;
@@ -23,6 +24,8 @@
         if (e) workflowsData = JSON.parse(e.textContent || '[]');
         e = document.getElementById('projects-data');
         if (e) projectsData = JSON.parse(e.textContent || '[]');
+        e = document.getElementById('servers-data');
+        if (e) serversData = JSON.parse(e.textContent || '[]');
     }
     initData();
 
@@ -56,6 +59,31 @@
         }
     }
 
+    function clearProfileQuestions() {
+        var box = document.getElementById('profile-questions');
+        var ql = document.getElementById('profile-questions-list');
+        var al = document.getElementById('profile-assumptions-list');
+        if (ql) ql.innerHTML = '';
+        if (al) al.innerHTML = '';
+        if (box) box.classList.add('hidden');
+    }
+
+    function renderProfileQuestions(questions, assumptions) {
+        var box = document.getElementById('profile-questions');
+        var ql = document.getElementById('profile-questions-list');
+        var al = document.getElementById('profile-assumptions-list');
+        if (!box || !ql || !al) return;
+        var qs = Array.isArray(questions) ? questions.filter(Boolean) : [];
+        var as = Array.isArray(assumptions) ? assumptions.filter(Boolean) : [];
+        if (qs.length === 0 && as.length === 0) {
+            clearProfileQuestions();
+            return;
+        }
+        ql.innerHTML = qs.map(function (q) { return '<li>' + q + '</li>'; }).join('');
+        al.innerHTML = as.map(function (a) { return '<li>' + a + '</li>'; }).join('');
+        box.classList.remove('hidden');
+    }
+
     window.openProfileModal = function () {
         editingProfileId = null;
         var t = document.getElementById('profileModalTitle');
@@ -64,6 +92,9 @@
         if (f) f.reset();
         var j = document.getElementById('profile-config-json');
         if (j) j.value = '';
+        var lp = document.getElementById('profile-loop-include-previous');
+        if (lp) lp.checked = true;
+        clearProfileQuestions();
         var m = document.getElementById('profileModal');
         if (m) { m.classList.remove('hidden'); m.setAttribute('aria-hidden', 'false'); }
         toggleModelFields();
@@ -295,6 +326,8 @@
         var runtime = document.getElementById('profile-runtime').value;
         var config = {
             use_rag: document.getElementById('profile-use-rag').checked,
+            use_ralph_loop: document.getElementById('profile-use-ralph-loop').checked,
+            loop_include_previous: document.getElementById('profile-loop-include-previous').checked,
             max_iterations: parseInt(document.getElementById('profile-max-iterations').value || '10', 10),
             completion_promise: (document.getElementById('profile-completion-promise') || {}).value || '',
             ralph_backend: (document.getElementById('profile-ralph-backend') || {}).value || null
@@ -375,10 +408,13 @@
                 id('profile-model').value = c.model || 'gpt-5';
                 (id('profile-specific-model') || {}).value = c.specific_model || '';
                 id('profile-use-rag').checked = c.use_rag !== false;
+                id('profile-use-ralph-loop').checked = !!c.use_ralph_loop;
+                id('profile-loop-include-previous').checked = c.loop_include_previous !== false;
                 id('profile-max-iterations').value = c.max_iterations || 10;
                 (id('profile-completion-promise') || {}).value = c.completion_promise || '';
                 (id('profile-ralph-backend') || {}).value = c.ralph_backend || '';
                 id('profile-config-json').value = JSON.stringify(c, null, 2);
+                clearProfileQuestions();
                 document.getElementById('profileModal').classList.remove('hidden');
                 toggleModelFields();
             });
@@ -406,6 +442,7 @@
                     document.getElementById('profile-runtime').value = c.runtime || 'ralph';
                     document.getElementById('profile-mode').value = c.mode || 'simple';
                     document.getElementById('profile-config-json').value = JSON.stringify(c.config || {}, null, 2);
+                    renderProfileQuestions(data.questions || c.questions, data.assumptions || c.assumptions);
                 } else if (window.showToast) window.showToast(data.error || 'Не удалось сгенерировать', 'error');
             })
             .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
@@ -598,6 +635,105 @@
             })
             .catch(function (e) { hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e.message || e), 'error'); })
             .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
+    };
+
+    function renderMcpServers(servers, sources) {
+        var list = document.getElementById('mcp-servers-list');
+        var src = document.getElementById('mcp-sources');
+        if (src) src.textContent = (sources && sources.length) ? ('Config: ' + sources.join(' • ')) : 'Config: not found';
+        if (!list) return;
+        if (!servers || servers.length === 0) {
+            list.innerHTML = '<div class="text-gray-500 text-sm">Нет MCP серверов</div>';
+            return;
+        }
+        list.innerHTML = servers.map(function (s) {
+            var statusClass = 'text-gray-400';
+            if (s.status === 'connected') statusClass = 'text-green-400';
+            else if (s.status === 'error') statusClass = 'text-red-400';
+            else if (s.status === 'disconnected') statusClass = 'text-yellow-400';
+            var btn = s.status === 'connected'
+                ? '<button onclick="disconnectMcpServer(\'' + s.name + '\')" class="text-xs text-red-300">Disconnect</button>'
+                : '<button onclick="connectMcpServer(\'' + s.name + '\')" class="text-xs text-primary">Connect</button>';
+            var toolsBtn = '<button onclick="openMcpTools(\'' + s.name + '\')" class="text-xs text-gray-300">Tools</button>';
+            var err = s.error ? ('<div class="text-[10px] text-red-400 mt-1">' + s.error + '</div>') : '';
+            return '<div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">' +
+                '<div class="flex items-center justify-between">' +
+                '<div>' +
+                '<div class="text-sm text-white">' + s.name + '</div>' +
+                '<div class="text-[10px] text-gray-500">' + (s.description || '') + '</div>' +
+                '</div>' +
+                '<div class="flex items-center gap-2">' +
+                '<span class="text-[10px] ' + statusClass + '">' + (s.status || 'unknown') + '</span>' +
+                toolsBtn + btn +
+                '</div>' +
+                '</div>' + err +
+                '</div>';
+        }).join('');
+    }
+
+    window.refreshMcpServers = function () {
+        fetch('/agents/api/mcp/servers/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) { renderMcpServers(data.servers || [], data.sources || []); })
+            .catch(function () {
+                var list = document.getElementById('mcp-servers-list');
+                if (list) list.innerHTML = '<div class="text-gray-500 text-sm">Ошибка загрузки MCP</div>';
+            });
+    };
+
+    window.connectMcpServer = function (name) {
+        fetch('/agents/api/mcp/servers/connect/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) },
+            body: JSON.stringify({ name: name })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) { if (window.showToast) window.showToast('MCP подключен', 'success'); refreshMcpServers(); }
+                else if (window.showToast) window.showToast(data.error || 'Не удалось подключиться', 'error');
+            });
+    };
+
+    window.disconnectMcpServer = function (name) {
+        fetch('/agents/api/mcp/servers/disconnect/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) },
+            body: JSON.stringify({ name: name })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) { if (window.showToast) window.showToast('MCP отключен', 'success'); refreshMcpServers(); }
+                else if (window.showToast) window.showToast('Не удалось отключить', 'error');
+            });
+    };
+
+    window.openMcpTools = function (name) {
+        var modal = document.getElementById('mcpToolsModal');
+        var list = document.getElementById('mcpToolsList');
+        var meta = document.getElementById('mcpToolsMeta');
+        if (list) list.innerHTML = 'Загрузка...';
+        if (meta) meta.textContent = name;
+        if (modal) { modal.classList.remove('hidden'); modal.setAttribute('aria-hidden', 'false'); }
+        fetch('/agents/api/mcp/servers/tools/?name=' + encodeURIComponent(name))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var tools = data.tools || [];
+                if (!list) return;
+                if (tools.length === 0) { list.textContent = 'Нет доступных инструментов'; return; }
+                list.innerHTML = tools.map(function (t) {
+                    var params = (t.parameters || []).map(function (p) { return p.name + (p.required ? '*' : ''); }).join(', ');
+                    return '<div class="border border-white/10 rounded-lg p-2">' +
+                        '<div class="text-sm text-white">' + t.name + '</div>' +
+                        '<div class="text-[10px] text-gray-400">' + (t.description || '') + '</div>' +
+                        (params ? '<div class="text-[10px] text-gray-500 mt-1">Params: ' + params + '</div>' : '') +
+                        '</div>';
+                }).join('');
+            });
+    };
+
+    window.closeMcpTools = function () {
+        var modal = document.getElementById('mcpToolsModal');
+        if (modal) { modal.classList.add('hidden'); modal.setAttribute('aria-hidden', 'true'); }
     };
 
     window.usePreset = function (name) {
@@ -804,6 +940,11 @@
                     }
                 }
                 document.getElementById('tb-new-project-name').value = '';
+                // Установка целевого сервера
+                var ts = document.getElementById('tb-target-server');
+                if (ts) {
+                    ts.value = w.target_server_id ? String(w.target_server_id) : '';
+                }
                 setupTbProjectSelector();
                 updateTasksUI();
             })
@@ -827,6 +968,8 @@
         document.getElementById('tb-project').value = pr ? pr.value : '__new__';
         document.getElementById('tb-new-project-name').value = pn ? pn.value : '';
         document.getElementById('tb-project-description').value = t ? t.value : '';
+        var ts = document.getElementById('tb-target-server');
+        if (ts) ts.value = '';
         setupTbProjectSelector();
         updateTasksUI();
     };
@@ -847,6 +990,8 @@
         document.getElementById('tb-runtime').value = 'ralph';
         document.getElementById('tb-project').value = '__new__';
         document.getElementById('tb-new-project-name').value = '';
+        var ts = document.getElementById('tb-target-server');
+        if (ts) ts.value = '';
         setupTbProjectSelector();
         updateTasksUI();
     };
@@ -1016,6 +1161,8 @@
         var runtime = document.getElementById('tb-runtime').value;
         var projectSelect = document.getElementById('tb-project').value;
         var newName = (document.getElementById('tb-new-project-name') || {}).value.trim();
+        var targetServerSelect = document.getElementById('tb-target-server');
+        var targetServerId = targetServerSelect ? (targetServerSelect.value || null) : null;
         var valid = taskBuilderTasks.filter(function (t) { return t.title && t.prompt; });
         if (valid.length === 0) { if (window.showToast) window.showToast('Добавьте хотя бы одну задачу с названием и описанием', 'info'); return; }
         var btn = document.getElementById(run ? 'btn-save-run-workflow' : 'btn-save-workflow');
@@ -1027,12 +1174,13 @@
             steps: valid.map(function (t) {
                 return { title: t.title, prompt: t.prompt, completion_promise: t.completion_promise || 'STEP_DONE', verify_prompt: t.verify_prompt || null, verify_promise: t.verify_prompt ? (t.verify_promise || 'PASS') : null, max_iterations: t.max_iterations || 5 };
             }),
-            run_after_save: run
+            run_after_save: run,
+            target_server_id: targetServerId ? parseInt(targetServerId, 10) : null
         };
         if (projectSelect === '__new__') { payload.create_new_project = true; payload.new_project_name = newName; } else payload.project_path = projectSelect;
 
         var url = editingId ? ('/agents/api/workflows/' + editingId + '/update/') : '/agents/api/workflows/create-manual/';
-        var body = editingId ? { name: payload.name, runtime: payload.runtime, steps: payload.steps, project_path: projectSelect === '__new__' ? '__new__' : projectSelect, new_project_name: newName } : payload;
+        var body = editingId ? { name: payload.name, runtime: payload.runtime, steps: payload.steps, project_path: projectSelect === '__new__' ? '__new__' : projectSelect, new_project_name: newName, target_server_id: payload.target_server_id } : payload;
 
         fetch(url, {
             method: 'POST',
@@ -1074,7 +1222,7 @@
     };
 
     function moveModalsToBody() {
-        ['workflowModal', 'taskBuilderModal', 'workflowLogsModal', 'agentLogsModal', 'workflowScriptModal', 'profileModal', 'assistModal', 'importModal'].forEach(function (id) {
+        ['workflowModal', 'taskBuilderModal', 'workflowLogsModal', 'agentLogsModal', 'workflowScriptModal', 'profileModal', 'assistModal', 'importModal', 'mcpToolsModal'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el && el.parentElement !== document.body) document.body.appendChild(el);
         });
@@ -1082,7 +1230,9 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         setupProjectSelectors();
+        toggleModelFields();
         startStatusUpdates();
         moveModalsToBody();
+        refreshMcpServers();
     });
 })();

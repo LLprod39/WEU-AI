@@ -6,6 +6,7 @@ import asyncssh
 from loguru import logger
 from typing import Optional, Dict, Any
 from app.tools.base import BaseTool, ToolMetadata, ToolParameter
+from app.tools.safety import is_dangerous_command
 
 
 class SSHConnectionManager:
@@ -14,8 +15,14 @@ class SSHConnectionManager:
     def __init__(self):
         self.connections: Dict[str, asyncssh.SSHClientConnection] = {}
     
-    async def connect(self, host: str, username: str, password: Optional[str] = None, 
-                     key_path: Optional[str] = None, port: int = 22) -> str:
+    async def connect(
+        self,
+        host: str,
+        username: str,
+        password: Optional[str] = None,
+        key_path: Optional[str] = None,
+        port: int = 22,
+    ) -> str:
         """
         Establish SSH connection
         Returns connection ID
@@ -31,7 +38,11 @@ class SSHConnectionManager:
             
             # Prepare connection options
             options = {
-                'known_hosts': None  # Skip host key verification (use with caution!)
+                "known_hosts": None,  # Skip host key verification (use with caution!)
+                "connect_timeout": 10,
+                "login_timeout": 10,
+                "keepalive_interval": 20,
+                "keepalive_count_max": 3,
             }
             
             if password:
@@ -43,7 +54,7 @@ class SSHConnectionManager:
                 host=host,
                 port=port,
                 username=username,
-                **options
+                **options,
             )
             
             self.connections[conn_id] = conn
@@ -69,7 +80,7 @@ class SSHConnectionManager:
         
         try:
             conn = self.connections[conn_id]
-            result = await conn.run(command)
+            result = await conn.run(command, check=False)
             
             return {
                 "stdout": result.stdout,
@@ -126,11 +137,19 @@ class SSHExecuteTool(BaseTool):
             parameters=[
                 ToolParameter(name="conn_id", type="string", description="SSH connection ID (from ssh_connect)"),
                 ToolParameter(name="command", type="string", description="Command to execute"),
+                ToolParameter(
+                    name="allow_destructive",
+                    type="boolean",
+                    description="Allow potentially destructive commands (explicit user confirmation required)",
+                    required=False,
+                ),
             ]
         )
     
-    async def execute(self, conn_id: str, command: str) -> Dict[str, Any]:
+    async def execute(self, conn_id: str, command: str, allow_destructive: bool = False) -> Dict[str, Any]:
         """Execute command over SSH"""
+        if is_dangerous_command(command) and not allow_destructive:
+            return {"success": False, "stderr": "Команда выглядит опасной. Нужен явный допуск allow_destructive=true.", "stdout": "", "exit_code": -1}
         result = await ssh_manager.execute(conn_id, command)
         return result
 

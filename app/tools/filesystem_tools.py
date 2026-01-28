@@ -122,11 +122,19 @@ class DeleteFileTool(BaseTool):
             category="filesystem",
             parameters=[
                 ToolParameter(name="path", type="string", description="File path to delete"),
+                ToolParameter(
+                    name="allow_delete",
+                    type="boolean",
+                    description="Разрешить удаление (только при явном подтверждении пользователя)",
+                    required=False,
+                ),
             ]
         )
     
-    async def execute(self, path: str) -> str:
+    async def execute(self, path: str, allow_delete: bool = False) -> str:
         """Delete file"""
+        if not allow_delete:
+            return "Удаление запрещено без явного подтверждения (allow_delete=true)."
         try:
             os.remove(path)
             logger.info(f"Deleted file: {path}")

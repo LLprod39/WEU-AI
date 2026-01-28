@@ -40,6 +40,15 @@ class TaskExecutor:
                 logger.error(f"Task {task_id} has no target server")
                 return
             
+            # Подробное логирование для отладки
+            logger.info(f"=== TASK EXECUTOR START ===")
+            logger.info(f"Task ID: {task_id}")
+            logger.info(f"Task title: {task.title}")
+            logger.info(f"Target server ID: {task.target_server.id}")
+            logger.info(f"Target server name: {task.target_server.name}")
+            logger.info(f"Target server host: {task.target_server.host}")
+            logger.info(f"User ID: {user_id}")
+            
             # Создаем или получаем запись о выполнении
             execution = TaskExecution.objects.filter(
                 task=task,
@@ -65,10 +74,13 @@ class TaskExecutor:
             
             # Подключаемся к серверу
             server = task.target_server
+            logger.info(f"Connecting to server: {server.name} ({server.host}:{server.port})")
             connection_id = await self._connect_to_server(server, user)
             
             if not connection_id:
-                raise Exception("Не удалось подключиться к серверу")
+                raise Exception(f"Не удалось подключиться к серверу {server.name} ({server.host})")
+            
+            logger.info(f"Connected! connection_id: {connection_id}")
             
             try:
                 # Формируем задачу для агента
@@ -217,9 +229,15 @@ class TaskExecutor:
                 'server': {
                     'name': task.target_server.name,
                     'host': task.target_server.host,
+                    'id': task.target_server.id,
                 },
                 'task_id': task.id,
+                'user_id': user.id,
+                'allowed_actions': 'выполнение команд на сервере',
             }
+            
+            logger.info(f"Agent context: connection_id={connection_id}, server={context['server']}")
+            logger.info(f"=== EXECUTING AGENT ===")
             
             # Выполняем через агента
             result = await agent_manager.execute_agent(

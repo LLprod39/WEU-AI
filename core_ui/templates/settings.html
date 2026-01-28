@@ -109,6 +109,15 @@
                         <p class="text-xs text-gray-500 mt-1">Используется в чате с провайдером Cursor Auto.</p>
                     </div>
 
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="internal-llm-provider">LLM для внутренних задач</label>
+                        <select id="internal-llm-provider" class="input-field w-full md:max-w-xs" aria-label="Провайдер для внутренних вызовов">
+                            <option value="grok">Grok (рекомендуется — больше лимиты)</option>
+                            <option value="gemini">Gemini</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Используется для генерации workflow, анализа задач и других внутренних вызовов (когда основной провайдер = Auto).</p>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Gemini <span class="text-gray-500 font-normal normal-case">(в разработке)</span></label>
@@ -356,6 +365,10 @@
             const cursorMode = document.getElementById('cursor-chat-mode');
             if (cursorMode) cursorMode.value = (cfg.cursor_chat_mode || 'ask') === 'agent' ? 'agent' : 'ask';
 
+            // LLM для внутренних задач
+            const internalLlm = document.getElementById('internal-llm-provider');
+            if (internalLlm) internalLlm.value = cfg.internal_llm_provider || 'grok';
+
             // Делегирование задач ИИ
             const delegateUi = document.getElementById('delegate-ui');
             if (delegateUi) delegateUi.value = (cfg.delegate_ui === 'task_form') ? 'task_form' : 'chat';
@@ -420,6 +433,7 @@
             rag_model: ragVal,
             default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || '',
             cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask',
+            internal_llm_provider: (document.getElementById('internal-llm-provider') && document.getElementById('internal-llm-provider').value) || 'grok',
             delegate_ui: (document.getElementById('delegate-ui') && document.getElementById('delegate-ui').value) || 'chat'
         };
         try {

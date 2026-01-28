@@ -97,7 +97,6 @@ def task_detail_api(request, task_id):
 
 def _background_analyze_task(task_id: int, user_id: int):
     """Фоновый анализ задачи ИИ с созданием уведомления о результате."""
-    import threading
     from django.contrib.auth import get_user_model
     from loguru import logger
     
@@ -109,22 +108,28 @@ def _background_analyze_task(task_id: int, user_id: int):
         analyzer = SmartTaskAnalyzer()
         result = analyzer.analyze_task(task, user)
         
-        # Если уведомление AUTO_EXECUTION_SUGGESTION уже создано внутри analyze_task — не дублируем
+        # Уведомления создаются внутри analyze_task:
+        # - AUTO_EXECUTION_SUGGESTION если может выполнить
+        # - INFO/WARNING с детальным объяснением если не может
         if result.get('can_auto_execute'):
-            logger.info(f"Task {task_id} analyzed: can auto-execute, notification created")
+            logger.info(f"Task {task_id} analyzed: can auto-execute on server {result.get('servers_matched', [{}])[0].get('server', {})}")
         else:
-            # Создаём уведомление о завершении анализа
-            TaskNotification.objects.create(
-                task=task,
-                user=user,
-                notification_type='INFO',
-                title='Анализ задачи завершён',
-                message=f'Задача "{task.title}" проанализирована. Автоматическое выполнение недоступно.',
-            )
-            logger.info(f"Task {task_id} analyzed: manual execution needed")
+            reason = result.get('ai_reason', 'unknown')
+            logger.info(f"Task {task_id} analyzed: cannot auto-execute. Reason: {reason[:100]}")
     except Exception as e:
         from loguru import logger
         logger.error(f"Background analysis failed for task {task_id}: {e}")
+        # Создаём уведомление об ошибке
+        try:
+            TaskNotification.objects.create(
+                task_id=task_id,
+                user_id=user_id,
+                notification_type='WARNING',
+                title='⚠️ Ошибка анализа задачи',
+                message=f'Не удалось проанализировать задачу. Ошибка: {str(e)[:200]}',
+            )
+        except Exception:
+            pass
 
 
 @login_required
@@ -399,8 +404,8 @@ def notification_action(request, notification_id):
             notification.save()
             return JsonResponse({'success': True, 'message': 'Уведомление скрыто'})
         
-        if action in ('approve_auto_execution', 'delegate'):
-            # Одобряем автоматическое выполнение / делегирование ИИ
+        if action in ('approve_auto_execution', 'delegate', 'confirm_server'):
+            # Одобряем автоматическое выполнение / делегирование ИИ / подтверждение сервера
             task = notification.task
             redirect_to, url = _delegate_redirect_url(request.user, task.id)
             analyzer = SmartTaskAnalyzer()
@@ -432,6 +437,126 @@ def notification_action(request, notification_id):
                     'redirect_to': redirect_to,
                     'url': url,
                 })
+            return JsonResponse({
+                'success': False,
+                'error': 'Не удалось одобрить выполнение (сервер не найден)'
+            }, status=400)
+        
+        if action == 'change_server':
+            # Изменить сервер и запустить выполнение
+            task = notification.task
+            new_server_id = data.get('server_id')
+            
+            if not new_server_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Не указан сервер'
+                }, status=400)
+            
+            redirect_to, url = _delegate_redirect_url(request.user, task.id)
+            analyzer = SmartTaskAnalyzer()
+            success = analyzer.change_server_and_approve(task, request.user, new_server_id)
+            
+            if success:
+                notification.is_actioned = True
+                notification.actioned_at = timezone.now()
+                notification.is_read = True
+                notification.save()
+                
+                if redirect_to == 'task_form':
+                    message = 'Сервер изменён. Открываю форму задачи агента.'
+                else:
+                    # Запускаем выполнение
+                    from .task_executor import TaskExecutor
+                    executor = TaskExecutor()
+                    import threading
+                    thread = threading.Thread(
+                        target=lambda: async_to_sync(executor.execute_task)(task.id, request.user.id)
+                    )
+                    thread.daemon = True
+                    thread.start()
+                    message = f'Сервер изменён. Выполнение запущено на {task.target_server.name}'
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': message,
+                    'redirect_to': redirect_to,
+                    'url': url,
+                })
+            
+            return JsonResponse({
+                'success': False,
+                'error': 'Не удалось изменить сервер'
+            }, status=400)
+        
+        if action == 'answer_questions':
+            # Ответить на вопросы и повторно проанализировать задачу
+            task = notification.task
+            answers = data.get('answers', [])
+            selected_server_id = data.get('server_id')
+            
+            if not answers:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Не указаны ответы'
+                }, status=400)
+            
+            # Отмечаем текущее уведомление как обработанное
+            notification.is_actioned = True
+            notification.actioned_at = timezone.now()
+            notification.is_read = True
+            notification.save()
+            
+            # Повторный анализ с ответами
+            analyzer = SmartTaskAnalyzer()
+            result = analyzer.reanalyze_with_answers(
+                task, request.user, answers, selected_server_id
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Задача повторно проанализирована с учётом ваших ответов',
+                'can_auto_execute': result.get('can_auto_execute', False),
+                'servers_matched': len(result.get('servers_matched', [])) > 0,
+            })
+        
+        if action == 'select_server':
+            # Выбрать сервер для задачи без сервера
+            task = notification.task
+            selected_server_id = data.get('server_id')
+            
+            if not selected_server_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Не указан сервер'
+                }, status=400)
+            
+            from servers.models import Server
+            try:
+                server = Server.objects.get(id=selected_server_id, user=request.user, is_active=True)
+                task.target_server = server
+                task.server_name_mentioned = server.name
+                task.save()
+                
+                notification.is_actioned = True
+                notification.actioned_at = timezone.now()
+                notification.is_read = True
+                notification.save()
+                
+                # Повторный анализ задачи с установленным сервером
+                analyzer = SmartTaskAnalyzer()
+                result = analyzer.analyze_task(task, request.user)
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Сервер {server.name} установлен. Задача переанализирована.',
+                    'can_auto_execute': result.get('can_auto_execute', False),
+                })
+            except Server.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Сервер не найден'
+                }, status=400)
         
         return JsonResponse({'error': 'Unknown action'}, status=400)
     return JsonResponse({'error': 'Invalid request'}, status=400)
@@ -445,3 +570,103 @@ def notifications_mark_all_read(request):
     """Отметить все уведомления как прочитанные"""
     TaskNotification.objects.filter(user=request.user, is_read=False).update(is_read=True)
     return JsonResponse({'success': True, 'message': 'Все уведомления прочитаны'})
+
+
+# ==================== Task Execution Settings ====================
+
+@login_required
+@require_feature('tasks')
+@require_GET
+def execution_settings_get(request):
+    """Получить настройки выполнения задач пользователя"""
+    from .models import TaskExecutionSettings
+    from servers.models import Server
+    
+    settings = TaskExecutionSettings.get_for_user(request.user)
+    
+    # Список доступных серверов для выбора сервера по умолчанию
+    servers = Server.objects.filter(user=request.user, is_active=True)
+    available_servers = [
+        {'id': s.id, 'name': s.name, 'host': s.host}
+        for s in servers
+    ]
+    
+    return JsonResponse({
+        'success': True,
+        'settings': {
+            'require_server_confirmation': settings.require_server_confirmation,
+            'auto_execute_simple_tasks': settings.auto_execute_simple_tasks,
+            'ask_questions_before_execution': settings.ask_questions_before_execution,
+            'default_server_id': settings.default_server_id,
+            'default_server_name': settings.default_server.name if settings.default_server else None,
+        },
+        'available_servers': available_servers,
+    })
+
+
+@csrf_exempt
+@login_required
+@require_feature('tasks')
+@require_http_methods(['POST'])
+def execution_settings_update(request):
+    """Обновить настройки выполнения задач пользователя"""
+    from .models import TaskExecutionSettings
+    from servers.models import Server
+    
+    settings = TaskExecutionSettings.get_for_user(request.user)
+    
+    data = json.loads(request.body)
+    
+    # Обновляем настройки
+    if 'require_server_confirmation' in data:
+        settings.require_server_confirmation = bool(data['require_server_confirmation'])
+    
+    if 'auto_execute_simple_tasks' in data:
+        settings.auto_execute_simple_tasks = bool(data['auto_execute_simple_tasks'])
+    
+    if 'ask_questions_before_execution' in data:
+        settings.ask_questions_before_execution = bool(data['ask_questions_before_execution'])
+    
+    if 'default_server_id' in data:
+        server_id = data['default_server_id']
+        if server_id:
+            try:
+                server = Server.objects.get(id=server_id, user=request.user, is_active=True)
+                settings.default_server = server
+            except Server.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Сервер не найден'
+                }, status=400)
+        else:
+            settings.default_server = None
+    
+    settings.save()
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Настройки сохранены',
+        'settings': {
+            'require_server_confirmation': settings.require_server_confirmation,
+            'auto_execute_simple_tasks': settings.auto_execute_simple_tasks,
+            'ask_questions_before_execution': settings.ask_questions_before_execution,
+            'default_server_id': settings.default_server_id,
+            'default_server_name': settings.default_server.name if settings.default_server else None,
+        }
+    })
+
+
+@login_required
+@require_feature('tasks')
+def execution_settings_page(request):
+    """Страница настроек выполнения задач"""
+    from .models import TaskExecutionSettings
+    from servers.models import Server
+    
+    settings = TaskExecutionSettings.get_for_user(request.user)
+    servers = Server.objects.filter(user=request.user, is_active=True)
+    
+    return render(request, 'tasks/execution_settings.html', {
+        'settings': settings,
+        'servers': servers,
+    })

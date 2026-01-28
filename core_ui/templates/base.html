@@ -497,8 +497,13 @@
             var getNotificationIcon = function(type) {
                 var icons = {
                     'AUTO_EXECUTION_SUGGESTION': { icon: 'smart_toy', color: 'text-primary', bg: 'bg-primary/20' },
+                    'SERVER_CONFIRMATION': { icon: 'dns', color: 'text-orange-400', bg: 'bg-orange-500/20' },
+                    'QUESTIONS_REQUIRED': { icon: 'help_outline', color: 'text-purple-400', bg: 'bg-purple-500/20' },
                     'EXECUTION_COMPLETE': { icon: 'check_circle', color: 'text-green-400', bg: 'bg-green-500/20' },
+                    'EXECUTION_COMPLETED': { icon: 'check_circle', color: 'text-green-400', bg: 'bg-green-500/20' },
+                    'EXECUTION_STARTED': { icon: 'play_circle', color: 'text-blue-400', bg: 'bg-blue-500/20' },
                     'EXECUTION_FAILED': { icon: 'error', color: 'text-red-400', bg: 'bg-red-500/20' },
+                    'SERVER_DETECTED': { icon: 'computer', color: 'text-cyan-400', bg: 'bg-cyan-500/20' },
                     'INFO': { icon: 'info', color: 'text-blue-400', bg: 'bg-blue-500/20' },
                     'WARNING': { icon: 'warning', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
                 };
@@ -585,6 +590,9 @@
                                     '</div>' +
                                 '</div>';
                             var actionsEl = div.querySelector('.notification-actions');
+                            var actionData = n.action_data || {};
+                            var availableServers = actionData.available_servers || [];
+                            
                             // Кнопка действия зависит от типа
                             if (n.type === 'AUTO_EXECUTION_SUGGESTION') {
                                 var btnDelegate = document.createElement('button');
@@ -610,6 +618,234 @@
                                     }).catch(function() { if (window.showToast) window.showToast('Ошибка запроса', 'error'); btnDelegate.disabled = false; btnDelegate.innerHTML = '<span class="material-icons-round text-sm">play_arrow</span> Делегировать ИИ'; });
                                 });
                                 actionsEl.appendChild(btnDelegate);
+                                
+                                // Добавляем dropdown для смены сервера если есть другие серверы
+                                if (availableServers.length > 1) {
+                                    var serverSelect = document.createElement('select');
+                                    serverSelect.className = 'px-2 py-1.5 rounded-lg bg-white/10 text-gray-300 text-xs border border-white/10 hover:bg-white/15 transition-colors cursor-pointer';
+                                    serverSelect.innerHTML = '<option value="">Изменить сервер...</option>';
+                                    availableServers.forEach(function(s) {
+                                        var opt = document.createElement('option');
+                                        opt.value = s.id;
+                                        opt.textContent = s.name + ' (' + s.host + ')';
+                                        if (s.id === actionData.server_id) opt.selected = true;
+                                        serverSelect.appendChild(opt);
+                                    });
+                                    serverSelect.addEventListener('change', function(e) {
+                                        e.stopPropagation();
+                                        var newServerId = serverSelect.value;
+                                        if (!newServerId) return;
+                                        serverSelect.disabled = true;
+                                        fetch('/tasks/notifications/' + n.id + '/action/', {
+                                            method: 'POST',
+                                            credentials: 'same-origin',
+                                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                            body: JSON.stringify({ action: 'change_server', server_id: parseInt(newServerId) })
+                                        }).then(function(r) { return r.json(); }).then(function(res) {
+                                            if (res.success && res.url) window.location.href = res.url;
+                                            else if (res.success) window.location.href = '/tasks/';
+                                            if (window.showToast) window.showToast(res.message || 'Сервер изменён', 'success');
+                                            refresh();
+                                        }).catch(function() { if (window.showToast) window.showToast('Ошибка запроса', 'error'); serverSelect.disabled = false; });
+                                    });
+                                    actionsEl.appendChild(serverSelect);
+                                }
+                            }
+                            
+                            // SERVER_CONFIRMATION - подтверждение сервера
+                            if (n.type === 'SERVER_CONFIRMATION') {
+                                // Кнопка подтверждения
+                                var btnConfirm = document.createElement('button');
+                                btnConfirm.type = 'button';
+                                btnConfirm.className = 'px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-500 transition-colors flex items-center gap-1';
+                                btnConfirm.innerHTML = '<span class="material-icons-round text-sm">check</span> Подтвердить';
+                                btnConfirm.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    btnConfirm.disabled = true;
+                                    btnConfirm.innerHTML = '<span class="material-icons-round text-sm animate-spin">hourglass_empty</span> Запуск...';
+                                    fetch('/tasks/notifications/' + n.id + '/action/', {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                        body: JSON.stringify({ action: 'confirm_server' })
+                                    }).then(function(r) { return r.json(); }).then(function(res) {
+                                        if (res.success && res.url) window.location.href = res.url;
+                                        else if (res.success) window.location.href = '/tasks/';
+                                        if (window.showToast) window.showToast(res.message || 'Выполнение запущено', 'success');
+                                        dropdown.classList.add('hidden');
+                                        bell.setAttribute('aria-expanded', 'false');
+                                        refresh();
+                                    }).catch(function() { if (window.showToast) window.showToast('Ошибка запроса', 'error'); btnConfirm.disabled = false; btnConfirm.innerHTML = '<span class="material-icons-round text-sm">check</span> Подтвердить'; });
+                                });
+                                actionsEl.appendChild(btnConfirm);
+                                
+                                // Dropdown для выбора другого сервера
+                                if (availableServers.length > 0) {
+                                    var serverSelect = document.createElement('select');
+                                    serverSelect.className = 'px-2 py-1.5 rounded-lg bg-white/10 text-gray-300 text-xs border border-white/10 hover:bg-white/15 transition-colors cursor-pointer';
+                                    serverSelect.innerHTML = '<option value="">Другой сервер...</option>';
+                                    availableServers.forEach(function(s) {
+                                        var opt = document.createElement('option');
+                                        opt.value = s.id;
+                                        opt.textContent = s.name + ' (' + s.host + ')';
+                                        serverSelect.appendChild(opt);
+                                    });
+                                    serverSelect.addEventListener('change', function(e) {
+                                        e.stopPropagation();
+                                        var newServerId = serverSelect.value;
+                                        if (!newServerId) return;
+                                        serverSelect.disabled = true;
+                                        fetch('/tasks/notifications/' + n.id + '/action/', {
+                                            method: 'POST',
+                                            credentials: 'same-origin',
+                                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                            body: JSON.stringify({ action: 'change_server', server_id: parseInt(newServerId) })
+                                        }).then(function(r) { return r.json(); }).then(function(res) {
+                                            if (res.success && res.url) window.location.href = res.url;
+                                            else if (res.success) window.location.href = '/tasks/';
+                                            if (window.showToast) window.showToast(res.message || 'Сервер изменён, выполнение запущено', 'success');
+                                            refresh();
+                                        }).catch(function() { if (window.showToast) window.showToast('Ошибка запроса', 'error'); serverSelect.disabled = false; });
+                                    });
+                                    actionsEl.appendChild(serverSelect);
+                                }
+                            }
+                            
+                            // QUESTIONS_REQUIRED - требуются ответы на вопросы
+                            if (n.type === 'QUESTIONS_REQUIRED') {
+                                var questions = actionData.questions || [];
+                                
+                                // Создаём контейнер для вопросов
+                                var questionsContainer = document.createElement('div');
+                                questionsContainer.className = 'mt-2 space-y-2 w-full';
+                                
+                                questions.forEach(function(q, qIdx) {
+                                    var qDiv = document.createElement('div');
+                                    qDiv.className = 'flex flex-col gap-1';
+                                    qDiv.innerHTML = '<label class="text-xs text-gray-400">' + (q.question || 'Вопрос ' + (qIdx + 1)) + '</label>';
+                                    var input = document.createElement('input');
+                                    input.type = 'text';
+                                    input.className = 'w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:border-primary focus:outline-none';
+                                    input.placeholder = 'Ваш ответ...';
+                                    input.dataset.questionId = q.id;
+                                    input.dataset.question = q.question;
+                                    input.addEventListener('click', function(e) { e.stopPropagation(); });
+                                    qDiv.appendChild(input);
+                                    questionsContainer.appendChild(qDiv);
+                                });
+                                
+                                // Dropdown для выбора сервера
+                                if (availableServers.length > 0) {
+                                    var serverDiv = document.createElement('div');
+                                    serverDiv.className = 'flex flex-col gap-1';
+                                    serverDiv.innerHTML = '<label class="text-xs text-gray-400">Сервер для выполнения</label>';
+                                    var serverSelect = document.createElement('select');
+                                    serverSelect.className = 'w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs focus:border-primary focus:outline-none';
+                                    serverSelect.id = 'questions-server-' + n.id;
+                                    serverSelect.innerHTML = '<option value="">Выберите сервер...</option>';
+                                    availableServers.forEach(function(s) {
+                                        var opt = document.createElement('option');
+                                        opt.value = s.id;
+                                        opt.textContent = s.name + ' (' + s.host + ')';
+                                        if (s.id === actionData.server_id) opt.selected = true;
+                                        serverSelect.appendChild(opt);
+                                    });
+                                    serverSelect.addEventListener('click', function(e) { e.stopPropagation(); });
+                                    serverDiv.appendChild(serverSelect);
+                                    questionsContainer.appendChild(serverDiv);
+                                }
+                                
+                                // Кнопка отправки ответов
+                                var btnSubmit = document.createElement('button');
+                                btnSubmit.type = 'button';
+                                btnSubmit.className = 'w-full mt-2 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/80 transition-colors flex items-center justify-center gap-1';
+                                btnSubmit.innerHTML = '<span class="material-icons-round text-sm">send</span> Отправить ответы';
+                                btnSubmit.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    // Собираем ответы
+                                    var answers = [];
+                                    questionsContainer.querySelectorAll('input[data-question-id]').forEach(function(inp) {
+                                        answers.push({
+                                            id: inp.dataset.questionId,
+                                            question: inp.dataset.question,
+                                            answer: inp.value
+                                        });
+                                    });
+                                    var selectedServerEl = document.getElementById('questions-server-' + n.id);
+                                    var selectedServerId = selectedServerEl ? selectedServerEl.value : null;
+                                    
+                                    btnSubmit.disabled = true;
+                                    btnSubmit.innerHTML = '<span class="material-icons-round text-sm animate-spin">hourglass_empty</span> Отправка...';
+                                    
+                                    fetch('/tasks/notifications/' + n.id + '/action/', {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                        body: JSON.stringify({ 
+                                            action: 'answer_questions', 
+                                            answers: answers,
+                                            server_id: selectedServerId ? parseInt(selectedServerId) : null
+                                        })
+                                    }).then(function(r) { return r.json(); }).then(function(res) {
+                                        if (window.showToast) window.showToast(res.message || 'Ответы отправлены', 'success');
+                                        refresh();
+                                    }).catch(function() { 
+                                        if (window.showToast) window.showToast('Ошибка запроса', 'error'); 
+                                        btnSubmit.disabled = false; 
+                                        btnSubmit.innerHTML = '<span class="material-icons-round text-sm">send</span> Отправить ответы'; 
+                                    });
+                                });
+                                questionsContainer.appendChild(btnSubmit);
+                                
+                                // Вставляем контейнер с вопросами после actionsEl
+                                actionsEl.parentNode.insertBefore(questionsContainer, actionsEl.nextSibling);
+                            }
+                            
+                            // WARNING с action select_server - выбор сервера
+                            if ((n.type === 'WARNING' || n.type === 'INFO') && actionData.action === 'select_server' && availableServers.length > 0) {
+                                var serverDiv = document.createElement('div');
+                                serverDiv.className = 'flex items-center gap-2 w-full';
+                                
+                                var serverSelect = document.createElement('select');
+                                serverSelect.className = 'flex-1 px-2 py-1.5 rounded-lg bg-white/10 text-gray-300 text-xs border border-white/10 hover:bg-white/15 transition-colors cursor-pointer';
+                                serverSelect.innerHTML = '<option value="">Выберите сервер...</option>';
+                                availableServers.forEach(function(s) {
+                                    var opt = document.createElement('option');
+                                    opt.value = s.id;
+                                    opt.textContent = s.name + ' (' + s.host + ')';
+                                    serverSelect.appendChild(opt);
+                                });
+                                serverSelect.addEventListener('click', function(e) { e.stopPropagation(); });
+                                
+                                var btnSelectServer = document.createElement('button');
+                                btnSelectServer.type = 'button';
+                                btnSelectServer.className = 'px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/80 transition-colors flex items-center gap-1';
+                                btnSelectServer.innerHTML = '<span class="material-icons-round text-sm">check</span>';
+                                btnSelectServer.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    var selectedServerId = serverSelect.value;
+                                    if (!selectedServerId) {
+                                        if (window.showToast) window.showToast('Выберите сервер', 'warning');
+                                        return;
+                                    }
+                                    btnSelectServer.disabled = true;
+                                    fetch('/tasks/notifications/' + n.id + '/action/', {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                        body: JSON.stringify({ action: 'select_server', server_id: parseInt(selectedServerId) })
+                                    }).then(function(r) { return r.json(); }).then(function(res) {
+                                        if (window.showToast) window.showToast(res.message || 'Сервер выбран', 'success');
+                                        refresh();
+                                    }).catch(function() { 
+                                        if (window.showToast) window.showToast('Ошибка запроса', 'error'); 
+                                        btnSelectServer.disabled = false; 
+                                    });
+                                });
+                                
+                                serverDiv.appendChild(serverSelect);
+                                serverDiv.appendChild(btnSelectServer);
+                                actionsEl.appendChild(serverDiv);
                             }
                             // Кнопка "Открыть задачу"
                             if (n.task_id) {

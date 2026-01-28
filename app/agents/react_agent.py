@@ -47,12 +47,15 @@ class ReActAgent(BaseAgent):
                 await self.orchestrator.initialize()
                 self.orchestrator.initialized = True
             
-            # Build execution_context for delegated tasks (connection_id, allowed_actions)
+            # Build execution_context for delegated tasks (connection_id, server, allowed_actions)
             execution_context = None
             if context.get('connection_id'):
                 execution_context = {
                     'connection_id': context['connection_id'],
+                    'server': context.get('server', {}),  # {name, host} для отображения в промпте
                     'allowed_actions': context.get('allowed_actions', 'readonly, проверка (df, логи, статус)'),
+                    'user_id': context.get('user_id'),
+                    'task_id': context.get('task_id'),
                 }
 
             # Collect response from orchestrator

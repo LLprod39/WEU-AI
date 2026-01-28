@@ -4,7 +4,7 @@ Central brain of the agentic system
 """
 from app.core.llm import LLMProvider
 from app.rag.engine import RAGEngine
-from app.tools.manager import ToolManager
+from app.tools.manager import get_tool_manager
 from loguru import logger
 import asyncio
 import re
@@ -17,6 +17,16 @@ AGENT_SYSTEM_RULES_RU = """
 ЯЗЫК И ОБЩИЕ ПРАВИЛА:
 - Отвечай и рассуждай только на русском. Все сообщения пользователю — на русском.
 - Не запрашивай и не используй пароли. Для SSH используй только переданный connection_id уже установленного соединения или инструменты servers_list / server_execute для серверов из раздела Servers.
+
+ДИАЛОГОВЫЙ ПРОТОКОЛ:
+- Если задачи не хватает данных или есть неоднозначности — задай 1-2 конкретных вопроса, предложи разумные дефолты и остановись, не делай ACTION.
+- Если задача большая или рискованная — кратко перечисли шаги и запроси подтверждение перед выполнением.
+- Не выдумывай факты. Если нужно — скажи, что нужно уточнить.
+
+КОД-СТАНДАРТ:
+- Пиши код аккуратно: проверяй граничные случаи, избегай заглушек и TODO, если не оговорено.
+- При изменении логики — предлагай проверку (тесты/линтеры) и описывай риск.
+- Сохраняй текущие соглашения проекта (стиль, структура).
 
 СЕРВЕРЫ ИЗ РАЗДЕЛА SERVERS (WEU SERVER и др.):
 - Сначала вызови servers_list — получи список серверов (id, name, host).
@@ -49,7 +59,7 @@ class Orchestrator:
     def __init__(self):
         self.llm = LLMProvider()
         self.rag = RAGEngine()
-        self.tool_manager = ToolManager()
+        self.tool_manager = get_tool_manager()
         self.history: List[Dict[str, str]] = []
         self.max_iterations = 5  # Max ReAct loop iterations
         
@@ -263,24 +273,41 @@ class Orchestrator:
 
         ctx_block = ""
         exclude_tools = None
+        servers_block = ""
+        
         if execution_context:
             conn_id = execution_context.get("connection_id")
             allowed = execution_context.get("allowed_actions", "")
+            target_server = execution_context.get("server", {})
+            # Флаг: показывать ли серверы в промпте (по умолчанию НЕТ для обычного чата)
+            include_servers = execution_context.get("include_servers", False)
+            
             if conn_id:
-                exclude_tools = ["ssh_connect"]
+                # Когда есть connection_id — используем ТОЛЬКО этот сервер
+                # Исключаем ssh_connect и server_execute (чтобы агент не переключился на другой сервер)
+                exclude_tools = ["ssh_connect", "servers_list", "server_execute"]
+                
+                server_name = target_server.get("name", "целевой сервер")
+                server_host = target_server.get("host", "")
+                server_info = f"{server_name} ({server_host})" if server_host else server_name
+                
                 ctx_block = f"""
 КОНТЕКСТ ВЫПОЛНЕНИЯ ЗАДАЧИ:
-- Уже установлено SSH-соединение. Используй инструмент ssh_execute с параметром conn_id="{conn_id}" для выполнения команд на сервере. Не вызывай ssh_connect и не запрашивай пароли.
+- Уже установлено SSH-соединение с сервером: **{server_info}**
+- Используй ТОЛЬКО инструмент ssh_execute с параметром conn_id="{conn_id}" для выполнения команд.
+- НЕ вызывай ssh_connect, servers_list, server_execute — работай только с установленным соединением!
 - Разрешённые действия: {allowed or "readonly, проверка (df, логи, статус)"}.
+- ВАЖНО: Все команды выполняются на сервере {server_info}. Не пытайся подключиться к другим серверам!
 """
-        else:
-            ctx_block = ""
-
-        # Блок с актуальным списком серверов пользователя
-        servers_block = ""
-        user_id = (execution_context or {}).get("user_id")
-        if user_id:
-            servers_block = self._get_user_servers_block(user_id)
+                # НЕ показываем список других серверов — работаем только с connection_id
+                servers_block = ""
+            elif include_servers:
+                # Показываем серверы ТОЛЬКО если явно запрошено (например, для задач с серверами)
+                user_id = execution_context.get("user_id")
+                if user_id:
+                    servers_block = self._get_user_servers_block(user_id)
+            # else: обычный чат — НЕ показываем серверы автоматически
+            # Пользователь может использовать инструмент servers_list если нужно
 
         tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
@@ -298,14 +325,15 @@ class Orchestrator:
 {history_text if history_text else "Нет предыдущего контекста."}
 
 ИНСТРУКЦИИ:
-1. Рассуждай по шагам на русском.
-2. Если нужен инструмент, в ответе строго в формате:
+1. Рассуждай по шагам на русском и кратко фиксируй, что проверяешь.
+2. Если не хватает данных — задай 1-2 вопроса и остановись, не вызывай инструменты.
+3. Если нужен инструмент, в ответе строго в формате:
 THOUGHT: [твоё рассуждение]
 ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
-3. После OBSERVATION продолжай рассуждение или дай итоговый ответ на русском.
-4. Итоговый ответ пиши без строки ACTION.
+4. После OBSERVATION продолжай рассуждение или дай итоговый ответ на русском.
+5. Итоговый ответ пиши без строки ACTION.
 
-ВАЖНО: ответы пользователю — только на русском. Параметры ACTION — валидный JSON. Используй только перечисленные инструменты.
+ВАЖНО: ответы пользователю — только на русском. Параметры ACTION — валидный JSON. Используй только перечисленные инструменты. Опасные операции выполнять только после явного подтверждения пользователя.
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}
 
@@ -343,7 +371,7 @@ ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
         Returns: {"tool": "tool_name", "args": {dict}} or None
         """
         # Look for ACTION: tool_name {json}
-        pattern = r'ACTION:\s*(\w+)\s*(\{.*?\})'
+        pattern = r'ACTION:\s*([\w\-.]+)\s*(\{.*?\})'
         match = re.search(pattern, response, re.DOTALL)
         
         if match:

@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Настройки выполнения задач{% endblock %}
+{% block header_title %}Настройки выполнения задач{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Задачи</span></a>
+            <meta itemprop="position" content="2">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Настройки выполнения</span>
+            <meta itemprop="position" content="3">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-2xl mx-auto space-y-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+                    <span class="material-icons-round text-primary">settings</span>
+                    Настройки выполнения задач
+                </h1>
+                <p class="text-gray-400 text-sm mt-1">Управление поведением ИИ при анализе и выполнении задач</p>
+            </div>
+        </div>
+
+        <!-- Settings Card -->
+        <div class="glass-card rounded-xl border border-white/10 overflow-hidden">
+            <!-- Server Confirmation -->
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-icons-round text-orange-400">dns</span>
+                            <h3 class="font-semibold text-white">Подтверждение сервера</h3>
+                        </div>
+                        <p class="text-sm text-gray-400">
+                            Когда ИИ определяет сервер для выполнения задачи, он сначала спросит подтверждение: 
+                            «Буду выполнять на сервере X, верно?». Вы сможете подтвердить или выбрать другой сервер.
+                        </p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                        <input type="checkbox" id="require_server_confirmation" class="sr-only peer" 
+                               {% if settings.require_server_confirmation %}checked{% endif %}>
+                        <div class="w-11 h-6 bg-white/10 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 
+                                    rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white 
+                                    after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white 
+                                    after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Auto Execute Simple Tasks -->
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-icons-round text-green-400">bolt</span>
+                            <h3 class="font-semibold text-white">Авто-выполнение простых задач</h3>
+                        </div>
+                        <p class="text-sm text-gray-400">
+                            Если задача определена как простая (complexity: simple) и сервер известен, 
+                            ИИ может сразу приступить к выполнению без дополнительного подтверждения.
+                        </p>
+                        <p class="text-xs text-yellow-500/70 mt-2 flex items-center gap-1">
+                            <span class="material-icons-round text-sm">warning</span>
+                            Используйте с осторожностью. Рекомендуется только для тестовых серверов.
+                        </p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                        <input type="checkbox" id="auto_execute_simple_tasks" class="sr-only peer"
+                               {% if settings.auto_execute_simple_tasks %}checked{% endif %}>
+                        <div class="w-11 h-6 bg-white/10 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 
+                                    rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white 
+                                    after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white 
+                                    after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Ask Questions Before Execution -->
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-icons-round text-purple-400">help_outline</span>
+                            <h3 class="font-semibold text-white">Уточняющие вопросы</h3>
+                        </div>
+                        <p class="text-sm text-gray-400">
+                            Если ИИ не может определить все детали для выполнения задачи, 
+                            он задаст уточняющие вопросы прежде чем приступить к работе.
+                        </p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                        <input type="checkbox" id="ask_questions_before_execution" class="sr-only peer"
+                               {% if settings.ask_questions_before_execution %}checked{% endif %}>
+                        <div class="w-11 h-6 bg-white/10 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 
+                                    rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white 
+                                    after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white 
+                                    after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Default Server -->
+            <div class="p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-icons-round text-cyan-400">computer</span>
+                            <h3 class="font-semibold text-white">Сервер по умолчанию</h3>
+                        </div>
+                        <p class="text-sm text-gray-400 mb-3">
+                            Если в задаче не указан сервер, будет использоваться этот сервер. 
+                            Оставьте пустым, чтобы ИИ всегда спрашивал какой сервер использовать.
+                        </p>
+                        <select id="default_server" class="w-full max-w-md px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 
+                                                          text-white text-sm focus:border-primary focus:outline-none 
+                                                          focus:ring-2 focus:ring-primary/20 transition-all">
+                            <option value="">Не выбран (всегда спрашивать)</option>
+                            {% for server in servers %}
+                            <option value="{{ server.id }}" {% if settings.default_server_id == server.id %}selected{% endif %}>
+                                {{ server.name }} ({{ server.host }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="flex items-center justify-between">
+            <a href="{% url 'tasks:task_list' %}" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl transition-all flex items-center gap-2">
+                <span class="material-icons-round text-lg">arrow_back</span>
+                К задачам
+            </a>
+            <button type="button" id="save-settings-btn" class="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all flex items-center gap-2 font-medium">
+                <span class="material-icons-round text-lg">save</span>
+                Сохранить настройки
+            </button>
+        </div>
+
+        <!-- Status Message -->
+        <div id="settings-message" class="hidden px-4 py-3 rounded-xl text-sm flex items-center gap-2"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var getCsrf = function() {
+        var name = 'csrftoken';
+        var v = document.cookie.split(';').filter(function(c){ return c.trim().indexOf(name + '=') === 0; })[0];
+        return v ? v.split('=')[1].trim() : '';
+    };
+
+    var saveBtn = document.getElementById('save-settings-btn');
+    var msgEl = document.getElementById('settings-message');
+
+    function showMessage(text, type) {
+        msgEl.textContent = text;
+        msgEl.className = 'px-4 py-3 rounded-xl text-sm flex items-center gap-2 ';
+        if (type === 'success') {
+            msgEl.className += 'bg-green-500/20 text-green-400 border border-green-500/30';
+        } else if (type === 'error') {
+            msgEl.className += 'bg-red-500/20 text-red-400 border border-red-500/30';
+        } else {
+            msgEl.className += 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+        }
+        msgEl.classList.remove('hidden');
+        setTimeout(function() { msgEl.classList.add('hidden'); }, 5000);
+    }
+
+    saveBtn.addEventListener('click', function() {
+        var data = {
+            require_server_confirmation: document.getElementById('require_server_confirmation').checked,
+            auto_execute_simple_tasks: document.getElementById('auto_execute_simple_tasks').checked,
+            ask_questions_before_execution: document.getElementById('ask_questions_before_execution').checked,
+            default_server_id: document.getElementById('default_server').value || null
+        };
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="material-icons-round text-lg animate-spin">hourglass_empty</span> Сохранение...';
+
+        fetch('{% url "tasks:execution_settings_update" %}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrf(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<span class="material-icons-round text-lg">save</span> Сохранить настройки';
+            
+            if (res.success) {
+                showMessage('Настройки сохранены', 'success');
+                if (window.showToast) window.showToast('Настройки сохранены', 'success');
+            } else {
+                showMessage(res.error || 'Ошибка сохранения', 'error');
+                if (window.showToast) window.showToast(res.error || 'Ошибка сохранения', 'error');
+            }
+        })
+        .catch(function(e) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<span class="material-icons-round text-lg">save</span> Сохранить настройки';
+            showMessage('Ошибка сети: ' + (e.message || 'неизвестная'), 'error');
+            if (window.showToast) window.showToast('Ошибка сети', 'error');
+        });
+    });
+
+    // Auto-save on toggle change (optional UX improvement)
+    var toggles = ['require_server_confirmation', 'auto_execute_simple_tasks', 'ask_questions_before_execution'];
+    toggles.forEach(function(id) {
+        document.getElementById(id).addEventListener('change', function() {
+            // Visual feedback that something changed
+            saveBtn.classList.add('ring-2', 'ring-primary/50');
+            setTimeout(function() { saveBtn.classList.remove('ring-2', 'ring-primary/50'); }, 300);
+        });
+    });
+})();
+</script>
+{% endblock %}

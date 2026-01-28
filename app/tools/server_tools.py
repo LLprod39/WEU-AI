@@ -2,20 +2,53 @@
 Инструменты для работы с серверами из вкладки Servers.
 Используют серверы текущего пользователя (user_id из _context) и SSH.
 """
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, Optional, Tuple
 from loguru import logger
 from app.tools.base import BaseTool, ToolMetadata, ToolParameter
 from app.tools.ssh_tools import ssh_manager
+from app.tools.safety import is_dangerous_command
 
 
 def _get_user_id(kwargs: Dict[str, Any]) -> Optional[int]:
     ctx = kwargs.get("_context") or {}
-    return ctx.get("user_id")
+    user_id = ctx.get("user_id")
+    # Также проверяем переменные окружения (для CLI/MCP контекста)
+    if not user_id:
+        env_user_id = os.environ.get("WEU_USER_ID")
+        if env_user_id:
+            try:
+                user_id = int(env_user_id)
+            except ValueError:
+                pass
+    return user_id
 
 
 def _get_master_password(kwargs: Dict[str, Any]) -> Optional[str]:
     ctx = kwargs.get("_context") or {}
-    return ctx.get("master_password")
+    return ctx.get("master_password") or os.environ.get("MASTER_PASSWORD")
+
+
+def _get_target_server(kwargs: Dict[str, Any]) -> Tuple[Optional[int], Optional[str]]:
+    """Получить целевой сервер из контекста или переменных окружения."""
+    ctx = kwargs.get("_context") or {}
+    
+    target_server_id = ctx.get("target_server_id")
+    target_server_name = ctx.get("target_server_name")
+    
+    # Проверяем переменные окружения (для CLI/MCP контекста)
+    if not target_server_id:
+        env_target_id = os.environ.get("WEU_TARGET_SERVER_ID")
+        if env_target_id:
+            try:
+                target_server_id = int(env_target_id)
+            except ValueError:
+                pass
+    
+    if not target_server_name:
+        target_server_name = os.environ.get("WEU_TARGET_SERVER_NAME")
+    
+    return target_server_id, target_server_name
 
 
 class ServersListTool(BaseTool):
@@ -33,6 +66,17 @@ class ServersListTool(BaseTool):
         user_id = _get_user_id(kwargs)
         if not user_id:
             return "Требуется контекст пользователя (user_id). Используй только в чате WEU AI."
+        
+        # Проверяем, есть ли ограничение на целевой сервер
+        target_server_id, target_server_name = _get_target_server(kwargs)
+        if target_server_id:
+            return (
+                f"ВНИМАНИЕ: Для текущей задачи установлен целевой сервер!\n"
+                f"Используй ТОЛЬКО сервер «{target_server_name}» (id={target_server_id}).\n"
+                f"НЕ вызывай servers_list — целевой сервер уже определён.\n"
+                f"Для выполнения команд используй: server_execute с server_name_or_id=\"{target_server_name}\""
+            )
+        
         from servers.models import Server
         qs = Server.objects.filter(user_id=user_id).order_by("name").values("id", "name", "host", "port")
         rows = list(qs)
@@ -55,6 +99,12 @@ class ServerExecuteTool(BaseTool):
             parameters=[
                 ToolParameter(name="server_name_or_id", type="string", description="Имя сервера (например WEU SERVER) или его id из servers_list"),
                 ToolParameter(name="command", type="string", description="Команда для выполнения (например df -h)"),
+                ToolParameter(
+                    name="allow_destructive",
+                    type="boolean",
+                    description="Разрешить потенциально опасные команды (только при явном подтверждении пользователя)",
+                    required=False,
+                ),
             ],
         )
 
@@ -62,18 +112,42 @@ class ServerExecuteTool(BaseTool):
         user_id = _get_user_id(kwargs)
         if not user_id:
             return "Требуется контекст пользователя. Используй только в чате WEU AI."
+        
+        ctx = kwargs.get("_context") or {}
         server_name_or_id = (kwargs.get("server_name_or_id") or "").strip()
         command = (kwargs.get("command") or "").strip()
+        allow_destructive = bool(kwargs.get("allow_destructive") or ctx.get("allow_destructive"))
+        
         if not server_name_or_id or not command:
             return "Нужны server_name_or_id и command."
+        if is_dangerous_command(command) and not allow_destructive:
+            return "Команда выглядит опасной. Нужен явный допуск allow_destructive=true после подтверждения пользователя."
+        
         from servers.models import Server
+        
+        # Проверяем, есть ли ограничение на конкретный сервер (из workflow/task или env)
+        target_server_id, target_server_name = _get_target_server(kwargs)
+        
+        # Находим запрошенный сервер
         try:
             sid = int(server_name_or_id)
             server = Server.objects.filter(user_id=user_id, id=sid).first()
         except ValueError:
             server = Server.objects.filter(user_id=user_id, name__iexact=server_name_or_id).first()
+        
         if not server:
+            if target_server_id:
+                return f"Сервер не найден: «{server_name_or_id}». ВАЖНО: Используй ТОЛЬКО целевой сервер «{target_server_name}» (id={target_server_id})!"
             return f"Сервер не найден: «{server_name_or_id}». Вызови servers_list, чтобы увидеть доступные серверы."
+        
+        # Если есть ограничение на целевой сервер — проверяем
+        if target_server_id and server.id != target_server_id:
+            logger.warning(f"server_execute: попытка использовать сервер {server.name} (id={server.id}), но целевой сервер = {target_server_name} (id={target_server_id})")
+            return (
+                f"ОШИБКА: Ты пытаешься выполнить команду на сервере «{server.name}», "
+                f"но для этой задачи установлен целевой сервер «{target_server_name}»!\n"
+                f"Используй ТОЛЬКО: server_execute с server_name_or_id=\"{target_server_name}\""
+            )
         password = None
         if server.auth_method in ("password", "key_password"):
             if server.encrypted_password:

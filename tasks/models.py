@@ -360,12 +360,16 @@ class TaskNotification(models.Model):
     """Уведомления о задачах (push-уведомления)"""
     NOTIFICATION_TYPES = [
         ('AUTO_EXECUTION_SUGGESTION', 'Предложение автоматического выполнения'),
+        ('SERVER_CONFIRMATION', 'Подтверждение сервера'),  # "Буду работать на X, верно?"
+        ('QUESTIONS_REQUIRED', 'Требуются уточнения'),     # "Уточните: ..."
         ('TASK_OVERDUE', 'Просрочка задачи'),
         ('SUBTASK_OVERDUE', 'Просрочка подзадачи'),
         ('EXECUTION_STARTED', 'Начато выполнение'),
         ('EXECUTION_COMPLETED', 'Выполнение завершено'),
         ('EXECUTION_FAILED', 'Ошибка выполнения'),
         ('SERVER_DETECTED', 'Обнаружен сервер в задаче'),
+        ('INFO', 'Информация'),
+        ('WARNING', 'Предупреждение'),
     ]
     
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='notifications')
@@ -432,3 +436,56 @@ class UserDelegatePreference(models.Model):
 
     def __str__(self):
         return f"{self.user.username}: {self.get_delegate_ui_display()}"
+
+
+class TaskExecutionSettings(models.Model):
+    """Настройки выполнения задач ИИ для пользователя."""
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='task_execution_settings',
+    )
+    
+    # Подтверждение сервера
+    require_server_confirmation = models.BooleanField(
+        default=True,
+        help_text="Требовать подтверждение сервера перед выполнением задачи"
+    )
+    
+    # Автоматическое выполнение
+    auto_execute_simple_tasks = models.BooleanField(
+        default=False,
+        help_text="Автоматически выполнять простые задачи без подтверждения"
+    )
+    
+    # Уточняющие вопросы
+    ask_questions_before_execution = models.BooleanField(
+        default=True,
+        help_text="Задавать уточняющие вопросы перед выполнением, если информации недостаточно"
+    )
+    
+    # Сервер по умолчанию
+    default_server = models.ForeignKey(
+        'servers.Server',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='default_for_users',
+        help_text="Сервер по умолчанию для выполнения задач (если не указан другой)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Настройки выполнения задач'
+        verbose_name_plural = 'Настройки выполнения задач'
+
+    def __str__(self):
+        return f"TaskExecutionSettings for {self.user.username}"
+    
+    @classmethod
+    def get_for_user(cls, user):
+        """Получить настройки для пользователя, создать если не существуют."""
+        settings, _ = cls.objects.get_or_create(user=user)
+        return settings

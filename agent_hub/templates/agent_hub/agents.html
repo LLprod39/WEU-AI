@@ -59,6 +59,14 @@
                     <span class="text-xs text-gray-400">Auto-create</span>
                 </div>
                 <textarea id="quick-task" rows="2" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="What do you need? e.g. Create Django API and test"></textarea>
+                <div class="mt-2 text-[11px] text-gray-400">
+                    <div class="text-gray-300 mb-1">Чтобы агент работал точнее, укажи:</div>
+                    <ul class="list-disc list-inside space-y-0.5">
+                        <li>стек/версии и ограничения (например Django 5.2, без Docker)</li>
+                        <li>критерии готовности (тесты, линтеры, формат)</li>
+                        <li>доступы к серверам или режим только чтение</li>
+                    </ul>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
                     <select id="quick-runtime" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
                         <option value="ralph">Ralph Orchestrator</option>
@@ -129,8 +137,14 @@
                             <span>{{ workflow.project_path }}</span>
                         </div>
                         {% endif %}
+                        {% if workflow.target_server %}
+                        <div class="mt-1 flex items-center gap-1 text-[10px] text-green-400/70">
+                            <span>🖥️</span>
+                            <span>{{ workflow.target_server.name }}</span>
+                        </div>
+                        {% endif %}
                         <div class="flex justify-between items-center mt-3">
-                            <div class="text-[10px] text-gray-500">{% if workflow.project_path %}Project: {{ workflow.project_path }}{% else %}Ready to run{% endif %}</div>
+                            <div class="text-[10px] text-gray-500">{% if workflow.target_server %}Server: {{ workflow.target_server.name }}{% elif workflow.project_path %}Project: {{ workflow.project_path }}{% else %}Ready to run{% endif %}</div>
                             <div class="flex gap-2 flex-wrap">
                                 <button type="button" onclick="editWorkflow({{ workflow.id }})" class="text-xs text-accent hover:underline" title="Edit in Builder">Edit</button>
                                 <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="text-xs text-gray-300">Script</button>
@@ -284,6 +298,17 @@
             </div>
 
             <div class="glass-card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold text-white">MCP Servers</h2>
+                    <button onclick="refreshMcpServers()" class="text-xs text-primary">Refresh</button>
+                </div>
+                <div id="mcp-servers-list" class="space-y-2 text-sm text-gray-300">
+                    <div class="text-gray-500 text-sm">Загрузка...</div>
+                </div>
+                <div id="mcp-sources" class="text-[10px] text-gray-500 mt-3"></div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-4">
                 <h2 class="text-lg font-semibold text-white mb-3">Agent runs</h2>
                 <div class="space-y-3 max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
                     {% for run in recent_runs %}
@@ -311,6 +336,21 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- MCP Tools Modal -->
+<div id="mcpToolsModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="mcpToolsTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeMcpTools()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-3xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <h2 id="mcpToolsTitle" class="text-xl font-bold text-white">MCP Tools</h2>
+                <div id="mcpToolsMeta" class="text-xs text-gray-400 mt-1">Loading...</div>
+            </div>
+            <button type="button" onclick="closeMcpTools()" class="text-xs text-gray-400" aria-label="Close">Close</button>
+        </div>
+        <div id="mcpToolsList" class="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar text-xs text-gray-200"></div>
     </div>
 </div>
 
@@ -434,6 +474,12 @@
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeProfileModal()" aria-hidden="true"></div>
     <div class="absolute top-1/2 left-1/2 w-full max-w-3xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
         <h2 class="text-xl font-bold text-white mb-4" id="profileModalTitle">Новый профиль</h2>
+        <div id="profile-questions" class="hidden mb-4 p-3 rounded-xl border border-amber-400/30 bg-amber-500/10 text-amber-200 text-xs">
+            <div class="font-medium mb-2">Уточняющие вопросы</div>
+            <ul id="profile-questions-list" class="list-disc list-inside space-y-1"></ul>
+            <div class="font-medium mt-3 mb-2">Предположения</div>
+            <ul id="profile-assumptions-list" class="list-disc list-inside space-y-1"></ul>
+        </div>
         <form id="profileForm" onsubmit="saveProfile(event)">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -497,6 +543,14 @@
                 <div class="flex items-center gap-2">
                     <input type="checkbox" id="profile-use-rag" checked class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
                     <label for="profile-use-rag" class="text-xs text-gray-400">Use RAG</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="profile-use-ralph-loop" class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
+                    <label for="profile-use-ralph-loop" class="text-xs text-gray-400">Ralph loop (Cursor)</label>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="profile-loop-include-previous" checked class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
+                    <label for="profile-loop-include-previous" class="text-xs text-gray-400">Include previous output</label>
                 </div>
                 <div class="flex items-center gap-2">
                     <input type="checkbox" id="profile-is-default" class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
@@ -626,6 +680,16 @@
                     <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
                     <input id="tb-new-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Автоматически">
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Целевой сервер (SSH)</label>
+                    <select id="tb-target-server" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="">Все серверы (агент выбирает сам)</option>
+                        {% for server in servers_data %}
+                        <option value="{{ server.id }}">🖥️ {{ server.name }} ({{ server.host }})</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-[10px] text-gray-500 mt-1">Если указан — агент будет работать только с этим сервером</p>
+                </div>
                 
                 <div class="mt-auto pt-4 border-t border-white/10">
                     <div class="text-xs text-gray-500 mb-2">Статистика</div>
@@ -734,6 +798,7 @@
 {{ presets_data|json_script:"preset-data" }}
 {{ workflows_data|json_script:"workflows-data" }}
 {{ projects_data|json_script:"projects-data" }}
+{{ servers_data|json_script:"servers-data" }}
 {% endblock %}
 
 {% block scripts %}

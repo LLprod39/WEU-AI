@@ -37,4 +37,8 @@ urlpatterns = [
     path("api/workflows/run/<int:run_id>/delete/", views.api_workflow_run_delete, name="api_workflow_run_delete"),
     path("api/workflows/<int:workflow_id>/download/", views.api_workflow_download_project, name="api_workflow_download_project"),
     path("api/assist-auto/", views.api_assist_auto, name="api_assist_auto"),
+    path("api/mcp/servers/", views.api_mcp_servers, name="api_mcp_servers"),
+    path("api/mcp/servers/connect/", views.api_mcp_server_connect, name="api_mcp_server_connect"),
+    path("api/mcp/servers/disconnect/", views.api_mcp_server_disconnect, name="api_mcp_server_disconnect"),
+    path("api/mcp/servers/tools/", views.api_mcp_server_tools, name="api_mcp_server_tools"),
 ]

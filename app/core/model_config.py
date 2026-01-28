@@ -26,6 +26,11 @@ class ModelConfig(BaseModel):
     
     # Current provider: auto = Cursor CLI (Ask), gemini, grok
     default_provider: str = "auto"
+    
+    # Провайдер для ВНУТРЕННИХ вызовов LLM (генерация workflow, анализ задач).
+    # Когда default_provider="auto" (Cursor CLI), внутренние вызовы используют этот провайдер.
+    # Варианты: "gemini", "grok"
+    internal_llm_provider: str = "grok"
 
     # Папка по умолчанию для сохранения файлов агента (код, артефакты workflow).
     # Относительный путь внутри AGENT_PROJECTS_DIR или пусто = не задано.

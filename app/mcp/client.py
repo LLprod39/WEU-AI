@@ -55,6 +55,7 @@ class MCPClient:
     def __init__(self):
         self.servers: Dict[str, Dict] = {}
         self.tools: List[MCPTool] = []
+        self.tools_by_server: Dict[str, List[MCPTool]] = {}
     
     async def connect_stdio_server(self, name: str, command: List[str]):
         """
@@ -75,9 +76,13 @@ class MCPClient:
             self.servers[name] = {
                 "type": "stdio",
                 "process": process,
-                "status": "connected"
+                "status": "connected",
+                "error": None,
             }
             
+            # Reset tools for this server before discovery
+            self.tools_by_server[name] = []
+            self.tools = [t for t in self.tools if t.server_name != name]
             # Discover tools
             await self._discover_tools_stdio(name)
             
@@ -103,9 +108,13 @@ class MCPClient:
                     self.servers[name] = {
                         "type": "sse",
                         "url": url,
-                        "status": "connected"
+                        "status": "connected",
+                        "error": None,
                     }
                     
+                    # Reset tools for this server before discovery
+                    self.tools_by_server[name] = []
+                    self.tools = [t for t in self.tools if t.server_name != name]
                     # Discover tools
                     await self._discover_tools_sse(name, url)
                     
@@ -141,6 +150,7 @@ class MCPClient:
                 for tool_data in response['result']['tools']:
                     mcp_tool = MCPTool(tool_data, server_name, self)
                     self.tools.append(mcp_tool)
+                    self.tools_by_server.setdefault(server_name, []).append(mcp_tool)
                     logger.info(f"Discovered MCP tool: {tool_data['name']}")
                     
         except Exception as e:
@@ -166,6 +176,7 @@ class MCPClient:
                     for tool_data in result['result']['tools']:
                         mcp_tool = MCPTool(tool_data, server_name, self)
                         self.tools.append(mcp_tool)
+                        self.tools_by_server.setdefault(server_name, []).append(mcp_tool)
                         logger.info(f"Discovered MCP tool: {tool_data['name']}")
                         
         except Exception as e:
@@ -247,6 +258,31 @@ class MCPClient:
     def get_all_tools(self) -> List[MCPTool]:
         """Get all discovered MCP tools"""
         return self.tools
+
+    def get_tools_for_server(self, server_name: str) -> List[MCPTool]:
+        """Get tools for a specific server"""
+        return self.tools_by_server.get(server_name, [])
+
+    def get_server_statuses(self) -> Dict[str, Dict[str, Any]]:
+        """Get statuses for all servers"""
+        return self.servers
+
+    async def disconnect_server(self, server_name: str) -> bool:
+        """Disconnect an MCP server"""
+        server = self.servers.get(server_name)
+        if not server:
+            return False
+        try:
+            if server.get("type") == "stdio" and server.get("process"):
+                server["process"].terminate()
+                await server["process"].wait()
+            server["status"] = "disconnected"
+            return True
+        except Exception as e:
+            logger.error(f"Failed to disconnect MCP server {server_name}: {e}")
+            server["status"] = "error"
+            server["error"] = str(e)
+            return False
     
     def get_tools_dict(self) -> List[Dict]:
         """Get tools as dictionaries"""

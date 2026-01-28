@@ -112,6 +112,14 @@ class AgentWorkflow(models.Model):
     runtime = models.CharField(max_length=20, choices=AgentProfile.RUNTIME_CHOICES, default="gemini")
     script = models.JSONField(default=dict, blank=True)
     project_path = models.CharField(max_length=500, blank=True, help_text="Путь к папке проекта (относительно agent_projects)")
+    target_server = models.ForeignKey(
+        "servers.Server",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflows",
+        help_text="Целевой сервер для выполнения команд (если не указан — агент сам выбирает из доступных)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

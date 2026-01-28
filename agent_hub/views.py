@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import os
 import shutil
+import sys
 from datetime import datetime
 from typing import Dict, Any
 from django.shortcuts import render, get_object_or_404
@@ -25,6 +26,7 @@ from app.agents.manager import get_agent_manager
 from core_ui.decorators import require_feature
 from app.core.llm import LLMProvider
 from app.agents.cli_runtime import CliRuntimeManager
+from app.tools.manager import get_tool_manager
 
 ALLOWED_RUNTIMES = {"ralph", "cursor"}
 ALLOWED_RALPH_BACKENDS = {"cursor"}
@@ -120,6 +122,8 @@ Return ONLY JSON with fields:
   "agent_type": "simple|complex|react|ralph",
   "runtime": "cursor|ralph",
   "mode": "simple|advanced",
+  "questions": ["Question 1", "Question 2"],
+  "assumptions": ["Assumption 1", "Assumption 2"],
   "config": {{
     "model": "gpt-5|sonnet-4|sonnet-4-thinking",
     "specific_model": null,
@@ -127,7 +131,10 @@ Return ONLY JSON with fields:
     "max_iterations": 10,
     "completion_promise": "DONE",
     "ralph_backend": "cursor",
-    "initial_prompt": ""
+    "initial_prompt": "",
+    "loop_include_previous": true,
+    "ask_on_missing": true,
+    "safety_level": "safe"
   }}
 }}
 
@@ -137,6 +144,7 @@ Task description:
 Rules:
 - Use ralph for multi-step tasks, cursor for direct execution.
 - If using ralph runtime, set ralph_backend to "cursor".
+- If requirements are unclear, add 1-2 concise questions in "questions".
 - Keep config minimal but correct.
 """
 
@@ -155,7 +163,16 @@ Rules:
             "agent_type": "ralph",
             "runtime": "ralph",
             "mode": "simple",
-            "config": {"model": "gpt-5", "use_rag": True, "ralph_backend": "cursor"},
+            "questions": [],
+            "assumptions": [],
+            "config": {
+                "model": "gpt-5",
+                "use_rag": True,
+                "ralph_backend": "cursor",
+                "loop_include_previous": True,
+                "ask_on_missing": True,
+                "safety_level": "safe",
+            },
         }
     parsed["runtime"] = parsed.get("runtime") if parsed.get("runtime") in ALLOWED_RUNTIMES else "ralph"
     cfg = parsed.get("config", {})
@@ -169,7 +186,7 @@ Rules:
     return parsed
 
 
-def _generate_workflow_script(task: str, runtime: str, from_task: bool = False, user_id: int = None) -> Dict[str, Any]:
+def _generate_workflow_script(task: str, runtime: str, from_task: bool = False, user_id: int = None, target_server_id: int = None, target_server_name: str = None) -> Dict[str, Any]:
     llm = LLMProvider()
     from app.core.model_config import model_manager
 
@@ -183,16 +200,15 @@ RALPH WORKFLOW (важно):
 - Обязательно заполняй verify_prompt и verify_promise для шагов, где нужны проверки и тесты: verify_prompt = инструкция агенту (запусти тесты, проверь результат), verify_promise = PASS; агент должен вывести <promise>PASS</promise> в выводе, когда проверка пройдена.
 - Шаги должны идти по порядку: подготовка → реализация → тесты/проверка. Для шагов с кодом/скриптами добавляй verify_prompt типа «Запусти тесты (pytest/unit/интеграцию по контексту). Убедись что всё зелёное. Выведи <promise>PASS</promise> если тесты прошли.»
 """
-    # Контекст серверов пользователя для SSH-задач
+    # Контекст серверов: ТОЛЬКО если указан target_server
+    # Если target_server не указан — workflow НЕ связан с серверами, не показываем их вообще
     servers_hint = ""
-    if user_id:
-        servers_ctx = _get_user_servers_context(user_id)
-        if servers_ctx:
-            servers_hint = f"""
-SERVERS (SSH):
-Если задача связана с сервером — данные серверов пользователя будут автоматически добавлены в промпт при выполнении.
-Доступные серверы: {', '.join([s.strip().split(':')[0].replace('- ', '') for s in servers_ctx.split('\\n') if s.strip().startswith('- ')])}
-Для SSH-команд на сервере используй sshpass (будет подставлена готовая команда).
+    if target_server_id and target_server_name and user_id:
+        servers_hint = f"""
+ЦЕЛЕВОЙ СЕРВЕР (ВАЖНО!):
+Все SSH-команды должны выполняться ТОЛЬКО на сервере «{target_server_name}».
+НЕ используй другие серверы! Все шаги workflow должны работать с сервером «{target_server_name}».
+При генерации шагов учитывай, что целевой сервер уже определён.
 """
     prompt = f"""You generate workflow scripts for CLI agents.
 Return ONLY JSON:
@@ -201,6 +217,9 @@ Return ONLY JSON:
   "description": "Short description",
   "runtime": "{runtime}",
   "prompt": "High-level goal summary",
+  "questions": ["Clarifying question 1", "Clarifying question 2"],
+  "assumptions": ["Assumption 1", "Assumption 2"],
+  "quality_checks": ["Tests to run", "Lint to run"],
   "steps": [
     {{
       "title": "Step title",
@@ -217,6 +236,8 @@ Rules:
 - Keep steps short and actionable.
 - Each step must include completion_promise.
 - If tests are needed, include verify_prompt and verify_promise (агент выводит <promise>PASS</promise> когда тесты/проверка прошли).
+- If requirements are unclear, add 1-2 clarifying questions in "questions" and still proceed with reasonable assumptions.
+- Prefer safe and reversible actions on servers; avoid destructive commands unless explicitly requested.
 {ralph_block}{servers_hint}
 Task description:
 {task}
@@ -273,10 +294,11 @@ Task description:
 @login_required
 @require_feature('agents', redirect_on_forbidden=True)
 def agents_page(request):
+    from servers.models import Server
     profiles = AgentProfile.objects.filter(owner=request.user, is_active=True)
     presets = AgentPreset.objects.all()
     recent_runs = AgentRun.objects.filter(initiated_by=request.user)[:10]
-    workflows = AgentWorkflow.objects.filter(owner=request.user)[:10]
+    workflows = AgentWorkflow.objects.filter(owner=request.user).select_related("target_server")[:10]
     workflow_runs = AgentWorkflowRun.objects.filter(initiated_by=request.user)[:10]
     workflow_runs_data = []
     for run in workflow_runs:
@@ -312,10 +334,17 @@ def agents_page(request):
             "name": workflow.name,
             "script": workflow.script,
             "project_path": workflow.project_path,
+            "target_server_id": workflow.target_server_id,
+            "target_server_name": workflow.target_server.name if workflow.target_server else None,
         }
         for workflow in workflows
     ]
     projects_data = _get_project_folders(include_files_count=False)
+    # Серверы пользователя для выбора целевого сервера
+    servers_data = [
+        {"id": s.id, "name": s.name, "host": s.host}
+        for s in Server.objects.filter(user=request.user).only("id", "name", "host")
+    ]
     return render(
         request,
         "agent_hub/agents.html",
@@ -328,6 +357,7 @@ def agents_page(request):
             "presets_data": presets_data,
             "workflows_data": workflows_data,
             "projects_data": projects_data,
+            "servers_data": servers_data,
         },
     )
 
@@ -772,9 +802,22 @@ def api_workflow_from_task(request):
         project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
     except Exception:
         pass
-    parsed = _generate_workflow_script(task_text, "ralph", from_task=True, user_id=request.user.id)
+    # Получаем целевой сервер из задачи
+    target_server = getattr(task, 'target_server', None)
+    target_server_id = target_server.id if target_server else None
+    target_server_name = target_server.name if target_server else None
+    
+    # Генерируем workflow с привязкой к целевому серверу
+    parsed = _generate_workflow_script(
+        task_text, "ralph", 
+        from_task=True, 
+        user_id=request.user.id,
+        target_server_id=target_server_id,
+        target_server_name=target_server_name
+    )
     if not parsed:
         return JsonResponse({"error": "Failed to generate workflow"}, status=500)
+    
     workflow = AgentWorkflow.objects.create(
         owner=request.user,
         name=parsed.get("name", (task.title or "Workflow")[:80]),
@@ -782,7 +825,14 @@ def api_workflow_from_task(request):
         runtime="ralph",
         script=parsed,
         project_path=project_path,
+        target_server=target_server,  # <-- Теперь workflow привязан к серверу из задачи!
     )
+    
+    # Логирование для отладки
+    if target_server:
+        logger.info(f"Workflow {workflow.id} created from task {task.id} with target_server: {target_server.name} ({target_server.host})")
+    else:
+        logger.warning(f"Workflow {workflow.id} created from task {task.id} WITHOUT target_server!")
     workflows_dir = Path(settings.MEDIA_ROOT) / "workflows"
     workflows_dir.mkdir(parents=True, exist_ok=True)
     file_path = workflows_dir / f"workflow-{workflow.id}.json"
@@ -863,6 +913,34 @@ def _get_cursor_cli_extra_env() -> dict:
     """Переменные окружения для Cursor CLI (напр. HTTP/1.0)."""
     env = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None)
     return env if isinstance(env, dict) and env else {}
+
+
+def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
+    """Создаёт/обновляет mcp_config.json в workspace для сервера weu-servers."""
+    if not workspace or not user_id:
+        return ""
+    cfg_path = Path(workspace) / "mcp_config.json"
+    cfg = {}
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8") or "{}")
+        except Exception:
+            cfg = {}
+    servers = cfg.get("mcpServers") or {}
+    servers["weu-servers"] = {
+        "type": "stdio",
+        "command": sys.executable or "python",
+        "args": [str(settings.BASE_DIR / "manage.py"), "mcp_servers"],
+        "env": {"WEU_USER_ID": str(user_id)},
+        "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)",
+    }
+    cfg["mcpServers"] = servers
+    try:
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:
+        logger.warning(f"Failed to write MCP config at {cfg_path}: {exc}")
+        return ""
+    return str(cfg_path)
 
 
 def _short_path(path: str, max_len: int = 50) -> str:
@@ -1111,9 +1189,10 @@ def _write_ralph_yml(path: Path, content: Dict[str, Any]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _get_user_servers_context(user_id: int) -> str:
+def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str:
     """
     Возвращает контекст о серверах пользователя из вкладки Servers для промпта воркфлоу.
+    Если target_server_id указан — возвращает только этот сервер с явной инструкцией использовать его.
     Если серверы есть — возвращает инструкции и список; иначе пустую строку.
     Если задан MASTER_PASSWORD в env — расшифровывает пароли и подставляет команды подключения.
     """
@@ -1121,17 +1200,49 @@ def _get_user_servers_context(user_id: int) -> str:
         from servers.models import Server
         from passwords.encryption import PasswordEncryption
         master_pwd = os.environ.get("MASTER_PASSWORD", "").strip()
-        servers = list(Server.objects.filter(user_id=user_id).only(
+        
+        qs = Server.objects.filter(user_id=user_id)
+        if target_server_id:
+            qs = qs.filter(id=target_server_id)
+        servers = list(qs.only(
             "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt"
         ))
         if not servers:
             return ""
-        lines = [
-            "\n\n=== СЕРВЕРЫ ПОЛЬЗОВАТЕЛЯ (из вкладки Servers) ===",
-            "ВАЖНО: Данные серверов хранятся в БД. НЕ ищи их в коде!",
-            "Для выполнения команд используй SSH напрямую по указанным данным.",
-            "",
-        ]
+        
+        # Если указан конкретный сервер — даём явную и строгую инструкцию
+        if target_server_id and len(servers) == 1:
+            target_name = servers[0].name
+            target_host = servers[0].host
+            lines = [
+                f"\n\n{'='*60}",
+                f"=== ЦЕЛЕВОЙ СЕРВЕР: {target_name} ({target_host}) ===",
+                f"{'='*60}",
+                "",
+                f"!!! КРИТИЧЕСКИ ВАЖНО !!!",
+                f"Все команды выполняй ТОЛЬКО на сервере «{target_name}»!",
+                f"НЕ ИСПОЛЬЗУЙ ДРУГИЕ СЕРВЕРЫ! Даже если они упомянуты где-то ещё.",
+                f"НЕ ПЕРЕКЛЮЧАЙСЯ на другие серверы!",
+                "",
+                f"Для выполнения команд используй ТОЛЬКО:",
+                f"  server_execute с server_name_or_id=\"{target_name}\"",
+                "",
+                f"Пример правильного вызова:",
+                f"  tool server_execute {{\"server_name_or_id\": \"{target_name}\", \"command\": \"uname -a\"}}",
+                "",
+                f"НЕ вызывай server_execute с другим server_name_or_id!",
+                f"НЕ вызывай servers_list — у тебя уже есть целевой сервер!",
+                "",
+            ]
+        else:
+            lines = [
+                "\n\n=== СЕРВЕРЫ ПОЛЬЗОВАТЕЛЯ (из вкладки Servers) ===",
+                "ВАЖНО: Данные серверов хранятся в БД. НЕ ищи их в коде!",
+                "Предпочитай MCP-инструменты servers_list / server_execute (сервер weu-servers) — это надежнее SSH из shell.",
+                "Пример: tool server_execute {server_name_or_id: \"WEU SERVER\", command: \"uname -a\"}",
+                "Если MCP недоступен, используй SSH напрямую по указанным данным.",
+                "",
+            ]
         for s in servers:
             auth = s.auth_method or "password"
             key_path = s.key_path or ""
@@ -1167,15 +1278,24 @@ def _execute_workflow_run(run_id: int):
     run_obj.status = "running"
     run_obj.started_at = timezone.now()
 
-    # Контекст серверов пользователя
+    # Контекст серверов: загружаем ТОЛЬКО если указан target_server
+    # Если target_server не указан — workflow не связан с серверами, не показываем их
     user_id = run_obj.initiated_by_id
-    servers_context = _get_user_servers_context(user_id) if user_id else ""
-
+    target_server_id = workflow.target_server_id
+    servers_context = ""
+    
+    if target_server_id and user_id:
+        # Только если явно указан целевой сервер — загружаем его данные
+        servers_context = _get_user_servers_context(user_id, target_server_id)
+    
     # Получаем путь к workspace
     workspace = _get_workspace_path(workflow)
     run_obj.logs = (run_obj.logs or "") + f"[Workflow started]\n[Workspace: {workspace}]\n"
-    if servers_context:
+    if target_server_id:
+        run_obj.logs = (run_obj.logs or "") + f"[Target server: {workflow.target_server.name if workflow.target_server else target_server_id}]\n"
         run_obj.logs = (run_obj.logs or "") + "[Servers context loaded from DB]\n"
+    else:
+        run_obj.logs = (run_obj.logs or "") + "[No target server - local/code-only workflow]\n"
     run_obj.save(update_fields=["status", "started_at", "logs"])
 
     steps = (workflow.script or {}).get("steps", [])
@@ -1236,6 +1356,20 @@ def _run_steps_with_backend(
     servers_context: str = "",
 ) -> None:
     extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else None
+    if runtime == "cursor":
+        extra_env = dict(extra_env or {})
+        if run_obj.initiated_by_id:
+            mcp_path = _ensure_mcp_servers_config(workspace, run_obj.initiated_by_id)
+            if mcp_path:
+                extra_env["MCP_CONFIG_PATH"] = mcp_path
+            extra_env.setdefault("WEU_USER_ID", str(run_obj.initiated_by_id))
+        
+        # Передаём целевой сервер в переменные окружения для MCP-инструментов
+        if workflow.target_server_id:
+            extra_env["WEU_TARGET_SERVER_ID"] = str(workflow.target_server_id)
+            if workflow.target_server:
+                extra_env["WEU_TARGET_SERVER_NAME"] = workflow.target_server.name
+                logger.info(f"Workflow {workflow.id}: target_server={workflow.target_server.name} (id={workflow.target_server_id})")
     max_retries = getattr(run_obj, "max_retries", None) or 3
     step_results_existing = list(run_obj.step_results or [])
 
@@ -1418,7 +1552,13 @@ def _continue_workflow_run(run_id: int, from_step: int):
         run_obj.started_at = timezone.now()
     workspace = _get_workspace_path(workflow)
     user_id = run_obj.initiated_by_id
-    servers_context = _get_user_servers_context(user_id) if user_id else ""
+    target_server_id = workflow.target_server_id
+    
+    # Контекст серверов: ТОЛЬКО если указан target_server
+    servers_context = ""
+    if target_server_id and user_id:
+        servers_context = _get_user_servers_context(user_id, target_server_id)
+    
     run_obj.save(update_fields=["status", "started_at"])
     steps = (workflow.script or {}).get("steps", [])
     step_results = []
@@ -1575,7 +1715,14 @@ def api_assist_config(request):
         return JsonResponse({"error": "Task is required"}, status=400)
 
     parsed = _generate_profile_config(task)
-    return JsonResponse({"success": True, "config": parsed})
+    return JsonResponse(
+        {
+            "success": True,
+            "config": parsed,
+            "questions": parsed.get("questions") or [],
+            "assumptions": parsed.get("assumptions") or [],
+        }
+    )
 
 
 @csrf_exempt
@@ -1676,6 +1823,61 @@ def api_assist_auto(request):
 @csrf_exempt
 @login_required
 @require_feature('agents')
+@require_http_methods(["GET"])
+def api_mcp_servers(request):
+    tool_manager = get_tool_manager()
+    tool_manager.refresh_mcp_config()
+    servers = list(tool_manager.get_mcp_servers().values())
+    return JsonResponse({"servers": servers, "sources": tool_manager.mcp_config_sources})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_mcp_server_connect(request):
+    data = _parse_json_request(request)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "name is required"}, status=400)
+    tool_manager = get_tool_manager()
+    try:
+        status = async_to_sync(tool_manager.connect_mcp_server)(name)
+        return JsonResponse({"success": True, "status": status})
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_mcp_server_disconnect(request):
+    data = _parse_json_request(request)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "name is required"}, status=400)
+    tool_manager = get_tool_manager()
+    ok = async_to_sync(tool_manager.disconnect_mcp_server)(name)
+    return JsonResponse({"success": bool(ok)})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def api_mcp_server_tools(request):
+    name = (request.GET.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"error": "name is required"}, status=400)
+    tool_manager = get_tool_manager()
+    tools = tool_manager.get_mcp_tools(name)
+    return JsonResponse({"tools": tools})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_tasks_generate(request):
     """AI генерация задач по описанию проекта"""
@@ -1708,6 +1910,7 @@ Rules:
 - Include verify_prompt for tasks that need testing
 - Keep prompts clear and detailed
 - Return 3-8 tasks typically
+- If requirements are unclear, include an early task "Clarify requirements" with questions to ask.
 
 Project description:
 {description}
@@ -1752,6 +1955,7 @@ def api_workflow_create_manual(request):
     runtime = data.get("runtime", "ralph")
     steps = data.get("steps", [])
     run_after_save = data.get("run_after_save", False)
+    target_server_id = data.get("target_server_id")
     
     # Обработка проекта
     project_path = data.get("project_path", "").strip()
@@ -1830,6 +2034,12 @@ def api_workflow_create_manual(request):
             "hats": hats,
         }
     
+    # Проверяем и получаем целевой сервер
+    target_server = None
+    if target_server_id:
+        from servers.models import Server
+        target_server = Server.objects.filter(id=target_server_id, user=request.user).first()
+    
     # Создаем workflow
     workflow = AgentWorkflow.objects.create(
         owner=request.user,
@@ -1838,6 +2048,7 @@ def api_workflow_create_manual(request):
         runtime=runtime,
         script=script,
         project_path=project_path,
+        target_server=target_server,
     )
     
     # Сохраняем файлы
@@ -1916,7 +2127,7 @@ def api_workflow_import(request):
 @require_http_methods(["GET"])
 def api_workflow_get(request, workflow_id: int):
     """Получить детали workflow для редактирования"""
-    workflow = get_object_or_404(AgentWorkflow, id=workflow_id, owner=request.user)
+    workflow = get_object_or_404(AgentWorkflow.objects.select_related("target_server"), id=workflow_id, owner=request.user)
     script = workflow.script or {}
     steps = script.get("steps", [])
     return JsonResponse({
@@ -1927,6 +2138,8 @@ def api_workflow_get(request, workflow_id: int):
             "description": getattr(workflow, "description", "") or "",
             "runtime": workflow.runtime or "ralph",
             "project_path": workflow.project_path or "",
+            "target_server_id": workflow.target_server_id,
+            "target_server_name": workflow.target_server.name if workflow.target_server else None,
             "steps": steps,
             "created_at": workflow.created_at.isoformat() if hasattr(workflow, "created_at") else "",
         },
@@ -1954,6 +2167,13 @@ def api_workflow_update(request, workflow_id: int):
             workflow.project_path = _create_project_folder(new_name or (workflow.name or "workflow")[:50].replace(" ", "_") or f"p_{datetime.now().strftime('%Y%m%d')}")
         else:
             workflow.project_path = pp or None
+    if "target_server_id" in data:
+        from servers.models import Server
+        ts_id = data.get("target_server_id")
+        if ts_id:
+            workflow.target_server = Server.objects.filter(id=ts_id, user=request.user).first()
+        else:
+            workflow.target_server = None
     if "steps" in data:
         script = workflow.script or {}
         script["steps"] = data["steps"]

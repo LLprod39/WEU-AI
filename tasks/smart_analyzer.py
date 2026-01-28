@@ -9,7 +9,7 @@ from django.utils import timezone
 from loguru import logger
 from asgiref.sync import async_to_sync
 
-from .models import Task, SubTask, TaskNotification, TaskExecution
+from .models import Task, SubTask, TaskNotification, TaskExecution, TaskExecutionSettings
 from servers.models import Server
 from .ai_assistant import TaskAIAssistant
 
@@ -27,6 +27,7 @@ class SmartTaskAnalyzer:
         2. Сопоставление с базой серверов
         3. Оценка возможности автоматического выполнения
         4. Разбиение на подзадачи с таймингами
+        5. Создание уведомлений с учётом настроек пользователя
         """
         result = {
             'servers_detected': [],
@@ -36,6 +37,9 @@ class SmartTaskAnalyzer:
             'estimated_duration_hours': None,
             'recommended_agent': None,
         }
+        
+        # Получаем настройки пользователя
+        settings = TaskExecutionSettings.get_for_user(user)
         
         # 1. Извлечение серверов из описания
         text_to_analyze = f"{task.title}\n{task.description}"
@@ -53,6 +57,12 @@ class SmartTaskAnalyzer:
             for s in user_servers
         ]
         
+        # Список серверов для выбора в UI
+        available_servers = [
+            {"id": s.id, "name": s.name, "host": s.host}
+            for s in user_servers
+        ]
+        
         # 4. Анализ через ИИ: может ли ИИ выполнить задачу (can_delegate_to_ai, reason, recommended_agent, ...)
         ai_analysis = async_to_sync(self.ai_assistant.analyze_task)(
             task.title,
@@ -63,6 +73,9 @@ class SmartTaskAnalyzer:
         if ai_analysis.get('success') and ai_analysis.get('analysis'):
             analysis = ai_analysis['analysis']
             result['recommended_agent'] = analysis.get('recommended_agent', 'react')
+            result['ai_reason'] = analysis.get('reason', '')
+            result['missing_info'] = analysis.get('missing_info')
+            result['risks'] = analysis.get('risks')
             result['estimated_duration_hours'] = self._parse_duration(
                 analysis.get('estimated_time', '')
             )
@@ -70,16 +83,59 @@ class SmartTaskAnalyzer:
             if result['estimated_duration_hours']:
                 task.estimated_duration_hours = result['estimated_duration_hours']
             
-            # 5. Уведомление «можно делегировать ИИ» только если ИИ вернул can_delegate_to_ai и есть матч по серверу
+            # Если ИИ определил сервер по контексту — попробуем найти его
+            ai_target_server = analysis.get('target_server_name')
+            if ai_target_server and not matched_servers:
+                # ИИ нашёл сервер по контексту, ищем в базе
+                ai_matched = self._match_servers(
+                    [{'mentioned_name': ai_target_server, 'type': 'ai_detected', 'confidence': 'medium'}],
+                    user
+                )
+                if ai_matched:
+                    matched_servers = ai_matched
+                    result['servers_matched'] = matched_servers
+            
+            # Если сервер не найден, но есть сервер по умолчанию — используем его
+            if not matched_servers and settings.default_server:
+                matched_servers = [{
+                    'server': settings.default_server,
+                    'mentioned_name': settings.default_server.name,
+                    'match_type': 'default',
+                    'confidence': 'low'
+                }]
+                result['servers_matched'] = matched_servers
+            
+            # 5. Логика создания уведомлений с учётом настроек
             can_delegate = analysis.get('can_delegate_to_ai') is True
-            if matched_servers and can_delegate:
+            missing_info = analysis.get('missing_info')
+            complexity = analysis.get('complexity', 'medium')
+            
+            # Проверяем, нужны ли уточняющие вопросы
+            if missing_info and settings.ask_questions_before_execution:
+                task.save()
+                self._create_questions_notification(task, user, analysis, matched_servers, available_servers)
+            elif matched_servers and can_delegate:
                 result['can_auto_execute'] = True
                 task.target_server = matched_servers[0]['server']
                 task.server_name_mentioned = matched_servers[0]['mentioned_name']
                 task.save()
-                self._create_auto_execution_notification(task, user, matched_servers[0])
+                
+                # Проверяем настройки: требуется ли подтверждение сервера
+                if settings.require_server_confirmation:
+                    # Всегда требуем подтверждение сервера
+                    self._create_server_confirmation_notification(
+                        task, user, matched_servers[0], analysis, available_servers
+                    )
+                elif settings.auto_execute_simple_tasks and complexity == 'simple':
+                    # Авто-выполнение простых задач — сразу создаём уведомление о начале
+                    self._create_auto_execution_notification(task, user, matched_servers[0], analysis, available_servers)
+                else:
+                    # Стандартное уведомление о предложении выполнения
+                    self._create_auto_execution_notification(task, user, matched_servers[0], analysis, available_servers)
             else:
                 task.save()
+                # Создаём уведомление с объяснением почему ИИ не может выполнить
+                self._create_analysis_result_notification(task, user, analysis, matched_servers, available_servers)
         else:
             task.save()
         
@@ -207,26 +263,49 @@ class SmartTaskAnalyzer:
         self,
         task: Task,
         user: User,
-        server_match: Dict[str, Any]
+        server_match: Dict[str, Any],
+        analysis: Dict[str, Any] = None,
+        available_servers: List[Dict[str, Any]] = None
     ):
         """Создание уведомления о предложении автоматического выполнения"""
         server = server_match['server']
+        
+        reason = (analysis or {}).get('reason', '')
+        estimated_time = (analysis or {}).get('estimated_time', '')
+        complexity = (analysis or {}).get('complexity', '')
+        risks = (analysis or {}).get('risks')
+        
+        message_parts = [
+            f'🖥️ Обнаружен сервер: **{server.name}** ({server.host})',
+            f'📋 Задача: «{task.title}»',
+            '',
+        ]
+        if reason:
+            message_parts.append(f'✅ {reason}')
+        if estimated_time:
+            message_parts.append(f'⏱️ Оценка времени: {estimated_time}')
+        if complexity:
+            complexity_emoji = {'simple': '🟢', 'medium': '🟡', 'complex': '🔴'}.get(complexity, '⚪')
+            message_parts.append(f'{complexity_emoji} Сложность: {complexity}')
+        if risks:
+            message_parts.append(f'⚠️ Риски: {risks}')
+        message_parts.append('')
+        message_parts.append('Хотите делегировать выполнение ИИ?')
         
         notification = TaskNotification.objects.create(
             task=task,
             user=user,
             notification_type='AUTO_EXECUTION_SUGGESTION',
-            title=f'Обнаружен сервер "{server.name}" в задаче',
-            message=(
-                f'В задаче "{task.title}" обнаружен сервер "{server.name}" ({server.host}).\n'
-                f'Хотите, чтобы я автоматически подключился к серверу и начал выполнение задачи?'
-            ),
+            title=f'🤖 Могу выполнить задачу на {server.name}',
+            message='\n'.join(message_parts),
             action_data={
                 'task_id': task.id,
                 'server_id': server.id,
                 'server_name': server.name,
                 'match_type': server_match['match_type'],
                 'action': 'delegate',
+                'analysis': analysis,
+                'available_servers': available_servers or [],
             },
             action_url=f'/tasks/{task.id}/approve-auto-execution/',
         )
@@ -235,6 +314,238 @@ class SmartTaskAnalyzer:
         task.save()
         
         logger.info(f"Created auto-execution notification for task {task.id} and server {server.id}")
+    
+    def _create_server_confirmation_notification(
+        self,
+        task: Task,
+        user: User,
+        server_match: Dict[str, Any],
+        analysis: Dict[str, Any] = None,
+        available_servers: List[Dict[str, Any]] = None
+    ):
+        """Создание уведомления для подтверждения сервера перед выполнением"""
+        server = server_match['server']
+        match_type = server_match.get('match_type', 'unknown')
+        
+        reason = (analysis or {}).get('reason', '')
+        estimated_time = (analysis or {}).get('estimated_time', '')
+        complexity = (analysis or {}).get('complexity', '')
+        risks = (analysis or {}).get('risks')
+        
+        # Формируем сообщение о способе определения сервера
+        match_explanation = {
+            'exact_name': 'Сервер определён по точному совпадению названия в тексте задачи',
+            'exact_host': 'Сервер определён по совпадению хоста в тексте задачи',
+            'partial_name': 'Сервер определён по частичному совпадению названия',
+            'ai_detected': 'Сервер определён ИИ на основе контекста задачи',
+            'default': 'Используется сервер по умолчанию (сервер не указан в задаче)',
+        }.get(match_type, 'Сервер определён автоматически')
+        
+        message_parts = [
+            f'📋 Задача: «{task.title}»',
+            '',
+            f'🖥️ **Я собираюсь выполнить эту задачу на сервере:**',
+            f'**{server.name}** ({server.host})',
+            '',
+            f'ℹ️ {match_explanation}',
+            '',
+        ]
+        
+        if reason:
+            message_parts.append(f'✅ {reason}')
+        if estimated_time:
+            message_parts.append(f'⏱️ Оценка времени: {estimated_time}')
+        if complexity:
+            complexity_emoji = {'simple': '🟢', 'medium': '🟡', 'complex': '🔴'}.get(complexity, '⚪')
+            message_parts.append(f'{complexity_emoji} Сложность: {complexity}')
+        if risks:
+            message_parts.append(f'⚠️ Риски: {risks}')
+        
+        message_parts.append('')
+        message_parts.append('**Подтвердите сервер или выберите другой:**')
+        
+        notification = TaskNotification.objects.create(
+            task=task,
+            user=user,
+            notification_type='SERVER_CONFIRMATION',
+            title=f'❓ Подтвердите: выполнить на {server.name}?',
+            message='\n'.join(message_parts),
+            action_data={
+                'task_id': task.id,
+                'server_id': server.id,
+                'server_name': server.name,
+                'match_type': match_type,
+                'action': 'confirm_server',
+                'analysis': analysis,
+                'available_servers': available_servers or [],
+            },
+            action_url=f'/tasks/{task.id}/approve-auto-execution/',
+        )
+        
+        task.auto_execution_suggested = True
+        task.save()
+        
+        logger.info(f"Created server confirmation notification for task {task.id} and server {server.id}")
+    
+    def _create_questions_notification(
+        self,
+        task: Task,
+        user: User,
+        analysis: Dict[str, Any],
+        matched_servers: List[Dict[str, Any]],
+        available_servers: List[Dict[str, Any]] = None
+    ):
+        """Создание уведомления с уточняющими вопросами"""
+        missing_info = analysis.get('missing_info', '')
+        reason = analysis.get('reason', '')
+        target_server_name = analysis.get('target_server_name')
+        
+        message_parts = [
+            f'📋 Задача: «{task.title}»',
+            '',
+            '❓ **Для выполнения задачи нужна дополнительная информация:**',
+            '',
+            f'{missing_info}',
+            '',
+        ]
+        
+        if reason:
+            message_parts.append(f'💬 {reason}')
+            message_parts.append('')
+        
+        if matched_servers:
+            server = matched_servers[0]['server']
+            message_parts.append(f'🖥️ Предполагаемый сервер: **{server.name}** ({server.host})')
+        elif target_server_name:
+            message_parts.append(f'🖥️ Упомянутый сервер: {target_server_name} (не найден в вашем списке)')
+        else:
+            message_parts.append('🖥️ Сервер не определён — выберите сервер для выполнения')
+        
+        message_parts.append('')
+        message_parts.append('Ответьте на вопросы и я смогу выполнить задачу.')
+        
+        # Формируем список вопросов для структурированного ответа
+        questions = self._parse_questions(missing_info)
+        
+        notification = TaskNotification.objects.create(
+            task=task,
+            user=user,
+            notification_type='QUESTIONS_REQUIRED',
+            title='❓ Уточните детали задачи',
+            message='\n'.join(message_parts),
+            action_data={
+                'task_id': task.id,
+                'server_id': matched_servers[0]['server'].id if matched_servers else None,
+                'server_name': matched_servers[0]['server'].name if matched_servers else None,
+                'action': 'answer_questions',
+                'questions': questions,
+                'analysis': analysis,
+                'available_servers': available_servers or [],
+            },
+        )
+        
+        logger.info(f"Created questions notification for task {task.id}")
+    
+    def _parse_questions(self, missing_info: str) -> List[Dict[str, str]]:
+        """Парсинг текста с вопросами в структурированный список"""
+        if not missing_info:
+            return []
+        
+        questions = []
+        # Пробуем разбить по номерам (1. 2. 3.) или по переносам строк
+        lines = missing_info.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Убираем номера и маркеры
+            line = re.sub(r'^[\d\.\)\-\*]+\s*', '', line)
+            if line:
+                questions.append({
+                    'id': f'q_{len(questions) + 1}',
+                    'question': line,
+                    'answer': ''
+                })
+        
+        # Если не удалось разбить — один вопрос
+        if not questions:
+            questions.append({
+                'id': 'q_1',
+                'question': missing_info,
+                'answer': ''
+            })
+        
+        return questions
+    
+    def _create_analysis_result_notification(
+        self,
+        task: Task,
+        user: User,
+        analysis: Dict[str, Any],
+        matched_servers: List[Dict[str, Any]],
+        available_servers: List[Dict[str, Any]] = None
+    ):
+        """Создание уведомления о результате анализа когда ИИ не может выполнить задачу"""
+        reason = analysis.get('reason', 'Не удалось определить причину')
+        missing_info = analysis.get('missing_info')
+        risks = analysis.get('risks')
+        target_server = analysis.get('target_server_name')
+        can_delegate = analysis.get('can_delegate_to_ai', False)
+        
+        # Определяем тип уведомления
+        if not matched_servers and not target_server:
+            # Сервер не найден
+            title = '❓ Не удалось определить сервер'
+            notification_type = 'WARNING'
+        elif risks and not can_delegate:
+            # Есть риски, ИИ отказывается
+            title = '⚠️ Требуется подтверждение для опасной операции'
+            notification_type = 'WARNING'
+        elif missing_info:
+            # Нужна дополнительная информация
+            title = '❓ Нужна дополнительная информация'
+            notification_type = 'INFO'
+        else:
+            title = '📋 Анализ задачи завершён'
+            notification_type = 'INFO'
+        
+        message_parts = [f'📋 Задача: «{task.title}»', '']
+        
+        if target_server:
+            message_parts.append(f'🖥️ Определён сервер: {target_server}')
+            if not matched_servers:
+                message_parts.append('⚠️ Сервер не найден в вашем списке серверов. Добавьте его в раздел Servers.')
+        elif not matched_servers:
+            message_parts.append('🔍 Сервер не указан в задаче и не удалось определить из контекста.')
+            if available_servers:
+                message_parts.append('Выберите сервер из списка для выполнения задачи.')
+        
+        message_parts.append('')
+        message_parts.append(f'💬 {reason}')
+        
+        if missing_info:
+            message_parts.append('')
+            message_parts.append(f'❓ Уточните: {missing_info}')
+        
+        if risks:
+            message_parts.append('')
+            message_parts.append(f'⚠️ Риски: {risks}')
+        
+        TaskNotification.objects.create(
+            task=task,
+            user=user,
+            notification_type=notification_type,
+            title=title,
+            message='\n'.join(message_parts),
+            action_data={
+                'task_id': task.id,
+                'analysis': analysis,
+                'available_servers': available_servers or [],
+                'action': 'select_server' if not matched_servers else None,
+            },
+        )
+        
+        logger.info(f"Created analysis result notification for task {task.id}: {notification_type}")
     
     def breakdown_task_with_timings(self, task: Task) -> List[Dict[str, Any]]:
         """
@@ -345,3 +656,64 @@ class SmartTaskAnalyzer:
         
         logger.info(f"Auto-execution approved for task {task.id}")
         return True
+    
+    def change_server_and_approve(self, task: Task, user: User, new_server_id: int) -> bool:
+        """Изменить сервер для задачи и одобрить выполнение"""
+        try:
+            new_server = Server.objects.get(id=new_server_id, user=user, is_active=True)
+            task.target_server = new_server
+            task.server_name_mentioned = new_server.name
+            task.save()
+            
+            logger.info(f"Changed server for task {task.id} to {new_server.name}")
+            return self.approve_auto_execution(task, user)
+        except Server.DoesNotExist:
+            logger.error(f"Server {new_server_id} not found for user {user.id}")
+            return False
+    
+    def reanalyze_with_answers(
+        self,
+        task: Task,
+        user: User,
+        answers: List[Dict[str, str]],
+        selected_server_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Повторный анализ задачи с ответами на уточняющие вопросы
+        
+        Args:
+            task: Задача
+            user: Пользователь
+            answers: Список ответов на вопросы [{'question': '...', 'answer': '...'}]
+            selected_server_id: ID выбранного сервера (если указан)
+        """
+        # Формируем дополнительный контекст из ответов
+        answers_text = "\n".join([
+            f"Вопрос: {a.get('question', '')}\nОтвет: {a.get('answer', '')}"
+            for a in answers if a.get('answer')
+        ])
+        
+        # Обновляем описание задачи с ответами
+        original_description = task.description
+        if answers_text:
+            task.description = f"{original_description}\n\n--- Дополнительная информация ---\n{answers_text}"
+        
+        # Если указан сервер — устанавливаем его
+        if selected_server_id:
+            try:
+                server = Server.objects.get(id=selected_server_id, user=user, is_active=True)
+                task.target_server = server
+                task.server_name_mentioned = server.name
+            except Server.DoesNotExist:
+                pass
+        
+        task.save()
+        
+        # Повторный анализ
+        result = self.analyze_task(task, user)
+        
+        # Восстанавливаем оригинальное описание (ответы сохранены в action_data уведомления)
+        task.description = original_description
+        task.save()
+        
+        return result

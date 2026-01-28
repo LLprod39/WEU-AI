@@ -933,6 +933,7 @@ def api_settings(request):
                 'success': True,
                 'config': {
                     'default_provider': c.default_provider,
+                    'internal_llm_provider': getattr(c, 'internal_llm_provider', 'grok') or 'grok',
                     'chat_model_gemini': c.chat_model_gemini,
                     'chat_model_grok': c.chat_model_grok,
                     'rag_model': c.rag_model,
@@ -957,6 +958,7 @@ def api_settings(request):
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
                 'default_agent_output_path', 'cursor_chat_mode',
+                'internal_llm_provider',  # Провайдер для внутренних вызовов (workflow, анализ)
             }
             for key, value in data.items():
                 if key in allowed and value is not None:

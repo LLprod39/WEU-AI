@@ -37,6 +37,7 @@ class CliRuntimeManager:
         use_ralph_loop = bool(config.get("use_ralph_loop"))
         max_iterations = config.get("max_iterations", 1)
         completion_promise = (config.get("completion_promise") or "").strip()
+        include_previous = config.get("loop_include_previous", True)
 
         if use_ralph_loop:
             if isinstance(max_iterations, str) and max_iterations.isdigit():
@@ -46,10 +47,20 @@ class CliRuntimeManager:
 
             combined_output = []
             combined_logs = []
+            last_output = ""
             for i in range(1, max_iterations + 1):
-                result = await self._run_once(runtime, task, config)
+                iteration_task = task
+                if include_previous and i > 1:
+                    iteration_task = (
+                        "Продолжай работу по задаче. Проверь предыдущий вывод и улучши результат.\n\n"
+                        f"Изначальная задача:\n{task}\n\n"
+                        f"Предыдущий вывод:\n{last_output}\n\n"
+                        f"Если все готово, выведи <promise>{completion_promise}</promise>."
+                    )
+                result = await self._run_once(runtime, iteration_task, config)
                 combined_output.append(f"Iteration {i}:\n{result['output']}")
                 combined_logs.append(result.get("logs", ""))
+                last_output = result.get("output", "")
 
                 if completion_promise and self._has_completion_promise(result["output"], completion_promise):
                     return {

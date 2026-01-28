@@ -2,6 +2,7 @@
 Tool Manager - Central registry for all agent tools
 """
 from typing import List, Dict, Any, Optional
+import os
 from loguru import logger
 from app.tools.base import BaseTool
 from app.tools.ssh_tools import SSHConnectTool, SSHExecuteTool, SSHDisconnectTool
@@ -12,6 +13,8 @@ from app.tools.filesystem_tools import (
 )
 from app.tools.web_tools import WebSearchTool, FetchWebpageTool
 from app.mcp.client import MCPClient
+from app.mcp.config import load_mcp_config
+from django.conf import settings
 
 
 class ToolManager:
@@ -23,6 +26,8 @@ class ToolManager:
     def __init__(self):
         self.tools: Dict[str, BaseTool] = {}
         self.mcp_client = MCPClient()
+        self._mcp_tool_names = set()
+        self.mcp_config, self.mcp_config_sources = load_mcp_config(settings.BASE_DIR)
         self._register_builtin_tools()
     
     def _register_builtin_tools(self):
@@ -59,30 +64,70 @@ class ToolManager:
     async def connect_mcp_server_stdio(self, name: str, command: List[str]):
         """Connect to MCP server via stdio and register its tools"""
         await self.mcp_client.connect_stdio_server(name, command)
-        
-        # Register MCP tools
-        for mcp_tool in self.mcp_client.get_all_tools():
-            if mcp_tool._metadata.name.startswith(name):
-                # Avoid duplicate names
-                self.register_tool(mcp_tool)
-            else:
-                # Add server prefix
-                prefixed_name = f"{name}_{mcp_tool._metadata.name}"
-                mcp_tool._metadata.name = prefixed_name
-                self.register_tool(mcp_tool)
+        self._register_mcp_tools(name)
     
     async def connect_mcp_server_sse(self, name: str, url: str):
         """Connect to MCP server via SSE and register its tools"""
         await self.mcp_client.connect_sse_server(name, url)
-        
-        # Register MCP tools
-        for mcp_tool in self.mcp_client.get_all_tools():
-            if mcp_tool._metadata.name.startswith(name):
-                self.register_tool(mcp_tool)
-            else:
-                prefixed_name = f"{name}_{mcp_tool._metadata.name}"
-                mcp_tool._metadata.name = prefixed_name
-                self.register_tool(mcp_tool)
+        self._register_mcp_tools(name)
+
+    def _register_mcp_tools(self, server_name: str):
+        for mcp_tool in self.mcp_client.get_tools_for_server(server_name):
+            original_name = mcp_tool._metadata.name
+            if not original_name.startswith(server_name):
+                original_name = f"{server_name}_{original_name}"
+                mcp_tool._metadata.name = original_name
+            if original_name in self._mcp_tool_names:
+                continue
+            self._mcp_tool_names.add(original_name)
+            self.register_tool(mcp_tool)
+
+    def refresh_mcp_config(self):
+        self.mcp_config, self.mcp_config_sources = load_mcp_config(settings.BASE_DIR)
+        return self.mcp_config
+
+    def get_mcp_servers(self) -> Dict[str, Any]:
+        servers_cfg = (self.mcp_config or {}).get("mcpServers") or {}
+        statuses = self.mcp_client.get_server_statuses()
+        result = {}
+        for name, cfg in servers_cfg.items():
+            status = statuses.get(name, {})
+            result[name] = {
+                "name": name,
+                "type": cfg.get("type", "stdio"),
+                "status": status.get("status", "disconnected"),
+                "error": status.get("error"),
+                "description": cfg.get("description", ""),
+                "config": cfg,
+            }
+        return result
+
+    async def connect_mcp_server(self, name: str) -> Dict[str, Any]:
+        servers_cfg = (self.mcp_config or {}).get("mcpServers") or {}
+        cfg = servers_cfg.get(name)
+        if not cfg:
+            raise ValueError(f"MCP server '{name}' not found in config")
+        if cfg.get("type") == "sse":
+            url = cfg.get("url")
+            if not url:
+                raise ValueError(f"MCP server '{name}' missing url")
+            await self.connect_mcp_server_sse(name, url)
+        else:
+            command_bin = cfg.get("command")
+            if not command_bin:
+                raise ValueError(f"MCP server '{name}' missing command")
+            command = [command_bin] + (cfg.get("args") or [])
+            if cfg.get("env"):
+                os.environ.update(cfg.get("env"))
+            await self.connect_mcp_server_stdio(name, command)
+        return self.mcp_client.get_server_statuses().get(name, {})
+
+    async def disconnect_mcp_server(self, name: str) -> bool:
+        return await self.mcp_client.disconnect_server(name)
+
+    def get_mcp_tools(self, name: str) -> List[Dict[str, Any]]:
+        tools = self.mcp_client.get_tools_for_server(name)
+        return [t.to_dict() for t in tools]
     
     def get_tool(self, name: str) -> Optional[BaseTool]:
         """Get a specific tool by name"""
@@ -142,3 +187,15 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
             raise
+
+
+# Global tool manager instance
+_tool_manager = None
+
+
+def get_tool_manager() -> ToolManager:
+    """Get or create global tool manager instance"""
+    global _tool_manager
+    if _tool_manager is None:
+        _tool_manager = ToolManager()
+    return _tool_manager

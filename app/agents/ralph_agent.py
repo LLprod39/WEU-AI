@@ -52,6 +52,10 @@ class RalphWiggumAgent(BaseAgent):
             
             # Build initial prompt
             initial_prompt = context.get('initial_prompt', task)
+            stuck_guidance = (
+                "Если задача заблокирована, явно опиши блокеры и что нужно для прогресса. "
+                "Не выводи completion promise, если работа не завершена."
+            )
             
             # Iterative loop
             iteration = 0
@@ -71,6 +75,8 @@ Task: {initial_prompt}
 
 When you complete the task, output exactly: <promise>{completion_promise}</promise>
 CRITICAL RULE: Do NOT output the promise unless it is completely and unequivocally TRUE.
+If requirements are unclear, list 1-3 clarifying questions before proceeding and state your assumptions.
+{stuck_guidance}
 
 Begin working:"""
                 else:
@@ -85,6 +91,8 @@ Previous Results:
 Review your previous work, identify what needs improvement, and continue.
 When you complete the task, output exactly: <promise>{completion_promise}</promise>
 CRITICAL RULE: Do NOT output the promise unless it is completely and unequivocally TRUE.
+If requirements are unclear, list 1-3 clarifying questions before proceeding and state your assumptions.
+{stuck_guidance}
 
 Continue:"""
                 
