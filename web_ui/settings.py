@@ -179,6 +179,9 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 # CLI runtime timeout
 CLI_RUNTIME_TIMEOUT_SECONDS = int(os.getenv("CLI_RUNTIME_TIMEOUT_SECONDS", "600"))
 
+# Перед запуском таска/воркфлоу сначала проверить задачу через Cursor (--mode=ask). Если True — фаза «анализ» перед выполнением.
+ANALYZE_TASK_BEFORE_RUN = os.getenv("ANALYZE_TASK_BEFORE_RUN", "1").strip().lower() in ("1", "true", "yes", "on")
+
 # Cursor CLI: HTTP/1 mode (default on) to avoid proxy/VPN issues when HTTP/2 is blocked.
 # Override: CURSOR_CLI_HTTP_1=0 or false to disable.
 _raw_http1 = os.getenv("CURSOR_CLI_HTTP_1", "1").strip().lower()

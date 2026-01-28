@@ -515,6 +515,23 @@ def api_agent_run(request):
         run_obj.started_at = timezone.now()
         run_obj.save(update_fields=["status", "started_at"])
 
+        # Фаза проверки задачи через Cursor (ask) перед запуском
+        if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and runtime in ("ralph", "cursor"):
+            workspace = config.get("workspace") or ""
+            if not workspace:
+                try:
+                    from app.core.model_config import model_manager
+                    path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+                    workspace = str(settings.AGENT_PROJECTS_DIR / path) if path else str(settings.BASE_DIR)
+                except Exception:
+                    workspace = str(settings.BASE_DIR)
+            run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+            run_obj.save(update_fields=["logs"])
+            analyze_result = _run_cursor_ask_analyze(workspace, task[:6000], timeout_sec=90)
+            run_obj.logs = (run_obj.logs or "") + (analyze_result.get("output", "") or "")[:3000] + "\n"
+            run_obj.logs = (run_obj.logs or "") + "[Cursor analyze done — запуск агента]\n"
+            run_obj.save(update_fields=["logs"])
+
         try:
             if runtime == "internal":
                 agent_manager = get_agent_manager()
@@ -880,6 +897,55 @@ def api_workflow_run(request):
     return JsonResponse({"success": True, "run_id": run.id})
 
 
+def _run_cursor_ask_analyze(workspace: str, task_text: str, timeout_sec: int = 90) -> Dict[str, Any]:
+    """
+    Проверка задачи через Cursor в режиме ask (только анализ, без правок).
+    Возвращает {"output": str, "ready": bool}. ready=True если в выводе есть <promise>READY</promise>.
+    """
+    analyze_prompt = (
+        "Проанализируй следующую задачу (или шаги воркфлоу). "
+        "Проверь: всё ли ясно, не нужно ли что-то уточнить или дополнить. "
+        "Если всё в порядке и задачу можно выполнять — ответь ровно: <promise>READY</promise>\n\n"
+        "Если нужно что-то уточнить или дополнить — напиши кратко что именно.\n\n"
+        "---\n"
+        f"{task_text[:8000]}"
+    )
+    try:
+        cmd_path = _resolve_cli_command("cursor")
+        base_dir = str(Path(workspace).resolve()) if workspace else str(settings.BASE_DIR)
+        env = dict(os.environ)
+        env.update(getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {})
+        cmd = [
+            cmd_path,
+            "--mode=ask",
+            "-p",
+            "--output-format",
+            "text",
+            "--workspace",
+            base_dir,
+            "--model",
+            "auto",
+            analyze_prompt,
+        ]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=base_dir,
+            env=env,
+            timeout=timeout_sec,
+        )
+        output = (proc.stdout or "") + (proc.stderr or "")
+        ready = _promise_found(output, "READY")
+        return {"output": output.strip(), "ready": ready, "exit_code": proc.returncode}
+    except subprocess.TimeoutExpired:
+        return {"output": "[Timeout] Cursor ask превысил время ожидания.", "ready": False, "exit_code": -1}
+    except Exception as e:
+        return {"output": f"[Error] {e}", "ready": False, "exit_code": -1}
+
+
 def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], workspace: str = None) -> list:
     runtime_cfg = settings.CLI_RUNTIME_CONFIG.get(runtime)
     if not runtime_cfg:
@@ -1097,12 +1163,19 @@ def _run_cli_stream(
         run_obj.save(update_fields=["logs"])
         return {"success": False, "output": "".join(output_chunks), "exit_code": -1}
 
+    output_str = "".join(output_chunks)
+    if exit_code != 0 and ("Connection stalled" in output_str or "connection stalled" in output_str.lower()):
+        run_obj.logs = (run_obj.logs or "") + (
+            "\n⚠️ Ошибка соединения с Cursor API (Connection stalled). "
+            "Проверьте сеть, подписку Cursor и статус status.cursor.com; повторите шаг (Retry).\n"
+        )
+        run_obj.save(update_fields=["logs"])
     summary = f"\n{'─'*40}\n📊 Итого: {tool_count} операций, {len(accumulated_text)} символов\n"
     summary += "✅ Успешно завершено\n" if exit_code == 0 else f"❌ Завершено с ошибкой (код {exit_code})\n"
     summary += f"{'─'*40}\n"
     run_obj.logs = (run_obj.logs or "") + summary
     run_obj.save(update_fields=["logs"])
-    return {"success": exit_code == 0, "output": "".join(output_chunks), "exit_code": exit_code}
+    return {"success": exit_code == 0, "output": output_str, "exit_code": exit_code}
 
 
 def _resolve_cli_command(runtime: str) -> str:
@@ -1301,6 +1374,24 @@ def _execute_workflow_run(run_id: int):
     steps = (workflow.script or {}).get("steps", [])
     step_results = []
 
+    # Фаза проверки задачи через Cursor (ask) перед запуском
+    if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace:
+        run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+        run_obj.save(update_fields=["logs"])
+        summary_lines = [f"Воркфлоу: {workflow.name}. Шаги ({len(steps)}):"]
+        for i, s in enumerate(steps[:20], 1):
+            title = s.get("title", f"Step {i}")
+            prompt_preview = (s.get("prompt") or "")[:300]
+            summary_lines.append(f"\n{i}. {title}\n   {prompt_preview}")
+        task_summary = "\n".join(summary_lines)
+        analyze_result = _run_cursor_ask_analyze(workspace, task_summary, timeout_sec=90)
+        run_obj.logs = (run_obj.logs or "") + (analyze_result.get("output", "") or "")[:4000] + "\n"
+        if analyze_result.get("ready"):
+            run_obj.logs = (run_obj.logs or "") + "[Cursor: READY — запуск выполнения]\n"
+        else:
+            run_obj.logs = (run_obj.logs or "") + "[Cursor: анализ выполнен, запуск выполнения]\n"
+        run_obj.save(update_fields=["logs"])
+
     try:
         if workflow.runtime == "ralph":
             script = workflow.script or {}
@@ -1384,12 +1475,17 @@ def _run_steps_with_backend(
 
         step_title = step.get("title", f"Step {idx}")
         step_prompt = step.get("prompt", "")
-        completion_promise = step.get("completion_promise", "STEP_DONE")
-        max_iterations = step.get("max_iterations", 5)
+        completion_promise = (step.get("completion_promise") or "STEP_DONE").strip()
+        max_iterations = step.get("max_iterations", 10)
+        if isinstance(max_iterations, str) and max_iterations.isdigit():
+            max_iterations = int(max_iterations)
+        if max_iterations <= 0:
+            max_iterations = 10
+        use_ralph_loop = step.get("use_ralph_loop", True)
         verify_prompt = step.get("verify_prompt")
         verify_promise = step.get("verify_promise", "PASS")
         config = {
-            "use_ralph_loop": True,
+            "use_ralph_loop": use_ralph_loop,
             "completion_promise": completion_promise,
             "max_iterations": max_iterations,
         }
@@ -1404,22 +1500,66 @@ def _run_steps_with_backend(
             try:
                 run_obj.retry_count = retry_attempt
                 run_obj.save(update_fields=["retry_count"])
-                current_prompt = step_prompt
+                current_prompt_base = step_prompt
                 if servers_context:
-                    current_prompt = servers_context + "\n\n" + current_prompt
+                    current_prompt_base = servers_context + "\n\n" + current_prompt_base
                 if retry_attempt > 0:
-                    current_prompt = (
+                    current_prompt_base = (
                         f"Previous attempt failed with error: {last_error}\n\n"
                         f"Please fix the issue and try again.\n\nOriginal task:\n{step_prompt}"
                     )
                     if servers_context:
-                        current_prompt = servers_context + "\n\n" + current_prompt
+                        current_prompt_base = servers_context + "\n\n" + current_prompt_base
                     run_obj.logs = (run_obj.logs or "") + f"\n[Retry {retry_attempt}/{max_retries} for {step_title}]\n"
                     run_obj.save(update_fields=["logs"])
-                if completion_promise:
-                    current_prompt = f"{current_prompt}\n\nWhen complete output exactly: <promise>{completion_promise}</promise>."
-                cmd = _build_cli_command(runtime, current_prompt, config, workspace)
-                result = _run_cli_stream(cmd, run_obj, step_label=step_title, extra_env=extra_env)
+
+                # Ralph-цикл: несколько итераций агента до completion promise (безотказное написание кода)
+                inner_max = 1 if not use_ralph_loop else max_iterations
+                ralph_iteration = 0
+                last_output = ""
+                result = None
+                while ralph_iteration < inner_max:
+                    ralph_iteration += 1
+                    if ralph_iteration == 1:
+                        current_prompt = current_prompt_base
+                    else:
+                        current_prompt = (
+                            "Продолжай работу по задаче. Проверь предыдущий вывод и доведи до конца.\n\n"
+                            f"Изначальная задача:\n{current_prompt_base}\n\n"
+                            f"Предыдущий вывод агента:\n{last_output}\n\n"
+                            f"Если задача полностью выполнена, выведи ровно: <promise>{completion_promise}</promise>"
+                        )
+                    if completion_promise and (ralph_iteration == 1 or "promise" not in current_prompt):
+                        current_prompt = f"{current_prompt}\n\nWhen complete output exactly: <promise>{completion_promise}</promise>."
+                    step_label = f"{step_title}" if inner_max <= 1 else f"{step_title} (Ralph {ralph_iteration}/{inner_max})"
+                    cmd = _build_cli_command(runtime, current_prompt, config, workspace)
+                    result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env)
+                    last_output = result.get("output", "") or ""
+                    if not result.get("success"):
+                        last_error = last_output or f"exit code {result.get('exit_code', -1)}"
+                        if "Connection stalled" in last_error or "connection stalled" in last_error.lower():
+                            last_error = "Cursor API connection stalled. Проверьте сеть и подписку Cursor; повторите шаг."
+                        else:
+                            last_error = last_error[:500] if len(last_error) > 500 else last_error
+                        break
+                    if completion_promise and _promise_found(last_output, completion_promise):
+                        break
+                if inner_max <= 1:
+                    pass
+                elif not result or not result.get("success"):
+                    pass
+                elif completion_promise and not _promise_found(last_output, completion_promise):
+                    last_error = f"Ralph: promise <{completion_promise}> не найден после {inner_max} итераций. Повторите шаг или увеличьте max_iterations в шаге."
+                    retry_attempt += 1
+                    run_obj.logs = (run_obj.logs or "") + f"\n[Step]: {last_error}\n"
+                    run_obj.save(update_fields=["logs"])
+                    continue
+
+                if result and not result.get("success"):
+                    retry_attempt += 1
+                    run_obj.logs = (run_obj.logs or "") + f"\n[Step failed]: {last_error}\n"
+                    run_obj.save(update_fields=["logs"])
+                    continue
                 if verify_prompt:
                     verify_text = f"{verify_prompt}\n\nWhen verified output exactly: <promise>{verify_promise}</promise>." if verify_promise else verify_prompt
                     verify_cmd = _build_cli_command(runtime, verify_text, {**config, "completion_promise": verify_promise}, workspace)
@@ -1429,7 +1569,7 @@ def _run_steps_with_backend(
                         retry_attempt += 1
                         continue
                 step_success = True
-                sr = {"step_idx": idx, "step": step_title, "status": "completed", "retries": retry_attempt, "result": result}
+                sr = {"step_idx": idx, "step": step_title, "status": "completed", "retries": retry_attempt, "result": result, "ralph_iterations": ralph_iteration if inner_max > 1 else None}
                 step_results.append(sr)
                 step_results_existing.append(sr)
                 run_obj.step_results = step_results_existing
