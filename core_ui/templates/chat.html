@@ -18,8 +18,29 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col h-full relative corporate-chat-container">
+<div class="flex h-full corporate-chat-container">
+    <!-- Sidebar: история чатов -->
+    <aside id="chat-history-sidebar" class="w-64 md:w-72 shrink-0 border-r border-white/10 bg-bg-surface/50 flex flex-col transition-all duration-300 z-30"
+        aria-label="История чатов">
+        <div class="p-3 border-b border-white/10 flex items-center justify-between gap-2">
+            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Чаты</span>
+            <button type="button" id="btn-new-chat" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 text-xs font-medium transition-colors"
+                title="Новый чат" aria-label="Новый чат">
+                <span class="material-icons-round text-base">add</span>
+                <span class="hidden sm:inline">Новый</span>
+            </button>
+        </div>
+        <div id="chat-history-list" class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5"
+            role="list">
+            <!-- Список чатов подгружается через JS -->
+        </div>
+        <button type="button" id="btn-toggle-sidebar" class="md:hidden p-2 border-t border-white/10 text-gray-400 hover:text-white rounded-none flex items-center justify-center" aria-label="Свернуть панель чатов">
+            <span class="material-icons-round">chevron_left</span>
+        </button>
+    </aside>
 
+    <!-- Main: область сообщений + ввод -->
+    <div class="flex flex-col flex-1 min-w-0 relative">
     <!-- Chat Messages Container -->
     <div id="chat-container" class="flex-1 overflow-y-auto scroll-smooth px-8 md:px-16 lg:px-24 py-10 space-y-6 pb-64 corporate-chat-messages">
 
@@ -186,7 +207,7 @@
             </p>
         </div>
     </div>
-
+    </div>
 </div>
 
 <!-- Shortcuts help overlay -->
@@ -311,6 +332,78 @@
     const modelSelect = document.getElementById('model-select');
     const useRagCheckbox = document.getElementById('use-rag');
 
+    // Текущий чат (null = новый диалог)
+    let currentChatId = null;
+
+    function getChatIdFromUrl() {
+        try { return new URL(window.location.href).searchParams.get('chat_id') || null; } catch (e) { return null; }
+    }
+    function setChatIdInUrl(id) {
+        const u = new URL(window.location.href);
+        if (id != null) u.searchParams.set('chat_id', String(id)); else u.searchParams.delete('chat_id');
+        window.history.replaceState({}, '', u.pathname + u.search);
+    }
+
+    function loadChats() {
+        fetch('/api/chats/', { credentials: 'same-origin' })
+            .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to load chats')); })
+            .then(function(data) {
+                const list = document.getElementById('chat-history-list');
+                if (!list) return;
+                list.innerHTML = '';
+                (data.chats || []).forEach(function(c) {
+                    const li = document.createElement('div');
+                    li.className = 'chat-history-item rounded-lg px-3 py-2.5 text-left text-sm truncate cursor-pointer transition-colors ' +
+                        (currentChatId === c.id ? 'bg-primary/20 text-primary border border-primary/30' : 'text-gray-300 hover:bg-white/5 border border-transparent');
+                    li.setAttribute('role', 'listitem');
+                    li.dataset.chatId = c.id;
+                    li.title = c.title || ('Чат #' + c.id);
+                    li.textContent = c.title || ('Чат #' + c.id);
+                    li.addEventListener('click', function() { loadChat(c.id); });
+                    list.appendChild(li);
+                });
+            })
+            .catch(function() {});
+    }
+
+    function loadChat(id) {
+        currentChatId = id;
+        setChatIdInUrl(id);
+        loadChats();
+        fetch('/api/chats/' + id + '/', { credentials: 'same-origin' })
+            .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Not found')); })
+            .then(function(data) {
+                chatContainer.querySelectorAll('.corporate-message-wrapper, .thinking-wrapper').forEach(function(el) { el.remove(); });
+                if (welcomeMsg) welcomeMsg.style.display = 'none';
+                (data.messages || []).forEach(function(m) {
+                    var content = appendMessage(m.role === 'user' ? m.content : '', m.role === 'user' ? 'user' : 'ai');
+                    if (m.role === 'assistant' && m.content) {
+                        content.innerHTML = (typeof marked !== 'undefined' ? marked.parse(m.content) : m.content);
+                        if (typeof hljs !== 'undefined') content.querySelectorAll('pre code').forEach(function(block) { hljs.highlightElement(block); });
+                        attachCopyButtons(content);
+                    }
+                    var wrapper = content && content.closest('.corporate-message-wrapper');
+                    if (wrapper) attachMessageActions(wrapper, m.role === 'user' ? 'user' : 'ai', content);
+                });
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            })
+            .catch(function() {
+                if (typeof showToast === 'function') showToast('Не удалось загрузить чат', 'error');
+            });
+    }
+
+    function startNewChat() {
+        currentChatId = null;
+        setChatIdInUrl(null);
+        clearChat();
+        loadChats();
+    }
+
+    document.getElementById('btn-new-chat').addEventListener('click', startNewChat);
+    document.getElementById('btn-toggle-sidebar').addEventListener('click', function() {
+        document.getElementById('chat-history-sidebar').classList.toggle('-ml-72');
+    });
+
     // Models per provider (for model-select)
     const MODEL_OPTIONS = {
         gemini: [
@@ -386,7 +479,7 @@
         }
     });
 
-    sendBtn.addEventListener('click', sendMessage);
+    sendBtn.addEventListener('click', function() { sendMessage(); });
 
     // Quick action helper
     function insertPrompt(text) {
@@ -396,23 +489,18 @@
         chatInput.style.height = chatInput.scrollHeight + 'px';
     }
 
-    // Clear chat
+    // Clear chat — сбрасывает текущий чат и показывает приветствие
     function clearChat() {
-        const messages = chatContainer.querySelectorAll('.flex.justify-start, .flex.justify-end');
-        messages.forEach(msg => msg.remove());
-
-        if (welcomeMsg) {
-            welcomeMsg.style.display = 'flex';
-        }
-
-        // Also clear server history
+        var wrappers = chatContainer.querySelectorAll('.corporate-message-wrapper, .thinking-wrapper');
+        wrappers.forEach(function(msg) { msg.remove(); });
+        if (welcomeMsg) welcomeMsg.style.display = 'flex';
+        currentChatId = null;
+        setChatIdInUrl(null);
+        loadChats();
         fetch('/api/clear-history/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            }
-        });
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }
+        }).catch(function(){});
     }
 
     // Shortcuts help: focus trap and a11y
@@ -499,6 +587,10 @@
 
     // Main send function
     async function sendMessage(overriddenText) {
+        // Клик по кнопке передаёт Event — не использовать как текст
+        if (overriddenText && typeof overriddenText === 'object' && typeof overriddenText.preventDefault === 'function') {
+            overriddenText = null;
+        }
         const text = (overriddenText != null ? String(overriddenText).trim() : chatInput.value.trim());
         if (!text) return;
 
@@ -541,7 +633,8 @@
                     message: text,
                     model: providerSelect.value,
                     specific_model: modelSelect.value,
-                    use_rag: useRagCheckbox.checked
+                    use_rag: useRagCheckbox.checked,
+                    chat_id: currentChatId
                 }),
                 signal: currentChatAbortController.signal
             });
@@ -557,41 +650,54 @@
             const decoder = new TextDecoder();
             let accumulatedText = '';
             let aiContentDiv = null;
+            var firstLineParsed = false;
 
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
+                var chunk = decoder.decode(value);
                 accumulatedText += chunk;
 
-                // Remove thinking indicator and create AI message on first chunk
-                if (!aiContentDiv) {
+                // Первая строка может быть CHAT_ID:123 — тогда задаём currentChatId и не показываем её
+                if (!firstLineParsed && accumulatedText.indexOf('\n') >= 0) {
+                    var idx = accumulatedText.indexOf('\n');
+                    var line = accumulatedText.slice(0, idx);
+                    var rest = accumulatedText.slice(idx + 1);
+                    var m = /^CHAT_ID:(\d+)$/.exec(line);
+                    if (m) {
+                        currentChatId = parseInt(m[1], 10);
+                        setChatIdInUrl(currentChatId);
+                        loadChats();
+                        accumulatedText = rest;
+                    }
+                    firstLineParsed = true;
+                }
+
+                // Remove thinking indicator and create AI message on first content chunk
+                if (!aiContentDiv && accumulatedText.length > 0) {
                     thinkingEl.remove();
                     aiContentDiv = appendMessage('', 'ai');
                 }
 
-                // Render markdown
-                aiContentDiv.innerHTML = marked.parse(accumulatedText);
-
-                // Apply syntax highlighting to code blocks
-                if (typeof hljs !== 'undefined') {
-                    aiContentDiv.querySelectorAll('pre code').forEach((block) => {
-                        hljs.highlightElement(block);
-                    });
+                if (aiContentDiv) {
+                    aiContentDiv.innerHTML = marked.parse(accumulatedText);
+                    if (typeof hljs !== 'undefined') {
+                        aiContentDiv.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+                    }
+                    attachCopyButtons(aiContentDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
                 }
-
-                // Add copy buttons to code blocks
-                attachCopyButtons(aiContentDiv);
-
-                // Scroll to bottom
-                chatContainer.scrollTop = chatContainer.scrollHeight;
             }
 
-            // If no response received
             if (!aiContentDiv) {
                 thinkingEl.remove();
-                aiContentDiv = appendMessage('No response received.', 'ai');
+                aiContentDiv = appendMessage(accumulatedText || 'No response received.', 'ai');
+                if (accumulatedText) aiContentDiv.innerHTML = marked.parse(accumulatedText);
+                if (typeof hljs !== 'undefined') aiContentDiv.querySelectorAll('pre code').forEach(function(b){ hljs.highlightElement(b); });
+                attachCopyButtons(aiContentDiv);
             }
             var aiWrapper = aiContentDiv && aiContentDiv.closest('.corporate-message-wrapper');
             if (aiWrapper) attachMessageActions(aiWrapper, 'ai', aiContentDiv);
@@ -939,6 +1045,18 @@
         document.addEventListener('DOMContentLoaded', runSettingsCheck);
     } else {
         runSettingsCheck();
+    }
+
+    // Инициализация истории чатов: загрузить список и при ?chat_id= — открыть этот чат
+    function initChatHistory() {
+        loadChats();
+        var chatId = getChatIdFromUrl();
+        if (chatId) loadChat(parseInt(chatId, 10));
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initChatHistory);
+    } else {
+        initChatHistory();
     }
 
     // Check for initial prompt

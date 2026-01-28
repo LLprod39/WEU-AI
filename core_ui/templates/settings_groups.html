@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block header_title %}Группы{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'settings' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Настройки</span></a>
+            <meta itemprop="position" content="2">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Группы</span>
+            <meta itemprop="position" content="3">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Группы</h1>
+            <p class="text-gray-400 text-sm mt-1">Группы пользователей Django. Состав групп задаётся в базе или через скрипты.</p>
+        </div>
+
+        <div class="glass-card rounded-xl p-6 space-y-4">
+            {% for g in groups %}
+            <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                        <span class="material-icons-round text-primary" aria-hidden="true">group</span>
+                    </div>
+                    <div>
+                        <h2 class="font-semibold text-white">{{ g.name }}</h2>
+                        <p class="text-xs text-gray-500">Пользователей: {{ g.user_set.count }}</p>
+                    </div>
+                </div>
+                {% if g.user_set.all %}
+                <div class="flex flex-wrap gap-2 mt-2">
+                    {% for u in g.user_set.all %}
+                    <span class="inline-flex items-center px-2 py-1 rounded-lg bg-white/5 text-gray-400 text-xs">{{ u.username }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-500 mt-1">В группе нет пользователей.</p>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="py-8 text-center text-gray-500">Нет групп.</div>
+            {% endfor %}
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+            <a href="{% url 'settings' %}" class="btn-ghost inline-flex items-center gap-2" aria-label="Вернуться в настройки">
+                <span class="material-icons-round text-lg" aria-hidden="true">arrow_back</span>
+                Настройки
+            </a>
+            <a href="{% url 'settings_users' %}" class="btn-ghost inline-flex items-center gap-2" aria-label="Пользователи">
+                <span class="material-icons-round text-lg" aria-hidden="true">people</span>
+                Пользователи
+            </a>
+            <a href="{% url 'settings_permissions' %}" class="btn-primary inline-flex items-center gap-2" aria-label="Права доступа">
+                <span class="material-icons-round text-lg" aria-hidden="true">manage_accounts</span>
+                Права доступа
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

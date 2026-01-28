@@ -22,9 +22,11 @@ from .models import (
 )
 from app.tools.ssh_tools import ssh_manager
 from passwords.encryption import PasswordEncryption
+from core_ui.decorators import require_feature
 
 
 @login_required
+@require_feature('servers', redirect_on_forbidden=True)
 def server_list(request):
     """List all servers for the user"""
     servers = Server.objects.filter(user=request.user, is_active=True)
@@ -64,6 +66,7 @@ def _get_group_role(group: ServerGroup, user: User) -> str:
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_create(request):
     data = json.loads(request.body)
@@ -88,6 +91,7 @@ def group_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_update(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
@@ -109,6 +113,7 @@ def group_update(request, group_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_delete(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
@@ -120,6 +125,7 @@ def group_delete(request, group_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_add_member(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
@@ -143,6 +149,7 @@ def group_add_member(request, group_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_remove_member(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
@@ -160,6 +167,7 @@ def group_remove_member(request, group_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def group_subscribe(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
@@ -173,6 +181,7 @@ def group_subscribe(request, group_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def bulk_update_servers(request):
     data = json.loads(request.body)
@@ -201,6 +210,7 @@ def bulk_update_servers(request):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def server_create(request):
     """Create a new server"""
@@ -255,6 +265,7 @@ def server_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def server_test_connection(request, server_id):
     """Test connection to server"""
@@ -307,6 +318,7 @@ def server_test_connection(request, server_id):
 
 @csrf_exempt
 @login_required
+@require_feature('servers')
 @require_http_methods(["POST"])
 def server_execute_command(request, server_id):
     """Execute command on server"""

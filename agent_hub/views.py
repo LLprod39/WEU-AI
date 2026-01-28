@@ -22,6 +22,7 @@ from loguru import logger
 
 from .models import AgentProfile, AgentRun, AgentPreset, AgentWorkflow, AgentWorkflowRun
 from app.agents.manager import get_agent_manager
+from core_ui.decorators import require_feature
 from app.core.llm import LLMProvider
 from app.agents.cli_runtime import CliRuntimeManager
 
@@ -249,6 +250,7 @@ Task description:
 
 
 @login_required
+@require_feature('agents', redirect_on_forbidden=True)
 def agents_page(request):
     profiles = AgentProfile.objects.filter(owner=request.user, is_active=True)
     presets = AgentPreset.objects.all()
@@ -311,6 +313,7 @@ def agents_page(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_profiles_list(request):
     profiles = AgentProfile.objects.filter(owner=request.user).order_by("-updated_at")
@@ -334,6 +337,7 @@ def api_profiles_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_profiles_create(request):
     data = _parse_json_request(request)
@@ -373,6 +377,7 @@ def api_profiles_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_profiles_update(request, profile_id: int):
     profile = get_object_or_404(AgentProfile, id=profile_id, owner=request.user)
@@ -407,6 +412,7 @@ def api_profiles_update(request, profile_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_profiles_delete(request, profile_id: int):
     profile = get_object_or_404(AgentProfile, id=profile_id, owner=request.user)
@@ -417,6 +423,7 @@ def api_profiles_delete(request, profile_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_agent_run(request):
     data = _parse_json_request(request)
@@ -492,6 +499,7 @@ def api_agent_run(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_runs_list(request):
     runs = AgentRun.objects.filter(initiated_by=request.user).order_by("-created_at")[:50]
@@ -511,6 +519,7 @@ def api_runs_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_run_status(request, run_id: int):
     run = get_object_or_404(AgentRun, id=run_id, initiated_by=request.user)
@@ -527,6 +536,7 @@ def api_run_status(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_run_stop(request, run_id: int):
     run = get_object_or_404(AgentRun, id=run_id, initiated_by=request.user)
@@ -552,6 +562,7 @@ def api_run_stop(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_run_delete(request, run_id: int):
     run = get_object_or_404(AgentRun, id=run_id, initiated_by=request.user)
@@ -561,6 +572,7 @@ def api_run_delete(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_run_delete(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -570,6 +582,7 @@ def api_workflow_run_delete(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_projects_list(request):
     """Возвращает список папок проектов"""
@@ -579,6 +592,7 @@ def api_projects_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_projects_create(request):
     """Создает новую папку проекта"""
@@ -597,6 +611,7 @@ def api_projects_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_workflows_list(request):
     workflows = AgentWorkflow.objects.filter(owner=request.user).order_by("-created_at")[:50]
@@ -616,6 +631,7 @@ def api_workflows_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_delete(request, workflow_id: int):
     workflow = get_object_or_404(AgentWorkflow, id=workflow_id, owner=request.user)
@@ -633,6 +649,7 @@ def api_workflow_delete(request, workflow_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_generate(request):
     data = _parse_json_request(request)
@@ -708,6 +725,7 @@ def _promise_found(output: str, promise: str) -> bool:
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_run(request):
     data = _parse_json_request(request)
@@ -1156,6 +1174,7 @@ def _start_workflow_run(workflow: AgentWorkflow, user) -> AgentWorkflowRun:
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_workflow_run_status(request, run_id: int):
     run = get_object_or_404(
@@ -1206,6 +1225,7 @@ def api_workflow_run_status(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_stop(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -1228,6 +1248,7 @@ def api_workflow_stop(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_restart(request, run_id: int):
     old_run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -1275,6 +1296,7 @@ def _continue_workflow_run(run_id: int, from_step: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_skip_step(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -1305,6 +1327,7 @@ def api_workflow_skip_step(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_skip_specific_step(request, run_id: int):
     """Пропустить конкретный шаг по индексу"""
@@ -1344,6 +1367,7 @@ def api_workflow_skip_specific_step(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_continue(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -1364,6 +1388,7 @@ def api_workflow_continue(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_retry_step(request, run_id: int):
     run = get_object_or_404(AgentWorkflowRun, id=run_id, initiated_by=request.user)
@@ -1384,6 +1409,7 @@ def api_workflow_retry_step(request, run_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_assist_config(request):
     data = _parse_json_request(request)
@@ -1397,6 +1423,7 @@ def api_assist_config(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_assist_auto(request):
     data = _parse_json_request(request)
@@ -1491,6 +1518,7 @@ def api_assist_auto(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_tasks_generate(request):
     """AI генерация задач по описанию проекта"""
@@ -1558,6 +1586,7 @@ Project description:
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_create_manual(request):
     """Ручное создание workflow из списка задач"""
@@ -1685,6 +1714,7 @@ def api_workflow_create_manual(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_import(request):
     """Импорт workflow из JSON файла"""
@@ -1725,6 +1755,7 @@ def api_workflow_import(request):
 
 
 @login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_workflow_get(request, workflow_id: int):
     """Получить детали workflow для редактирования"""
@@ -1747,6 +1778,7 @@ def api_workflow_get(request, workflow_id: int):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_workflow_update(request, workflow_id: int):
     """Обновление workflow (шаги, название, проект)"""

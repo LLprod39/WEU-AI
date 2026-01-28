@@ -19,6 +19,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+admin.site.site_header = "WEU AI Admin"
+admin.site.site_title = "WEU AI — Админка"
+admin.site.index_title = "Управление"
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('core_ui.urls')),

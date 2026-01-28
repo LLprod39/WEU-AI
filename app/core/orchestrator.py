@@ -48,7 +48,9 @@ class Orchestrator:
         message: str, 
         model_preference: str = None,
         use_rag: bool = True,
-        specific_model: str = None  # Allow specific model override
+        specific_model: str = None,  # Allow specific model override
+        user_id=None,  # For per-user RAG isolation
+        initial_history: List[Dict[str, str]] = None  # История из БД для продолжения чата
     ) -> AsyncGenerator[str, None]:
         """
         Process user message with full ReAct loop
@@ -61,26 +63,31 @@ class Orchestrator:
            - Observe: Get tool result
            - Repeat or Finish
         3. Stream final response
+        
+        If initial_history is provided, it is used for context instead of self.history
+        and self.history is not mutated (для поточных запросов с chat_id).
         """
-        
-        
-        # Add user message to history
-        self.history.append({"role": "user", "content": message})
+        effective_history = list(initial_history) if initial_history else list(self.history)
+        effective_history.append({"role": "user", "content": message})
+        if not initial_history:
+            self.history.append({"role": "user", "content": message})
         
         # Resolve model preference
         if not model_preference:
             from app.core.model_config import model_manager
             model_preference = model_manager.config.default_provider
         
-        # Limit history to last 10 messages
-        if len(self.history) > 10:
+        # Limit history to last 10 messages (for prompt)
+        if len(effective_history) > 10:
+            effective_history = effective_history[-10:]
+        if not initial_history and len(self.history) > 10:
             self.history = self.history[-10:]
         
         # Step 1: Retrieve RAG context
         rag_context = ""
-        if use_rag and self.rag.available:
+        if use_rag and self.rag.available and user_id is not None:
             try:
-                results = self.rag.query(message, n_results=3)
+                results = self.rag.query(message, n_results=3, user_id=user_id)
                 if results.get('documents') and results['documents'][0]:
                     docs = results['documents'][0]
                     if docs:
@@ -97,11 +104,12 @@ class Orchestrator:
             iteration += 1
             logger.info(f"ReAct iteration {iteration}/{self.max_iterations}")
             
-            # Build system prompt
+            # Build system prompt (use effective_history when continuing saved chat)
             system_prompt = self._build_system_prompt(
                 user_message=message,
                 rag_context=rag_context,
-                iteration=iteration
+                iteration=iteration,
+                history_override=effective_history if initial_history else None
             )
             
             # Get LLM response
@@ -134,15 +142,24 @@ class Orchestrator:
                     result_str = self._format_tool_result(result)
                     yield f"✅ **Result:**\n```\n{result_str}\n```\n\n"
                     
-                    # Add to history
-                    self.history.append({
+                    # Add to effective history (and self.history if not override)
+                    effective_history.append({
                         "role": "assistant",
                         "content": f"ACTION: {tool_name} with {tool_args}"
                     })
-                    self.history.append({
+                    effective_history.append({
                         "role": "system",
                         "content": f"OBSERVATION: {result_str}"
                     })
+                    if not initial_history:
+                        self.history.append({
+                            "role": "assistant",
+                            "content": f"ACTION: {tool_name} with {tool_args}"
+                        })
+                        self.history.append({
+                            "role": "system",
+                            "content": f"OBSERVATION: {result_str}"
+                        })
                     
                     # Continue loop with new observation
                     continue
@@ -152,10 +169,15 @@ class Orchestrator:
                     yield f"{error_msg}\n\n"
                     logger.error(error_msg)
                     
-                    self.history.append({
+                    effective_history.append({
                         "role": "system",
                         "content": f"ERROR: {str(e)}"
                     })
+                    if not initial_history:
+                        self.history.append({
+                            "role": "system",
+                            "content": f"ERROR: {str(e)}"
+                        })
                     
                     # Continue loop to let agent handle error
                     continue
@@ -169,14 +191,17 @@ class Orchestrator:
             final_answer = "I've reached my iteration limit. Here's what I found so far:\n\n" + llm_response
         
         # Add final answer to history
-        self.history.append({"role": "assistant", "content": final_answer})
+        effective_history.append({"role": "assistant", "content": final_answer})
+        if not initial_history:
+            self.history.append({"role": "assistant", "content": final_answer})
         
         # Add to RAG if it's valuable information
-        if len(final_answer) > 100:  # Only add substantial responses
+        if len(final_answer) > 100 and user_id is not None:  # Only add substantial responses
             try:
                 self.rag.add_text(
                     f"Q: {message}\nA: {final_answer}",
-                    source="conversation"
+                    source="conversation",
+                    user_id=user_id
                 )
             except Exception as e:
                 logger.warning(f"Failed to add to RAG: {e}")
@@ -185,15 +210,19 @@ class Orchestrator:
         if iteration > 1:
             yield f"\n\n{final_answer}"
     
-    def _build_system_prompt(self, user_message: str, rag_context: str, iteration: int) -> str:
-        """Build the ReAct system prompt"""
+    def _build_system_prompt(
+        self, user_message: str, rag_context: str, iteration: int,
+        history_override: List[Dict[str, str]] = None
+    ) -> str:
+        """Build the ReAct system prompt. history_override uses saved chat history when continuing a session."""
         
         tools_description = self.tool_manager.get_tools_description()
+        history_source = history_override if history_override is not None else self.history
         
         history_text = ""
-        if len(self.history) > 1:
+        if len(history_source) > 1:
             # Show last few exchanges
-            recent = self.history[-6:]
+            recent = history_source[-6:]
             history_text = "\n".join([
                 f"{msg['role'].upper()}: {msg['content'][:200]}" 
                 for msg in recent[:-1]  # Exclude current message
@@ -273,12 +302,12 @@ Your response:"""
         self.history = []
         logger.info("Conversation history cleared")
     
-    async def add_to_knowledge_base(self, text: str, source: str = "manual"):
-        """Add text to RAG knowledge base"""
-        if self.rag.available:
-            doc_id = self.rag.add_text(text, source)
+    async def add_to_knowledge_base(self, text: str, source: str = "manual", user_id=None):
+        """Add text to RAG knowledge base (user_id required for per-user isolation)."""
+        if self.rag.available and user_id is not None:
+            doc_id = self.rag.add_text(text, source, user_id=user_id)
             logger.info(f"Added to knowledge base: {doc_id}")
             return doc_id
         else:
-            logger.warning("RAG not available")
+            logger.warning("RAG not available or user_id missing")
             return None

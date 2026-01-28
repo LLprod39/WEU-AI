@@ -10,8 +10,8 @@ import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator
-from django.shortcuts import render
-from django.http import StreamingHttpResponse, JsonResponse
+from django.shortcuts import render, redirect
+from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
@@ -29,6 +29,9 @@ from app.core.model_config import model_manager
 from app.rag.engine import RAGEngine
 from app.utils.file_processor import FileProcessor
 from app.agents.manager import get_agent_manager
+from core_ui.context_processors import user_can_feature
+from core_ui.decorators import require_feature
+from core_ui.models import ChatSession, ChatMessage
 
 # Singleton instances
 _orchestrator = None
@@ -148,6 +151,7 @@ def index(request):
 
 
 @login_required
+@require_feature('orchestrator', redirect_on_forbidden=True)
 def orchestrator_view(request):
     """Orchestrator dashboard - shows agent workflow"""
     # Use cached orchestrator instance to avoid slow initialization
@@ -159,6 +163,7 @@ def orchestrator_view(request):
 
 
 @login_required
+@require_feature('knowledge_base', redirect_on_forbidden=True)
 def knowledge_base_view(request):
     """Knowledge Base (RAG) management - optimized for fast loading"""
     rag = get_rag_engine()
@@ -175,13 +180,70 @@ def knowledge_base_view(request):
 
 @login_required
 def settings_view(request):
-    """Settings page — конфиг подгружается через /api/settings/ и /api/models/"""
+    """Settings page — конфиг подгружается через /api/settings/ и /api/models/. Only for staff or users with settings permission."""
+    if not user_can_feature(request.user, 'settings'):
+        return redirect('index')
     return render(request, 'settings.html', {})
 
 
 # ============================================
-# Cursor CLI (Ask mode) — только ответы, без изменений файлов
-# Вызов: agent --mode=ask -p "вопрос" --output-format text
+# Settings: управление доступом (одна страница с вкладками)
+# ============================================
+
+def _get_access_data():
+    """Данные для раздела «Управление доступом»."""
+    from django.contrib.auth.models import User, Group
+    from core_ui.models import UserAppPermission
+    return {
+        'users': User.objects.all().order_by('username'),
+        'groups': Group.objects.all().prefetch_related('user_set').order_by('name'),
+        'permissions': UserAppPermission.objects.select_related('user').all().order_by('user__username', 'feature'),
+    }
+
+
+@login_required
+def settings_access_view(request):
+    """Единая страница «Управление доступом» с вкладками: Пользователи, Группы, Права. Доступ: settings."""
+    if not user_can_feature(request.user, 'settings'):
+        return redirect('index')
+    tab = request.GET.get('tab', 'users')
+    if tab not in ('users', 'groups', 'permissions'):
+        tab = 'users'
+    ctx = _get_access_data()
+    ctx['active_tab'] = tab
+    return render(request, 'settings_access.html', ctx)
+
+
+@login_required
+def settings_users_view(request):
+    """Редирект на единую страницу управления с вкладкой «Пользователи»."""
+    if not user_can_feature(request.user, 'settings'):
+        return redirect('index')
+    from django.urls import reverse
+    return redirect(reverse('settings_access') + '?tab=users')
+
+
+@login_required
+def settings_groups_view(request):
+    """Редирект на единую страницу управления с вкладкой «Группы»."""
+    if not user_can_feature(request.user, 'settings'):
+        return redirect('index')
+    from django.urls import reverse
+    return redirect(reverse('settings_access') + '?tab=groups')
+
+
+@login_required
+def settings_permissions_view(request):
+    """Редирект на единую страницу управления с вкладкой «Права»."""
+    if not user_can_feature(request.user, 'settings'):
+        return redirect('index')
+    from django.urls import reverse
+    return redirect(reverse('settings_access') + '?tab=permissions')
+
+
+# ============================================
+# Cursor CLI — Ask (только ответы) или Agent (правка файлов)
+# Вызов: agent --mode=ask|agent -p "вопрос" --output-format text
 # ============================================
 
 def _resolve_cursor_cli_command() -> str:
@@ -208,14 +270,17 @@ def _resolve_cursor_cli_command() -> str:
     return resolved
 
 
-async def _stream_cursor_ask(
+async def _stream_cursor_cli(
     message: str,
     workspace: str,
+    mode: str = "ask",
 ) -> AsyncGenerator[str, None]:
     """
-    Запускает Cursor CLI в режиме Ask (--mode=ask): только ответы, без изменений файлов.
+    Запускает Cursor CLI в режиме Ask (--mode=ask) или Agent (--mode=agent).
+    ask — только ответы, без изменений файлов; agent — агент с правкой кода.
     Стримит stdout процесса в виде чанков.
     """
+    mode = "agent" if (mode or "").strip().lower() == "agent" else "ask"
     cmd_path = _resolve_cursor_cli_command()
     base_dir = str(Path(workspace).resolve()) if workspace else str(Path(settings.BASE_DIR).resolve())
     env = dict(os.environ)
@@ -224,7 +289,7 @@ async def _stream_cursor_ask(
 
     proc = await asyncio.create_subprocess_exec(
         cmd_path,
-        "--mode=ask",
+        f"--mode={mode}",
         "-p",
         message,
         "--output-format",
@@ -266,13 +331,80 @@ async def _stream_cursor_ask(
 # API Endpoints
 # ============================================
 
+def _chat_history_from_session(session):
+    """Build list of {role, content} from ChatMessage for orchestrator initial_history."""
+    return [
+        {"role": m.role, "content": m.content}
+        for m in session.messages.order_by('created_at').only('role', 'content')
+    ]
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["GET"])
+def api_chats_list(request):
+    """Список чатов текущего пользователя."""
+    try:
+        sessions = ChatSession.objects.filter(user=request.user).order_by('-updated_at')[:50]
+        items = [
+            {"id": s.id, "title": s.title, "created_at": s.created_at.isoformat(), "updated_at": s.updated_at.isoformat()}
+            for s in sessions
+        ]
+        return JsonResponse({"chats": items})
+    except Exception as e:
+        logger.error(f"api_chats_list: {e}")
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["POST"])
+def api_chats_create(request):
+    """Создать новый чат. Body: {} или {"title": "..."}. Возвращает { "id", "title" }."""
+    try:
+        data = json.loads(request.body) if request.body else {}
+        title = (data.get("title") or "").strip() or "Новый чат"
+        session = ChatSession.objects.create(user=request.user, title=title)
+        return JsonResponse({"id": session.id, "title": session.title})
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"api_chats_create: {e}")
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["GET"])
+def api_chat_detail(request, chat_id):
+    """Получить чат по id с сообщениями. Доступ только к своим чатам."""
+    try:
+        session = ChatSession.objects.filter(user=request.user, id=chat_id).first()
+        if not session:
+            return JsonResponse({"error": "Not found"}, status=404)
+        messages = [
+            {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+            for m in session.messages.order_by('created_at')
+        ]
+        return JsonResponse({
+            "id": session.id,
+            "title": session.title,
+            "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat(),
+            "messages": messages,
+        })
+    except Exception as e:
+        logger.error(f"api_chat_detail: {e}")
+        return JsonResponse({"error": str(e)}, status=500)
+
+
 @csrf_exempt
 @login_required
 async def chat_api(request):
     """
     Async API endpoint for chat streaming.
-    Expects JSON: { "message": "user input", "model": "auto|gemini|grok" }
-    model=auto → Cursor CLI --mode=ask (только ответы, без агента).
+    Expects JSON: { "message": "user input", "model": "auto|gemini|grok", "chat_id": null|int }
+    model=auto → Cursor CLI; chat_id — сессия для истории и сохранения сообщений.
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -283,25 +415,80 @@ async def chat_api(request):
         model = data.get('model', model_manager.config.default_provider)
         specific_model = data.get('specific_model')
         use_rag = data.get('use_rag', True)
-        
+        chat_id = data.get('chat_id')
+
         if not user_message:
             return JsonResponse({'error': 'Empty message'}, status=400)
 
+        # Загрузить сессию или подготовить создание новой (id отдадим в первом чанке)
+        session = None
+        initial_history = None
+        if chat_id:
+            session = await asyncio.to_thread(
+                lambda: ChatSession.objects.filter(user=request.user, id=chat_id).select_related().first()
+            )
+            if session:
+                initial_history = await asyncio.to_thread(_chat_history_from_session, session)
+
         async def event_stream():
+            nonlocal session
+            accumulated = []
+            created_session_id = None  # новый id, если создали сессию в этом запросе
             try:
                 if model == "auto":
+                    if not session and request.user.id:
+                        session = await asyncio.to_thread(
+                            lambda: ChatSession.objects.create(
+                                user=request.user,
+                                title=(user_message[:80] or "Чат").strip() or "Чат",
+                            )
+                        )
+                        created_session_id = session.id
                     workspace = getattr(settings, "BASE_DIR", "")
-                    async for chunk in _stream_cursor_ask(user_message, workspace):
+                    cursor_mode = getattr(model_manager.config, "cursor_chat_mode", "ask") or "ask"
+                    if created_session_id is not None:
+                        yield f"CHAT_ID:{created_session_id}\n"
+                    async for chunk in _stream_cursor_cli(user_message, workspace, mode=cursor_mode):
+                        accumulated.append(chunk)
                         yield chunk
+                    full_text = "".join(accumulated)
+                    if request.user.id and session:
+                        def _save_auto():
+                            ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=user_message)
+                            ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content=full_text)
+                            session.title = (user_message[:80] or session.title).strip() or session.title
+                            session.save(update_fields=["title", "updated_at"])
+                        await asyncio.to_thread(_save_auto)
                     return
+                if not session and request.user.id:
+                    session = await asyncio.to_thread(
+                        lambda: ChatSession.objects.create(
+                            user=request.user,
+                            title=(user_message[:80] or "Новый чат").strip() or "Новый чат",
+                        )
+                    )
+                    created_session_id = session.id
+                if created_session_id is not None:
+                    yield f"CHAT_ID:{created_session_id}\n"
                 orchestrator = await get_orchestrator()
                 async for chunk in orchestrator.process_user_message(
                     user_message,
                     model_preference=model,
                     use_rag=use_rag,
-                    specific_model=specific_model
+                    specific_model=specific_model,
+                    user_id=request.user.id,
+                    initial_history=initial_history,
                 ):
+                    accumulated.append(chunk)
                     yield chunk
+                full_text = "".join(accumulated)
+                if request.user.id and session:
+                    def _save():
+                        ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=user_message)
+                        ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content=full_text)
+                        session.title = (user_message[:80] or session.title).strip() or session.title
+                        session.save(update_fields=["title", "updated_at"])
+                    await asyncio.to_thread(_save)
             except FileNotFoundError as e:
                 yield f"\n\n❌ {e}"
             except Exception as e:
@@ -317,6 +504,7 @@ async def chat_api(request):
 
 @csrf_exempt
 @login_required
+@require_feature('knowledge_base')
 @require_http_methods(["POST"])
 def rag_add_api(request):
     """Add text to RAG knowledge base"""
@@ -332,7 +520,7 @@ def rag_add_api(request):
         if not rag.available:
             return JsonResponse({'success': False, 'error': 'RAG not available'}, status=503)
         
-        doc_id = rag.add_text(text, source)
+        doc_id = rag.add_text(text, source, user_id=request.user.id)
         
         if doc_id is None:
             return JsonResponse({
@@ -354,6 +542,7 @@ def rag_add_api(request):
 
 @csrf_exempt
 @login_required
+@require_feature('knowledge_base')
 @require_http_methods(["POST"])
 def rag_query_api(request):
     """Query RAG knowledge base"""
@@ -375,7 +564,7 @@ def rag_query_api(request):
             }, status=503)
         
         try:
-            results = rag.query(query, n_results)
+            results = rag.query(query, n_results, user_id=request.user.id)
             
             return JsonResponse({
                 'success': True,
@@ -409,6 +598,7 @@ def rag_query_api(request):
 
 @csrf_exempt
 @login_required
+@require_feature('knowledge_base')
 @require_http_methods(["POST"])
 def rag_reset_api(request):
     """Reset RAG database"""
@@ -418,7 +608,7 @@ def rag_reset_api(request):
             return JsonResponse({'success': False, 'error': 'RAG not available'}, status=503)
         
         try:
-            rag.reset_db()
+            rag.reset_db(user_id=request.user.id)
             return JsonResponse({
                 'success': True,
                 'message': 'Database reset successfully'
@@ -436,6 +626,7 @@ def rag_reset_api(request):
 
 @csrf_exempt
 @login_required
+@require_feature('knowledge_base')
 @require_http_methods(["POST"])
 def rag_delete_api(request):
     """Delete a single document by id"""
@@ -447,7 +638,7 @@ def rag_delete_api(request):
         rag = get_rag_engine()
         if not rag.available:
             return JsonResponse({'success': False, 'error': 'RAG not available'}, status=503)
-        removed = rag.delete_document(str(doc_id))
+        removed = rag.delete_document(str(doc_id), user_id=request.user.id)
         if removed:
             return JsonResponse({'success': True, 'message': 'Document deleted'})
         return JsonResponse({'success': False, 'error': 'Document not found'}, status=404)
@@ -459,6 +650,7 @@ def rag_delete_api(request):
 
 
 @login_required
+@require_feature('knowledge_base')
 def rag_documents_api(request):
     """Get documents from RAG with pagination - optimized for performance"""
     try:
@@ -476,7 +668,7 @@ def rag_documents_api(request):
         offset = int(request.GET.get('offset', 0))
         
         # Get documents (limited for performance)
-        all_documents = rag.get_documents(limit=limit + offset)
+        all_documents = rag.get_documents(limit=limit + offset, user_id=request.user.id)
         
         # Apply pagination
         documents = all_documents[offset:offset + limit]
@@ -499,6 +691,7 @@ def rag_documents_api(request):
 
 
 @login_required
+@require_feature('orchestrator')
 def api_tools_list(request):
     """Get list of available tools - uses get_orchestrator() with initialize(), no direct Orchestrator creation"""
     try:
@@ -555,7 +748,9 @@ def api_clear_history(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def api_settings(request):
-    """GET: return full settings config. POST: update settings."""
+    """GET: return full settings config. POST: update settings. Only for staff or users with settings permission."""
+    if not user_can_feature(request.user, 'settings'):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
     if request.method == 'GET':
         try:
             model_manager.load_config()
@@ -570,6 +765,7 @@ def api_settings(request):
                     'agent_model_gemini': c.agent_model_gemini,
                     'agent_model_grok': c.agent_model_grok,
                     'default_agent_output_path': getattr(c, 'default_agent_output_path', '') or '',
+                    'cursor_chat_mode': getattr(c, 'cursor_chat_mode', 'ask') or 'ask',
                 },
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
@@ -585,7 +781,7 @@ def api_settings(request):
             allowed = {
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
-                'default_agent_output_path',
+                'default_agent_output_path', 'cursor_chat_mode',
             }
             for key, value in data.items():
                 if key in allowed and value is not None:
@@ -604,8 +800,10 @@ def api_settings_check(request):
     """
     GET /api/settings/check/
     Returns: { configured: true|false, missing: ['gemini_key','grok_key'] }
-    Checks that API keys in settings are non-empty.
+    Checks that API keys in settings are non-empty. Only for users with settings permission.
     """
+    if not user_can_feature(request.user, 'settings'):
+        return JsonResponse({'configured': False, 'missing': ['gemini_key', 'grok_key']}, status=403)
     try:
         gemini_ok = bool((os.getenv('GEMINI_API_KEY') or '').strip())
         grok_ok = bool((os.getenv('GROK_API_KEY') or '').strip())
@@ -624,6 +822,7 @@ def api_settings_check(request):
 
 
 @login_required
+@require_feature('agents')
 def api_agents_list(request):
     """Get list of available agents"""
     try:
@@ -636,6 +835,7 @@ def api_agents_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 async def api_agent_execute(request):
     """Execute an agent with a task"""
@@ -660,6 +860,7 @@ async def api_agent_execute(request):
 
 @csrf_exempt
 @login_required
+@require_feature('knowledge_base')
 @require_http_methods(["POST"])
 def api_upload_file(request):
     """Upload file and add to RAG"""
@@ -702,7 +903,8 @@ def api_upload_file(request):
         if rag.available and result['text']:
             doc_id = rag.add_text(
                 result['text'],
-                source=f"upload:{filename}"
+                source=f"upload:{filename}",
+                user_id=request.user.id
             )
             result['metadata']['rag_doc_id'] = doc_id
         

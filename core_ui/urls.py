@@ -20,6 +20,10 @@ urlpatterns = [
     path('orchestrator/', views.orchestrator_view, name='orchestrator'),
     path('knowledge-base/', views.knowledge_base_view, name='knowledge_base'),
     path('settings/', views.settings_view, name='settings'),
+    path('settings/access/', views.settings_access_view, name='settings_access'),
+    path('settings/users/', views.settings_users_view, name='settings_users'),
+    path('settings/groups/', views.settings_groups_view, name='settings_groups'),
+    path('settings/permissions/', views.settings_permissions_view, name='settings_permissions'),
     
     # Health (no auth)
     path('api/health/', views.api_health, name='api_health'),
@@ -27,6 +31,9 @@ urlpatterns = [
     # Chat API
     path('api/chat/', views.chat_api, name='chat_api'),
     path('chat_api/', views.chat_api, name='chat_api_legacy'),  # Legacy URL
+    path('api/chats/', views.api_chats_list, name='api_chats_list'),
+    path('api/chats/new/', views.api_chats_create, name='api_chats_create'),
+    path('api/chats/<int:chat_id>/', views.api_chat_detail, name='api_chat_detail'),
     
     # RAG API
     path('api/rag/add/', views.rag_add_api, name='rag_add'),

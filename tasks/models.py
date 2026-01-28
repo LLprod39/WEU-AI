@@ -145,6 +145,22 @@ class Task(models.Model):
         return int((completed / subtasks.count()) * 100)
 
 
+class TaskShare(models.Model):
+    """Share a task with another user. Visibility + optional edit right."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='shares')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_shares')
+    can_edit = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ['task', 'user']
+        indexes = [
+            models.Index(fields=['user', 'task']),
+        ]
+
+    def __str__(self):
+        return f"{self.task.title} → {self.user.username} (edit={self.can_edit})"
+
+
 class TaskLabel(models.Model):
     """Labels/Tags for tasks"""
     name = models.CharField(max_length=50, unique=True)

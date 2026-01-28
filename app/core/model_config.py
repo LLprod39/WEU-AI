@@ -31,6 +31,9 @@ class ModelConfig(BaseModel):
     # Относительный путь внутри AGENT_PROJECTS_DIR или пусто = не задано.
     default_agent_output_path: str = ""
 
+    # Режим Cursor CLI в чате при выборе «Авто»: ask — только ответы, agent — агент с правкой файлов.
+    cursor_chat_mode: str = "ask"
+
 
 
 class ModelManager:
@@ -146,22 +149,22 @@ class ModelManager:
             await self.fetch_available_grok_models()
     
     def get_chat_model(self, provider: Optional[str] = None) -> str:
-        """Get configured chat model for provider"""
+        """Get configured chat model for provider. «auto» даёт chat_model_gemini (fallback для внутренних вызовов)."""
         provider = provider or self.config.default_provider
-        
+        if provider == "auto":
+            provider = "gemini"
         if provider == "gemini":
             return self.config.chat_model_gemini
-        else:
-            return self.config.chat_model_grok
-    
+        return self.config.chat_model_grok
+
     def get_agent_model(self, provider: Optional[str] = None) -> str:
-        """Get configured agent model for provider"""
+        """Get configured agent model for provider. «auto» даёт agent_model_gemini (fallback)."""
         provider = provider or self.config.default_provider
-        
+        if provider == "auto":
+            provider = "gemini"
         if provider == "gemini":
             return self.config.agent_model_gemini
-        else:
-            return self.config.agent_model_grok
+        return self.config.agent_model_grok
     
     def get_rag_model(self) -> str:
         """Get configured RAG/embedding model"""

@@ -86,9 +86,13 @@ class LLMProvider:
         
         Args:
             prompt: The prompt to send
-            model: Provider name (gemini/grok)
+            model: Provider name (auto/gemini/grok). «auto» в облачном чате не используется —
+                   запросы с model=auto идут в Cursor CLI; здесь при model=auto берём gemini как fallback.
             specific_model: Specific model to use (overrides config)
         """
+        # «auto» = Cursor CLI, в облачный stream сюда не попадает; для внутренних вызовов (agents, tasks) fallback на gemini
+        if model == "auto" or not model:
+            model = "gemini"
         logger.info(f"Streaming chat from {model} with prompt: {prompt[:50]}...")
         
         if model == "gemini":

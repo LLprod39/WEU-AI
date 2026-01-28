@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 
-{% block header_title %}Settings{% endblock %}
+{% block header_title %}Настройки{% endblock %}
 {% block breadcrumbs %}
 <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
     <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
         <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
-            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
             <meta itemprop="position" content="1">
             <span class="text-gray-600" aria-hidden="true">/</span>
         </li>
         <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
-            <span class="font-medium text-white" itemprop="name">Settings</span>
+            <span class="font-medium text-white" itemprop="name">Настройки</span>
             <meta itemprop="position" content="2">
         </li>
     </ol>
@@ -23,8 +23,8 @@
 
         <!-- Header -->
         <div>
-            <h1 class="text-2xl font-bold text-white" style="font-size: var(--text-2xl); font-weight: var(--font-weight-bold);">Settings</h1>
-            <p class="text-gray-400 text-sm mt-1" style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--spacing-xs);">Configure API keys, models, and providers here.</p>
+            <h1 class="text-2xl font-bold text-white" style="font-size: var(--text-2xl); font-weight: var(--font-weight-bold);">Настройки</h1>
+            <p class="text-gray-400 text-sm mt-1" style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--spacing-xs);">API-ключи, модели, провайдеры и управление доступом.</p>
         </div>
 
         <div id="settings-loading" class="glass-card rounded-xl p-8 text-center text-gray-400">
@@ -91,11 +91,21 @@
                 <div class="space-y-5">
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Default provider</label>
-                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1">
+                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1" aria-label="Провайдер по умолчанию: Авто, Gemini или Grok">
+                            <option value="auto">Авто (Cursor CLI)</option>
                             <option value="gemini">Google Gemini</option>
                             <option value="grok">xAI Grok</option>
                         </select>
                         <span class="field-error" id="default-provider-error" style="display:none;">Required field</span>
+                    </div>
+
+                    <div id="cursor-chat-mode-row">
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="cursor-chat-mode">Режим Cursor CLI в чате (при выборе «Авто»)</label>
+                        <select id="cursor-chat-mode" class="input-field w-full md:max-w-xs" aria-label="Режим Cursor CLI: Ask или Agent">
+                            <option value="ask">Ask — только ответы, без правки файлов</option>
+                            <option value="agent">Agent — агент с правкой кода и инструментами</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Используется, когда в чате выбран провайдер «Авто» (Cursor CLI).</p>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -186,6 +196,27 @@
                     Clear chat history
                 </button>
             </div>
+
+            <!-- Управление доступом — одна страница с вкладками -->
+            {% if user_can_settings %}
+            <div class="glass-card rounded-xl p-6 border border-primary/20 shadow-glow-primary">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div class="flex items-start gap-3">
+                        <div class="w-11 h-11 rounded-xl bg-primary/20 flex items-center justify-center ring-2 ring-primary/30 shrink-0">
+                            <span class="material-icons-round text-primary text-xl" aria-hidden="true">manage_accounts</span>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Управление доступом</h2>
+                            <p class="text-sm text-gray-400 mt-0.5">Пользователи, группы и права к разделам — всё в одном разделе с вкладками.</p>
+                        </div>
+                    </div>
+                    <a href="{% url 'settings_access' %}" class="btn-primary inline-flex items-center justify-center gap-2 shrink-0 self-start sm:self-center" aria-label="Открыть управление доступом">
+                        <span class="material-icons-round text-lg" aria-hidden="true">open_in_full</span>
+                        Открыть
+                    </a>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- About -->
             <div class="glass-card rounded-xl p-6">
@@ -293,9 +324,13 @@
                 grokStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.grok_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
             }
 
-            // Default provider
+            // Default provider: auto / gemini / grok
             const defProvider = document.getElementById('default-provider');
-            if (defProvider) defProvider.value = cfg.default_provider || 'gemini';
+            if (defProvider) defProvider.value = ['auto', 'gemini', 'grok'].includes(cfg.default_provider) ? cfg.default_provider : 'auto';
+
+            // Режим Cursor CLI в чате (Ask / Agent)
+            const cursorMode = document.getElementById('cursor-chat-mode');
+            if (cursorMode) cursorMode.value = (cfg.cursor_chat_mode || 'ask') === 'agent' ? 'agent' : 'ask';
 
             // Папка для файлов агента: загрузка списка проектов
             const outputPathSel = document.getElementById('default-agent-output-path');
@@ -355,7 +390,8 @@
             agent_model_gemini: document.getElementById('agent-model-gemini').value,
             agent_model_grok: document.getElementById('agent-model-grok').value,
             rag_model: ragVal,
-            default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || ''
+            default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || '',
+            cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask'
         };
         try {
             const r = await fetch('/api/settings/', {

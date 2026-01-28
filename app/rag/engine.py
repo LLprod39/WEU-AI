@@ -86,32 +86,39 @@ class RAGEngine:
         self.rag_build = "mini"
         logger.info("RAG unavailable (mini build). Use full build: pip install -r requirements-full.txt")
 
-    def _init_collection(self):
+    def _collection_for_user(self, user_id):
+        """Per-user Qdrant collection name."""
+        return f"weu_knowledge_u{user_id}" if user_id is not None else self.collection_name
+
+    def _init_collection(self, collection_name=None):
         if not self.client or not self.use_qdrant:
             return
+        name = collection_name or self.collection_name
         try:
             models = self._qdrant_models
             collections = self.client.get_collections()
-            exists = any(c.name == self.collection_name for c in collections.collections)
+            exists = any(c.name == name for c in collections.collections)
             if not exists:
                 self.client.create_collection(
-                    collection_name=self.collection_name,
+                    collection_name=name,
                     vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE),
                 )
-                logger.info(f"Created Qdrant collection: {self.collection_name}")
+                logger.info(f"Created Qdrant collection: {name}")
         except Exception as e:
             logger.error(f"Error initializing Qdrant collection: {e}")
 
-    def add_text(self, text: str, source: str = "user_input"):
-        if not self.available:
+    def add_text(self, text: str, source: str = "user_input", user_id=None):
+        if not self.available or user_id is None:
             return None
         if self.use_inmemory:
-            return self.inmemory_rag.add_text(text, source)
+            return self.inmemory_rag.add_text(text, source, user_id=user_id)
+        coll = self._collection_for_user(user_id)
+        self._init_collection(coll)
         doc_id = str(uuid.uuid4())
         try:
             vector = self.encoder.encode(text).tolist()
             self.client.upsert(
-                collection_name=self.collection_name,
+                collection_name=coll,
                 points=[
                     self._qdrant_models.PointStruct(id=doc_id, vector=vector, payload={"text": text, "source": source})
                 ],
@@ -121,15 +128,17 @@ class RAGEngine:
             logger.error(f"Error adding to Qdrant: {e}")
             return None
 
-    def query(self, query_text: str, n_results: int = 3):
-        if not self.available:
+    def query(self, query_text: str, n_results: int = 3, user_id=None):
+        if not self.available or user_id is None:
             return {"documents": [[]], "metadatas": [[]]}
         if self.use_inmemory:
-            return self.inmemory_rag.query(query_text, n_results)
+            return self.inmemory_rag.query(query_text, n_results, user_id=user_id)
+        coll = self._collection_for_user(user_id)
+        self._init_collection(coll)
         try:
             qv = self.encoder.encode(query_text).tolist()
             result = self.client.query_points(
-                collection_name=self.collection_name, query=qv, limit=n_results
+                collection_name=coll, query=qv, limit=n_results
             ).points
             documents = [h.payload.get("text", "") for h in result]
             metadatas = []
@@ -143,14 +152,16 @@ class RAGEngine:
             logger.error(f"Error querying Qdrant: {e}")
             return {"documents": [[]], "metadatas": [[]]}
 
-    def get_documents(self, limit: int = 50):
-        if not self.available:
+    def get_documents(self, limit: int = 50, user_id=None):
+        if not self.available or user_id is None:
             return []
         if self.use_inmemory:
-            return (self.inmemory_rag.get_all_documents() or [])[:limit]
+            return (self.inmemory_rag.get_all_documents(user_id=user_id) or [])[:limit]
+        coll = self._collection_for_user(user_id)
+        self._init_collection(coll)
         try:
             records, _ = self.client.scroll(
-                collection_name=self.collection_name,
+                collection_name=coll,
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
@@ -163,27 +174,28 @@ class RAGEngine:
             logger.error(f"Error getting documents: {e}")
             return []
 
-    def add_file(self, file_path: str, filename: str, source: str = "file_upload"):
-        if not self.available:
+    def add_file(self, file_path: str, filename: str, source: str = "file_upload", user_id=None):
+        if not self.available or user_id is None:
             return None
         try:
             from app.utils.file_processor import FileProcessor
             result = FileProcessor.process_file(file_path, filename)
             if result.get("error") or not result.get("text"):
                 return None
-            return self.add_text(result["text"], source=f"{source}:{filename}")
+            return self.add_text(result["text"], source=f"{source}:{filename}", user_id=user_id)
         except Exception as e:
             logger.error(f"Error adding file: {e}")
             return None
 
-    def delete_document(self, doc_id: str) -> bool:
-        if not self.available:
+    def delete_document(self, doc_id: str, user_id=None) -> bool:
+        if not self.available or user_id is None:
             return False
         if self.use_inmemory:
-            return self.inmemory_rag.delete_document(doc_id)
+            return self.inmemory_rag.delete_document(doc_id, user_id=user_id)
+        coll = self._collection_for_user(user_id)
         try:
             self.client.delete(
-                collection_name=self.collection_name,
+                collection_name=coll,
                 points_selector=self._qdrant_models.PointIdsList(points=[str(doc_id)]),
             )
             return True
@@ -191,14 +203,15 @@ class RAGEngine:
             logger.error(f"Error deleting: {e}")
             return False
 
-    def reset_db(self):
-        if not self.available:
+    def reset_db(self, user_id=None):
+        if not self.available or user_id is None:
             return
         if self.use_inmemory:
-            self.inmemory_rag.reset_db()
+            self.inmemory_rag.reset_db(user_id=user_id)
         elif self.use_qdrant:
+            coll = self._collection_for_user(user_id)
             try:
-                self.client.delete_collection(self.collection_name)
-                self._init_collection()
+                self.client.delete_collection(coll)
+                self._init_collection(coll)
             except Exception as e:
                 logger.error(f"Error resetting Qdrant: {e}")

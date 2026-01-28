@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Task, SubTask, TaskLabel, TaskLabelRelation,
-    TaskComment, TaskAttachment, TaskHistory
+    TaskComment, TaskAttachment, TaskHistory, TaskShare
 )
 
 
@@ -47,3 +47,10 @@ class TaskHistoryAdmin(admin.ModelAdmin):
     list_filter = ['action', 'created_at']
     readonly_fields = ['created_at']
     search_fields = ['task__title']
+
+
+@admin.register(TaskShare)
+class TaskShareAdmin(admin.ModelAdmin):
+    list_display = ['task', 'user', 'can_edit']
+    list_filter = ['can_edit']
+    search_fields = ['task__title', 'user__username']

@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block header_title %}Управление доступом{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'settings' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Настройки</span></a>
+            <meta itemprop="position" content="2">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Управление доступом</span>
+            <meta itemprop="position" content="3">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <!-- Заголовок и описание -->
+        <div>
+            <h1 class="text-2xl font-bold text-white">Управление доступом</h1>
+            <p class="text-gray-400 text-sm mt-1">Пользователи, группы и права к разделам приложения — всё в одном разделе. Переключайте вкладки ниже.</p>
+        </div>
+
+        <!-- Вкладки -->
+        <nav class="flex flex-wrap gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit" aria-label="Разделы управления доступом">
+            <a href="{% url 'settings_access' %}?tab=users" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all {% if active_tab == 'users' %}bg-primary text-white shadow-sm{% else %}text-gray-400 hover:text-white hover:bg-white/5{% endif %}" aria-current="{% if active_tab == 'users' %}page{% endif %}">
+                <span class="material-icons-round text-lg" aria-hidden="true">person</span>
+                Пользователи
+            </a>
+            <a href="{% url 'settings_access' %}?tab=groups" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all {% if active_tab == 'groups' %}bg-primary text-white shadow-sm{% else %}text-gray-400 hover:text-white hover:bg-white/5{% endif %}" aria-current="{% if active_tab == 'groups' %}page{% endif %}">
+                <span class="material-icons-round text-lg" aria-hidden="true">group</span>
+                Группы
+            </a>
+            <a href="{% url 'settings_access' %}?tab=permissions" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all {% if active_tab == 'permissions' %}bg-primary text-white shadow-sm{% else %}text-gray-400 hover:text-white hover:bg-white/5{% endif %}" aria-current="{% if active_tab == 'permissions' %}page{% endif %}">
+                <span class="material-icons-round text-lg" aria-hidden="true">admin_panel_settings</span>
+                Права к разделам
+            </a>
+        </nav>
+
+        <!-- Контент: Пользователи -->
+        <section id="panel-users" class="glass-card rounded-xl p-6 {% if active_tab != 'users' %}hidden{% endif %}" aria-labelledby="tab-users-label">
+            <h2 id="tab-users-label" class="sr-only">Пользователи</h2>
+            <p class="text-gray-400 text-sm mb-4">Список пользователей системы. Staff — доступ к управлению, «Активен» — может входить в систему.</p>
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-white/10 text-left text-gray-400">
+                            <th class="pb-3 pr-4 font-medium">Логин</th>
+                            <th class="pb-3 pr-4 font-medium">Email</th>
+                            <th class="pb-3 pr-4 font-medium">Staff</th>
+                            <th class="pb-3 pr-4 font-medium">Активен</th>
+                            <th class="pb-3 font-medium">Регистрация</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td class="py-3 pr-4 font-medium text-white">{{ u.username }}</td>
+                            <td class="py-3 pr-4 text-gray-400">{{ u.email|default:"—" }}</td>
+                            <td class="py-3 pr-4">
+                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if u.is_staff %}bg-primary/20 text-primary{% else %}bg-white/10 text-gray-500{% endif %}">{{ u.is_staff|yesno:"Да,Нет" }}</span>
+                            </td>
+                            <td class="py-3 pr-4">
+                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if u.is_active %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">{{ u.is_active|yesno:"Да,Нет" }}</span>
+                            </td>
+                            <td class="py-3 text-gray-500">{{ u.date_joined|date:"d.m.Y" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="py-8 text-center text-gray-500">Нет пользователей.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Контент: Группы -->
+        <section id="panel-groups" class="glass-card rounded-xl p-6 {% if active_tab != 'groups' %}hidden{% endif %}" aria-labelledby="tab-groups-label">
+            <h2 id="tab-groups-label" class="sr-only">Группы</h2>
+            <p class="text-gray-400 text-sm mb-4">Группы пользователей. Состав задаётся в базе или скриптами.</p>
+            <div class="space-y-4">
+                {% for g in groups %}
+                <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="material-icons-round text-primary text-xl" aria-hidden="true">group</span>
+                        <div>
+                            <span class="font-semibold text-white">{{ g.name }}</span>
+                            <span class="text-xs text-gray-500 ml-2">· {{ g.user_set.count }} пользователей</span>
+                        </div>
+                    </div>
+                    {% if g.user_set.all %}
+                    <div class="flex flex-wrap gap-2 mt-2 pl-8">
+                        {% for u in g.user_set.all %}
+                        <span class="inline-flex px-2 py-1 rounded-lg bg-white/5 text-gray-400 text-xs">{{ u.username }}</span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500 mt-1 pl-8">В группе нет пользователей.</p>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div class="py-8 text-center text-gray-500">Нет групп.</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Контент: Права к разделам -->
+        <section id="panel-permissions" class="glass-card rounded-xl p-6 {% if active_tab != 'permissions' %}hidden{% endif %}" aria-labelledby="tab-permissions-label">
+            <h2 id="tab-permissions-label" class="sr-only">Права к разделам</h2>
+            <p class="text-gray-400 text-sm mb-4">Кто какие разделы видит (Agents, Orchestrator, Servers, Tasks, Knowledge Base, Settings). Если записи нет — действует значение по умолчанию.</p>
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-white/10 text-left text-gray-400">
+                            <th class="pb-3 pr-4 font-medium">Пользователь</th>
+                            <th class="pb-3 pr-4 font-medium">Раздел</th>
+                            <th class="pb-3 font-medium">Доступ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in permissions %}
+                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td class="py-3 pr-4 font-medium text-white">{{ p.user.username }}</td>
+                            <td class="py-3 pr-4 text-gray-400">{{ p.get_feature_display }}</td>
+                            <td class="py-3">
+                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if p.allowed %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">{{ p.allowed|yesno:"Разрешён,Запрещён" }}</span>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="py-8 text-center text-gray-500">Нет индивидуальных прав. Используются значения по умолчанию.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Назад в настройки -->
+        <div class="pt-2">
+            <a href="{% url 'settings' %}" class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors" aria-label="Вернуться в настройки">
+                <span class="material-icons-round text-lg" aria-hidden="true">arrow_back</span>
+                Назад в настройки
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
