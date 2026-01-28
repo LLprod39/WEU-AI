@@ -56,11 +56,12 @@ def _collect_global_configs() -> List[Path]:
     return found
 
 
-def load_mcp_config(base_dir: Path) -> Tuple[Dict[str, Any], List[str]]:
+def load_mcp_config(base_dir) -> Tuple[Dict[str, Any], List[str]]:
     """
     Load MCP configuration with precedence:
     global -> project (closest to base_dir wins).
     """
+    base_dir = Path(base_dir)
     env_path = os.getenv("MCP_CONFIG_PATH", "").strip()
     if env_path:
         paths = [Path(p) for p in env_path.split(os.pathsep) if p]
