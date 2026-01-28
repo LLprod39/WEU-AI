@@ -35,6 +35,31 @@ def _user_can_edit_task(user, task):
     return task.shares.filter(user=user, can_edit=True).exists()
 
 
+def _delegate_redirect_url(user, task_id):
+    """Return (redirect_to, url) for post-delegate UI. Uses delegate_ui preference when available."""
+    try:
+        from .models import UserDelegatePreference
+        pref = UserDelegatePreference.objects.filter(user=user).first()
+        if pref and pref.delegate_ui == 'task_form':
+            return ('task_form', f'/tasks/{task_id}/delegate-form/')
+    except (ImportError, AttributeError):
+        pass
+    return ('chat', f'/chat/?task_id={task_id}')
+
+
+@login_required
+@require_feature('tasks', redirect_on_forbidden=True)
+@require_GET
+def delegate_form(request, task_id):
+    """Форма «Задача для ИИ»: показать задачу и кнопку «Запустить выполнение»."""
+    task = get_object_or_404(Task, id=task_id)
+    if not _user_can_see_task(request.user, task):
+        return redirect('tasks:task_list')
+    if not _user_can_edit_task(request.user, task):
+        return redirect('tasks:task_list')
+    return render(request, 'tasks/delegate_form.html', {'task': task})
+
+
 @login_required
 @require_feature('tasks', redirect_on_forbidden=True)
 def task_list(request):
@@ -70,6 +95,38 @@ def task_detail_api(request, task_id):
         'created_at': task.created_at.isoformat() if task.created_at else None,
     })
 
+def _background_analyze_task(task_id: int, user_id: int):
+    """Фоновый анализ задачи ИИ с созданием уведомления о результате."""
+    import threading
+    from django.contrib.auth import get_user_model
+    from loguru import logger
+    
+    try:
+        User = get_user_model()
+        task = Task.objects.get(pk=task_id)
+        user = User.objects.get(pk=user_id)
+        
+        analyzer = SmartTaskAnalyzer()
+        result = analyzer.analyze_task(task, user)
+        
+        # Если уведомление AUTO_EXECUTION_SUGGESTION уже создано внутри analyze_task — не дублируем
+        if result.get('can_auto_execute'):
+            logger.info(f"Task {task_id} analyzed: can auto-execute, notification created")
+        else:
+            # Создаём уведомление о завершении анализа
+            TaskNotification.objects.create(
+                task=task,
+                user=user,
+                notification_type='INFO',
+                title='Анализ задачи завершён',
+                message=f'Задача "{task.title}" проанализирована. Автоматическое выполнение недоступно.',
+            )
+            logger.info(f"Task {task_id} analyzed: manual execution needed")
+    except Exception as e:
+        from loguru import logger
+        logger.error(f"Background analysis failed for task {task_id}: {e}")
+
+
 @login_required
 @require_feature('tasks', redirect_on_forbidden=True)
 def task_create(request):
@@ -84,14 +141,14 @@ def task_create(request):
             created_by=request.user
         )
         
-        # Автоматический умный анализ новой задачи
-        analyzer = SmartTaskAnalyzer()
-        try:
-            analyzer.analyze_task(task, request.user)
-        except Exception as e:
-            # Логируем ошибку, но не прерываем создание задачи
-            from loguru import logger
-            logger.error(f"Error in smart analysis for task {task.id}: {e}")
+        # Запускаем анализ в фоновом потоке — страница отдаётся сразу
+        import threading
+        thread = threading.Thread(
+            target=_background_analyze_task,
+            args=(task.id, request.user.id),
+            daemon=True
+        )
+        thread.start()
         
         return redirect('tasks:task_list')
     return redirect('tasks:task_list')
@@ -258,9 +315,12 @@ def approve_auto_execution(request, task_id):
         )
         thread.daemon = True
         thread.start()
+        redirect_to, url = _delegate_redirect_url(request.user, task.id)
         return JsonResponse({
             'success': True,
-            'message': 'Автоматическое выполнение одобрено и запущено'
+            'message': 'Автоматическое выполнение одобрено и запущено',
+            'redirect_to': redirect_to,
+            'url': url,
         })
     return JsonResponse({
         'success': False,
@@ -270,6 +330,7 @@ def approve_auto_execution(request, task_id):
 
 @login_required
 @require_feature('tasks')
+@require_GET
 def notifications_list(request):
     """Список уведомлений пользователя"""
     notifications = TaskNotification.objects.filter(
@@ -284,11 +345,11 @@ def notifications_list(request):
                 'type': n.notification_type,
                 'title': n.title,
                 'message': n.message,
-                'task_id': n.task.id,
-                'task_title': n.task.title,
+                'task_id': n.task.id if n.task else None,
+                'task_title': n.task.title if n.task else '',
                 'action_data': n.action_data,
                 'action_url': n.action_url,
-                'created_at': n.created_at.isoformat(),
+                'created_at': n.created_at.isoformat() if n.created_at else None,
             }
             for n in notifications
         ],
@@ -299,6 +360,7 @@ def notifications_list(request):
 @csrf_exempt
 @login_required
 @require_feature('tasks')
+@require_http_methods(['POST'])
 def notification_mark_read(request, notification_id):
     """Отметить уведомление как прочитанное"""
     if request.method == 'POST':
@@ -318,6 +380,7 @@ def notification_mark_read(request, notification_id):
 @csrf_exempt
 @login_required
 @require_feature('tasks')
+@require_http_methods(['POST'])
 def notification_action(request, notification_id):
     """Выполнить действие из уведомления"""
     if request.method == 'POST':
@@ -330,31 +393,55 @@ def notification_action(request, notification_id):
         data = json.loads(request.body)
         action = data.get('action')
         
-        if action == 'approve_auto_execution':
-            # Одобряем автоматическое выполнение
+        if action == 'dismiss':
+            # Отметить уведомление как прочитанное
+            notification.is_read = True
+            notification.save()
+            return JsonResponse({'success': True, 'message': 'Уведомление скрыто'})
+        
+        if action in ('approve_auto_execution', 'delegate'):
+            # Одобряем автоматическое выполнение / делегирование ИИ
             task = notification.task
+            redirect_to, url = _delegate_redirect_url(request.user, task.id)
             analyzer = SmartTaskAnalyzer()
             success = analyzer.approve_auto_execution(task, request.user)
-            
+
             if success:
                 notification.is_actioned = True
                 notification.actioned_at = timezone.now()
+                notification.is_read = True
                 notification.save()
-                
-                # Запускаем выполнение
-                from .task_executor import TaskExecutor
-                executor = TaskExecutor()
-                import threading
-                thread = threading.Thread(
-                    target=lambda: async_to_sync(executor.execute_task)(task.id, request.user.id)
-                )
-                thread.daemon = True
-                thread.start()
-                
+
+                if redirect_to == 'task_form':
+                    message = 'Открываю форму задачи агента. Будет создан воркфлоу в Agents и запущен.'
+                else:
+                    # Запускаем выполнение через TaskExecutor (чат с контекстом задачи)
+                    from .task_executor import TaskExecutor
+                    executor = TaskExecutor()
+                    import threading
+                    thread = threading.Thread(
+                        target=lambda: async_to_sync(executor.execute_task)(task.id, request.user.id)
+                    )
+                    thread.daemon = True
+                    thread.start()
+                    message = 'Выполнение запущено'
+
                 return JsonResponse({
                     'success': True,
-                    'message': 'Выполнение запущено'
+                    'message': message,
+                    'redirect_to': redirect_to,
+                    'url': url,
                 })
         
         return JsonResponse({'error': 'Unknown action'}, status=400)
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+@csrf_exempt
+@login_required
+@require_feature('tasks')
+@require_http_methods(['POST'])
+def notifications_mark_all_read(request):
+    """Отметить все уведомления как прочитанные"""
+    TaskNotification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return JsonResponse({'success': True, 'message': 'Все уведомления прочитаны'})

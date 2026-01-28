@@ -363,12 +363,13 @@ def server_execute_command(request, server_id):
                 result = await execute_tool.execute(conn_id=conn_id, command=command)
                 
                 # Save to history
+                out_str = result.get('stdout', '') + (result.get('stderr') or '')
                 ServerCommandHistory.objects.create(
                     server=server,
                     user=request.user,
                     command=command,
-                    output=result if isinstance(result, str) else str(result),
-                    exit_code=0  # Assume success if no error
+                    output=out_str or str(result),
+                    exit_code=result.get('exit_code', 0)
                 )
                 
                 # Disconnect

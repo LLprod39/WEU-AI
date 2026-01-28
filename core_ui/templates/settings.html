@@ -83,52 +83,54 @@
                         <span class="material-icons-round text-primary">memory</span>
                     </div>
                     <div>
-                        <h2 class="text-lg font-semibold text-white">Models</h2>
-                        <p class="text-sm text-gray-500">Chat, agent, and RAG — providers and models</p>
+                        <h2 class="text-lg font-semibold text-white">Модели</h2>
+                        <p class="text-sm text-gray-500">Пока только Cursor Auto. Gemini и Grok — в разработке.</p>
                     </div>
                 </div>
 
                 <div class="space-y-5">
                     <div>
-                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Default provider</label>
-                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1" aria-label="Провайдер по умолчанию: Авто, Gemini или Grok">
-                            <option value="auto">Авто (Cursor CLI)</option>
-                            <option value="gemini">Google Gemini</option>
-                            <option value="grok">xAI Grok</option>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Провайдер по умолчанию</label>
+                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1" aria-label="Провайдер: пока только Cursor Auto">
+                            <option value="auto" selected>Cursor Auto</option>
+                            <option value="gemini" disabled>Google Gemini (в разработке)</option>
+                            <option value="grok" disabled>xAI Grok (в разработке)</option>
                         </select>
+                        <p class="text-xs text-gray-500 mt-1">Пока используется только Cursor Auto. Остальные провайдеры — в разработке.</p>
                         <span class="field-error" id="default-provider-error" style="display:none;">Required field</span>
                     </div>
 
                     <div id="cursor-chat-mode-row">
-                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="cursor-chat-mode">Режим Cursor CLI в чате (при выборе «Авто»)</label>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="cursor-chat-mode">Режим Cursor Auto в чате</label>
                         <select id="cursor-chat-mode" class="input-field w-full md:max-w-xs" aria-label="Режим Cursor CLI: Ask или Agent">
                             <option value="ask">Ask — только ответы, без правки файлов</option>
                             <option value="agent">Agent — агент с правкой кода и инструментами</option>
                         </select>
-                        <p class="text-xs text-gray-500 mt-1">Используется, когда в чате выбран провайдер «Авто» (Cursor CLI).</p>
+                        <p class="text-xs text-gray-500 mt-1">Используется в чате с провайдером Cursor Auto.</p>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Gemini</label>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Gemini <span class="text-gray-500 font-normal normal-case">(в разработке)</span></label>
                             <select id="chat-model-gemini" class="input-field w-full" data-required="1"></select>
                             <span class="field-error" id="chat-model-gemini-error" style="display:none;">Required field</span>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Grok</label>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat · Grok <span class="text-gray-500 font-normal normal-case">(в разработке)</span></label>
                             <select id="chat-model-grok" class="input-field w-full" data-required="1"></select>
                             <span class="field-error" id="chat-model-grok-error" style="display:none;">Required field</span>
                         </div>
                     </div>
+                    <p class="text-xs text-gray-500 -mt-2">Используются после включения Gemini/Grok. Пока в чате — только Cursor Auto.</p>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Gemini</label>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Gemini <span class="text-gray-500 font-normal normal-case">(в разработке)</span></label>
                             <select id="agent-model-gemini" class="input-field w-full" data-required="1"></select>
                             <span class="field-error" id="agent-model-gemini-error" style="display:none;">Required field</span>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Grok</label>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent / ReAct · Grok <span class="text-gray-500 font-normal normal-case">(в разработке)</span></label>
                             <select id="agent-model-grok" class="input-field w-full" data-required="1"></select>
                             <span class="field-error" id="agent-model-grok-error" style="display:none;">Required field</span>
                         </div>
@@ -178,6 +180,28 @@
                         Сохранить папку
                     </button>
                 </div>
+            </div>
+
+            <!-- Делегирование задач ИИ -->
+            <div class="glass-card rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                        <span class="material-icons-round text-primary">smart_toy</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Делегирование задач ИИ</h2>
+                        <p class="text-sm text-gray-500">При делегировании задачи ИИ — куда открывать интерфейс</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="delegate-ui">При делегировании открывать</label>
+                    <select id="delegate-ui" class="input-field w-full md:max-w-md" aria-label="Чат или форма задачи при делегировании ИИ">
+                        <option value="chat">Чат с контекстом задачи</option>
+                        <option value="task_form">Форма задачи агента</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Используется, когда вы нажимаете «Делегировать ИИ» в уведомлении о задаче.</p>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Сохраняется вместе с настройками моделей (кнопка «Save model settings»).</p>
             </div>
 
             <!-- Session -->
@@ -324,13 +348,17 @@
                 grokStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.grok_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
             }
 
-            // Default provider: auto / gemini / grok
+            // Провайдер: пока только Cursor Auto (auto)
             const defProvider = document.getElementById('default-provider');
-            if (defProvider) defProvider.value = ['auto', 'gemini', 'grok'].includes(cfg.default_provider) ? cfg.default_provider : 'auto';
+            if (defProvider) defProvider.value = 'auto';
 
             // Режим Cursor CLI в чате (Ask / Agent)
             const cursorMode = document.getElementById('cursor-chat-mode');
             if (cursorMode) cursorMode.value = (cfg.cursor_chat_mode || 'ask') === 'agent' ? 'agent' : 'ask';
+
+            // Делегирование задач ИИ
+            const delegateUi = document.getElementById('delegate-ui');
+            if (delegateUi) delegateUi.value = (cfg.delegate_ui === 'task_form') ? 'task_form' : 'chat';
 
             // Папка для файлов агента: загрузка списка проектов
             const outputPathSel = document.getElementById('default-agent-output-path');
@@ -384,14 +412,15 @@
         const ragCustom = document.getElementById('rag-model-custom');
         const ragVal = (ragCustom && ragCustom.value.trim()) ? ragCustom.value.trim() : document.getElementById('rag-model').value;
         const payload = {
-            default_provider: document.getElementById('default-provider').value,
+            default_provider: 'auto',
             chat_model_gemini: document.getElementById('chat-model-gemini').value,
             chat_model_grok: document.getElementById('chat-model-grok').value,
             agent_model_gemini: document.getElementById('agent-model-gemini').value,
             agent_model_grok: document.getElementById('agent-model-grok').value,
             rag_model: ragVal,
             default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || '',
-            cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask'
+            cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask',
+            delegate_ui: (document.getElementById('delegate-ui') && document.getElementById('delegate-ui').value) || 'chat'
         };
         try {
             const r = await fetch('/api/settings/', {

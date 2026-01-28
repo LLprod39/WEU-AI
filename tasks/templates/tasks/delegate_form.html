@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Делегировать задачу ИИ — {{ task.title }}{% endblock %}
+{% block header_title %}Задача для ИИ{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Задачи</span></a>
+            <meta itemprop="position" content="2">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Делегировать ИИ</span>
+            <meta itemprop="position" content="3">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-2xl mx-auto">
+        <div class="glass-card rounded-xl p-6 border border-white/10">
+            <h1 class="text-xl font-bold text-white mb-2">{{ task.title }}</h1>
+            {% if task.description %}
+            <p class="text-gray-400 text-sm whitespace-pre-wrap mb-4">{{ task.description }}</p>
+            {% endif %}
+            {% if task.target_server %}
+            <p class="text-sm text-gray-400 mb-4">
+                <span class="text-gray-500">Сервер:</span> <span class="text-primary">{{ task.target_server.name }}</span> ({{ task.target_server.host }})
+            </p>
+            {% endif %}
+            <p id="delegate-description" class="text-sm text-gray-500 mb-6">Создаём воркфлоу в Agents по пунктам (Ralph), заполняем тесты и запускаем.</p>
+            <div id="delegate-progress" class="flex items-center gap-2 text-primary mb-4 hidden">
+                <span class="material-icons-round animate-spin">hourglass_empty</span>
+                <span>Создаём воркфлоу и запускаем…</span>
+            </div>
+            <div id="delegate-actions" class="flex flex-wrap gap-3 hidden">
+                <a href="{% url 'agent_hub:agents_page' %}" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all flex items-center gap-2">
+                    <span class="material-icons-round text-lg">hub</span>
+                    Перейти в Agents
+                </a>
+                <a href="{% url 'tasks:task_list' %}" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl transition-all flex items-center gap-2">
+                    К задачам
+                </a>
+            </div>
+            <p id="delegate-message" class="mt-4 text-sm hidden" role="status"></p>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    var desc = document.getElementById('delegate-description');
+    var progress = document.getElementById('delegate-progress');
+    var actions = document.getElementById('delegate-actions');
+    var msg = document.getElementById('delegate-message');
+    var taskId = {{ task.id }};
+    var getCsrf = function() {
+        var name = 'csrftoken';
+        var v = document.cookie.split(';').filter(function(c){ return c.trim().indexOf(name + '=') === 0; })[0];
+        return v ? v.split('=')[1].trim() : '';
+    };
+    function done(err, runId) {
+        progress.classList.add('hidden');
+        actions.classList.remove('hidden');
+        if (err) {
+            msg.textContent = err;
+            msg.className = 'mt-4 text-sm text-amber-500';
+            msg.classList.remove('hidden');
+        } else if (runId) {
+            window.location.href = '/agents/?run_id=' + runId;
+            return;
+        }
+    }
+    progress.classList.remove('hidden');
+    fetch('/agents/api/workflows/from-task/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrf(),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ task_id: taskId })
+    }).then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+      .then(function(o) {
+        if (o.ok && o.data.success && o.data.run_id) {
+            window.location.href = '/agents/?run_id=' + o.data.run_id;
+        } else {
+            done(o.data.error || (o.data.message || 'Не удалось создать воркфлоу'));
+        }
+      })
+      .catch(function(e) {
+        done('Ошибка: ' + (e.message || 'сеть'));
+      });
+})();
+</script>
+{% endblock %}

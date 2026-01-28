@@ -136,6 +136,7 @@
                                 <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="text-xs text-gray-300">Script</button>
                                 <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="text-xs text-red-400">Delete</button>
                                 <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="text-xs text-primary">Run</button>
+                                {% if workflow.project_path %}<a href="{% url 'agent_hub:api_workflow_download_project' workflow.id %}" class="text-xs text-green-400 hover:underline" title="Download project as ZIP">📦 Download</a>{% endif %}
                             </div>
                         </div>
                     </div>
@@ -200,6 +201,7 @@
                                 {% else %}
                                 <button onclick="restartWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/10 text-gray-300 rounded hover:bg-white/20">Restart</button>
                                 <button onclick="deleteWorkflowRun({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/5 text-gray-500 rounded hover:bg-white/10">Delete</button>
+                                {% if item.run.workflow.project_path %}<a href="{% url 'agent_hub:api_workflow_download_project' item.run.workflow.id %}" class="px-2 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 flex items-center gap-1"><span class="material-icons-round text-xs">download</span>ZIP</a>{% endif %}
                                 {% endif %}
                             </div>
                         </div>

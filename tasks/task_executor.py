@@ -1,11 +1,13 @@
 """
 Исполнитель задач
-Автоматически выполняет задачи на серверах через ИИ-агентов
+Автоматически выполняет задачи на серверах через ИИ-агентов.
+Подключение к серверу выполняется только в бэкенде; агенту передаётся только connection_id.
 """
-import asyncio
+import os
 from typing import Dict, Any, Optional
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.conf import settings
 from loguru import logger
 
 from .models import Task, TaskExecution, SubTask
@@ -133,32 +135,41 @@ class TaskExecutor:
             except Exception as exc:
                 logger.error(f"Error updating task status: {exc}")
     
-    async def _connect_to_server(self, server: Server, user: User) -> Optional[str]:
-        """Подключение к серверу"""
+    def _get_server_password(self, server: Server) -> Optional[str]:
+        """Расшифровка пароля сервера в бэкенде. Пароль агенту не передаётся."""
+        if server.auth_method not in ('password', 'key_password') or not server.encrypted_password:
+            return None
+        master = os.getenv('SERVER_DECRYPT_KEY') or getattr(settings, 'SECRET_KEY', None)
+        if not master or not server.salt:
+            logger.warning("Server password decryption skipped: SERVER_DECRYPT_KEY or server.salt not set")
+            return None
         try:
-            # Получаем пароль
+            return PasswordEncryption.decrypt_password(
+                server.encrypted_password,
+                master,
+                bytes(server.salt),
+            )
+        except Exception as e:
+            logger.warning(f"Server password decryption failed: {e}")
+            return None
+
+    async def _connect_to_server(self, server: Server, user: User) -> Optional[str]:
+        """Подключение к серверу в бэкенде. Агенту отдаётся только connection_id."""
+        try:
             password = None
-            if server.auth_method in ['password', 'key_password']:
-                # Для получения пароля нужен master_password
-                # В реальном приложении это должно быть безопасно
-                # Здесь упрощенная версия - нужно будет доработать
-                logger.warning("Password decryption not fully implemented - needs master_password")
-            
-            # Подключаемся
+            if server.auth_method in ('password', 'key_password'):
+                password = self._get_server_password(server)
+
             connection_id = await ssh_manager.connect(
                 host=server.host,
                 username=server.username,
                 password=password,
-                key_path=server.key_path if server.auth_method in ['key', 'key_password'] else None,
-                port=server.port
+                key_path=server.key_path if server.auth_method in ('key', 'key_password') else None,
+                port=getattr(server, 'port', 22),
             )
-            
-            # Обновляем время последнего подключения
             server.last_connected = timezone.now()
             server.save(update_fields=['last_connected'])
-            
             return connection_id
-        
         except Exception as e:
             logger.error(f"Error connecting to server {server.id}: {e}")
             return None

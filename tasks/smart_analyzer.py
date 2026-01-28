@@ -46,21 +46,18 @@ class SmartTaskAnalyzer:
         matched_servers = self._match_servers(detected_servers, user)
         result['servers_matched'] = matched_servers
         
-        # 3. Если найден сервер - предлагаем автоматическое выполнение
-        if matched_servers:
-            result['can_auto_execute'] = True
-            # Сохраняем первый найденный сервер
-            task.target_server = matched_servers[0]['server']
-            task.server_name_mentioned = matched_servers[0]['mentioned_name']
-            task.save()
-            
-            # Создаем уведомление о предложении автоматического выполнения
-            self._create_auto_execution_notification(task, user, matched_servers[0])
+        # 3. Контекст серверов для ИИ (имя, хост, порт — без паролей)
+        user_servers = Server.objects.filter(user=user, is_active=True)
+        servers_context = [
+            {"name": s.name, "host": s.host, "port": getattr(s, 'port', 22)}
+            for s in user_servers
+        ]
         
-        # 4. Анализ через ИИ для разбиения и оценки
+        # 4. Анализ через ИИ: может ли ИИ выполнить задачу (can_delegate_to_ai, reason, recommended_agent, ...)
         ai_analysis = async_to_sync(self.ai_assistant.analyze_task)(
             task.title,
-            task.description
+            task.description,
+            servers_context=servers_context,
         )
         
         if ai_analysis.get('success') and ai_analysis.get('analysis'):
@@ -69,11 +66,21 @@ class SmartTaskAnalyzer:
             result['estimated_duration_hours'] = self._parse_duration(
                 analysis.get('estimated_time', '')
             )
-            
-            # Сохраняем рекомендации в задачу
             task.ai_agent_type = result['recommended_agent']
             if result['estimated_duration_hours']:
                 task.estimated_duration_hours = result['estimated_duration_hours']
+            
+            # 5. Уведомление «можно делегировать ИИ» только если ИИ вернул can_delegate_to_ai и есть матч по серверу
+            can_delegate = analysis.get('can_delegate_to_ai') is True
+            if matched_servers and can_delegate:
+                result['can_auto_execute'] = True
+                task.target_server = matched_servers[0]['server']
+                task.server_name_mentioned = matched_servers[0]['mentioned_name']
+                task.save()
+                self._create_auto_execution_notification(task, user, matched_servers[0])
+            else:
+                task.save()
+        else:
             task.save()
         
         return result
@@ -215,12 +222,13 @@ class SmartTaskAnalyzer:
                 f'Хотите, чтобы я автоматически подключился к серверу и начал выполнение задачи?'
             ),
             action_data={
+                'task_id': task.id,
                 'server_id': server.id,
                 'server_name': server.name,
-                'task_id': task.id,
                 'match_type': server_match['match_type'],
+                'action': 'delegate',
             },
-            action_url=f'/tasks/{task.id}/auto-execute/',
+            action_url=f'/tasks/{task.id}/approve-auto-execution/',
         )
         
         task.auto_execution_suggested = True

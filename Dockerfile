@@ -9,8 +9,9 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Зависимости системы (минимально для psycopg и др.)
+# sshpass — для SSH подключений к серверам с паролями в воркфлоу
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    libpq5 curl \
+    libpq5 curl sshpass openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-mini.txt requirements-full.txt ./

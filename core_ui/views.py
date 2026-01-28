@@ -31,7 +31,7 @@ from app.rag.engine import RAGEngine
 from app.utils.file_processor import FileProcessor
 from app.agents.manager import get_agent_manager
 from core_ui.context_processors import user_can_feature
-from core_ui.decorators import require_feature, async_login_required
+from core_ui.decorators import require_feature, async_login_required, async_require_feature
 from core_ui.models import ChatSession, ChatMessage
 
 # Singleton instances
@@ -40,13 +40,18 @@ _orchestrator_lock = asyncio.Lock()
 _rag_engine = None
 
 
+def _init_orchestrator_sync():
+    """Sync init оркестратора — вызывать только из asyncio.to_thread."""
+    model_manager.load_config()
+    return Orchestrator()
+
+
 async def get_orchestrator():
     """Get or create orchestrator instance (protected by lock to avoid race condition)"""
     global _orchestrator
     async with _orchestrator_lock:
         if _orchestrator is None:
-            model_manager.load_config()
-            _orchestrator = Orchestrator()
+            _orchestrator = await asyncio.to_thread(_init_orchestrator_sync)
             await _orchestrator.initialize()
     return _orchestrator
 
@@ -243,8 +248,9 @@ def settings_permissions_view(request):
 
 
 # ============================================
-# Cursor CLI — Ask (только ответы) или Agent (правка файлов)
-# Вызов: agent --mode=ask|agent -p "вопрос" --output-format text
+# Cursor CLI — Ask (--mode=ask) или Agent (без --mode; флаги -p --force stream-json ...)
+# ask: agent --mode=ask -p "..." --output-format text --workspace ...
+# agent: agent -p --force --output-format stream-json --stream-partial-output --workspace ... --model auto "..."
 # ============================================
 
 def _resolve_cursor_cli_command() -> str:
@@ -271,32 +277,103 @@ def _resolve_cursor_cli_command() -> str:
     return resolved
 
 
+def _get_servers_context_for_prompt(user_id: int) -> str:
+    """
+    Возвращает контекст серверов пользователя для добавления в промпт Cursor CLI.
+    Включает готовые команды SSH подключения с расшифрованными паролями (если MASTER_PASSWORD задан).
+    """
+    if not user_id:
+        return ""
+    try:
+        from servers.models import Server
+        from passwords.encryption import PasswordEncryption
+        master_pwd = os.environ.get("MASTER_PASSWORD", "").strip()
+        servers = list(Server.objects.filter(user_id=user_id).only(
+            "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt"
+        ))
+        if not servers:
+            return ""
+        lines = [
+            "\n\n=== СЕРВЕРЫ ПОЛЬЗОВАТЕЛЯ ===",
+            "ВАЖНО: Данные серверов ниже. НЕ ищи их в коде!",
+            "Для SSH-команд используй готовые команды подключения:",
+            "",
+        ]
+        for s in servers:
+            auth = s.auth_method or "password"
+            key_path = s.key_path or ""
+            pwd_decrypted = ""
+            if auth in ("password", "key_password") and s.encrypted_password and master_pwd and s.salt:
+                try:
+                    pwd_decrypted = PasswordEncryption.decrypt_password(s.encrypted_password, master_pwd, bytes(s.salt))
+                except Exception:
+                    pwd_decrypted = ""
+            if auth == "key" and key_path:
+                cmd_hint = f"ssh -i {key_path} -o StrictHostKeyChecking=no {s.username}@{s.host} -p {s.port} '<COMMAND>'"
+            elif pwd_decrypted:
+                safe_pwd = pwd_decrypted.replace("'", "'\\''")
+                cmd_hint = f"sshpass -p '{safe_pwd}' ssh -o StrictHostKeyChecking=no {s.username}@{s.host} -p {s.port} '<COMMAND>'"
+            else:
+                cmd_hint = f"ssh -o StrictHostKeyChecking=no {s.username}@{s.host} -p {s.port} '<COMMAND>'  # пароль недоступен"
+            lines.append(f"• {s.name}:")
+            lines.append(f"    {cmd_hint}")
+        lines.append("")
+        lines.append("Замени <COMMAND> на нужную команду (например df -h, hostname, uptime).")
+        lines.append("sshpass установлен в системе.")
+        lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"_get_servers_context_for_prompt error: {e}")
+        return ""
+
+
 async def _stream_cursor_cli(
     message: str,
     workspace: str,
     mode: str = "ask",
 ) -> AsyncGenerator[str, None]:
     """
-    Запускает Cursor CLI в режиме Ask (--mode=ask) или Agent (--mode=agent).
-    ask — только ответы, без изменений файлов; agent — агент с правкой кода.
+    Запускает Cursor CLI:
+    - ask: agent --mode=ask -p "..." --output-format text --workspace ...
+    - agent: agent -p --force --output-format stream-json --stream-partial-output --workspace ... --model auto "..."
+      (у CLI нет --mode=agent, только plan/ask; для агента с правкой файлов используется этот набор флагов)
     Стримит stdout процесса в виде чанков.
     """
-    mode = "agent" if (mode or "").strip().lower() == "agent" else "ask"
+    is_agent_mode = (mode or "").strip().lower() == "agent"
     cmd_path = _resolve_cursor_cli_command()
     base_dir = str(Path(workspace).resolve()) if workspace else str(Path(settings.BASE_DIR).resolve())
     env = dict(os.environ)
     extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
     env.update(extra)
 
+    if is_agent_mode:
+        args = [
+            cmd_path,
+            "-p",
+            "--force",
+            "--output-format",
+            "stream-json",
+            "--stream-partial-output",
+            "--workspace",
+            base_dir,
+            "--model",
+            "auto",
+            message,
+        ]
+    else:
+        args = [
+            cmd_path,
+            "--mode=ask",
+            "-p",
+            message,
+            "--output-format",
+            "text",
+            "--workspace",
+            base_dir,
+        ]
+
     proc = await asyncio.create_subprocess_exec(
-        cmd_path,
-        f"--mode={mode}",
-        "-p",
-        message,
-        "--output-format",
-        "text",
-        "--workspace",
-        base_dir,
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=base_dir,
@@ -343,6 +420,68 @@ def _chat_history_from_session(session):
 def _load_session(user_id, chat_id):
     """Sync helper: load ChatSession by user_id and chat_id. For use in asyncio.to_thread."""
     return ChatSession.objects.filter(user_id=user_id, id=chat_id).select_related().first()
+
+
+async def _try_server_command_by_name(user_id: int, message: str):
+    """
+    Если в сообщении упомянут сервер из вкладки Servers по имени — выполнить команду по его данным и вернуть вывод.
+    Возвращает строку результата или None, если «сервер по имени» не распознан.
+    """
+    import re
+    try:
+        from servers.models import Server
+        from app.tools.server_tools import ServerExecuteTool
+    except Exception:
+        return None
+    if not user_id or not (message or "").strip():
+        return None
+    try:
+        msg = (message or "").strip().lower()
+        # Список имён серверов пользователя (длинные первыми, чтобы «WEU SERVER» матчился раньше «WEU»)
+        raw = list(Server.objects.filter(user_id=user_id).values_list("name", flat=True))
+        names = sorted([n for n in raw if (n or "").strip()], key=lambda x: len((x or "").strip()), reverse=True)
+        if not names:
+            return None
+        # Ищем упоминание имени сервера в тексте (регистронезависимо, как отдельное слово/фраза)
+        chosen = None
+        for name in names:
+            n = (name or "").strip()
+            if not n:
+                continue
+            pat = re.escape(n)
+            if re.search(r"(^|[^\w])" + pat + r"([^\w]|$)", message, re.IGNORECASE):
+                chosen = name
+                break
+        if not chosen:
+            return None
+        # Команда: по умолчанию df -h при «место»/«диск»; при «подключись» — проверка hostname; иначе из текста
+        command = "df -h"
+        if "место" in msg or "диск" in msg or "свободн" in msg:
+            command = "df -h"
+        elif "подключись" in msg or "подключиться" in msg:
+            command = "hostname && echo OK"
+        else:
+            m = re.search(r"(?:выполни|запусти|команду)\s+([^\n.!?\]]+)", message, re.IGNORECASE)
+            if m:
+                cmd = m.group(1).strip().strip('"\'')
+                if cmd and len(cmd) < 200:
+                    command = cmd
+            if "df" in msg and "df -h" not in command and "df " not in command:
+                command = "df -h"
+        tool = ServerExecuteTool()
+        out = await tool.execute(
+            server_name_or_id=chosen,
+            command=command,
+            _context={"user_id": user_id},
+        )
+        return (
+            f"Результат на сервере «{chosen}» (данные из вкладки Servers):\n\n{out}"
+            if isinstance(out, str)
+            else str(out)
+        )
+    except Exception as e:
+        logger.warning(f"server_command_by_name failed: {e}")
+        return None
 
 
 @csrf_exempt
@@ -453,11 +592,28 @@ async def chat_api(request):
                             )
                         )
                         created_session_id = session.id
+                    # Попытка «по имени сервера» из вкладки Servers — без логина/пароля в чате
+                    server_result = await _try_server_command_by_name(user_id, user_message)
+                    if server_result is not None:
+                        if created_session_id is not None:
+                            yield f"CHAT_ID:{created_session_id}\n"
+                        yield server_result
+                        if user_id and session:
+                            def _save_auto():
+                                ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=user_message)
+                                ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content=server_result)
+                                session.title = (user_message[:80] or session.title).strip() or session.title
+                                session.save(update_fields=["title", "updated_at"])
+                            await asyncio.to_thread(_save_auto)
+                        return
                     workspace = getattr(settings, "BASE_DIR", "")
                     cursor_mode = getattr(model_manager.config, "cursor_chat_mode", "ask") or "ask"
+                    # Добавляем контекст серверов пользователя в промпт для Cursor CLI
+                    servers_ctx = await asyncio.to_thread(_get_servers_context_for_prompt, user_id) if user_id else ""
+                    prompt_with_servers = (servers_ctx + "\n\n" + user_message) if servers_ctx else user_message
                     if created_session_id is not None:
                         yield f"CHAT_ID:{created_session_id}\n"
-                    async for chunk in _stream_cursor_cli(user_message, workspace, mode=cursor_mode):
+                    async for chunk in _stream_cursor_cli(prompt_with_servers, workspace, mode=cursor_mode):
                         accumulated.append(chunk)
                         yield chunk
                     full_text = "".join(accumulated)
@@ -487,6 +643,7 @@ async def chat_api(request):
                     specific_model=specific_model,
                     user_id=user_id,
                     initial_history=initial_history,
+                    execution_context={"user_id": user_id} if user_id else None,
                 ):
                     accumulated.append(chunk)
                     yield chunk
@@ -764,6 +921,14 @@ def api_settings(request):
         try:
             model_manager.load_config()
             c = model_manager.config
+            delegate_ui = 'chat'
+            try:
+                from tasks.models import UserDelegatePreference
+                pref = UserDelegatePreference.objects.filter(user=request.user).first()
+                if pref:
+                    delegate_ui = pref.delegate_ui
+            except Exception:
+                pass
             return JsonResponse({
                 'success': True,
                 'config': {
@@ -775,6 +940,7 @@ def api_settings(request):
                     'agent_model_grok': c.agent_model_grok,
                     'default_agent_output_path': getattr(c, 'default_agent_output_path', '') or '',
                     'cursor_chat_mode': getattr(c, 'cursor_chat_mode', 'ask') or 'ask',
+                    'delegate_ui': delegate_ui,
                 },
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
@@ -796,6 +962,13 @@ def api_settings(request):
                 if key in allowed and value is not None:
                     model_manager.update_config(**{key: value})
             model_manager.save_config()
+            # Per-user delegate_ui preference
+            if 'delegate_ui' in data and data['delegate_ui'] in ('chat', 'task_form'):
+                from tasks.models import UserDelegatePreference
+                UserDelegatePreference.objects.update_or_create(
+                    user=request.user,
+                    defaults={'delegate_ui': data['delegate_ui']},
+                )
             return JsonResponse({'success': True, 'message': 'Settings updated'})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -843,8 +1016,8 @@ def api_agents_list(request):
 
 
 @csrf_exempt
-@login_required
-@require_feature('agents')
+@async_login_required
+@async_require_feature('agents')
 @require_http_methods(["POST"])
 async def api_agent_execute(request):
     """Execute an agent with a task"""

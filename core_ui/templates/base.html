@@ -90,6 +90,34 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     
     <!-- Theme, density and motion are defined in style.css -->
+
+    <!-- Notification bell animation -->
+    <style>
+        @keyframes bell-ring {
+            0% { transform: rotate(0); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-15deg); }
+            30% { transform: rotate(12deg); }
+            40% { transform: rotate(-12deg); }
+            50% { transform: rotate(8deg); }
+            60% { transform: rotate(-8deg); }
+            70% { transform: rotate(4deg); }
+            80% { transform: rotate(-4deg); }
+            90% { transform: rotate(2deg); }
+            100% { transform: rotate(0); }
+        }
+        .bell-ringing {
+            animation: bell-ring 0.8s ease-in-out;
+        }
+        .notification-new {
+            animation: notification-glow 2s ease-out;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.2), transparent);
+        }
+        @keyframes notification-glow {
+            0% { background: rgba(99, 102, 241, 0.3); }
+            100% { background: transparent; }
+        }
+    </style>
 </head>
 
 <body class="bg-bg-base text-gray-100 font-sans antialiased overflow-hidden h-screen flex noise-overlay {% block body_extra_class %}{% endblock %}" data-theme="dark" data-density="normal" data-size="normal">
@@ -211,7 +239,7 @@
 
         <!-- Header -->
         <header
-            class="border-b border-white/5 glass-sm flex items-center justify-between px-6 z-10 relative transition-base" style="height: var(--header-height);">
+            class="border-b border-white/5 glass-sm flex items-center justify-between px-6 z-30 relative transition-base" style="height: var(--header-height);">
             <div class="flex items-center gap-3 min-w-0 flex-1">
                 <button class="mobile-menu-btn" id="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar"><i class="material-icons-round" aria-hidden="true">menu</i></button>
                 {% block breadcrumbs %}
@@ -232,6 +260,40 @@
             </div>
 
             <div class="flex items-center gap-2 flex-shrink-0">
+                {% if user.is_authenticated and user_can_tasks %}
+                <div class="relative" id="task-notifications-wrap">
+                    <button type="button" id="task-notifications-bell" class="header-quick-action relative" aria-label="Уведомления задач" title="Уведомления: задачи, делегирование ИИ" aria-expanded="false" aria-haspopup="true" aria-controls="task-notifications-dropdown">
+                        <span class="material-icons-round text-lg" aria-hidden="true">notifications</span>
+                        <span id="task-notifications-badge" class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white px-1 hidden" aria-live="polite">0</span>
+                    </button>
+                    <div id="task-notifications-dropdown" class="hidden absolute right-0 top-full mt-2 z-[9999] rounded-2xl border border-white/10 bg-bg-surface shadow-2xl overflow-hidden" style="width: 384px;" role="menu" aria-label="Список уведомлений">
+                        <!-- Header -->
+                        <div class="px-4 py-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="material-icons-round text-primary text-lg">notifications_active</span>
+                                <span class="font-semibold text-white text-sm">Уведомления</span>
+                            </div>
+                            <button type="button" id="task-notifications-mark-all" class="text-xs text-primary hover:text-primary/80 transition-colors hidden">Прочитать все</button>
+                        </div>
+                        <!-- List with scroll -->
+                        <div id="task-notifications-scroll" class="max-h-80 overflow-y-auto overscroll-contain">
+                            <div id="task-notifications-list" class="divide-y divide-white/5"></div>
+                        </div>
+                        <!-- Empty state -->
+                        <div id="task-notifications-empty" class="px-6 py-10 text-center hidden">
+                            <span class="material-icons-round text-4xl text-gray-600 mb-2 block">notifications_off</span>
+                            <p class="text-sm text-gray-500">Нет непрочитанных уведомлений</p>
+                        </div>
+                        <!-- Footer -->
+                        <div class="px-4 py-2 border-t border-white/10 bg-white/[0.02]">
+                            <a href="{% url 'tasks:task_list' %}" class="text-xs text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-1">
+                                <span class="material-icons-round text-sm">list_alt</span>
+                                Все задачи
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
                 <a href="#" id="help-trigger" class="header-quick-action" aria-label="Help: articles and repeat tour" title="Справка: статьи и повтор тура" onclick="toggleHelpPanel(); return false;">
                     <span class="material-icons-round text-lg" aria-hidden="true">help_outline</span>
                     <span class="hidden sm:inline text-xs">Help</span>
@@ -377,7 +439,7 @@
             </article>
             <article class="help-article">
                 <h3>Как выбрать модель</h3>
-                <p>В чате выберите провайдер (Gemini/Grok) и модель. Более мощные модели (например, Pro) точнее в сложных рассуждениях; Flash — быстрее и дешевле. В Settings задаётся модель по умолчанию и модели для агента и RAG-эмбеддингов.</p>
+                <p>Пока используется только Cursor Auto. В настройках (Models) задаётся провайдер по умолчанию и модели для чата, агента и RAG; Gemini и Grok будут доступны позже.</p>
             </article>
             <article class="help-article">
                 <h3>Как безопасно подключать сервер</h3>
@@ -412,6 +474,203 @@
                 hp.setAttribute('aria-hidden', 'true');
             }
         });
+        // Task notifications: bell + dropdown (fixed position so it stays on top on any page)
+        var bell = document.getElementById('task-notifications-bell');
+        var wrap = document.getElementById('task-notifications-wrap');
+        var dropdown = document.getElementById('task-notifications-dropdown');
+        var listEl = document.getElementById('task-notifications-list');
+        var emptyEl = document.getElementById('task-notifications-empty');
+        var badge = document.getElementById('task-notifications-badge');
+        if (bell && wrap && dropdown && listEl) {
+            var lastNotificationCount;
+            var getCsrf = function() {
+                var m = document.querySelector('[name=csrfmiddlewaretoken]');
+                if (m && m.value) return m.value;
+                var name = 'csrftoken';
+                var c = document.cookie.split(';').filter(function(x){ return x.trim().indexOf(name + '=') === 0; })[0];
+                return c ? c.split('=')[1].trim() : '';
+            };
+            var positionDropdown = function() {
+                // Используем absolute позиционирование относительно wrap — проще и надёжнее
+            };
+            var markAllBtn = document.getElementById('task-notifications-mark-all');
+            var getNotificationIcon = function(type) {
+                var icons = {
+                    'AUTO_EXECUTION_SUGGESTION': { icon: 'smart_toy', color: 'text-primary', bg: 'bg-primary/20' },
+                    'EXECUTION_COMPLETE': { icon: 'check_circle', color: 'text-green-400', bg: 'bg-green-500/20' },
+                    'EXECUTION_FAILED': { icon: 'error', color: 'text-red-400', bg: 'bg-red-500/20' },
+                    'INFO': { icon: 'info', color: 'text-blue-400', bg: 'bg-blue-500/20' },
+                    'WARNING': { icon: 'warning', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
+                };
+                return icons[type] || icons['INFO'];
+            };
+            var timeAgo = function(dateStr) {
+                if (!dateStr) return '';
+                var d = new Date(dateStr);
+                var now = new Date();
+                var diff = Math.floor((now - d) / 1000);
+                if (diff < 60) return 'только что';
+                if (diff < 3600) return Math.floor(diff / 60) + ' мин назад';
+                if (diff < 86400) return Math.floor(diff / 3600) + ' ч назад';
+                return Math.floor(diff / 86400) + ' дн назад';
+            };
+            var refresh = function() {
+                fetch('{% url "tasks:notifications_list" %}', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var count = (data.notifications || []).length;
+                        var isNewNotification = false;
+                        if (badge) {
+                            var prev = lastNotificationCount;
+                            badge.textContent = count;
+                            badge.classList.toggle('hidden', count === 0);
+                            isNewNotification = prev !== undefined && count > prev;
+                            if (isNewNotification) {
+                                // Анимация тряски колокольчика
+                                var bellIcon = bell.querySelector('.material-icons-round');
+                                if (bellIcon) {
+                                    bellIcon.classList.add('bell-ringing');
+                                    setTimeout(function() { bellIcon.classList.remove('bell-ringing'); }, 1000);
+                                }
+                                // Пульсация badge
+                                badge.classList.add('animate-pulse');
+                                setTimeout(function() { if (badge) badge.classList.remove('animate-pulse'); }, 3000);
+                                // Toast уведомление
+                                if (window.showToast) window.showToast('🔔 Новое уведомление!', 'info', 4000);
+                                // Автоматически открыть dropdown на 5 секунд
+                                if (dropdown.classList.contains('hidden')) {
+                                    dropdown.classList.remove('hidden');
+                                    bell.setAttribute('aria-expanded', 'true');
+                                    // Пометить новые уведомления
+                                    setTimeout(function() {
+                                        var items = listEl.querySelectorAll('.notification-item');
+                                        if (items.length > 0) items[0].classList.add('notification-new');
+                                    }, 100);
+                                    // Закрыть через 6 секунд если пользователь не взаимодействует
+                                    setTimeout(function() {
+                                        if (!dropdown.matches(':hover')) {
+                                            dropdown.classList.add('hidden');
+                                            bell.setAttribute('aria-expanded', 'false');
+                                        }
+                                    }, 6000);
+                                }
+                            }
+                            lastNotificationCount = count;
+                        }
+                        if (markAllBtn) markAllBtn.classList.toggle('hidden', count === 0);
+                        listEl.innerHTML = '';
+                        if (count === 0) {
+                            if (emptyEl) { emptyEl.classList.remove('hidden'); }
+                            return;
+                        }
+                        if (emptyEl) emptyEl.classList.add('hidden');
+                        (data.notifications || []).forEach(function(n, idx) {
+                            var iconData = getNotificationIcon(n.type);
+                            var div = document.createElement('div');
+                            div.className = 'notification-item px-4 py-3 hover:bg-white/5 transition-all cursor-pointer group';
+                            // Первое уведомление при новом получает подсветку
+                            if (idx === 0 && isNewNotification) div.classList.add('notification-new');
+                            div.innerHTML = 
+                                '<div class="flex gap-3">' +
+                                    '<div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ' + iconData.bg + '">' +
+                                        '<span class="material-icons-round text-lg ' + iconData.color + '">' + iconData.icon + '</span>' +
+                                    '</div>' +
+                                    '<div class="flex-1 min-w-0">' +
+                                        '<div class="flex items-start justify-between gap-2">' +
+                                            '<div class="font-medium text-white text-sm leading-tight">' + (n.title || 'Уведомление') + '</div>' +
+                                            '<div class="text-[10px] text-gray-500 whitespace-nowrap">' + timeAgo(n.created_at) + '</div>' +
+                                        '</div>' +
+                                        '<div class="text-xs text-gray-400 mt-1 line-clamp-2">' + ((n.message || '').slice(0, 150) + ((n.message || '').length > 150 ? '…' : '')) + '</div>' +
+                                        '<div class="mt-2 flex gap-2 notification-actions"></div>' +
+                                    '</div>' +
+                                '</div>';
+                            var actionsEl = div.querySelector('.notification-actions');
+                            // Кнопка действия зависит от типа
+                            if (n.type === 'AUTO_EXECUTION_SUGGESTION') {
+                                var btnDelegate = document.createElement('button');
+                                btnDelegate.type = 'button';
+                                btnDelegate.className = 'px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/80 transition-colors flex items-center gap-1';
+                                btnDelegate.innerHTML = '<span class="material-icons-round text-sm">play_arrow</span> Делегировать ИИ';
+                                btnDelegate.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    btnDelegate.disabled = true;
+                                    btnDelegate.innerHTML = '<span class="material-icons-round text-sm animate-spin">hourglass_empty</span> Запуск...';
+                                    fetch('/tasks/notifications/' + n.id + '/action/', {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                        body: JSON.stringify({ action: 'delegate' })
+                                    }).then(function(r) { return r.json(); }).then(function(res) {
+                                        if (res.success && res.url) window.location.href = res.url;
+                                        else if (res.success) window.location.href = '/tasks/';
+                                        if (window.showToast) window.showToast(res.message || 'Готово', 'success');
+                                        dropdown.classList.add('hidden');
+                                        bell.setAttribute('aria-expanded', 'false');
+                                        refresh();
+                                    }).catch(function() { if (window.showToast) window.showToast('Ошибка запроса', 'error'); btnDelegate.disabled = false; btnDelegate.innerHTML = '<span class="material-icons-round text-sm">play_arrow</span> Делегировать ИИ'; });
+                                });
+                                actionsEl.appendChild(btnDelegate);
+                            }
+                            // Кнопка "Открыть задачу"
+                            if (n.task_id) {
+                                var btnOpen = document.createElement('a');
+                                btnOpen.href = '/tasks/#task-' + n.task_id;
+                                btnOpen.className = 'px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-xs font-medium hover:bg-white/20 transition-colors flex items-center gap-1';
+                                btnOpen.innerHTML = '<span class="material-icons-round text-sm">open_in_new</span> Задача';
+                                actionsEl.appendChild(btnOpen);
+                            }
+                            // Кнопка "Прочитано"
+                            var btnDismiss = document.createElement('button');
+                            btnDismiss.type = 'button';
+                            btnDismiss.className = 'px-2 py-1.5 rounded-lg text-gray-500 text-xs hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100';
+                            btnDismiss.innerHTML = '<span class="material-icons-round text-sm">close</span>';
+                            btnDismiss.title = 'Отметить прочитанным';
+                            btnDismiss.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                fetch('/tasks/notifications/' + n.id + '/action/', {
+                                    method: 'POST',
+                                    credentials: 'same-origin',
+                                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                                    body: JSON.stringify({ action: 'dismiss' })
+                                }).then(function() { refresh(); }).catch(function() {});
+                            });
+                            actionsEl.appendChild(btnDismiss);
+                            listEl.appendChild(div);
+                        });
+                    })
+                    .catch(function() {});
+            };
+            if (markAllBtn) {
+                markAllBtn.addEventListener('click', function() {
+                    fetch('/tasks/notifications/mark-all-read/', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' }
+                    }).then(function() { refresh(); }).catch(function() {});
+                });
+            }
+            bell.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                dropdown.classList.toggle('hidden');
+                var isOpen = !dropdown.classList.contains('hidden');
+                bell.setAttribute('aria-expanded', isOpen);
+                if (isOpen) {
+                    positionDropdown();
+                    refresh();
+                }
+            });
+            document.addEventListener('click', function(e) {
+                if (dropdown && !dropdown.classList.contains('hidden') && !wrap.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                    bell.setAttribute('aria-expanded', 'false');
+                }
+            });
+            window.addEventListener('scroll', function() { positionDropdown(); }, true);
+            window.addEventListener('resize', function() { positionDropdown(); });
+            refresh();
+            setInterval(refresh, 15000); // Проверяем уведомления каждые 15 секунд
+        }
     });
     </script>
 

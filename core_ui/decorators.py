@@ -26,6 +26,33 @@ def async_login_required(view_func):
     return _wrapped
 
 
+def async_require_feature(feature, redirect_on_forbidden=False):
+    """
+    Async-view-safe require_feature: проверки request.user и user_can_feature через sync_to_async.
+    Использовать для async views вместе с @async_login_required.
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        async def _wrapped(request, *args, **kwargs):
+            is_authenticated = await sync_to_async(
+                lambda r: getattr(r.user, 'is_authenticated', False)
+            )(request)
+            if not is_authenticated:
+                if redirect_on_forbidden:
+                    return redirect('login')
+                return HttpResponseForbidden()
+            can_feature = await sync_to_async(
+                lambda r: user_can_feature(r.user, feature)
+            )(request)
+            if not can_feature:
+                if redirect_on_forbidden:
+                    return redirect('index')
+                return JsonResponse({'error': 'Forbidden'}, status=403)
+            return await view_func(request, *args, **kwargs)
+        return _wrapped
+    return decorator
+
+
 def require_feature(feature, redirect_on_forbidden=False):
     """
     Restrict view to users who have permission for `feature`.

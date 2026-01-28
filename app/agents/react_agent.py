@@ -47,13 +47,22 @@ class ReActAgent(BaseAgent):
                 await self.orchestrator.initialize()
                 self.orchestrator.initialized = True
             
+            # Build execution_context for delegated tasks (connection_id, allowed_actions)
+            execution_context = None
+            if context.get('connection_id'):
+                execution_context = {
+                    'connection_id': context['connection_id'],
+                    'allowed_actions': context.get('allowed_actions', 'readonly, проверка (df, логи, статус)'),
+                }
+
             # Collect response from orchestrator
             result_parts = []
             async for chunk in self.orchestrator.process_user_message(
                 task,
                 model_preference=model_preference,
                 use_rag=use_rag,
-                specific_model=specific_model
+                specific_model=specific_model,
+                execution_context=execution_context,
             ):
                 result_parts.append(chunk)
             

@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from loguru import logger
 from app.tools.base import BaseTool
 from app.tools.ssh_tools import SSHConnectTool, SSHExecuteTool, SSHDisconnectTool
+from app.tools.server_tools import ServersListTool, ServerExecuteTool
 from app.tools.filesystem_tools import (
     ReadFileTool, WriteFileTool, ListDirectoryTool,
     CreateDirectoryTool, DeleteFileTool
@@ -31,7 +32,9 @@ class ToolManager:
             SSHConnectTool(),
             SSHExecuteTool(),
             SSHDisconnectTool(),
-            
+            # Servers (из вкладки Servers — по имени/id)
+            ServersListTool(),
+            ServerExecuteTool(),
             # Filesystem Tools
             ReadFileTool(),
             WriteFileTool(),
@@ -93,11 +96,14 @@ class ToolManager:
         """Get tools filtered by category"""
         return [tool for tool in self.tools.values() if tool._metadata.category == category]
     
-    def get_tools_description(self) -> str:
-        """Get formatted description of all tools for the LLM"""
+    def get_tools_description(self, exclude_tools: Optional[List[str]] = None) -> str:
+        """Get formatted description of all tools for the LLM. exclude_tools: skip these (e.g. ssh_connect for delegated tasks)."""
+        exclude = set(exclude_tools or [])
         categories = {}
-        
+
         for tool in self.tools.values():
+            if tool._metadata.name in exclude:
+                continue
             cat = tool._metadata.category
             if cat not in categories:
                 categories[cat] = []
@@ -118,14 +124,16 @@ class ToolManager:
         
         return description
     
-    async def execute_tool(self, tool_name: str, **kwargs) -> Any:
-        """Execute a tool by name"""
+    async def execute_tool(self, tool_name: str, _context: Optional[Dict[str, Any]] = None, **kwargs) -> Any:
+        """Execute a tool by name. _context (user_id, master_password) передаётся инструментам servers_*."""
         tool = self.get_tool(tool_name)
         
         if not tool:
             raise ValueError(f"Unknown tool: {tool_name}")
         
-        logger.info(f"Executing tool: {tool_name} with args: {kwargs}")
+        if _context is not None:
+            kwargs["_context"] = _context
+        logger.info(f"Executing tool: {tool_name} with args: {list(kwargs.keys())}")
         
         try:
             result = await tool.execute(**kwargs)

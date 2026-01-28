@@ -12,7 +12,7 @@
 - **Конкретная модель**: для Gemini/Grok — выбор варианта (Flash/Pro и т.п.)
 - **RAG**: Включение/выключение базы знаний
 
-При выборе **Авто** запросы уходят в Cursor CLI (`agent --mode=ask|agent -p "..." --output-format text`). Режим (Ask или Agent) настраивается в **Настройки → Models → «Режим Cursor CLI в чате»**. Выбранная модель используется для всех сообщений в этом чате.
+При выборе **Авто** запросы уходят в Cursor CLI: Ask — `agent --mode=ask -p "..." --output-format text --workspace ...`; Agent (правка файлов) — `agent -p --force --output-format stream-json --stream-partial-output --workspace ... --model auto "..."` (у CLI нет `--mode=agent`, только plan/ask). Режим настраивается в **Настройки → Models → «Режим Cursor CLI в чате»**. Выбранная модель используется для всех сообщений в этом чате.
 
 ### 2. В настройках (⚙️)
 Откройте настройки для детальной конфигурации:

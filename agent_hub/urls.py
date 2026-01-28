@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/workflows/<int:workflow_id>/update/", views.api_workflow_update, name="api_workflow_update"),
     path("api/workflows/<int:workflow_id>/delete/", views.api_workflow_delete, name="api_workflow_delete"),
     path("api/workflows/generate/", views.api_workflow_generate, name="api_workflow_generate"),
+    path("api/workflows/from-task/", views.api_workflow_from_task, name="api_workflow_from_task"),
     path("api/workflows/create-manual/", views.api_workflow_create_manual, name="api_workflow_create_manual"),
     path("api/tasks/generate/", views.api_tasks_generate, name="api_tasks_generate"),
     path("api/workflows/run/", views.api_workflow_run, name="api_workflow_run"),
@@ -34,5 +35,6 @@ urlpatterns = [
     path("api/workflows/run/<int:run_id>/continue/", views.api_workflow_continue, name="api_workflow_continue"),
     path("api/workflows/run/<int:run_id>/retry/", views.api_workflow_retry_step, name="api_workflow_retry_step"),
     path("api/workflows/run/<int:run_id>/delete/", views.api_workflow_run_delete, name="api_workflow_run_delete"),
+    path("api/workflows/<int:workflow_id>/download/", views.api_workflow_download_project, name="api_workflow_download_project"),
     path("api/assist-auto/", views.api_assist_auto, name="api_assist_auto"),
 ]

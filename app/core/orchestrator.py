@@ -12,6 +12,27 @@ import json
 from typing import AsyncGenerator, List, Dict, Any
 
 
+# Инструкции и ограничения агента: язык и безопасность (одно место для переиспользования)
+AGENT_SYSTEM_RULES_RU = """
+ЯЗЫК И ОБЩИЕ ПРАВИЛА:
+- Отвечай и рассуждай только на русском. Все сообщения пользователю — на русском.
+- Не запрашивай и не используй пароли. Для SSH используй только переданный connection_id уже установленного соединения или инструменты servers_list / server_execute для серверов из раздела Servers.
+
+СЕРВЕРЫ ИЗ РАЗДЕЛА SERVERS (WEU SERVER и др.):
+- Сначала вызови servers_list — получи список серверов (id, name, host).
+- Чтобы выполнить команду на сервере по имени (например WEU SERVER), вызови server_execute с server_name_or_id="WEU SERVER" и command="df -h" (или другой командой).
+
+РАЗРЕШЁННЫЕ ОПЕРАЦИИ НА СЕРВЕРЕ:
+- Чтение и проверка: df, свободное место, логи, статус сервисов, списки файлов, чтение конфигов.
+- Выполняй только безопасные команды проверки (например: df -h, du, tail логов, systemctl status).
+
+ЗАПРЕЩЕНО БЕЗ ЯВНОГО ПОДТВЕРЖДЕНИЯ:
+- Удаление файлов и каталогов (rm -rf, rm и т.п.), перезапись критичных путей.
+- mkfs, разметка дисков, отключение/перезапуск системных сервисов.
+- Любые действия, необратимо меняющие состояние сервера.
+"""
+
+
 class Orchestrator:
     """
     Central Orchestrator for the Agentic System.
@@ -44,13 +65,14 @@ class Orchestrator:
         logger.success("Orchestrator initialized")
     
     async def process_user_message(
-        self, 
-        message: str, 
+        self,
+        message: str,
         model_preference: str = None,
         use_rag: bool = True,
-        specific_model: str = None,  # Allow specific model override
-        user_id=None,  # For per-user RAG isolation
-        initial_history: List[Dict[str, str]] = None  # История из БД для продолжения чата
+        specific_model: str = None,
+        user_id=None,
+        initial_history: List[Dict[str, str]] = None,
+        execution_context: Dict[str, Any] = None,  # connection_id, allowed_actions и т.п. для делегированных задач
     ) -> AsyncGenerator[str, None]:
         """
         Process user message with full ReAct loop
@@ -83,11 +105,13 @@ class Orchestrator:
         if not initial_history and len(self.history) > 10:
             self.history = self.history[-10:]
         
-        # Step 1: Retrieve RAG context
+        # Step 1: Retrieve RAG context (RAG.query — sync, вызываем в thread)
         rag_context = ""
         if use_rag and self.rag.available and user_id is not None:
             try:
-                results = self.rag.query(message, n_results=3, user_id=user_id)
+                results = await asyncio.to_thread(
+                    self.rag.query, message, 3, user_id
+                )
                 if results.get('documents') and results['documents'][0]:
                     docs = results['documents'][0]
                     if docs:
@@ -109,7 +133,8 @@ class Orchestrator:
                 user_message=message,
                 rag_context=rag_context,
                 iteration=iteration,
-                history_override=effective_history if initial_history else None
+                history_override=effective_history if initial_history else None,
+                execution_context=execution_context,
             )
             
             # Get LLM response
@@ -135,8 +160,14 @@ class Orchestrator:
                 yield f"\n\n🔧 **Using tool: {tool_name}**\n"
                 
                 try:
-                    # Execute tool
-                    result = await self.tool_manager.execute_tool(tool_name, **tool_args)
+                    # Контекст для инструментов servers_list / server_execute (user_id, master_password)
+                    ctx = (execution_context or {}).copy()
+                    tool_context = {"user_id": ctx.get("user_id")} if ctx.get("user_id") else None
+                    if ctx.get("master_password") and tool_context:
+                        tool_context["master_password"] = ctx.get("master_password")
+                    result = await self.tool_manager.execute_tool(
+                        tool_name, _context=tool_context, **tool_args
+                    )
                     
                     # Format result
                     result_str = self._format_tool_result(result)
@@ -188,20 +219,21 @@ class Orchestrator:
         
         # If we exhausted iterations without final answer, use last response
         if not final_answer:
-            final_answer = "I've reached my iteration limit. Here's what I found so far:\n\n" + llm_response
+            final_answer = "Достигнут лимит итераций. Вот что удалось выяснить:\n\n" + llm_response
         
         # Add final answer to history
         effective_history.append({"role": "assistant", "content": final_answer})
         if not initial_history:
             self.history.append({"role": "assistant", "content": final_answer})
         
-        # Add to RAG if it's valuable information
+        # Add to RAG if it's valuable information (RAG.add_text — sync, в thread)
         if len(final_answer) > 100 and user_id is not None:  # Only add substantial responses
             try:
-                self.rag.add_text(
+                await asyncio.to_thread(
+                    self.rag.add_text,
                     f"Q: {message}\nA: {final_answer}",
-                    source="conversation",
-                    user_id=user_id
+                    "conversation",
+                    user_id,
                 )
             except Exception as e:
                 logger.warning(f"Failed to add to RAG: {e}")
@@ -211,57 +243,100 @@ class Orchestrator:
             yield f"\n\n{final_answer}"
     
     def _build_system_prompt(
-        self, user_message: str, rag_context: str, iteration: int,
-        history_override: List[Dict[str, str]] = None
+        self,
+        user_message: str,
+        rag_context: str,
+        iteration: int,
+        history_override: List[Dict[str, str]] = None,
+        execution_context: Dict[str, Any] = None,
     ) -> str:
-        """Build the ReAct system prompt. history_override uses saved chat history when continuing a session."""
-        
-        tools_description = self.tool_manager.get_tools_description()
+        """Build the ReAct system prompt. execution_context may contain connection_id, allowed_actions for delegated tasks."""
         history_source = history_override if history_override is not None else self.history
-        
+
         history_text = ""
         if len(history_source) > 1:
-            # Show last few exchanges
             recent = history_source[-6:]
             history_text = "\n".join([
-                f"{msg['role'].upper()}: {msg['content'][:200]}" 
-                for msg in recent[:-1]  # Exclude current message
+                f"{msg['role'].upper()}: {msg['content'][:200]}"
+                for msg in recent[:-1]
             ])
-        
-        prompt = f"""You are WEU Agent - an intelligent assistant with access to various tools.
 
+        ctx_block = ""
+        exclude_tools = None
+        if execution_context:
+            conn_id = execution_context.get("connection_id")
+            allowed = execution_context.get("allowed_actions", "")
+            if conn_id:
+                exclude_tools = ["ssh_connect"]
+                ctx_block = f"""
+КОНТЕКСТ ВЫПОЛНЕНИЯ ЗАДАЧИ:
+- Уже установлено SSH-соединение. Используй инструмент ssh_execute с параметром conn_id="{conn_id}" для выполнения команд на сервере. Не вызывай ssh_connect и не запрашивай пароли.
+- Разрешённые действия: {allowed or "readonly, проверка (df, логи, статус)"}.
+"""
+        else:
+            ctx_block = ""
+
+        # Блок с актуальным списком серверов пользователя
+        servers_block = ""
+        user_id = (execution_context or {}).get("user_id")
+        if user_id:
+            servers_block = self._get_user_servers_block(user_id)
+
+        tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
+        prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
+{AGENT_SYSTEM_RULES_RU}
+{ctx_block}
+{servers_block}
+
+ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 {tools_description}
 
-KNOWLEDGE BASE CONTEXT:
-{rag_context if rag_context else "No relevant context found."}
+БАЗА ЗНАНИЙ:
+{rag_context if rag_context else "Нет релевантного контекста."}
 
-CONVERSATION HISTORY:
-{history_text if history_text else "No previous context."}
+ИСТОРИЯ ДИАЛОГА:
+{history_text if history_text else "Нет предыдущего контекста."}
 
-INSTRUCTIONS:
-1. Think step-by-step about the user's request
-2. If you can answer directly, just provide the answer
-3. If you need to use a tool, format your response EXACTLY like this:
-
-THOUGHT: [Your reasoning about what tool to use and why]
+ИНСТРУКЦИИ:
+1. Рассуждай по шагам на русском.
+2. Если нужен инструмент, в ответе строго в формате:
+THOUGHT: [твоё рассуждение]
 ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
+3. После OBSERVATION продолжай рассуждение или дай итоговый ответ на русском.
+4. Итоговый ответ пиши без строки ACTION.
 
-4. After a tool executes, you'll see OBSERVATION with the result
-5. Then continue thinking and either use another tool or provide final answer
-6. When you have the final answer, just respond normally without ACTION
+ВАЖНО: ответы пользователю — только на русском. Параметры ACTION — валидный JSON. Используй только перечисленные инструменты.
 
-IMPORTANT:
-- Use tools when you need to: search web, read/write files, connect to SSH, etc.
-- The ACTION line must be valid JSON for parameters
-- Only use tools that are listed above
-- Be concise and helpful
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}
 
-USER REQUEST: {user_message}
-
-Your response:"""
-        
+Твой ответ:"""
         return prompt
     
+    def _get_user_servers_block(self, user_id: int) -> str:
+        """
+        Возвращает блок с актуальным списком серверов пользователя для системного промпта.
+        """
+        if not user_id:
+            return ""
+        try:
+            from servers.models import Server
+            servers = list(Server.objects.filter(user_id=user_id).values("id", "name", "host", "port", "username"))
+            if not servers:
+                return ""
+            lines = [
+                "\nТВОИ СЕРВЕРЫ (доступны через server_execute):",
+            ]
+            for s in servers:
+                lines.append(f"  - {s['name']} (id={s['id']}): {s['username']}@{s['host']}:{s['port']}")
+            lines.append("")
+            lines.append("Используй server_execute с server_name_or_id='<имя сервера>' и command='<команда>'.")
+            lines.append("НЕ ищи данные серверов в коде — бери их из этого списка!")
+            lines.append("")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.warning(f"_get_user_servers_block error: {e}")
+            return ""
+
     def _parse_action(self, response: str) -> dict:
         """
         Parse action from LLM response
@@ -305,7 +380,9 @@ Your response:"""
     async def add_to_knowledge_base(self, text: str, source: str = "manual", user_id=None):
         """Add text to RAG knowledge base (user_id required for per-user isolation)."""
         if self.rag.available and user_id is not None:
-            doc_id = self.rag.add_text(text, source, user_id=user_id)
+            doc_id = await asyncio.to_thread(
+                self.rag.add_text, text, source, user_id
+            )
             logger.info(f"Added to knowledge base: {doc_id}")
             return doc_id
         else:

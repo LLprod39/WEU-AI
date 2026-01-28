@@ -17,49 +17,62 @@ class TaskAIAssistant:
         self.llm = LLMProvider()
         self.agent_manager = get_agent_manager()
     
-    async def analyze_task(self, task_title: str, task_description: str) -> Dict[str, Any]:
+    async def analyze_task(
+        self,
+        task_title: str,
+        task_description: str,
+        servers_context: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """
-        Analyze a task and provide insights:
-        - What AI can do vs what requires human
-        - Complexity assessment
-        - Recommended agent
-        - Suggested improvements
+        Анализ задачи: может ли ИИ выполнить её сам (есть нужный сервер и тип операции допустим).
+        Ответ только на русском, JSON с полями can_delegate_to_ai, reason, recommended_agent и т.д.
         """
         try:
+            import json
+            import re
             model = model_manager.config.default_provider
-            
-            prompt = f"""Analyze the following task and provide a structured analysis.
 
-Task Title: {task_title}
-Task Description: {task_description}
+            servers_text = ""
+            if servers_context:
+                parts = [
+                    f"{s.get('name', '')} ({s.get('host', '')}:{s.get('port', 22)})"
+                    for s in servers_context
+                ]
+                servers_text = "Доступные серверы пользователя (имя, хост:порт): " + ", ".join(parts)
+            else:
+                servers_text = "Список доступных серверов не передан."
 
-Provide analysis in the following format (JSON):
+            prompt = f"""Ты анализируешь задачу пользователя. Ответь только на русском в формате JSON.
+
+Задача: {task_title}
+Описание: {task_description}
+{servers_text}
+
+Определи, может ли ИИ реально выполнить эту задачу сам: есть ли подходящий сервер в списке и является ли операция допустимой (проверка места на диске, чтение логов, проверка сервисов и т.п.). Удаление файлов, перезапись критичных путей, отключение сервисов — без явного подтверждения не считаются допустимыми.
+
+Верни строго один JSON-объект с полями:
 {{
-    "complexity": "simple|medium|complex",
-    "ai_can_do": ["list of things AI can do"],
-    "requires_human": ["list of things that require human"],
+    "can_delegate_to_ai": true или false,
+    "reason": "краткое обоснование на русском",
     "recommended_agent": "react|simple|complex|ralph",
-    "suggested_improvements": ["suggestions for better task description"],
-    "estimated_time": "estimate in hours or days",
-    "dependencies": ["any dependencies or prerequisites"],
-    "suggested_priority": "HIGH|MEDIUM|LOW"
+    "estimated_time": "оценка в часах или минутах на русском",
+    "complexity": "simple|medium|complex"
 }}
 
-Analysis:"""
-            
+Ответ (только JSON, без markdown и пояснений):"""
+
             response_text = ""
             async for chunk in self.llm.stream_chat(prompt, model=model):
                 response_text += chunk
-            
-            # Try to parse JSON from response
-            import json
-            import re
-            
-            # Extract JSON from response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+
+            json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
                 try:
                     analysis = json.loads(json_match.group())
+                    if not isinstance(analysis.get('can_delegate_to_ai'), bool):
+                        analysis['can_delegate_to_ai'] = False
                     return {
                         'success': True,
                         'analysis': analysis,
@@ -67,21 +80,20 @@ Analysis:"""
                     }
                 except json.JSONDecodeError:
                     logger.debug("Failed to parse JSON analysis response.")
-            
-            # Fallback: return structured text
+
             return {
                 'success': True,
                 'analysis': {
-                    'complexity': 'medium',
-                    'ai_can_do': [],
-                    'requires_human': [],
+                    'can_delegate_to_ai': False,
+                    'reason': 'Не удалось разобрать ответ ИИ.',
                     'recommended_agent': 'react',
-                    'suggested_improvements': [],
+                    'estimated_time': '',
+                    'complexity': 'medium',
                     'raw_analysis': response_text
                 },
                 'raw_response': response_text
             }
-            
+
         except Exception as e:
             logger.error(f"Task analysis failed: {e}")
             return {
@@ -198,10 +210,14 @@ Format as a clear, professional report."""
 
 
 # Sync wrappers for Django views
-def analyze_task_sync(task_title: str, task_description: str) -> Dict[str, Any]:
+def analyze_task_sync(
+    task_title: str,
+    task_description: str,
+    servers_context: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Synchronous wrapper for analyze_task"""
     assistant = TaskAIAssistant()
-    return async_to_sync(assistant.analyze_task)(task_title, task_description)
+    return async_to_sync(assistant.analyze_task)(task_title, task_description, servers_context)
 
 
 def improve_description_sync(task_title: str, task_description: str) -> str:

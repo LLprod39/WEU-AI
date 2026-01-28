@@ -242,6 +242,10 @@
         initSidebar();
         initMobileOverlay();
         initUISettingsClickOutside();
+        var headerModel = document.getElementById('header-current-model');
+        if (headerModel && (headerModel.textContent === '—' || !headerModel.textContent.trim())) {
+            headerModel.textContent = 'Cursor Auto';
+        }
         if (typeof document.hidden === 'boolean') {
             document.addEventListener('visibilitychange', onVisibilityChange);
         }

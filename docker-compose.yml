@@ -64,6 +64,8 @@ services:
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
       # Cursor CLI headless: без входа по Google. Ключ в .env из Cursor → Settings → API Access.
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      # Мастер-пароль для расшифровки паролей серверов в воркфлоу. Задай в .env.
+      MASTER_PASSWORD: ${MASTER_PASSWORD:-}
     ports:
       - "${WEU_PORT:-8000}:8000"
     depends_on:

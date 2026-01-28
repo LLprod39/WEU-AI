@@ -108,10 +108,12 @@ class LLMProvider:
                 try:
                     async def consume():
                         out = []
-                        async for chunk in self.gemini_client.aio.models.generate_content_stream(
+                        # generate_content_stream возвращает корутину; нужен await перед async for
+                        stream = await self.gemini_client.aio.models.generate_content_stream(
                             model=target_model,
                             contents=prompt
-                        ):
+                        )
+                        async for chunk in stream:
                             if chunk.text:
                                 out.append(chunk.text)
                         return out

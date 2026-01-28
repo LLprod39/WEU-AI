@@ -147,7 +147,7 @@
                         <span class="material-icons-round text-sm">check_circle</span>
                         Test
                     </button>
-                    <button onclick="executeCommand({{ server.id }})"
+                    <button onclick="openExecuteModal({{ server.id }}, '{{ server.name|escapejs }}')"
                         class="flex-1 px-3 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs text-primary transition-colors flex items-center justify-center gap-1">
                         <span class="material-icons-round text-sm">terminal</span>
                         Execute
@@ -333,8 +333,49 @@
     </div>
 </div>
 
+<!-- Execute Command Modal -->
+<div id="executeModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeExecuteModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[90vh] flex flex-col bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-icons-round text-primary">terminal</span>
+                <span id="execute-modal-title">Выполнить команду</span>
+            </h2>
+            <button type="button" onclick="closeExecuteModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Закрыть">
+                <span class="material-icons-round text-lg">close</span>
+            </button>
+        </div>
+        <div class="p-4 space-y-3 overflow-y-auto flex-1 min-h-0">
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Команда</label>
+                <input type="text" id="execute-command" placeholder="df -h" value="df -h"
+                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-primary/50">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Мастер-пароль (если ключ зашифрован)</label>
+                <input type="password" id="execute-master-password" placeholder="Оставьте пустым, если не нужен"
+                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+            </div>
+            <div id="execute-output-wrap" class="hidden">
+                <label class="block text-xs font-medium text-gray-400 mb-1">Результат</label>
+                <pre id="execute-output" class="w-full bg-bg-base border border-white/10 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto overflow-y-auto max-h-64 whitespace-pre-wrap font-mono"></pre>
+                <p id="execute-exit-code" class="text-xs text-gray-500 mt-1"></p>
+            </div>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-2 shrink-0">
+            <button type="button" onclick="closeExecuteModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Закрыть</button>
+            <button type="button" id="execute-run-btn" onclick="runExecuteCommand()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center gap-2">
+                <span class="material-icons-round text-sm">play_arrow</span>
+                Выполнить
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 let activeMemberGroupId = null;
+let executeModalServerId = null;
 function openCreateModal() {
     document.getElementById('serverModal').classList.remove('hidden');
     toggleAuthFields();
@@ -561,8 +602,64 @@ async function testConnection(serverId) {
     }
 }
 
-function executeCommand(serverId) {
-    alert('Command execution coming soon');
+function openExecuteModal(serverId, serverName) {
+    executeModalServerId = serverId;
+    var titleEl = document.getElementById('execute-modal-title');
+    if (titleEl) titleEl.textContent = 'Выполнить команду на «' + (serverName || '') + '»';
+    var cmdEl = document.getElementById('execute-command');
+    if (cmdEl) { cmdEl.value = 'df -h'; cmdEl.placeholder = 'df -h'; }
+    var pwdEl = document.getElementById('execute-master-password');
+    if (pwdEl) pwdEl.value = '';
+    var outWrap = document.getElementById('execute-output-wrap');
+    if (outWrap) outWrap.classList.add('hidden');
+    document.getElementById('executeModal').classList.remove('hidden');
+}
+
+function closeExecuteModal() {
+    executeModalServerId = null;
+    document.getElementById('executeModal').classList.add('hidden');
+}
+
+async function runExecuteCommand() {
+    if (!executeModalServerId) return;
+    var cmd = (document.getElementById('execute-command') || {}).value.trim();
+    if (!cmd) {
+        alert('Введите команду');
+        return;
+    }
+    var runBtn = document.getElementById('execute-run-btn');
+    if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<span class="material-icons-round text-sm">hourglass_empty</span> Выполняю…'; }
+    var outWrap = document.getElementById('execute-output-wrap');
+    var outEl = document.getElementById('execute-output');
+    var exitEl = document.getElementById('execute-exit-code');
+    try {
+        var body = { command: cmd };
+        var pwd = (document.getElementById('execute-master-password') || {}).value;
+        if (pwd) body.master_password = pwd;
+        var r = await fetch('/servers/api/' + executeModalServerId + '/execute/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(body)
+        });
+        var data = await r.json();
+        outWrap.classList.remove('hidden');
+        if (data.success && data.output) {
+            var o = data.output;
+            var text = (o.stdout || '') + (o.stderr ? '\n' + o.stderr : '');
+            outEl.textContent = text || '(пусто)';
+            exitEl.textContent = 'Код выхода: ' + (o.exit_code != null ? o.exit_code : '—');
+            exitEl.className = 'text-xs mt-1 ' + (o.exit_code === 0 ? 'text-emerald-500' : 'text-amber-500');
+        } else {
+            outEl.textContent = data.error || 'Ошибка выполнения';
+            exitEl.textContent = '';
+            exitEl.className = 'text-xs mt-1 text-red-500';
+        }
+    } catch (e) {
+        outWrap.classList.remove('hidden');
+        outEl.textContent = 'Ошибка: ' + (e.message || String(e));
+        if (exitEl) { exitEl.textContent = ''; exitEl.className = 'text-xs mt-1'; }
+    }
+    if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<span class="material-icons-round text-sm">play_arrow</span> Выполнить'; }
 }
 
 function getCookie(name) {

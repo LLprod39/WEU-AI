@@ -76,4 +76,8 @@ agent --mode=ask -p "ваш вопрос" --output-format text
 - `-p` / `--print` — неинтерактивный режим: вывод в консоль, без диалога в терминале.
 - `--output-format text` — обычный текст ответа (удобно для скриптов и чата).
 
-В чате при выборе **«Авто»** запросы отправляются через Cursor CLI: `agent --mode=<режим> -p "сообщение" --output-format text`. Режим (**Ask** или **Agent**) задаётся в **Настройки → Models → «Режим Cursor CLI в чате»**; по умолчанию используется Ask.
+В чате при выборе **«Авто»** запросы отправляются через Cursor CLI. Режим (**Ask** или **Agent**) задаётся в **Настройки → Models → «Режим Cursor CLI в чате»**; по умолчанию Ask.
+
+- **Ask:** `agent --mode=ask -p "сообщение" --output-format text --workspace <путь>`
+- **Agent** (правка файлов): у CLI нет `--mode=agent` (допустимы только `plan` и `ask`), поэтому используется отдельный вызов:  
+  `agent -p --force --output-format stream-json --stream-partial-output --workspace <путь> --model auto "сообщение"`

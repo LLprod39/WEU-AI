@@ -404,3 +404,31 @@ class TaskNotification(models.Model):
     
     def __str__(self):
         return f"{self.notification_type} - {self.title}"
+
+
+class UserDelegatePreference(models.Model):
+    """Настройка пользователя: при делегировании задачи ИИ открывать чат или форму задачи."""
+    DELEGATE_UI_CHAT = 'chat'
+    DELEGATE_UI_TASK_FORM = 'task_form'
+    DELEGATE_UI_CHOICES = [
+        (DELEGATE_UI_CHAT, 'Чат с контекстом задачи'),
+        (DELEGATE_UI_TASK_FORM, 'Форма задачи агента'),
+    ]
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='delegate_preference',
+    )
+    delegate_ui = models.CharField(
+        max_length=20,
+        choices=DELEGATE_UI_CHOICES,
+        default=DELEGATE_UI_CHAT,
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Настройка делегирования ИИ'
+        verbose_name_plural = 'Настройки делегирования ИИ'
+
+    def __str__(self):
+        return f"{self.user.username}: {self.get_delegate_ui_display()}"

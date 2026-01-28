@@ -169,11 +169,31 @@ Rules:
     return parsed
 
 
-def _generate_workflow_script(task: str, runtime: str) -> Dict[str, Any]:
+def _generate_workflow_script(task: str, runtime: str, from_task: bool = False, user_id: int = None) -> Dict[str, Any]:
     llm = LLMProvider()
     from app.core.model_config import model_manager
 
     model_preference = model_manager.config.default_provider
+    ralph_block = ""
+    if from_task:
+        ralph_block = """
+RALPH WORKFLOW (важно):
+- Ralph — оркестратор по шагам: каждый шаг = "шляпа" (hat) с triggers (событие предыдущего шага) и publishes (событие по завершении).
+- completion_promise (например STEP_DONE) — что должен вывести агент, чтобы шаг считался выполненным.
+- Обязательно заполняй verify_prompt и verify_promise для шагов, где нужны проверки и тесты: verify_prompt = инструкция агенту (запусти тесты, проверь результат), verify_promise = PASS; агент должен вывести <promise>PASS</promise> в выводе, когда проверка пройдена.
+- Шаги должны идти по порядку: подготовка → реализация → тесты/проверка. Для шагов с кодом/скриптами добавляй verify_prompt типа «Запусти тесты (pytest/unit/интеграцию по контексту). Убедись что всё зелёное. Выведи <promise>PASS</promise> если тесты прошли.»
+"""
+    # Контекст серверов пользователя для SSH-задач
+    servers_hint = ""
+    if user_id:
+        servers_ctx = _get_user_servers_context(user_id)
+        if servers_ctx:
+            servers_hint = f"""
+SERVERS (SSH):
+Если задача связана с сервером — данные серверов пользователя будут автоматически добавлены в промпт при выполнении.
+Доступные серверы: {', '.join([s.strip().split(':')[0].replace('- ', '') for s in servers_ctx.split('\\n') if s.strip().startswith('- ')])}
+Для SSH-команд на сервере используй sshpass (будет подставлена готовая команда).
+"""
     prompt = f"""You generate workflow scripts for CLI agents.
 Return ONLY JSON:
 {{
@@ -196,7 +216,8 @@ Return ONLY JSON:
 Rules:
 - Keep steps short and actionable.
 - Each step must include completion_promise.
-- If tests are needed, include verify_prompt.
+- If tests are needed, include verify_prompt and verify_promise (агент выводит <promise>PASS</promise> когда тесты/проверка прошли).
+{ralph_block}{servers_hint}
 Task description:
 {task}
 """
@@ -713,6 +734,75 @@ def api_workflow_generate(request):
     return JsonResponse({"success": True, "workflow_id": workflow.id, "workflow": parsed})
 
 
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_workflow_from_task(request):
+    """
+    Создать воркфлоу в Agents из задачи (Tasks), расписать по шагам (Ralph), запустить.
+    Вызывается при делегировании в «форму задачи агента» (delegate_ui=task_form).
+    Body: { "task_id": int }. Returns: { "workflow_id", "run_id" }.
+    """
+    data = _parse_json_request(request)
+    task_id = data.get("task_id")
+    if task_id is None:
+        return JsonResponse({"error": "task_id required"}, status=400)
+    try:
+        from tasks.models import Task
+    except ImportError:
+        return JsonResponse({"error": "Tasks app not available"}, status=500)
+    task = Task.objects.filter(id=task_id).first()
+    if not task:
+        return JsonResponse({"error": "Task not found"}, status=404)
+    created_by_id = getattr(task, "created_by_id", None)
+    if created_by_id is not None and created_by_id != request.user.id:
+        try:
+            from tasks.views import _user_can_edit_task
+            if not _user_can_edit_task(request.user, task):
+                return JsonResponse({"error": "No access to this task"}, status=403)
+        except Exception:
+            return JsonResponse({"error": "No access to this task"}, status=403)
+    task_text = f"{task.title}\n\n{task.description or ''}".strip()
+    if not task_text:
+        return JsonResponse({"error": "Task has no title/description"}, status=400)
+    project_path = ""
+    try:
+        from app.core.model_config import model_manager
+        project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+    except Exception:
+        pass
+    parsed = _generate_workflow_script(task_text, "ralph", from_task=True, user_id=request.user.id)
+    if not parsed:
+        return JsonResponse({"error": "Failed to generate workflow"}, status=500)
+    workflow = AgentWorkflow.objects.create(
+        owner=request.user,
+        name=parsed.get("name", (task.title or "Workflow")[:80]),
+        description=parsed.get("description", "") or (task.description or "")[:200],
+        runtime="ralph",
+        script=parsed,
+        project_path=project_path,
+    )
+    workflows_dir = Path(settings.MEDIA_ROOT) / "workflows"
+    workflows_dir.mkdir(parents=True, exist_ok=True)
+    file_path = workflows_dir / f"workflow-{workflow.id}.json"
+    parsed["script_file"] = str(file_path)
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(parsed, f, ensure_ascii=False, indent=2)
+    if parsed.get("ralph_yml"):
+        ralph_path = workflows_dir / f"workflow-{workflow.id}.ralph.yml"
+        parsed["ralph_yml_path"] = str(ralph_path)
+        _write_ralph_yml(ralph_path, parsed["ralph_yml"])
+    workflow.script = parsed
+    workflow.save(update_fields=["script"])
+    run = _start_workflow_run(workflow, request.user)
+    return JsonResponse({
+        "success": True,
+        "workflow_id": workflow.id,
+        "run_id": run.id,
+    })
+
+
 def _promise_found(output: str, promise: str) -> bool:
     import re
     match = re.search(r"<promise>(.*?)</promise>", output, re.DOTALL | re.IGNORECASE)
@@ -1021,15 +1111,71 @@ def _write_ralph_yml(path: Path, content: Dict[str, Any]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _get_user_servers_context(user_id: int) -> str:
+    """
+    Возвращает контекст о серверах пользователя из вкладки Servers для промпта воркфлоу.
+    Если серверы есть — возвращает инструкции и список; иначе пустую строку.
+    Если задан MASTER_PASSWORD в env — расшифровывает пароли и подставляет команды подключения.
+    """
+    try:
+        from servers.models import Server
+        from passwords.encryption import PasswordEncryption
+        master_pwd = os.environ.get("MASTER_PASSWORD", "").strip()
+        servers = list(Server.objects.filter(user_id=user_id).only(
+            "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt"
+        ))
+        if not servers:
+            return ""
+        lines = [
+            "\n\n=== СЕРВЕРЫ ПОЛЬЗОВАТЕЛЯ (из вкладки Servers) ===",
+            "ВАЖНО: Данные серверов хранятся в БД. НЕ ищи их в коде!",
+            "Для выполнения команд используй SSH напрямую по указанным данным.",
+            "",
+        ]
+        for s in servers:
+            auth = s.auth_method or "password"
+            key_path = s.key_path or ""
+            pwd_decrypted = ""
+            if auth in ("password", "key_password") and s.encrypted_password and master_pwd and s.salt:
+                try:
+                    pwd_decrypted = PasswordEncryption.decrypt_password(s.encrypted_password, master_pwd, bytes(s.salt))
+                except Exception:
+                    pwd_decrypted = ""
+            # Формируем готовую команду подключения
+            cmd_hint = ""
+            if auth == "key" and key_path:
+                cmd_hint = f"ssh -i {key_path} {s.username}@{s.host} -p {s.port} '<command>'"
+            elif pwd_decrypted:
+                safe_pwd = pwd_decrypted.replace("'", "'\\''")
+                cmd_hint = f"sshpass -p '{safe_pwd}' ssh -o StrictHostKeyChecking=no {s.username}@{s.host} -p {s.port} '<command>'"
+            else:
+                cmd_hint = f"ssh {s.username}@{s.host} -p {s.port} '<command>'  # пароль неизвестен, задай MASTER_PASSWORD в env"
+            lines.append(f"- {s.name}:")
+            lines.append(f"    {cmd_hint}")
+        lines.append("")
+        lines.append("sshpass уже установлен. При ошибке подключения — проверь host/port/username.")
+        lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"_get_user_servers_context error: {e}")
+        return ""
+
+
 def _execute_workflow_run(run_id: int):
     run_obj = AgentWorkflowRun.objects.get(id=run_id)
     workflow = run_obj.workflow
     run_obj.status = "running"
     run_obj.started_at = timezone.now()
-    
+
+    # Контекст серверов пользователя
+    user_id = run_obj.initiated_by_id
+    servers_context = _get_user_servers_context(user_id) if user_id else ""
+
     # Получаем путь к workspace
     workspace = _get_workspace_path(workflow)
     run_obj.logs = (run_obj.logs or "") + f"[Workflow started]\n[Workspace: {workspace}]\n"
+    if servers_context:
+        run_obj.logs = (run_obj.logs or "") + "[Servers context loaded from DB]\n"
     run_obj.save(update_fields=["status", "started_at", "logs"])
 
     steps = (workflow.script or {}).get("steps", [])
@@ -1054,6 +1200,7 @@ def _execute_workflow_run(run_id: int):
                 workflow=workflow,
                 step_results=step_results,
                 workspace=workspace,
+                servers_context=servers_context,
             )
         else:
             _run_steps_with_backend(
@@ -1063,6 +1210,7 @@ def _execute_workflow_run(run_id: int):
                 workflow=workflow,
                 step_results=step_results,
                 workspace=workspace,
+                servers_context=servers_context,
             )
 
         run_obj.status = "succeeded"
@@ -1085,6 +1233,7 @@ def _run_steps_with_backend(
     step_results: list,
     workspace: str = None,
     start_from_step: int = 1,
+    servers_context: str = "",
 ) -> None:
     extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else None
     max_retries = getattr(run_obj, "max_retries", None) or 3
@@ -1122,11 +1271,15 @@ def _run_steps_with_backend(
                 run_obj.retry_count = retry_attempt
                 run_obj.save(update_fields=["retry_count"])
                 current_prompt = step_prompt
+                if servers_context:
+                    current_prompt = servers_context + "\n\n" + current_prompt
                 if retry_attempt > 0:
                     current_prompt = (
                         f"Previous attempt failed with error: {last_error}\n\n"
                         f"Please fix the issue and try again.\n\nOriginal task:\n{step_prompt}"
                     )
+                    if servers_context:
+                        current_prompt = servers_context + "\n\n" + current_prompt
                     run_obj.logs = (run_obj.logs or "") + f"\n[Retry {retry_attempt}/{max_retries} for {step_title}]\n"
                     run_obj.save(update_fields=["logs"])
                 if completion_promise:
@@ -1264,6 +1417,8 @@ def _continue_workflow_run(run_id: int, from_step: int):
     if not run_obj.started_at:
         run_obj.started_at = timezone.now()
     workspace = _get_workspace_path(workflow)
+    user_id = run_obj.initiated_by_id
+    servers_context = _get_user_servers_context(user_id) if user_id else ""
     run_obj.save(update_fields=["status", "started_at"])
     steps = (workflow.script or {}).get("steps", [])
     step_results = []
@@ -1277,11 +1432,13 @@ def _continue_workflow_run(run_id: int, from_step: int):
             _run_steps_with_backend(
                 run_obj=run_obj, steps=steps, runtime=backend, workflow=workflow,
                 step_results=step_results, workspace=workspace, start_from_step=from_step,
+                servers_context=servers_context,
             )
         else:
             _run_steps_with_backend(
                 run_obj=run_obj, steps=steps, runtime=workflow.runtime, workflow=workflow,
                 step_results=step_results, workspace=workspace, start_from_step=from_step,
+                servers_context=servers_context,
             )
         run_obj.status = "succeeded"
         run_obj.output_text = json.dumps(step_results, ensure_ascii=False)
@@ -1820,3 +1977,72 @@ def api_workflow_update(request, workflow_id: int):
         workflow.script = script
     workflow.save()
     return JsonResponse({"success": True, "workflow_id": workflow.id})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def api_workflow_download_project(request, workflow_id: int):
+    """
+    Скачать проект воркфлоу как ZIP архив.
+    Архивирует папку project_path и отдаёт как attachment.
+    """
+    import zipfile
+    import tempfile
+    from django.http import FileResponse, HttpResponse
+    
+    workflow = get_object_or_404(AgentWorkflow, id=workflow_id, owner=request.user)
+    
+    project_path = workflow.get_full_project_path()
+    if not project_path or not project_path.exists():
+        return JsonResponse({
+            "error": "Папка проекта не найдена. Возможно, воркфлоу ещё не выполнялся."
+        }, status=404)
+    
+    # Проверяем что это директория
+    if not project_path.is_dir():
+        return JsonResponse({"error": "project_path не является директорией"}, status=400)
+    
+    # Имя архива
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in workflow.name)[:50] or "project"
+    zip_filename = f"{safe_name}.zip"
+    
+    # Создаём zip в памяти
+    try:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        with zipfile.ZipFile(temp_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(project_path):
+                # Пропускаем .git, __pycache__, node_modules и т.п.
+                dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__', 'node_modules', '.venv', 'venv', '.cursor')]
+                for file in files:
+                    file_path = Path(root) / file
+                    # Пропускаем большие файлы (>50MB) и бинарники
+                    try:
+                        if file_path.stat().st_size > 50 * 1024 * 1024:
+                            continue
+                    except OSError:
+                        continue
+                    # Относительный путь для архива
+                    arcname = file_path.relative_to(project_path)
+                    try:
+                        zf.write(file_path, arcname)
+                    except Exception as e:
+                        logger.warning(f"Skip file {file_path}: {e}")
+        
+        temp_file.close()
+        
+        # Отправляем файл
+        response = FileResponse(
+            open(temp_file.name, 'rb'),
+            as_attachment=True,
+            filename=zip_filename,
+            content_type='application/zip'
+        )
+        # Удаляем temp файл после отправки (через callback)
+        response._temp_file_path = temp_file.name
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error creating zip for workflow {workflow_id}: {e}")
+        return JsonResponse({"error": f"Ошибка создания архива: {str(e)}"}, status=500)

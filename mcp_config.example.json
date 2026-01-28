@@ -25,6 +25,14 @@
       "type": "sse",
       "url": "http://localhost:8000/sse",
       "description": "Custom SSE-based MCP server"
+    },
+    "weu-servers": {
+      "command": "python",
+      "args": ["manage.py", "mcp_servers"],
+      "env": {
+        "WEU_USER_ID": "1"
+      },
+      "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers, например WEU SERVER). Запускать из корня проекта, WEU_USER_ID — id пользователя."
     }
   }
 }
