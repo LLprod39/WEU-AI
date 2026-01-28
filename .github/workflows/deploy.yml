@@ -3,7 +3,7 @@ name: Deploy Docker Compose
 on:
   push:
     branches:
-      - main  # пуши в main будут запускать деплой
+      - master  # пуши в master будут запускать деплой
 
 jobs:
   deploy:
@@ -20,7 +20,7 @@ jobs:
           script: |
             cd ${{ secrets.PROJECT_PATH }}
             git fetch --all
-            git reset --hard origin/main
+            git reset --hard origin/master
             docker compose down
             docker compose up -d --build
             echo "Deployment finished"
