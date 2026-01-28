@@ -2250,6 +2250,33 @@ def api_workflow_import(request):
     runtime = script.get("runtime", "ralph")
     if runtime not in ALLOWED_RUNTIMES:
         runtime = "ralph"
+    script["runtime"] = runtime
+    script["name"] = name
+    # Если runtime ralph, но ralph_yml нет — генерируем из steps (чтобы не было «Ralph script отсутствует»)
+    if runtime == "ralph" and not script.get("ralph_yml"):
+        backend = script.get("backend") or "cursor"
+        steps_list = script.get("steps", [])
+        hats = {}
+        prev_event = "task.start"
+        for idx, step in enumerate(steps_list, start=1):
+            nxt_event = f"step_{idx}.done"
+            hats[f"step_{idx}"] = {
+                "name": step.get("title", f"Step {idx}"),
+                "description": step.get("title", f"Step {idx}"),
+                "triggers": [prev_event],
+                "publishes": [nxt_event],
+                "instructions": step.get("prompt", ""),
+            }
+            prev_event = nxt_event
+        script["ralph_yml"] = {
+            "cli": {"backend": backend},
+            "event_loop": {
+                "completion_promise": "LOOP_COMPLETE",
+                "max_iterations": 50,
+                "starting_event": "task.start",
+            },
+            "hats": hats,
+        }
     workflow = AgentWorkflow.objects.create(
         owner=request.user,
         name=name,
