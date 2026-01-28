@@ -4,8 +4,26 @@ Decorators for feature-based access: require_feature('orchestrator') etc.
 from functools import wraps
 from django.shortcuts import redirect
 from django.http import JsonResponse, HttpResponseForbidden
+from asgiref.sync import sync_to_async
 
 from core_ui.context_processors import user_can_feature
+
+
+def async_login_required(view_func):
+    """
+    Async-view-safe login_required: проверка request.user делается через sync_to_async,
+    чтобы не вызывать SynchronousOnlyOperation в async-контексте.
+    """
+    @wraps(view_func)
+    async def _wrapped(request, *args, **kwargs):
+        is_authenticated = await sync_to_async(
+            lambda r: getattr(r.user, 'is_authenticated', False)
+        )(request)
+        if not is_authenticated:
+            from django.contrib.auth.views import redirect_to_login
+            return redirect_to_login(request.get_full_path())
+        return await view_func(request, *args, **kwargs)
+    return _wrapped
 
 
 def require_feature(feature, redirect_on_forbidden=False):

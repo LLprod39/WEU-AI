@@ -17,6 +17,7 @@ from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_GET
 from django.conf import settings
+from asgiref.sync import sync_to_async
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -30,7 +31,7 @@ from app.rag.engine import RAGEngine
 from app.utils.file_processor import FileProcessor
 from app.agents.manager import get_agent_manager
 from core_ui.context_processors import user_can_feature
-from core_ui.decorators import require_feature
+from core_ui.decorators import require_feature, async_login_required
 from core_ui.models import ChatSession, ChatMessage
 
 # Singleton instances
@@ -339,6 +340,11 @@ def _chat_history_from_session(session):
     ]
 
 
+def _load_session(user_id, chat_id):
+    """Sync helper: load ChatSession by user_id and chat_id. For use in asyncio.to_thread."""
+    return ChatSession.objects.filter(user_id=user_id, id=chat_id).select_related().first()
+
+
 @csrf_exempt
 @login_required
 @require_http_methods(["GET"])
@@ -399,7 +405,7 @@ def api_chat_detail(request, chat_id):
 
 
 @csrf_exempt
-@login_required
+@async_login_required
 async def chat_api(request):
     """
     Async API endpoint for chat streaming.
@@ -420,13 +426,16 @@ async def chat_api(request):
         if not user_message:
             return JsonResponse({'error': 'Empty message'}, status=400)
 
+        # request.user доступен только в sync-контексте — получаем user_id через sync_to_async
+        user_id = await sync_to_async(
+            lambda r: r.user.id if getattr(r.user, 'is_authenticated', False) else None
+        )(request)
+
         # Загрузить сессию или подготовить создание новой (id отдадим в первом чанке)
         session = None
         initial_history = None
-        if chat_id:
-            session = await asyncio.to_thread(
-                lambda: ChatSession.objects.filter(user=request.user, id=chat_id).select_related().first()
-            )
+        if chat_id and user_id:
+            session = await asyncio.to_thread(_load_session, user_id, chat_id)
             if session:
                 initial_history = await asyncio.to_thread(_chat_history_from_session, session)
 
@@ -436,10 +445,10 @@ async def chat_api(request):
             created_session_id = None  # новый id, если создали сессию в этом запросе
             try:
                 if model == "auto":
-                    if not session and request.user.id:
+                    if not session and user_id:
                         session = await asyncio.to_thread(
                             lambda: ChatSession.objects.create(
-                                user=request.user,
+                                user_id=user_id,
                                 title=(user_message[:80] or "Чат").strip() or "Чат",
                             )
                         )
@@ -452,7 +461,7 @@ async def chat_api(request):
                         accumulated.append(chunk)
                         yield chunk
                     full_text = "".join(accumulated)
-                    if request.user.id and session:
+                    if user_id and session:
                         def _save_auto():
                             ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=user_message)
                             ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content=full_text)
@@ -460,10 +469,10 @@ async def chat_api(request):
                             session.save(update_fields=["title", "updated_at"])
                         await asyncio.to_thread(_save_auto)
                     return
-                if not session and request.user.id:
+                if not session and user_id:
                     session = await asyncio.to_thread(
                         lambda: ChatSession.objects.create(
-                            user=request.user,
+                            user_id=user_id,
                             title=(user_message[:80] or "Новый чат").strip() or "Новый чат",
                         )
                     )
@@ -476,13 +485,13 @@ async def chat_api(request):
                     model_preference=model,
                     use_rag=use_rag,
                     specific_model=specific_model,
-                    user_id=request.user.id,
+                    user_id=user_id,
                     initial_history=initial_history,
                 ):
                     accumulated.append(chunk)
                     yield chunk
                 full_text = "".join(accumulated)
-                if request.user.id and session:
+                if user_id and session:
                     def _save():
                         ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=user_message)
                         ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_ASSISTANT, content=full_text)
