@@ -4,9 +4,9 @@
 
 services:
   web:
-    # С HTTPS порт 80 занят nginx — веб слушаем на 8000 (доступ по http://IP:8000 при отладке)
-    ports:
-      - "8000:8000"
+    # Порт 80 занят nginx — веб только на 8000 (базовый compose: ${WEU_PORT:-80}:8000)
+    environment:
+      WEU_PORT: "8000"
 
   nginx:
     image: nginx:alpine
