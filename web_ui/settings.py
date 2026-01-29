@@ -28,7 +28,19 @@ SECRET_KEY = 'django-insecure-@b9idj_4skbcph+21q6^bc0qbs*$qs&@7r2sqfn*1#)z5_i%my
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()] or []
+# Домен и IP сервера — по умолчанию, чтобы работало по weuai.site и по IP
+_DEFAULT_ALLOWED = [
+    "localhost",
+    "127.0.0.1",
+    "weuai.site",
+    "www.weuai.site",
+    "188.137.241.228",
+]
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.getenv("ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+] or _DEFAULT_ALLOWED
 
 
 # Application definition
