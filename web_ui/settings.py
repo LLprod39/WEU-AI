@@ -211,16 +211,49 @@ def _cli_command(env_var: str, default_name: str) -> str:
     return os.getenv(env_var) or shutil.which(default_name) or default_name
 
 
+# Доступные модели Cursor CLI (актуальный список по документации Cursor, без Max Mode)
+# Источник: https://docs.cursor.com/models
+CURSOR_AVAILABLE_MODELS = [
+    {"id": "auto", "name": "Auto", "description": "Автоматический выбор лучшей модели"},
+    {"id": "claude-4.5-sonnet", "name": "Claude 4.5 Sonnet", "description": "Сбалансированная, 200k контекст"},
+    {"id": "claude-4.5-opus", "name": "Claude 4.5 Opus", "description": "Самая мощная, 200k контекст"},
+    {"id": "gpt-5.2", "name": "GPT-5.2", "description": "OpenAI, 272k контекст"},
+    {"id": "gpt-5.2-codex", "name": "GPT-5.2 Codex", "description": "OpenAI Codex, 272k контекст"},
+    {"id": "gemini-3-flash", "name": "Gemini 3 Flash", "description": "Google, быстрая, 200k контекст"},
+    {"id": "gemini-3-pro", "name": "Gemini 3 Pro", "description": "Google Pro, 200k контекст"},
+    {"id": "grok-code", "name": "Grok Code", "description": "xAI, 256k контекст"},
+    {"id": "composer-1", "name": "Composer 1", "description": "Cursor native, 200k контекст"},
+]
+
+# Рекомендации моделей по типу задачи (используется SmartTaskAnalyzer)
+MODEL_RECOMMENDATIONS = {
+    "simple": "gemini-3-flash",       # Рефакторинг, lint-fix, форматирование - быстрая модель
+    "standard": "claude-4.5-sonnet",  # Новый код, фичи, стандартные задачи
+    "complex": "claude-4.5-opus",     # Архитектура, дизайн, сложная логика
+    "debug": "gpt-5.2",               # Дебаг, анализ ошибок
+}
+
+
 CLI_RUNTIME_CONFIG = {
     "cursor": {
         "command": _cli_command("CURSOR_CLI_PATH", "agent"),
         # --force: агент может менять файлы без подтверждения
         # --output-format stream-json: стриминг для детальных логов по шагам
         # --stream-partial-output: прогресс по шагам
-        "args": ["-p", "--force", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}", "--model", "auto"],
+        # Модель теперь передаётся динамически через allowed_args
+        "args": ["-p", "--force", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}"],
         "prompt_style": "positional",
-        # Модель всегда auto; доп. аргументы: sandbox (enabled|disabled), approve-mcps (bool), browser (bool)
-        "allowed_args": ["sandbox", "approve-mcps", "browser"],
+        # model: выбор модели (auto, gpt-5, sonnet-4, sonnet-4-thinking, opus-4)
+        # sandbox: enabled|disabled, approve-mcps: bool, browser: bool
+        "allowed_args": ["model", "sandbox", "approve-mcps", "browser"],
+    },
+    # cursor_plan: режим --mode=plan для анализа/планирования (уточняющие вопросы)
+    # Документация: https://cursor.com/ru/docs/cli/overview
+    "cursor_plan": {
+        "command": _cli_command("CURSOR_CLI_PATH", "agent"),
+        "args": ["-p", "--mode=plan"],  # --mode=plan для планирования с вопросами
+        "prompt_style": "positional",
+        "allowed_args": ["model"],
     },
     "ralph": {
         "command": _cli_command("RALPH_CLI_PATH", "ralph"),

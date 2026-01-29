@@ -178,10 +178,12 @@ Rules:
     cfg = parsed.get("config", {})
     if parsed["runtime"] == "ralph":
         cfg["ralph_backend"] = "cursor"
-    # Для cursor модель всегда auto (уже в args), убираем из config
-    if parsed["runtime"] == "cursor":
-        cfg.pop("model", None)
-        cfg.pop("specific_model", None)
+    # Модель теперь поддерживается для cursor - валидируем значение
+    if parsed["runtime"] == "cursor" and cfg.get("model"):
+        from django.conf import settings
+        valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+        if cfg["model"] not in valid_models:
+            cfg["model"] = "auto"  # fallback на auto если модель невалидная
     parsed["config"] = cfg
     return parsed
 
@@ -408,9 +410,11 @@ def api_profiles_create(request):
     if runtime not in ALLOWED_RUNTIMES:
         return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
 
-    # Для cursor модель всегда auto (уже в args), убираем из config
-    if runtime == "cursor":
-        config = {k: v for k, v in config.items() if k not in ["model", "specific_model"]}
+    # Валидация модели для cursor
+    if runtime == "cursor" and config.get("model"):
+        valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+        if config["model"] not in valid_models:
+            config["model"] = "auto"
 
     profile = AgentProfile.objects.create(
         owner=request.user,
@@ -442,9 +446,11 @@ def api_profiles_update(request, profile_id: int):
     profile.runtime = data.get("runtime", profile.runtime)
     profile.mode = data.get("mode", profile.mode)
     config = data.get("config", profile.config or {})
-    # Для cursor модель всегда auto (уже в args), убираем из config
-    if profile.runtime == "cursor":
-        config = {k: v for k, v in config.items() if k not in ["model", "specific_model"]}
+    # Валидация модели для cursor
+    if profile.runtime == "cursor" and config.get("model"):
+        valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+        if config["model"] not in valid_models:
+            config["model"] = "auto"
     profile.config = config
 
     if "is_active" in data:
@@ -492,9 +498,14 @@ def api_agent_run(request):
     config = data.get("config") or (profile.config if profile else {})
     if runtime not in ALLOWED_RUNTIMES:
         return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
-    # Для cursor модель всегда auto; sandbox/approve-mcps/browser — через allowed_args
+    # Валидация модели для cursor (если не указана - будет auto по умолчанию)
     if runtime == "cursor":
-        config = {k: v for k, v in config.items() if k not in ["model", "specific_model"]}
+        if not config.get("model"):
+            config["model"] = "auto"
+        else:
+            valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+            if config["model"] not in valid_models:
+                config["model"] = "auto"
     if agent_type == "ralph" and runtime not in ["internal", "ralph"]:
         config = {**config, "use_ralph_loop": True}
         if not config.get("completion_promise"):
@@ -1484,13 +1495,25 @@ def _run_steps_with_backend(
         use_ralph_loop = step.get("use_ralph_loop", True)
         verify_prompt = step.get("verify_prompt")
         verify_promise = step.get("verify_promise", "PASS")
+        
+        # Выбор модели: step-level override > workflow-level > default (auto)
+        workflow_model = (workflow.script or {}).get("model", "auto")
+        step_model = step.get("model")  # step-level override (если разрешено)
+        effective_model = step_model if step_model and step_model != "auto" else workflow_model
+        
         config = {
             "use_ralph_loop": use_ralph_loop,
             "completion_promise": completion_promise,
             "max_iterations": max_iterations,
+            "model": effective_model,
         }
+        
+        # Логируем используемую модель
+        model_source = "step" if step_model and step_model != "auto" else "workflow"
+        run_obj.logs = (run_obj.logs or "") + f"\n[Step {idx}: {step_title}] Model: {effective_model} (from {model_source})\n"
+        run_obj.save(update_fields=["logs"])
+        
         if runtime != "cursor":
-            config["model"] = (workflow.script or {}).get("model")
             config["specific_model"] = (workflow.script or {}).get("specific_model")
 
         step_success = False
@@ -2015,6 +2038,154 @@ def api_mcp_server_tools(request):
     return JsonResponse({"tools": tools})
 
 
+# Кэш для списка моделей (TTL 5 минут)
+_models_cache = {"data": None, "timestamp": 0}
+_MODELS_CACHE_TTL = 300  # 5 минут
+
+
+def _get_cursor_models_from_cli() -> list:
+    """Получить список моделей из agent --list-models."""
+    import time
+    now = time.time()
+    
+    # Проверяем кэш
+    if _models_cache["data"] and (now - _models_cache["timestamp"]) < _MODELS_CACHE_TTL:
+        return _models_cache["data"]
+    
+    try:
+        cmd_path = _resolve_cli_command("cursor")
+        env = dict(os.environ)
+        env.update(getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {})
+        
+        proc = subprocess.run(
+            [cmd_path, "--list-models"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=30,
+        )
+        
+        if proc.returncode == 0 and proc.stdout:
+            # Парсим вывод CLI - ожидаем формат: model_id\nmodel_id2\n...
+            lines = [line.strip() for line in proc.stdout.strip().split("\n") if line.strip()]
+            models = []
+            for line in lines:
+                # Пропускаем заголовки и пустые строки
+                if not line or line.startswith("#") or line.startswith("Available"):
+                    continue
+                model_id = line.split()[0] if line.split() else line
+                if model_id:
+                    models.append({
+                        "id": model_id,
+                        "name": model_id.replace("-", " ").title(),
+                        "description": f"Модель {model_id}",
+                        "from_cli": True,
+                    })
+            
+            if models:
+                _models_cache["data"] = models
+                _models_cache["timestamp"] = now
+                return models
+    except subprocess.TimeoutExpired:
+        logger.warning("Cursor --list-models timeout")
+    except Exception as e:
+        logger.warning(f"Error getting models from CLI: {e}")
+    
+    # Fallback на статический список
+    return list(getattr(settings, "CURSOR_AVAILABLE_MODELS", []))
+
+
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def api_list_models(request):
+    """
+    Получить список доступных моделей Cursor CLI.
+    Кэшируется на 5 минут, fallback на статический список.
+    """
+    models = _get_cursor_models_from_cli()
+    
+    # Добавляем рекомендации если есть
+    recommendations = getattr(settings, "MODEL_RECOMMENDATIONS", {})
+    
+    return JsonResponse({
+        "models": models,
+        "recommendations": recommendations,
+        "default": "auto",
+    })
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_smart_analyze(request):
+    """
+    Умный анализ задачи с рекомендацией модели и декомпозицией.
+    
+    Request:
+    {
+        "task": "Описание задачи",
+        "context": {  // опционально
+            "project_type": "django",
+            "existing_files": ["models.py", "views.py"]
+        },
+        "use_llm": true  // использовать LLM для глубокого анализа (по умолчанию true)
+    }
+    
+    Response:
+    {
+        "questions": ["Наводящий вопрос 1", ...],
+        "recommended_model": "sonnet-4",
+        "complexity": "standard",
+        "task_type": "new_feature",
+        "subtasks": [
+            {
+                "title": "Название подзадачи",
+                "prompt": "Детальное описание",
+                "recommended_model": "sonnet-4",
+                "reasoning": "Почему эта модель",
+                "complexity": "standard",
+                "completion_promise": "STEP_DONE",
+                "max_iterations": 5,
+                "verify_prompt": "...",
+                "verify_promise": "PASS"
+            }
+        ],
+        "estimated_steps": 4,
+        "warnings": [],
+        "reasoning": "Общее обоснование"
+    }
+    """
+    from .smart_analyzer import get_smart_analyzer
+    
+    data = _parse_json_request(request)
+    task = data.get("task", "").strip()
+    
+    if not task:
+        return JsonResponse({"error": "Task is required"}, status=400)
+    
+    context = data.get("context")
+    use_llm = data.get("use_llm", True)
+    
+    try:
+        analyzer = get_smart_analyzer()
+        result = analyzer.analyze(task, context=context, use_llm=use_llm)
+        return JsonResponse(result.to_dict())
+    except Exception as e:
+        logger.error(f"Smart analyze failed: {e}")
+        return JsonResponse({
+            "error": str(e),
+            "questions": [],
+            "recommended_model": "auto",
+            "complexity": "standard",
+            "subtasks": [],
+            "warnings": [f"Анализ не удался: {str(e)[:100]}"],
+        }, status=500)
+
+
 @csrf_exempt
 @login_required
 @require_feature('agents')
@@ -2096,6 +2267,7 @@ def api_workflow_create_manual(request):
     steps = data.get("steps", [])
     run_after_save = data.get("run_after_save", False)
     target_server_id = data.get("target_server_id")
+    workflow_model = data.get("model", "auto")  # Модель workflow-level
     
     # Обработка проекта
     project_path = data.get("project_path", "").strip()
@@ -2107,6 +2279,11 @@ def api_workflow_create_manual(request):
     
     if runtime not in ALLOWED_RUNTIMES:
         runtime = "ralph"
+    
+    # Валидация модели
+    valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+    if workflow_model and workflow_model not in valid_models:
+        workflow_model = "auto"
     
     # Создаем папку проекта если нужно
     if create_new_project:
@@ -2129,6 +2306,7 @@ def api_workflow_create_manual(request):
     script = {
         "name": name,
         "runtime": runtime,
+        "model": workflow_model,  # Модель workflow-level
         "steps": []
     }
     
@@ -2139,6 +2317,11 @@ def api_workflow_create_manual(request):
             "completion_promise": step.get("completion_promise", "STEP_DONE"),
             "max_iterations": step.get("max_iterations", 5),
         }
+        # Step-level модель (если разрешено в настройках и передана)
+        if step.get("model") and step["model"] != "auto":
+            step_model = step["model"]
+            if step_model in valid_models:
+                step_data["model"] = step_model
         if step.get("verify_prompt"):
             step_data["verify_prompt"] = step["verify_prompt"]
             step_data["verify_promise"] = step.get("verify_promise", "PASS")
@@ -2341,16 +2524,36 @@ def api_workflow_update(request, workflow_id: int):
             workflow.target_server = Server.objects.filter(id=ts_id, user=request.user).first()
         else:
             workflow.target_server = None
+    # Обновление модели workflow-level
+    if "model" in data:
+        script = workflow.script or {}
+        workflow_model = data.get("model", "auto")
+        valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+        if workflow_model and workflow_model in valid_models:
+            script["model"] = workflow_model
+        workflow.script = script
+    
     if "steps" in data:
         script = workflow.script or {}
-        script["steps"] = data["steps"]
+        # Валидируем модели шагов (если разрешено в настройках)
+        valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+        validated_steps = []
+        for step in data["steps"]:
+            step_data = dict(step)
+            # Проверяем step-level модель
+            if step_data.get("model"):
+                if step_data["model"] not in valid_models or step_data["model"] == "auto":
+                    step_data.pop("model", None)
+            validated_steps.append(step_data)
+        
+        script["steps"] = validated_steps
         script["name"] = workflow.name
         script["runtime"] = workflow.runtime
         if workflow.runtime == "ralph":
             completion, max_iter, backend = "LOOP_COMPLETE", 50, "cursor"
             hats = {}
             prev = "task.start"
-            for idx, step in enumerate(data["steps"], start=1):
+            for idx, step in enumerate(validated_steps, start=1):
                 nxt = f"step_{idx}.done"
                 hats[f"step_{idx}"] = {
                     "name": f"Step {idx}",

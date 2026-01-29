@@ -577,6 +577,7 @@ async def chat_api(request):
         specific_model = data.get('specific_model')
         use_rag = data.get('use_rag', True)
         chat_id = data.get('chat_id')
+        workspace_param = data.get('workspace', '').strip()  # Для IDE: имя проекта или относительный путь
 
         if not user_message:
             return JsonResponse({'error': 'Empty message'}, status=400)
@@ -659,15 +660,37 @@ async def chat_api(request):
                     created_session_id = session.id
                 if created_session_id is not None:
                     yield f"CHAT_ID:{created_session_id}\n"
+                
+                # Разрешаем workspace если передан
+                workspace_path = None
+                if workspace_param:
+                    try:
+                        workspace_root = await asyncio.to_thread(_resolve_ide_workspace, workspace_param)
+                        workspace_path = str(workspace_root)
+                    except ValueError as e:
+                        yield f"\n\n❌ Ошибка workspace: {e}\n"
+                        return
+                
+                # Формируем execution_context (IDE: без RAG и без лишнего контекста серверов)
+                execution_context = {}
+                if user_id:
+                    execution_context["user_id"] = user_id
+                if workspace_path:
+                    execution_context["workspace_path"] = workspace_path
+                    execution_context["from_ide"] = True
+                
+                # В режиме IDE не подмешиваем RAG (чтобы не тянуть чек-листы и посторонние данные)
+                use_rag_effective = use_rag if not workspace_path else False
+                
                 orchestrator = await get_orchestrator()
                 async for chunk in orchestrator.process_user_message(
                     user_message,
                     model_preference=model,
-                    use_rag=use_rag,
+                    use_rag=use_rag_effective,
                     specific_model=specific_model,
                     user_id=user_id,
                     initial_history=initial_history,
-                    execution_context={"user_id": user_id} if user_id else None,
+                    execution_context=execution_context if execution_context else None,
                 ):
                     accumulated.append(chunk)
                     yield chunk
@@ -967,6 +990,7 @@ def api_settings(request):
                     'cursor_chat_mode': getattr(c, 'cursor_chat_mode', 'ask') or 'ask',
                     'cursor_sandbox': getattr(c, 'cursor_sandbox', '') or '',
                     'cursor_approve_mcps': getattr(c, 'cursor_approve_mcps', False),
+                    'allow_model_selection': getattr(c, 'allow_model_selection', False),
                     'delegate_ui': delegate_ui,
                 },
                 'api_keys': {
@@ -983,9 +1007,10 @@ def api_settings(request):
             allowed = {
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
-                'default_agent_output_path',                 'cursor_chat_mode',
+                'default_agent_output_path', 'cursor_chat_mode',
                 'cursor_sandbox', 'cursor_approve_mcps',
                 'internal_llm_provider',  # Провайдер для внутренних вызовов (workflow, анализ)
+                'allow_model_selection',  # Разрешить выбор моделей в workflow
             }
             for key, value in data.items():
                 if key in allowed and value is not None:
@@ -1129,3 +1154,291 @@ def api_upload_file(request):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ============================================
+# IDE API (Web IDE with file tree and editor)
+# ============================================
+
+def _resolve_ide_workspace(workspace_param: str) -> Path:
+    """
+    Разрешает workspace параметр в безопасный Path внутри AGENT_PROJECTS_DIR.
+    
+    Args:
+        workspace_param: имя проекта (папка в AGENT_PROJECTS_DIR) или относительный путь
+        
+    Returns:
+        Path к workspace директории
+        
+    Raises:
+        ValueError: если путь выходит за пределы AGENT_PROJECTS_DIR
+    """
+    if not workspace_param or not workspace_param.strip():
+        raise ValueError("workspace parameter is required")
+    
+    # Нормализуем: убираем начальные/конечные слеши и точки
+    normalized = workspace_param.strip().strip('/').strip('\\')
+    
+    # Защита от путей с ..
+    if '..' in normalized or normalized.startswith('/'):
+        raise ValueError("Invalid workspace path")
+    
+    # Собираем полный путь
+    projects_dir = Path(settings.AGENT_PROJECTS_DIR)
+    workspace_path = projects_dir / normalized
+    
+    # Проверяем, что итоговый путь находится внутри AGENT_PROJECTS_DIR
+    try:
+        resolved = workspace_path.resolve()
+        projects_resolved = projects_dir.resolve()
+        
+        # Проверка через is_relative_to (Python 3.9+)
+        if not str(resolved).startswith(str(projects_resolved)):
+            raise ValueError(f"Workspace path must be within AGENT_PROJECTS_DIR")
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        raise ValueError(f"Invalid workspace path: {e}")
+    
+    return workspace_path
+
+
+@login_required
+@require_feature('orchestrator')
+@require_http_methods(["GET"])
+def api_ide_list_files(request):
+    """
+    GET /api/ide/files/
+    Параметры: workspace (имя проекта), path (относительный путь внутри проекта, по умолчанию "")
+    Возвращает список файлов и папок в указанной директории.
+    """
+    try:
+        workspace_param = request.GET.get('workspace', '').strip()
+        path_param = request.GET.get('path', '').strip()
+        
+        if not workspace_param:
+            return JsonResponse({'error': 'workspace parameter is required'}, status=400)
+        
+        # Разрешаем workspace
+        try:
+            workspace_root = _resolve_ide_workspace(workspace_param)
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=403)
+        
+        # Нормализуем path внутри workspace
+        if path_param:
+            # Убираем начальные слеши
+            path_param = path_param.strip('/').strip('\\')
+            # Защита от ..
+            if '..' in path_param:
+                return JsonResponse({'error': 'Invalid path'}, status=400)
+            target_path = workspace_root / path_param
+        else:
+            target_path = workspace_root
+        
+        # Проверяем, что target_path всё ещё внутри workspace_root
+        try:
+            target_resolved = target_path.resolve()
+            workspace_resolved = workspace_root.resolve()
+            if not str(target_resolved).startswith(str(workspace_resolved)):
+                return JsonResponse({'error': 'Path outside workspace'}, status=403)
+        except Exception:
+            return JsonResponse({'error': 'Invalid path'}, status=400)
+        
+        # Проверяем существование
+        if not target_path.exists():
+            return JsonResponse({'error': 'Path not found'}, status=404)
+        
+        if not target_path.is_dir():
+            return JsonResponse({'error': 'Path is not a directory'}, status=400)
+        
+        # Собираем список файлов и папок
+        files = []
+        try:
+            for item in sorted(target_path.iterdir()):
+                # Пропускаем скрытые файлы/папки (начинающиеся с .)
+                if item.name.startswith('.'):
+                    continue
+                
+                item_type = 'dir' if item.is_dir() else 'file'
+                # Относительный путь от workspace_root
+                rel_path = item.relative_to(workspace_root)
+                files.append({
+                    'name': item.name,
+                    'path': str(rel_path).replace('\\', '/'),  # Нормализуем слеши
+                    'type': item_type,
+                })
+        except PermissionError:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        except Exception as e:
+            logger.error(f"Error listing directory {target_path}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+        
+        return JsonResponse({'files': files})
+        
+    except Exception as e:
+        logger.error(f"api_ide_list_files error: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('orchestrator')
+@require_http_methods(["GET"])
+def api_ide_read_file(request):
+    """
+    GET /api/ide/file/
+    Параметры: workspace (имя проекта), path (относительный путь к файлу)
+    Возвращает содержимое файла.
+    """
+    try:
+        workspace_param = request.GET.get('workspace', '').strip()
+        path_param = request.GET.get('path', '').strip()
+        
+        if not workspace_param or not path_param:
+            return JsonResponse({'error': 'workspace and path parameters are required'}, status=400)
+        
+        # Разрешаем workspace
+        try:
+            workspace_root = _resolve_ide_workspace(workspace_param)
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=403)
+        
+        # Нормализуем path
+        path_param = path_param.strip('/').strip('\\')
+        if '..' in path_param:
+            return JsonResponse({'error': 'Invalid path'}, status=400)
+        
+        file_path = workspace_root / path_param
+        
+        # Проверяем безопасность пути
+        try:
+            file_resolved = file_path.resolve()
+            workspace_resolved = workspace_root.resolve()
+            if not str(file_resolved).startswith(str(workspace_resolved)):
+                return JsonResponse({'error': 'Path outside workspace'}, status=403)
+        except Exception:
+            return JsonResponse({'error': 'Invalid path'}, status=400)
+        
+        # Проверяем существование и что это файл
+        if not file_path.exists():
+            return JsonResponse({'error': 'File not found'}, status=404)
+        
+        if not file_path.is_file():
+            return JsonResponse({'error': 'Path is not a file'}, status=400)
+        
+        # Читаем файл
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # Пробуем как бинарный файл
+            return JsonResponse({'error': 'File is not a text file'}, status=400)
+        except PermissionError:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        except Exception as e:
+            logger.error(f"Error reading file {file_path}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+        
+        from django.http import HttpResponse
+        response = HttpResponse(content, content_type='text/plain; charset=utf-8')
+        return response
+        
+    except Exception as e:
+        logger.error(f"api_ide_read_file error: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('orchestrator')
+@require_http_methods(["PUT", "POST"])
+def api_ide_write_file(request):
+    """
+    PUT/POST /api/ide/file/
+    Тело: JSON { "workspace": "...", "path": "...", "content": "..." }
+    Или query: workspace, path; тело: content (text/plain)
+    Создаёт или обновляет файл в workspace.
+    """
+    try:
+        # Парсим данные из JSON или form
+        if request.content_type and 'application/json' in request.content_type:
+            data = json.loads(request.body)
+            workspace_param = data.get('workspace', '').strip()
+            path_param = data.get('path', '').strip()
+            content = data.get('content', '')
+        else:
+            workspace_param = request.GET.get('workspace', '').strip()
+            path_param = request.GET.get('path', '').strip()
+            content = request.body.decode('utf-8') if request.body else ''
+        
+        if not workspace_param or not path_param:
+            return JsonResponse({'error': 'workspace and path parameters are required'}, status=400)
+        
+        # Разрешаем workspace
+        try:
+            workspace_root = _resolve_ide_workspace(workspace_param)
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=403)
+        
+        # Нормализуем path
+        path_param = path_param.strip('/').strip('\\')
+        if '..' in path_param:
+            return JsonResponse({'error': 'Invalid path'}, status=400)
+        
+        file_path = workspace_root / path_param
+        
+        # Проверяем безопасность пути
+        try:
+            file_resolved = file_path.resolve()
+            workspace_resolved = workspace_root.resolve()
+            if not str(file_resolved).startswith(str(workspace_resolved)):
+                return JsonResponse({'error': 'Path outside workspace'}, status=403)
+        except Exception:
+            return JsonResponse({'error': 'Invalid path'}, status=400)
+        
+        # Создаём родительские директории если нужно
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        except Exception as e:
+            logger.error(f"Error creating parent directories for {file_path}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+        
+        # Записываем файл
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except PermissionError:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        except Exception as e:
+            logger.error(f"Error writing file {file_path}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+        
+        return JsonResponse({
+            'success': True,
+            'path': str(file_path.relative_to(workspace_root)).replace('\\', '/'),
+            'message': 'File saved successfully'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"api_ide_write_file error: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('orchestrator')
+def ide_view(request):
+    """
+    Страница веб-IDE с редактором кода, деревом файлов и чатом.
+    """
+    # Получаем проект из query параметра если есть
+    project = request.GET.get('project', '').strip()
+    
+    context = {
+        'project': project,
+    }
+    
+    return render(request, 'ide.html', context)

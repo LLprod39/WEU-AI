@@ -9,6 +9,7 @@ from loguru import logger
 import asyncio
 import re
 import json
+import os
 from typing import AsyncGenerator, List, Dict, Any
 
 
@@ -175,6 +176,12 @@ class Orchestrator:
                     tool_context = {"user_id": ctx.get("user_id")} if ctx.get("user_id") else None
                     if ctx.get("master_password") and tool_context:
                         tool_context["master_password"] = ctx.get("master_password")
+                    # Передаём workspace_path в tool_context для файловых инструментов
+                    if ctx.get("workspace_path") and tool_context:
+                        tool_context["workspace_path"] = ctx.get("workspace_path")
+                    elif ctx.get("workspace_path"):
+                        tool_context = {"workspace_path": ctx.get("workspace_path")}
+                    
                     result = await self.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
                     )
@@ -182,6 +189,32 @@ class Orchestrator:
                     # Format result
                     result_str = self._format_tool_result(result)
                     yield f"✅ **Result:**\n```\n{result_str}\n```\n\n"
+                    
+                    # Если это write_file и есть workspace_path, выдаём событие IDE_FILE_CHANGED
+                    if tool_name == "write_file" and ctx.get("workspace_path"):
+                        file_path = tool_args.get("path", "")
+                        if file_path:
+                            # Вычисляем относительный путь от workspace_path
+                            try:
+                                from pathlib import Path
+                                workspace_path_obj = Path(ctx.get("workspace_path"))
+                                # Если путь абсолютный и внутри workspace, вычисляем относительный
+                                if os.path.isabs(file_path):
+                                    try:
+                                        file_path_obj = Path(file_path)
+                                        if file_path_obj.is_relative_to(workspace_path_obj):
+                                            rel_path = str(file_path_obj.relative_to(workspace_path_obj))
+                                        else:
+                                            rel_path = file_path
+                                    except (ValueError, AttributeError):
+                                        rel_path = file_path
+                                else:
+                                    rel_path = file_path
+                                # Нормализуем слеши для веб
+                                rel_path = rel_path.replace("\\", "/")
+                                yield f"IDE_FILE_CHANGED:{rel_path}\n"
+                            except Exception as e:
+                                logger.debug(f"Could not compute relative path for IDE_FILE_CHANGED: {e}")
                     
                     # Add to effective history (and self.history if not override)
                     effective_history.append({
@@ -308,6 +341,30 @@ class Orchestrator:
                     servers_block = self._get_user_servers_block(user_id)
             # else: обычный чат — НЕ показываем серверы автоматически
             # Пользователь может использовать инструмент servers_list если нужно
+            
+            # Добавляем информацию о workspace если есть
+            workspace_path = execution_context.get("workspace_path")
+            from_ide = execution_context.get("from_ide", False)
+            if workspace_path:
+                workspace_block = f"""
+РАБОЧАЯ ДИРЕКТОРИЯ (WORKSPACE):
+- Рабочая директория проекта: **{workspace_path}**
+- Все пути к файлам указывай относительно этой директории (например: src/foo.py, main.py, config/settings.json)
+- Или используй абсолютные пути внутри этой директории
+- Инструменты read_file, write_file, list_directory автоматически разрешат относительные пути относительно workspace
+"""
+                ctx_block = (ctx_block + "\n" + workspace_block).strip() if ctx_block else workspace_block.strip()
+            
+            # Режим IDE: не выводить данные серверов и посторонние чек-листы
+            if from_ide:
+                ide_rule = """
+РЕЖИМ IDE:
+- НЕ выводи в ответе данные серверов (хосты, пароли, команды ssh). Не включай посторонние чек-листы задач.
+- Фокусируйся только на коде и файлах проекта. Отвечай кратко по существу.
+"""
+                ctx_block = (ctx_block + "\n" + ide_rule).strip() if ctx_block else ide_rule.strip()
+                # В режиме IDE не показываем блок серверов
+                servers_block = ""
 
         tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.

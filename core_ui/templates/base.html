@@ -136,18 +136,17 @@
     <aside id="sidebar" class="sidebar glass-md border-r border-white/5 flex flex-col z-20 relative">
 
         <!-- Brand -->
-        <div class="flex items-center px-5 border-b border-white/5 gap-3" style="height: var(--header-height); padding: var(--spacing-md) var(--spacing-lg);">
-            <div
-                class="w-9 h-9 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shadow-glow-primary flex-shrink-0" aria-hidden="true">
+        <div class="sidebar-header flex items-center px-5 border-b border-white/5 gap-3" style="height: var(--header-height); padding: var(--spacing-md) var(--spacing-lg);">
+            <div class="sidebar-header-brand w-9 h-9 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shadow-glow-primary flex-shrink-0" aria-hidden="true">
                 <span class="material-icons-round text-primary text-xl" aria-hidden="true">auto_awesome</span>
             </div>
-            <div class="flex flex-col flex-1 min-w-0">
+            <div class="sidebar-header-title flex flex-col flex-1 min-w-0">
                 <span class="font-bold tracking-tight text-white text-base">WEU AI</span>
                 <span class="text-[10px] text-gray-500 -mt-0.5">Enterprise Agent</span>
             </div>
             <button type="button" id="sidebar-toggle" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors flex-shrink-0" aria-label="Collapse sidebar" title="Collapse sidebar">
                 <span class="sidebar-toggle-icon icon-expand material-icons-round text-lg" aria-hidden="true">chevron_left</span>
-                <span class="sidebar-toggle-icon icon-collapse material-icons-round text-lg" aria-hidden="true">menu</span>
+                <span class="sidebar-toggle-icon icon-collapse material-icons-round text-lg" aria-hidden="true">chevron_right</span>
             </button>
         </div>
 
@@ -163,6 +162,10 @@
             <a href="{% url 'orchestrator' %}" class="sidebar-link {% if 'orchestrator' in request.path %}active{% endif %}" aria-label="Orchestrator">
                 <span class="material-icons-round text-lg {% if 'orchestrator' in request.path %}text-primary{% endif %}" aria-hidden="true">account_tree</span>
                 <span class="nav-text">Orchestrator</span>
+            </a>
+            <a href="{% url 'ide' %}" class="sidebar-link {% if 'ide' in request.path %}active{% endif %}" aria-label="IDE">
+                <span class="material-icons-round text-lg {% if 'ide' in request.path %}text-primary{% endif %}" aria-hidden="true">code</span>
+                <span class="nav-text">IDE</span>
             </a>
             {% endif %}
             {% if user_can_agents %}
@@ -325,89 +328,6 @@
             {% block content %}{% endblock %}
         </div>
     </main>
-
-    <!-- UI settings panel (dialog, no focus trap) -->
-    <div id="ui-settings-panel" class="ui-settings-panel" role="dialog" aria-label="UI Settings" aria-modal="true" aria-hidden="true">
-        <div class="ui-settings-header">
-            <h2 class="text-lg font-semibold text-white flex items-center gap-2">
-                <span class="material-icons-round text-primary" aria-hidden="true">tune</span>
-                UI Settings
-            </h2>
-            <button type="button" onclick="toggleUISettings()" class="btn-ghost p-2" aria-label="Close UI settings panel">
-                <span class="material-icons-round text-lg" aria-hidden="true">close</span>
-            </button>
-        </div>
-
-        <!-- Theme -->
-        <div class="ui-settings-section">
-            <div class="ui-settings-section-title">Theme</div>
-            <div class="ui-settings-option">
-                <div class="ui-settings-label">Color scheme</div>
-                <div class="ui-settings-control">
-                    <select id="theme-select" class="ui-select" onchange="changeTheme(this.value)">
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- Density -->
-        <div class="ui-settings-section">
-            <div class="ui-settings-section-title">Density</div>
-            <div class="ui-settings-option">
-                <div class="ui-settings-label">Element size</div>
-                <div class="ui-settings-control">
-                    <select id="density-select" class="ui-select" onchange="changeDensity(this.value)">
-                        <option value="compact">Compact</option>
-                        <option value="normal" selected>Normal</option>
-                        <option value="spacious">Spacious</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- Size -->
-        <div class="ui-settings-section">
-            <div class="ui-settings-section-title">Size</div>
-            <div class="ui-settings-option">
-                <div class="ui-settings-label">Scale</div>
-                <div class="ui-settings-control">
-                    <select id="size-select" class="ui-select" onchange="changeSize(this.value)">
-                        <option value="small">Small</option>
-                        <option value="normal" selected>Normal</option>
-                        <option value="large">Large</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- Animations -->
-        <div class="ui-settings-section">
-            <div class="ui-settings-section-title">Animations</div>
-            <div class="ui-settings-option">
-                <div class="ui-settings-label">Enable animations</div>
-                <div class="ui-settings-control">
-                    <div class="ui-toggle-switch active" onclick="toggleAnimations(this)">
-                        <input type="checkbox" checked style="display: none;">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Reset -->
-        <div class="ui-settings-section">
-            <button onclick="resetUISettings()" class="btn-ghost w-full justify-center" aria-label="Reset UI settings">
-                <span class="material-icons-round text-lg" aria-hidden="true">refresh</span>
-                Reset settings
-            </button>
-        </div>
-    </div>
-
-    <!-- UI settings toggle button -->
-    <button type="button" id="ui-settings-toggle" class="ui-settings-toggle-btn" onclick="toggleUISettings()" title="UI Settings" aria-label="Open UI settings" aria-expanded="false" aria-controls="ui-settings-panel">
-        <span class="material-icons-round text-2xl" aria-hidden="true">tune</span>
-    </button>
 
     <!-- Toast container -->
     <div id="toast-container" class="toast-container"></div>

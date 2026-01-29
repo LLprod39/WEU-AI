@@ -41,14 +41,11 @@
         <div class="flex items-start justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-white">Agent Hub</h1>
-                <p class="text-gray-400 text-sm mt-1">Run agents, manage profiles, and view execution logs.</p>
+                <p class="text-gray-400 text-sm mt-1">Запуск агентов, управление workflow и просмотр логов выполнения.</p>
             </div>
             <div class="flex gap-2">
-                <button onclick="openAssistModal()" class="px-4 py-2 bg-accent/20 text-accent rounded-xl border border-accent/30 hover:bg-accent/30 transition-all">
-                    AI Assistant
-                </button>
                 <button onclick="openProfileModal()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary">
-                    New profile
+                    Новый профиль
                 </button>
             </div>
         </div>
@@ -67,24 +64,26 @@
                         <li>доступы к серверам или режим только чтение</li>
                     </ul>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                     <select id="quick-runtime" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="ralph" selected>Ralph Orchestrator</option>
-                        <option value="cursor">Cursor CLI</option>
+                        <option value="cursor" selected>Cursor CLI</option>
+                        <option value="ralph">Ralph Orchestrator</option>
                     </select>
                     <select id="quick-project" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="__new__">📁 New project</option>
+                        <option value="__new__">📁 Новый проект</option>
                         {% for project in projects_data %}
                         <option value="{{ project.path }}">📂 {{ project.name }}</option>
                         {% endfor %}
                     </select>
-                    <input id="quick-project-name" type="text" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Project name (optional)">
                 </div>
+                <input id="quick-project-name" type="text" class="hidden w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mt-2" placeholder="Название проекта">
                 <div class="flex gap-3 mt-3">
-                    <button id="btn-auto-create-all" onclick="autoCreateAll()" class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Create all automatically</button>
-                    <button id="btn-auto-workflow" onclick="autoGenerateWorkflow()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-sm text-gray-200 rounded-lg">Workflow only</button>
+                    <button id="btn-auto-create-all" onclick="autoCreateAll()" class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center justify-center gap-2">
+                        <span>▶</span> Создать и запустить
+                    </button>
+                    <button type="button" onclick="openTaskBuilderDirect()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-sm text-gray-200 rounded-lg">🛠️ Builder</button>
                 </div>
-                <p class="section-hint mt-2">Workspace is the project folder where commands run. Run starts a profile or workflow.</p>
+                <p class="section-hint mt-2">Модель автоматически выбирается Cursor (auto). Рантайм — среда выполнения задач.</p>
             </div>
             <div class="glass-card rounded-2xl p-4">
                 <div class="text-xs text-gray-400">Last run</div>
@@ -113,12 +112,11 @@
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <h2 class="text-lg font-semibold text-white">Workflows</h2>
-                        <p class="section-hint">Step-by-step workflows. Create via Import, Builder, or AI.</p>
+                        <p class="section-hint">Пошаговые сценарии задач. Создайте через Import или Builder.</p>
                     </div>
                     <div class="flex gap-2">
                         <button type="button" onclick="openImportModal()" class="btn-unified btn-unified-secondary text-xs">📥 Import</button>
-                        <button type="button" onclick="openTaskBuilderDirect()" class="btn-unified btn-unified-secondary text-xs">🛠️ Builder</button>
-                        <button type="button" onclick="openWorkflowModal()" class="btn-unified btn-unified-primary text-xs">✨ AI generate</button>
+                        <button type="button" onclick="openTaskBuilderDirect()" class="btn-unified btn-unified-primary text-xs">🛠️ Builder</button>
                     </div>
                 </div>
                 <div class="space-y-3 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
@@ -530,7 +528,7 @@
                 </div>
                 <div id="cursor-model-info" class="md:col-span-2 hidden">
                     <div class="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs text-primary">
-                        <span class="font-medium">ℹ️ Для Cursor CLI модель всегда выбирается автоматически (auto)</span>
+                        <span class="font-medium">ℹ️ Для Cursor CLI можно выбрать модель: auto, gpt-5, sonnet-4, sonnet-4-thinking, opus-4</span>
                     </div>
                 </div>
                 <div>
@@ -578,52 +576,150 @@
     </div>
 </div>
 
-<!-- AI Assist Modal -->
-<div id="assistModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="assistModalTitle" aria-hidden="true">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAssistModal()" aria-hidden="true"></div>
-    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 id="assistModalTitle" class="text-xl font-bold text-white mb-3">AI помощник</h2>
-        <p class="text-sm text-gray-400 mb-4">Опишите задачу, и ассистент предложит настройки профиля.</p>
-        <textarea id="assist-task" rows="4" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-4" placeholder="Опишите задачу..."></textarea>
-        <div class="flex justify-end gap-3">
-            <button type="button" onclick="closeAssistModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
-            <button type="button" id="btn-generate-config" onclick="generateConfig()" class="px-4 py-2 bg-accent/20 text-accent rounded-lg border border-accent/30">Сгенерировать</button>
-        </div>
-    </div>
-</div>
-
-<!-- Workflow Modal (AI генерация) -->
-<div id="workflowModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="workflowModalTitle" aria-hidden="true">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeWorkflowModal()" aria-hidden="true"></div>
-    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 id="workflowModalTitle" class="text-xl font-bold text-white mb-3">Генерация workflow (AI)</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
-                <select id="workflow-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                    <option value="ralph">Ralph Orchestrator</option>
-                    <option value="cursor">Cursor CLI</option>
-                </select>
+<!-- AI Analysis Wizard Modal -->
+<div id="aiAnalysisModal" class="fixed inset-0 z-[200] hidden" role="dialog" aria-modal="true" aria-labelledby="aiAnalysisTitle" aria-hidden="true">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAiAnalysisModal()" aria-hidden="true"></div>
+    <div class="absolute top-1/2 left-1/2 w-full max-w-2xl max-h-[85vh] transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <!-- Header with Progress -->
+        <div class="p-4 border-b border-white/10 bg-gradient-to-r from-accent/10 to-primary/10">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
+                        <span class="text-xl">🤖</span>
+                    </div>
+                    <div>
+                        <h2 id="aiAnalysisTitle" class="text-lg font-bold text-white">AI Планировщик</h2>
+                        <p id="ai-wizard-status" class="text-xs text-gray-400">Cursor CLI --mode=plan</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeAiAnalysisModal()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта</label>
-                <select id="workflow-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                    <option value="__new__">📁 New project</option>
-                    {% for project in projects_data %}
-                    <option value="{{ project.path }}">📂 {{ project.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
-                <input id="workflow-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Автоматически">
+            <!-- Progress Bar -->
+            <div class="flex items-center gap-2">
+                <div class="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div id="ai-wizard-progress" class="h-full bg-gradient-to-r from-accent to-primary transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <span id="ai-wizard-step" class="text-xs text-gray-400 min-w-[80px] text-right">Шаг 1: Задача</span>
             </div>
         </div>
-        <textarea id="workflow-task" rows="5" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mb-4" placeholder="Опишите workflow..."></textarea>
-        <div class="flex justify-end gap-3">
-            <button type="button" onclick="closeWorkflowModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
-            <button type="button" onclick="openTaskBuilder()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg">Создать вручную</button>
-            <button type="button" id="btn-generate-workflow" onclick="generateWorkflow()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сгенерировать (AI)</button>
+        
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4">
+            <!-- Step 1: Initial Task Input -->
+            <div id="ai-step-input" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Опишите задачу</label>
+                    <textarea id="ai-analysis-task" rows="5" class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" placeholder="Что нужно сделать?&#10;&#10;Например: Создать REST API для управления пользователями с JWT авторизацией, валидацией данных и тестами"></textarea>
+                </div>
+                <div class="bg-accent/10 border border-accent/20 rounded-xl p-3">
+                    <div class="flex items-start gap-2">
+                        <span class="text-lg">💡</span>
+                        <div class="text-xs text-gray-300">
+                            <p class="font-medium text-accent mb-1">Советы для лучшего результата:</p>
+                            <ul class="space-y-0.5 text-gray-400">
+                                <li>• Укажите технологии и версии (Django 5, React 18)</li>
+                                <li>• Опишите ограничения (без Docker, только SQLite)</li>
+                                <li>• Укажите критерии готовности (тесты, документация)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step 2: All Questions at once -->
+            <div id="ai-step-questions" class="hidden space-y-4">
+                <div class="bg-accent/10 border border-accent/20 rounded-xl p-3 mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">❓</span>
+                        <p class="text-sm text-white">AI задал уточняющие вопросы. Ответьте на все и нажмите "Создать Workflow"</p>
+                    </div>
+                </div>
+                
+                <!-- All Questions List -->
+                <div id="ai-all-questions" class="space-y-4">
+                    <!-- Questions will be rendered here -->
+                </div>
+            </div>
+            
+            <!-- Step: Loading -->
+            <div id="ai-step-loading" class="hidden py-12">
+                <div class="flex flex-col items-center justify-center gap-4">
+                    <div class="relative">
+                        <div class="w-16 h-16 rounded-full border-4 border-accent/20 border-t-accent animate-spin"></div>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span class="text-2xl">🤖</span>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <p id="ai-loading-text" class="text-white font-medium">Анализируем...</p>
+                        <p id="ai-loading-hint" class="text-xs text-gray-400 mt-1">AI обрабатывает вашу задачу</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step: Final Result -->
+            <div id="ai-step-result" class="hidden space-y-4">
+                <div class="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                            <span class="text-xl">✅</span>
+                        </div>
+                        <div>
+                            <h3 class="text-white font-semibold">Workflow готов!</h3>
+                            <p class="text-xs text-gray-400">AI создал план выполнения задачи</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <div id="ai-final-steps" class="text-lg font-bold text-white">0</div>
+                            <div class="text-xs text-gray-400">шагов</div>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <div id="ai-final-complexity" class="text-lg font-bold text-accent">-</div>
+                            <div class="text-xs text-gray-400">сложность</div>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <div id="ai-final-model" class="text-lg font-bold text-primary">auto</div>
+                            <div class="text-xs text-gray-400">модель</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Final Steps Preview -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-medium text-white">Предложенные шаги:</h4>
+                    </div>
+                    <div id="ai-final-steps-list" class="space-y-2 max-h-[200px] overflow-y-auto">
+                        <!-- Steps will be added here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="p-4 border-t border-white/10 bg-bg-base/50">
+            <div class="flex items-center justify-between gap-3">
+                <button type="button" onclick="closeAiAnalysisModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+                    Отмена
+                </button>
+                <div class="flex gap-2">
+                    <!-- Start Analysis (Step 1) -->
+                    <button type="button" id="btn-wizard-start" onclick="wizardStart()" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-white text-sm rounded-lg font-medium flex items-center gap-2 transition-all">
+                        <span>🚀</span> Анализировать
+                    </button>
+                    <!-- Submit Answers (Step 2) -->
+                    <button type="button" id="btn-wizard-submit" onclick="wizardSubmitAnswers()" class="hidden px-5 py-2.5 bg-accent hover:bg-accent/80 text-white text-sm rounded-lg font-medium flex items-center gap-2 transition-all">
+                        <span>📋</span> Создать Workflow
+                    </button>
+                    <!-- Apply Result (Final) -->
+                    <button type="button" id="btn-wizard-apply" onclick="wizardApply()" class="hidden px-5 py-2.5 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg font-medium flex items-center gap-2 transition-all">
+                        <span>✓</span> Применить
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -636,12 +732,9 @@
         <div class="flex items-center justify-between p-4 border-b border-white/10">
             <div class="flex items-center gap-4">
                 <h2 id="taskBuilderTitle" class="text-xl font-bold text-white">🛠️ Конструктор задач</h2>
-                <span class="text-xs text-gray-400">Визуальное создание workflow</span>
+                <span class="text-xs text-gray-400">Создание workflow с model=auto</span>
             </div>
             <div class="flex items-center gap-3">
-                <button onclick="aiGenerateTasks()" class="px-3 py-1.5 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30 flex items-center gap-2">
-                    <span>✨</span> AI генерация
-                </button>
                 <button type="button" onclick="closeTaskBuilder()" class="text-gray-400 hover:text-white" aria-label="Close Task Builder">
                     <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -657,16 +750,29 @@
                     <input id="tb-workflow-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Мой Workflow">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание проекта (для AI)</label>
-                    <textarea id="tb-project-description" rows="4" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Опишите проект чтобы AI сгенерировал задачи..."></textarea>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание проекта</label>
+                    <textarea id="tb-project-description" rows="3" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Опишите проект для AI анализа..."></textarea>
                 </div>
+                
+                <!-- AI Assist Section -->
+                <div class="border border-accent/30 rounded-lg p-3 bg-accent/5">
+                    <button type="button" id="btn-smart-analyze" onclick="openAiAnalysisModal()" class="w-full px-3 py-2 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30 flex items-center justify-center gap-2 transition-all">
+                        <span>🔍</span> AI Анализ
+                    </button>
+                    <p class="text-[10px] text-gray-500 mt-2 text-center">Анализирует описание и генерирует шаги</p>
+                </div>
+                
                 <div>
                     <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
                     <select id="tb-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="ralph" selected>Ralph Orchestrator</option>
-                        <option value="cursor">Cursor CLI</option>
+                        <option value="cursor" selected>Cursor CLI</option>
+                        <option value="ralph">Ralph Orchestrator</option>
                     </select>
                 </div>
+                
+                <!-- Скрытое поле модели (всегда auto) -->
+                <input type="hidden" id="tb-workflow-model" value="auto">
+                
                 <div>
                     <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта</label>
                     <select id="tb-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
@@ -722,11 +828,8 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                         </svg>
                         <p class="text-lg mb-2">Задач пока нет</p>
-                        <p class="text-sm text-gray-600 mb-4">Добавьте задачу вручную или используйте AI генерацию</p>
-                        <div class="flex gap-3">
-                            <button onclick="addNewTask()" class="px-4 py-2 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30">+ Добавить задачу</button>
-                            <button onclick="aiGenerateTasks()" class="px-4 py-2 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30">✨ AI генерация</button>
-                        </div>
+                        <p class="text-sm text-gray-600 mb-4">Добавьте задачу вручную или используйте AI Анализ слева</p>
+                        <button onclick="addNewTask()" class="px-4 py-2 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30">+ Добавить задачу</button>
                     </div>
                 </div>
             </div>
@@ -762,6 +865,16 @@
             <div class="flex-1 space-y-3">
                 <input type="text" class="task-title w-full bg-transparent border-b border-white/10 pb-1 text-white text-sm font-medium focus:outline-none focus:border-primary" placeholder="Название задачи">
                 <textarea class="task-prompt w-full bg-bg-surface border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none" rows="2" placeholder="Описание задачи (что должен сделать агент)..."></textarea>
+                
+                <!-- Model Selection (показывается если разрешено в настройках) -->
+                <div class="task-model-section hidden">
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-gray-500 whitespace-nowrap">Модель:</label>
+                        <select class="task-model flex-1 bg-bg-surface border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+                            <option value="auto" selected>Auto (по умолчанию)</option>
+                        </select>
+                    </div>
+                </div>
                 
                 <!-- Test Section -->
                 <div class="task-test-section">

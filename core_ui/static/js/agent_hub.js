@@ -48,14 +48,15 @@
         var sc = document.getElementById('profile-specific-model-container');
         var ci = document.getElementById('cursor-model-info');
         if (!mc) return;
-        if (r === 'cursor') {
-            mc.classList.add('hidden');
-            if (sc) sc.classList.add('hidden');
-            if (ci) ci.classList.remove('hidden');
-        } else {
-            mc.classList.remove('hidden');
-            if (sc) sc.classList.remove('hidden');
-            if (ci) ci.classList.add('hidden');
+        // Теперь модель поддерживается и для cursor
+        mc.classList.remove('hidden');
+        if (sc) sc.classList.remove('hidden');
+        if (ci) {
+            if (r === 'cursor') {
+                ci.classList.remove('hidden');
+            } else {
+                ci.classList.add('hidden');
+            }
         }
     }
 
@@ -107,28 +108,7 @@
         if (m) { m.classList.add('hidden'); m.setAttribute('aria-hidden', 'true'); }
     };
 
-    window.openAssistModal = function () {
-        var m = document.getElementById('assistModal');
-        if (m) { m.classList.remove('hidden'); m.setAttribute('aria-hidden', 'false'); }
-    };
-
-    window.closeAssistModal = function () {
-        var m = document.getElementById('assistModal');
-        if (m) { m.classList.add('hidden'); m.setAttribute('aria-hidden', 'true'); }
-    };
-
-    window.openWorkflowModal = function () {
-        var m = document.getElementById('workflowModal');
-        if (m && m.parentElement !== document.body) document.body.appendChild(m);
-        if (m) { m.classList.remove('hidden'); m.setAttribute('aria-hidden', 'false'); }
-    };
-
-    window.closeWorkflowModal = function () {
-        var m = document.getElementById('workflowModal');
-        if (m) { m.classList.add('hidden'); m.setAttribute('aria-hidden', 'true'); }
-        var t = document.getElementById('workflow-task');
-        if (t) t.value = '';
-    };
+    // AI Assistant и Workflow Modal удалены - используйте Task Builder
 
     window.openWorkflowLogs = function (runId) {
         var m = document.getElementById('workflowLogsModal');
@@ -332,10 +312,9 @@
             completion_promise: (document.getElementById('profile-completion-promise') || {}).value || '',
             ralph_backend: (document.getElementById('profile-ralph-backend') || {}).value || null
         };
-        if (runtime !== 'cursor') {
-            config.model = document.getElementById('profile-model').value;
-            config.specific_model = (document.getElementById('profile-specific-model') || {}).value || null;
-        }
+        // Теперь модель поддерживается и для cursor
+        config.model = document.getElementById('profile-model').value;
+        config.specific_model = (document.getElementById('profile-specific-model') || {}).value || null;
         var raw = (document.getElementById('profile-config-json') || {}).value.trim();
         if (raw) {
             try { Object.assign(config, JSON.parse(raw)); } catch (err) {
@@ -420,56 +399,7 @@
             });
     };
 
-    window.generateConfig = function () {
-        var task = (document.getElementById('assist-task') || {}).value.trim();
-        if (!task) { if (window.showToast) window.showToast('Опишите задачу', 'info'); return; }
-        var btn = document.getElementById('btn-generate-config');
-        if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
-        fetch('/agents/api/assist-config/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) },
-            body: JSON.stringify({ task: task })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    closeAssistModal();
-                    openProfileModal();
-                    var c = data.config || {};
-                    document.getElementById('profile-name').value = c.name || 'AI Suggested';
-                    document.getElementById('profile-description').value = c.description || '';
-                    document.getElementById('profile-agent-type').value = c.agent_type || 'react';
-                    document.getElementById('profile-runtime').value = c.runtime || 'ralph';
-                    document.getElementById('profile-mode').value = c.mode || 'simple';
-                    document.getElementById('profile-config-json').value = JSON.stringify(c.config || {}, null, 2);
-                    renderProfileQuestions(data.questions || c.questions, data.assumptions || c.assumptions);
-                } else if (window.showToast) window.showToast(data.error || 'Не удалось сгенерировать', 'error');
-            })
-            .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
-    };
-
-    window.generateWorkflow = function () {
-        var task = (document.getElementById('workflow-task') || {}).value.trim();
-        if (!task) { if (window.showToast) window.showToast('Опишите workflow', 'info'); return; }
-        var btn = document.getElementById('btn-generate-workflow');
-        if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
-        var runtime = document.getElementById('workflow-runtime').value;
-        var ps = document.getElementById('workflow-project').value;
-        var pn = (document.getElementById('workflow-project-name') || {}).value.trim();
-        var payload = { task: task, runtime: runtime };
-        if (ps === '__new__') { payload.create_new_project = true; payload.new_project_name = pn; } else payload.project_path = ps;
-        fetch('/agents/api/workflows/generate/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) },
-            body: JSON.stringify(payload)
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data.success) { closeWorkflowModal(); location.reload(); }
-                else if (window.showToast) window.showToast(data.error || 'Не удалось сгенерировать workflow', 'error');
-            })
-            .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
-    };
+    // generateConfig и generateWorkflow удалены - используйте Task Builder с AI Анализ
 
     window.runWorkflow = function (workflowId, ev) {
         var btn = ev && ev.target;
@@ -595,43 +525,25 @@
         return { project_path: v };
     }
 
-    window.autoGenerateWorkflow = function () {
-        var task = (document.getElementById('quick-task') || {}).value.trim();
-        if (!task) { if (window.showToast) window.showToast('Опишите задачу', 'info'); return; }
-        var btn = document.getElementById('btn-auto-workflow');
-        if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
-        showLoadingOverlay('Генерация workflow...');
-        var runtime = document.getElementById('quick-runtime').value;
-        var pl = Object.assign({ task: task, action: 'workflow', runtime: runtime, run_workflow: true }, getQuickProjectPayload());
-        fetch('/agents/api/assist-auto/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) }, body: JSON.stringify(pl) })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                hideLoadingOverlay();
-                if (data.success) {
-                    if (data.run_id) { openWorkflowLogs(data.run_id); setTimeout(function () { location.reload(); }, 500); }
-                    else { if (window.showToast) window.showToast('Workflow создан', 'success'); location.reload(); }
-                } else if (window.showToast) window.showToast(data.error || 'Не удалось создать workflow', 'error');
-            })
-            .catch(function (e) { hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e.message || e), 'error'); })
-            .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
-    };
+    // autoGenerateWorkflow удалена - используется единый autoCreateAll
 
     window.autoCreateAll = function () {
         var task = (document.getElementById('quick-task') || {}).value.trim();
         if (!task) { if (window.showToast) window.showToast('Опишите задачу', 'info'); return; }
         var btn = document.getElementById('btn-auto-create-all');
         if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
-        showLoadingOverlay('Создание профиля и workflow...');
+        showLoadingOverlay('Создание workflow (model=auto)...');
         var runtime = document.getElementById('quick-runtime').value;
-        var pl = Object.assign({ task: task, action: 'both', runtime: runtime, run_workflow: true }, getQuickProjectPayload());
+        // model=auto всегда
+        var pl = Object.assign({ task: task, action: 'workflow', runtime: runtime, run_workflow: true, model: 'auto' }, getQuickProjectPayload());
         fetch('/agents/api/assist-auto/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) }, body: JSON.stringify(pl) })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 hideLoadingOverlay();
                 if (data.success) {
                     if (data.run_id) { openWorkflowLogs(data.run_id); setTimeout(function () { location.reload(); }, 500); }
-                    else { if (window.showToast) window.showToast('Готово', 'success'); location.reload(); }
-                } else if (window.showToast) window.showToast(data.error || 'Не удалось выполнить запрос', 'error');
+                    else { if (window.showToast) window.showToast('Workflow создан и запущен', 'success'); location.reload(); }
+                } else if (window.showToast) window.showToast(data.error || 'Не удалось создать workflow', 'error');
             })
             .catch(function (e) { hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e.message || e), 'error'); })
             .finally(function () { if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; } });
@@ -1030,6 +942,25 @@
         updateTaskStats();
     }
 
+    // Проверяет разрешён ли выбор моделей (из localStorage или API)
+    function isModelSelectionAllowed() {
+        var stored = localStorage.getItem('weu_allow_model_selection');
+        // Если нет в localStorage - пробуем получить из API при следующем запросе
+        if (stored === null) {
+            // Асинхронно загружаем настройку
+            fetch('/api/settings/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.config && data.config.allow_model_selection !== undefined) {
+                        localStorage.setItem('weu_allow_model_selection', data.config.allow_model_selection ? '1' : '0');
+                    }
+                })
+                .catch(function() {});
+            return false; // По умолчанию запрещено
+        }
+        return stored === '1';
+    }
+    
     function createTaskCard(task, index) {
         var tpl = document.getElementById('task-card-template');
         if (!tpl || !tpl.content) return document.createElement('div');
@@ -1048,6 +979,24 @@
             if (tc) tc.classList.remove('hidden');
             if (tb) { tb.querySelector('.test-icon').textContent = '▼'; if (tb.childNodes[1]) tb.childNodes[1].textContent = ' Скрыть тест'; }
         }
+        
+        // Показываем выбор модели если разрешено в настройках
+        var modelSection = card.querySelector('.task-model-section');
+        var modelSelect = card.querySelector('.task-model');
+        if (modelSection && modelSelect && isModelSelectionAllowed()) {
+            modelSection.classList.remove('hidden');
+            // Заполняем список моделей
+            loadAvailableModels(function(models) {
+                modelSelect.innerHTML = models.map(function(m) {
+                    var selected = (m.id === (task.model || 'auto')) ? ' selected' : '';
+                    return '<option value="' + m.id + '"' + selected + '>' + m.name + '</option>';
+                }).join('');
+            });
+            modelSelect.addEventListener('change', function(e) {
+                taskBuilderTasks[index].model = e.target.value;
+            });
+        }
+        
         card.querySelector('.task-title').addEventListener('input', function (e) { taskBuilderTasks[index].title = e.target.value; });
         card.querySelector('.task-prompt').addEventListener('input', function (e) { taskBuilderTasks[index].prompt = e.target.value; });
         card.querySelector('.task-verify').addEventListener('input', function (e) { taskBuilderTasks[index].verify_prompt = e.target.value; updateTaskStats(); });
@@ -1163,16 +1112,34 @@
         var newName = (document.getElementById('tb-new-project-name') || {}).value.trim();
         var targetServerSelect = document.getElementById('tb-target-server');
         var targetServerId = targetServerSelect ? (targetServerSelect.value || null) : null;
+        // Получаем модель workflow
+        var workflowModelSelect = document.getElementById('tb-workflow-model');
+        var workflowModel = workflowModelSelect ? (workflowModelSelect.value || 'auto') : 'auto';
+        
         var valid = taskBuilderTasks.filter(function (t) { return t.title && t.prompt; });
         if (valid.length === 0) { if (window.showToast) window.showToast('Добавьте хотя бы одну задачу с названием и описанием', 'info'); return; }
         var btn = document.getElementById(run ? 'btn-save-run-workflow' : 'btn-save-workflow');
         if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
         showLoadingOverlay('Сохранение workflow...');
+        var allowModels = isModelSelectionAllowed();
         var payload = {
             name: name,
             runtime: runtime,
+            model: 'auto',  // Workflow-level модель всегда auto
             steps: valid.map(function (t) {
-                return { title: t.title, prompt: t.prompt, completion_promise: t.completion_promise || 'STEP_DONE', verify_prompt: t.verify_prompt || null, verify_promise: t.verify_prompt ? (t.verify_promise || 'PASS') : null, max_iterations: t.max_iterations || 5 };
+                var step = { 
+                    title: t.title, 
+                    prompt: t.prompt, 
+                    completion_promise: t.completion_promise || 'STEP_DONE', 
+                    verify_prompt: t.verify_prompt || null, 
+                    verify_promise: t.verify_prompt ? (t.verify_promise || 'PASS') : null, 
+                    max_iterations: t.max_iterations || 5 
+                };
+                // Добавляем модель шага если разрешено и выбрана не auto
+                if (allowModels && t.model && t.model !== 'auto') {
+                    step.model = t.model;
+                }
+                return step;
             }),
             run_after_save: run,
             target_server_id: targetServerId ? parseInt(targetServerId, 10) : null
@@ -1180,7 +1147,7 @@
         if (projectSelect === '__new__') { payload.create_new_project = true; payload.new_project_name = newName; } else payload.project_path = projectSelect;
 
         var url = editingId ? ('/agents/api/workflows/' + editingId + '/update/') : '/agents/api/workflows/create-manual/';
-        var body = editingId ? { name: payload.name, runtime: payload.runtime, steps: payload.steps, project_path: projectSelect === '__new__' ? '__new__' : projectSelect, new_project_name: newName, target_server_id: payload.target_server_id } : payload;
+        var body = editingId ? { name: payload.name, runtime: payload.runtime, model: payload.model, steps: payload.steps, project_path: projectSelect === '__new__' ? '__new__' : projectSelect, new_project_name: newName, target_server_id: payload.target_server_id } : payload;
 
         fetch(url, {
             method: 'POST',
@@ -1191,18 +1158,23 @@
             .then(function (data) {
                 hideLoadingOverlay();
                 if (data.success) {
+                    if (window.showToast) window.showToast('Workflow сохранён' + (data.workflow_id ? ' (ID: ' + data.workflow_id + ')' : ''), 'success');
                     var m = document.getElementById('taskBuilderModal');
                     if (m) delete m.dataset.editingWorkflowId;
                     closeTaskBuilder();
-                    if (data.run_id) { openWorkflowLogs(data.run_id); setTimeout(function () { location.reload(); }, 500); }
-                    else if (editingId && run) {
+                    if (data.run_id) { 
+                        openWorkflowLogs(data.run_id); 
+                        setTimeout(function () { location.reload(); }, 1000); 
+                    } else if (editingId && run) {
                         fetch('/agents/api/workflows/run/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) }, body: JSON.stringify({ workflow_id: parseInt(editingId, 10) }) })
                             .then(function (rr) { return rr.json(); })
                             .then(function (rd) {
-                                if (rd.success && rd.run_id) { openWorkflowLogs(rd.run_id); setTimeout(function () { location.reload(); }, 500); }
-                                else location.reload();
+                                if (rd.success && rd.run_id) { openWorkflowLogs(rd.run_id); setTimeout(function () { location.reload(); }, 1000); }
+                                else setTimeout(function () { location.reload(); }, 500);
                             });
-                    } else location.reload();
+                    } else {
+                        setTimeout(function () { location.reload(); }, 500);
+                    }
                 } else if (window.showToast) window.showToast(data.error || 'Не удалось сохранить workflow', 'error');
             })
             .catch(function (e) { hideLoadingOverlay(); if (window.showToast) window.showToast('Ошибка: ' + (e.message || e), 'error'); })
@@ -1222,11 +1194,602 @@
     };
 
     function moveModalsToBody() {
-        ['workflowModal', 'taskBuilderModal', 'workflowLogsModal', 'agentLogsModal', 'workflowScriptModal', 'profileModal', 'assistModal', 'importModal', 'mcpToolsModal'].forEach(function (id) {
+        ['aiAnalysisModal', 'taskBuilderModal', 'workflowLogsModal', 'agentLogsModal', 'workflowScriptModal', 'profileModal', 'importModal', 'mcpToolsModal'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el && el.parentElement !== document.body) document.body.appendChild(el);
         });
     }
+
+    /* ----- Model Selection ----- */
+    var modelsCache = null;
+    var modelsRecommendations = {};
+
+    window.loadAvailableModels = function (callback) {
+        if (modelsCache) {
+            if (callback) callback(modelsCache);
+            return;
+        }
+        fetch('/agents/api/models/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                modelsCache = data.models || [];
+                modelsRecommendations = data.recommendations || {};
+                if (callback) callback(modelsCache);
+            })
+            .catch(function (e) {
+                console.error('Failed to load models:', e);
+                // Fallback to default models
+                modelsCache = [
+                    { id: 'auto', name: 'Auto', description: 'Автоматический выбор' },
+                    { id: 'gpt-5', name: 'GPT-5', description: 'Быстрая модель' },
+                    { id: 'sonnet-4', name: 'Claude Sonnet 4', description: 'Сбалансированная модель' },
+                    { id: 'sonnet-4-thinking', name: 'Claude Sonnet 4 Thinking', description: 'Для сложных задач' }
+                ];
+                if (callback) callback(modelsCache);
+            });
+    };
+
+    window.populateModelSelector = function (selectId, selectedValue) {
+        var select = document.getElementById(selectId);
+        if (!select) return;
+        loadAvailableModels(function (models) {
+            select.innerHTML = models.map(function (m) {
+                var selected = (m.id === selectedValue) ? ' selected' : '';
+                return '<option value="' + m.id + '"' + selected + '>' + m.name + '</option>';
+            }).join('');
+        });
+    };
+
+    window.getModelRecommendation = function (complexity) {
+        return modelsRecommendations[complexity] || 'auto';
+    };
+
+    /* ----- Smart Analysis ----- */
+    window.smartAnalyzeTask = function (taskText, callback) {
+        if (!taskText || !taskText.trim()) {
+            if (callback) callback(null, 'Введите описание задачи');
+            return;
+        }
+        showLoadingOverlay('Анализ задачи...');
+        fetch('/agents/api/smart-analyze/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) },
+            body: JSON.stringify({ task: taskText, use_llm: true })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                hideLoadingOverlay();
+                if (data.error) {
+                    if (callback) callback(null, data.error);
+                } else {
+                    if (callback) callback(data, null);
+                }
+            })
+            .catch(function (e) {
+                hideLoadingOverlay();
+                if (callback) callback(null, e.message || 'Ошибка анализа');
+            });
+    };
+
+    window.showSmartAnalysisResult = function (result, containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var html = '<div class="smart-analysis-result bg-bg-surface/60 rounded-xl border border-white/10 p-4 space-y-3">';
+        
+        // Рекомендованная модель
+        html += '<div class="flex items-center justify-between">';
+        html += '<span class="text-gray-400 text-sm">Рекомендованная модель:</span>';
+        html += '<span class="text-primary font-medium">' + (result.recommended_model || 'auto') + '</span>';
+        html += '</div>';
+        
+        // Сложность
+        var complexityColors = { simple: 'text-green-400', standard: 'text-yellow-400', complex: 'text-red-400', debug: 'text-purple-400' };
+        var complexityLabels = { simple: 'Простая', standard: 'Стандартная', complex: 'Сложная', debug: 'Дебаг' };
+        html += '<div class="flex items-center justify-between">';
+        html += '<span class="text-gray-400 text-sm">Сложность:</span>';
+        html += '<span class="' + (complexityColors[result.complexity] || 'text-gray-300') + '">' + (complexityLabels[result.complexity] || result.complexity) + '</span>';
+        html += '</div>';
+        
+        // Тип задачи
+        html += '<div class="flex items-center justify-between">';
+        html += '<span class="text-gray-400 text-sm">Тип задачи:</span>';
+        html += '<span class="text-gray-300">' + (result.task_type || 'unknown') + '</span>';
+        html += '</div>';
+        
+        // Наводящие вопросы
+        if (result.questions && result.questions.length > 0) {
+            html += '<div class="border-t border-white/10 pt-3 mt-3">';
+            html += '<div class="text-sm text-yellow-400 mb-2">Уточняющие вопросы:</div>';
+            html += '<ul class="list-disc list-inside space-y-1">';
+            result.questions.forEach(function (q) {
+                html += '<li class="text-gray-300 text-sm">' + q + '</li>';
+            });
+            html += '</ul></div>';
+        }
+        
+        // Предупреждения
+        if (result.warnings && result.warnings.length > 0) {
+            html += '<div class="border-t border-white/10 pt-3 mt-3">';
+            html += '<div class="text-sm text-orange-400 mb-2">Предупреждения:</div>';
+            result.warnings.forEach(function (w) {
+                html += '<div class="text-orange-300 text-xs">' + w + '</div>';
+            });
+            html += '</div>';
+        }
+        
+        // Подзадачи
+        if (result.subtasks && result.subtasks.length > 0) {
+            html += '<div class="border-t border-white/10 pt-3 mt-3">';
+            html += '<div class="text-sm text-primary mb-2">Предложенные шаги (' + result.subtasks.length + '):</div>';
+            html += '<div class="space-y-2">';
+            result.subtasks.forEach(function (st, i) {
+                html += '<div class="bg-white/5 rounded-lg p-2">';
+                html += '<div class="flex items-center justify-between">';
+                html += '<span class="text-white text-sm">' + (i + 1) + '. ' + st.title + '</span>';
+                html += '<span class="text-xs text-gray-500">' + st.recommended_model + '</span>';
+                html += '</div>';
+                if (st.reasoning) {
+                    html += '<div class="text-xs text-gray-400 mt-1">' + st.reasoning + '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div></div>';
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+        container.classList.remove('hidden');
+    };
+
+    window.applySmartAnalysisToTaskBuilder = function (result) {
+        if (!result || !result.subtasks || result.subtasks.length === 0) {
+            if (window.showToast) window.showToast('Нет подзадач для применения', 'info');
+            return;
+        }
+        
+        // Очищаем текущие задачи или добавляем к ним
+        if (taskBuilderTasks.length > 0) {
+            if (!confirm('Добавить ' + result.subtasks.length + ' задач к существующим? (Отмена = заменить все)')) {
+                taskBuilderTasks = [];
+            }
+        }
+        
+        result.subtasks.forEach(function (st) {
+            taskBuilderTasks.push({
+                title: st.title || '',
+                prompt: st.prompt || '',
+                completion_promise: st.completion_promise || 'STEP_DONE',
+                verify_prompt: st.verify_prompt || '',
+                verify_promise: st.verify_promise || 'PASS',
+                max_iterations: st.max_iterations || 5,
+                model: st.recommended_model || 'auto'
+            });
+        });
+        
+        updateTasksUI();
+        
+        // Устанавливаем рекомендованную модель для workflow
+        var workflowModelSelect = document.getElementById('tb-workflow-model');
+        if (workflowModelSelect && result.recommended_model) {
+            workflowModelSelect.value = result.recommended_model;
+        }
+        
+        if (window.showToast) window.showToast('Добавлено ' + result.subtasks.length + ' задач', 'success');
+    };
+
+    // Модель на уровне шага убрана - всегда используется auto
+
+    /* ----- AI Analysis Wizard ----- */
+    var wizardState = {
+        originalTask: '',
+        questions: [],
+        answers: {},  // { questionIndex: answer }
+        lastResult: null
+    };
+    
+    window.openAiAnalysisModal = function () {
+        var modal = document.getElementById('aiAnalysisModal');
+        if (!modal) return;
+        
+        if (modal.parentElement !== document.body) {
+            document.body.appendChild(modal);
+        }
+        
+        // Сохраняем текст ДО сброса
+        var tbDesc = document.getElementById('tb-project-description');
+        var savedText = (tbDesc && tbDesc.value.trim()) ? tbDesc.value.trim() : '';
+        
+        // Закрываем Task Builder
+        var taskBuilderModal = document.getElementById('taskBuilderModal');
+        if (taskBuilderModal && !taskBuilderModal.classList.contains('hidden')) {
+            taskBuilderModal.classList.add('hidden');
+            taskBuilderModal.setAttribute('aria-hidden', 'true');
+        }
+        
+        // Сбрасываем wizard
+        resetWizard();
+        
+        // Восстанавливаем текст ПОСЛЕ сброса
+        var analysisInput = document.getElementById('ai-analysis-task');
+        if (analysisInput && savedText) {
+            analysisInput.value = savedText;
+        }
+        
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        
+        if (analysisInput) {
+            setTimeout(function() { analysisInput.focus(); }, 100);
+        }
+    };
+    
+    window.closeAiAnalysisModal = function () {
+        var modal = document.getElementById('aiAnalysisModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+    };
+    
+    function resetWizard() {
+        wizardState = {
+            originalTask: '',
+            questions: [],
+            answers: {},
+            lastResult: null
+        };
+        
+        showWizardStep('input');
+        updateWizardProgress(0, 'Шаг 1: Задача');
+        updateWizardStatus('Cursor CLI --mode=plan');
+        
+        var taskInput = document.getElementById('ai-analysis-task');
+        if (taskInput) taskInput.value = '';
+        
+        var questionsEl = document.getElementById('ai-all-questions');
+        if (questionsEl) questionsEl.innerHTML = '';
+    }
+    
+    function showWizardStep(step) {
+        var steps = ['input', 'questions', 'loading', 'result'];
+        steps.forEach(function(s) {
+            var el = document.getElementById('ai-step-' + s);
+            if (el) el.classList.toggle('hidden', s !== step);
+        });
+        
+        // Buttons
+        var startBtn = document.getElementById('btn-wizard-start');
+        var submitBtn = document.getElementById('btn-wizard-submit');
+        var applyBtn = document.getElementById('btn-wizard-apply');
+        
+        if (startBtn) startBtn.classList.toggle('hidden', step !== 'input');
+        if (submitBtn) submitBtn.classList.toggle('hidden', step !== 'questions');
+        if (applyBtn) applyBtn.classList.toggle('hidden', step !== 'result');
+    }
+    
+    function updateWizardProgress(percent, stepText) {
+        var bar = document.getElementById('ai-wizard-progress');
+        var stepEl = document.getElementById('ai-wizard-step');
+        if (bar) bar.style.width = percent + '%';
+        if (stepEl) stepEl.textContent = stepText;
+    }
+    
+    function updateWizardStatus(text) {
+        var el = document.getElementById('ai-wizard-status');
+        if (el) el.textContent = text;
+    }
+    
+    // Step 1: Start analysis
+    window.wizardStart = function() {
+        var taskInput = document.getElementById('ai-analysis-task');
+        var taskText = taskInput ? taskInput.value.trim() : '';
+        
+        if (!taskText) {
+            if (window.showToast) window.showToast('Введите описание задачи', 'info');
+            if (taskInput) taskInput.focus();
+            return;
+        }
+        
+        wizardState.originalTask = taskText;
+        
+        showWizardStep('loading');
+        updateWizardProgress(30, 'Анализ...');
+        updateWizardStatus('AI анализирует задачу...');
+        
+        var loadingText = document.getElementById('ai-loading-text');
+        var loadingHint = document.getElementById('ai-loading-hint');
+        if (loadingText) loadingText.textContent = 'Анализируем задачу...';
+        if (loadingHint) loadingHint.textContent = 'AI определяет что нужно уточнить';
+        
+        smartAnalyzeTask(taskText, function(result, error) {
+            if (error) {
+                showWizardStep('input');
+                updateWizardProgress(0, 'Шаг 1: Задача');
+                if (window.showToast) window.showToast(error, 'error');
+                return;
+            }
+            
+            wizardState.lastResult = result;
+            
+            // Если есть subtasks - задача понятна, сразу показываем результат
+            if (result.subtasks && result.subtasks.length > 0) {
+                showFinalResult();
+                return;
+            }
+            
+            // Если Cursor задал вопросы - показываем их
+            wizardState.questions = result.questions || [];
+            if (wizardState.questions.length > 0) {
+                showAllQuestions();
+            } else {
+                // Нет ни subtasks ни questions - показываем warning
+                if (result.warnings && result.warnings.length > 0) {
+                    if (window.showToast) window.showToast(result.warnings[0], 'warning');
+                } else {
+                    if (window.showToast) window.showToast('AI не смог проанализировать задачу. Уточните описание.', 'warning');
+                }
+                showWizardStep('input');
+                updateWizardProgress(0, 'Шаг 1: Задача');
+            }
+        });
+    };
+    
+    // Show ALL questions at once
+    function showAllQuestions() {
+        var questionsEl = document.getElementById('ai-all-questions');
+        if (!questionsEl) return;
+        
+        updateWizardProgress(50, 'Шаг 2: Вопросы (' + wizardState.questions.length + ')');
+        updateWizardStatus('Ответьте на вопросы');
+        
+        var html = wizardState.questions.map(function(question, index) {
+            var options = generateAnswerOptions(question);
+            
+            return '<div class="bg-bg-base border border-white/10 rounded-xl p-4" data-question-index="' + index + '">' +
+                '<div class="flex items-start gap-3 mb-3">' +
+                    '<div class="w-7 h-7 rounded-lg bg-accent/20 text-accent text-sm font-bold flex items-center justify-center flex-shrink-0">' + (index + 1) + '</div>' +
+                    '<p class="text-sm text-white font-medium">' + question + '</p>' +
+                '</div>' +
+                '<div class="space-y-2 ml-10">' +
+                    '<div class="grid grid-cols-2 gap-2">' +
+                        options.map(function(opt, i) {
+                            return '<button type="button" onclick="selectQuestionOption(' + index + ', ' + i + ', this)" ' +
+                                'class="question-option text-left px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300 hover:border-accent/50 hover:bg-accent/10 transition-all">' +
+                                opt +
+                            '</button>';
+                        }).join('') +
+                    '</div>' +
+                    '<input type="text" class="question-answer w-full bg-bg-surface border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent/50" ' +
+                        'placeholder="Или напишите свой ответ..." data-question="' + index + '" ' +
+                        'onchange="updateQuestionAnswer(' + index + ', this.value)">' +
+                '</div>' +
+            '</div>';
+        }).join('');
+        
+        questionsEl.innerHTML = html;
+        showWizardStep('questions');
+    }
+    
+    function generateAnswerOptions(question) {
+        var q = question.toLowerCase();
+        
+        if (q.includes('авторизаци') || q.includes('аутентификаци') || q.includes('auth')) {
+            return ['JWT токены', 'Session (cookies)', 'OAuth 2.0', 'Без авторизации'];
+        }
+        if (q.includes('база данных') || q.includes('бд') || q.includes('хранени') || q.includes('database')) {
+            return ['PostgreSQL', 'SQLite', 'MySQL', 'MongoDB'];
+        }
+        if (q.includes('фреймворк') || q.includes('технологи') || q.includes('framework')) {
+            return ['Django', 'FastAPI', 'Flask', 'Node.js'];
+        }
+        if (q.includes('тест') || q.includes('test')) {
+            return ['Unit-тесты', 'Интеграционные', 'Минимум', 'Без тестов'];
+        }
+        if (q.includes('документаци') || q.includes('doc')) {
+            return ['OpenAPI/Swagger', 'README', 'Комментарии', 'Без документации'];
+        }
+        if (q.includes('docker') || q.includes('контейнер') || q.includes('деплой') || q.includes('deploy')) {
+            return ['Docker', 'Docker Compose', 'Kubernetes', 'Без контейнеров'];
+        }
+        if (q.includes('frontend') || q.includes('фронтенд') || q.includes('ui')) {
+            return ['React', 'Vue.js', 'Vanilla JS', 'Без frontend'];
+        }
+        
+        return ['Да', 'Нет', 'По умолчанию', 'На усмотрение AI'];
+    }
+    
+    window.selectQuestionOption = function(questionIndex, optionIndex, btn) {
+        // Снимаем выделение с других опций этого вопроса
+        var container = btn.closest('[data-question-index]');
+        if (container) {
+            container.querySelectorAll('.question-option').forEach(function(b) {
+                b.classList.remove('border-accent', 'bg-accent/20', 'text-white');
+            });
+        }
+        
+        // Выделяем выбранную
+        btn.classList.add('border-accent', 'bg-accent/20', 'text-white');
+        
+        // Устанавливаем значение в input
+        var input = container.querySelector('.question-answer');
+        if (input) {
+            input.value = btn.textContent.trim();
+            wizardState.answers[questionIndex] = btn.textContent.trim();
+        }
+    };
+    
+    window.updateQuestionAnswer = function(questionIndex, value) {
+        wizardState.answers[questionIndex] = value.trim();
+        
+        // Снимаем выделение с кнопок если ввели свой ответ
+        var container = document.querySelector('[data-question-index="' + questionIndex + '"]');
+        if (container && value.trim()) {
+            container.querySelectorAll('.question-option').forEach(function(b) {
+                b.classList.remove('border-accent', 'bg-accent/20', 'text-white');
+            });
+        }
+    };
+    
+    // Submit all answers and build workflow
+    window.wizardSubmitAnswers = function() {
+        // Собираем ответы (не обязательно все)
+        wizardState.questions.forEach(function(q, i) {
+            var input = document.querySelector('.question-answer[data-question="' + i + '"]');
+            if (input && input.value.trim()) {
+                wizardState.answers[i] = input.value.trim();
+            }
+        });
+        
+        // Проверяем что хотя бы что-то ответили
+        var hasAnyAnswer = Object.keys(wizardState.answers).length > 0;
+        if (!hasAnyAnswer) {
+            if (window.showToast) window.showToast('Ответьте хотя бы на один вопрос', 'info');
+            return;
+        }
+        
+        // Формируем полный контекст с ответами
+        var fullContext = wizardState.originalTask + '\n\n--- Уточнения ---';
+        wizardState.questions.forEach(function(q, i) {
+            if (wizardState.answers[i]) {
+                fullContext += '\n\n' + q + '\nОтвет: ' + wizardState.answers[i];
+            }
+        });
+        
+        showWizardStep('loading');
+        updateWizardProgress(70, 'Создание...');
+        updateWizardStatus('AI создаёт workflow...');
+        
+        var loadingText = document.getElementById('ai-loading-text');
+        var loadingHint = document.getElementById('ai-loading-hint');
+        if (loadingText) loadingText.textContent = 'Создаём workflow...';
+        if (loadingHint) loadingHint.textContent = 'AI генерирует шаги на основе ваших ответов';
+        
+        // Повторный анализ с ответами
+        smartAnalyzeTask(fullContext, function(result, error) {
+            if (error) {
+                showWizardStep('questions');
+                updateWizardProgress(50, 'Вопросы');
+                if (window.showToast) window.showToast(error, 'error');
+                return;
+            }
+            
+            wizardState.lastResult = result;
+            
+            // Если есть subtasks - показываем результат
+            if (result.subtasks && result.subtasks.length > 0) {
+                showFinalResult();
+            } 
+            // Если опять вопросы (редко) - показываем
+            else if (result.questions && result.questions.length > 0) {
+                wizardState.questions = result.questions;
+                wizardState.answers = {};
+                showAllQuestions();
+            } 
+            // Нет ни того ни другого - ошибка
+            else {
+                if (window.showToast) window.showToast('AI не смог создать план. Уточните задачу.', 'warning');
+                showWizardStep('input');
+                updateWizardProgress(0, 'Шаг 1: Задача');
+            }
+        });
+    };
+    
+    function showFinalResult() {
+        var result = wizardState.lastResult;
+        if (!result) return;
+        
+        updateWizardProgress(100, 'Готово!');
+        updateWizardStatus('Workflow создан');
+        
+        var complexityLabels = { simple: 'Простая', standard: 'Обычная', complex: 'Сложная', debug: 'Отладка' };
+        
+        var stepsEl = document.getElementById('ai-final-steps');
+        var complexityEl = document.getElementById('ai-final-complexity');
+        var modelEl = document.getElementById('ai-final-model');
+        
+        if (stepsEl) stepsEl.textContent = (result.subtasks || []).length;
+        if (complexityEl) complexityEl.textContent = complexityLabels[result.complexity] || result.complexity;
+        if (modelEl) modelEl.textContent = result.recommended_model || 'auto';
+        
+        var listEl = document.getElementById('ai-final-steps-list');
+        if (listEl && result.subtasks) {
+            listEl.innerHTML = result.subtasks.map(function(st, i) {
+                return '<div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">' +
+                    '<div class="w-6 h-6 rounded bg-primary/20 text-primary text-xs font-bold flex items-center justify-center">' + (i + 1) + '</div>' +
+                    '<div class="flex-1 min-w-0">' +
+                        '<p class="text-sm text-white truncate">' + (st.title || 'Шаг ' + (i+1)) + '</p>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+        
+        showWizardStep('result');
+    }
+    
+    // Apply and create workflow
+    window.wizardApply = function() {
+        if (!wizardState.lastResult) {
+            if (window.showToast) window.showToast('Нет результатов', 'info');
+            return;
+        }
+        
+        closeAiAnalysisModal();
+        
+        // Open Task Builder
+        var taskBuilderModal = document.getElementById('taskBuilderModal');
+        if (taskBuilderModal) {
+            taskBuilderModal.classList.remove('hidden');
+            taskBuilderModal.setAttribute('aria-hidden', 'false');
+        }
+        
+        // Clear existing tasks
+        taskBuilderTasks = [];
+        
+        // Apply results
+        applySmartAnalysisToTaskBuilder(wizardState.lastResult);
+        
+        // Set description with answers
+        var tbDesc = document.getElementById('tb-project-description');
+        if (tbDesc) {
+            var desc = wizardState.originalTask;
+            if (Object.keys(wizardState.answers).length > 0) {
+                desc += '\n\n--- Уточнения ---';
+                wizardState.questions.forEach(function(q, i) {
+                    if (wizardState.answers[i]) {
+                        desc += '\n• ' + q + ': ' + wizardState.answers[i];
+                    }
+                });
+            }
+            tbDesc.value = desc;
+        }
+        
+        // Set name
+        var tbName = document.getElementById('tb-workflow-name');
+        if (tbName && !tbName.value.trim() && wizardState.lastResult.subtasks && wizardState.lastResult.subtasks.length > 0) {
+            tbName.value = wizardState.lastResult.subtasks[0].title.substring(0, 50);
+        }
+        
+        if (window.showToast) {
+            window.showToast('Создано ' + (wizardState.lastResult.subtasks || []).length + ' шагов', 'success');
+        }
+    };
+    
+    /* ----- Legacy functions for compatibility ----- */
+    var lastAnalysisResult = null;
+    
+    window.quickSmartAnalyze = function () {
+        openAiAnalysisModal();
+    };
+    
+    window.runAiAnalysis = function() { wizardStart(); };
+    window.applyAiAnalysis = function() { wizardApply(); };
+    
+    /* ----- Quick Smart Analyze (legacy fallback) ----- */
+    window.quickSmartAnalyze = function () {
+        // Открываем модальное окно вместо inline анализа
+        openAiAnalysisModal();
+    };
 
     document.addEventListener('DOMContentLoaded', function () {
         setupProjectSelectors();
@@ -1234,5 +1797,20 @@
         startStatusUpdates();
         moveModalsToBody();
         refreshMcpServers();
+        
+        // Загружаем список моделей при старте
+        loadAvailableModels();
+        
+        // Загружаем настройку выбора моделей
+        if (localStorage.getItem('weu_allow_model_selection') === null) {
+            fetch('/api/settings/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.config && data.config.allow_model_selection !== undefined) {
+                        localStorage.setItem('weu_allow_model_selection', data.config.allow_model_selection ? '1' : '0');
+                    }
+                })
+                .catch(function() { localStorage.setItem('weu_allow_model_selection', '0'); });
+        }
     });
 })();

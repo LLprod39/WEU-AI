@@ -57,4 +57,12 @@ urlpatterns = [
     # Agents API
     path('api/agents/', views.api_agents_list, name='api_agents_list'),
     path('api/agents/execute/', views.api_agent_execute, name='api_agent_execute'),
+    
+    # IDE API
+    path('api/ide/files/', views.api_ide_list_files, name='api_ide_list_files'),
+    path('api/ide/file/', views.api_ide_read_file, name='api_ide_read_file'),
+    path('api/ide/file/', views.api_ide_write_file, name='api_ide_write_file'),
+    
+    # IDE Page
+    path('ide/', views.ide_view, name='ide'),
 ]

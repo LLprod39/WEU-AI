@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Web IDE — WEU AI Agent{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/ide.css' %}">
+
+<div class="ide-root flex h-screen overflow-hidden bg-bg-deep">
+    <!-- Left: Project + File Tree -->
+    <aside class="ide-sidebar flex flex-col">
+        <div class="p-4 border-b border-white/10">
+            <label class="ide-project-label">Проект</label>
+            <select id="project-selector" class="ide-project-select">
+                <option value="">Выберите проект...</option>
+            </select>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 ide-file-tree" id="file-tree-container">
+            <div class="ide-placeholder">Выберите проект для просмотра файлов</div>
+        </div>
+    </aside>
+
+    <!-- Center: Tabs + Editor -->
+    <main class="ide-editor-area">
+        <div class="ide-tabs" id="ide-tabs">
+            <!-- Tabs rendered by JS -->
+        </div>
+        <div class="ide-toolbar">
+            <span id="current-file-name" class="ide-filename">Нет открытого файла</span>
+            <button id="btn-save" type="button" class="ide-btn-save" disabled>Сохранить (Ctrl+S)</button>
+        </div>
+        <div id="editor-container" class="flex-1 min-h-0"></div>
+    </main>
+
+    <!-- Right: Chat -->
+    <aside class="ide-chat flex flex-col">
+        <div class="ide-chat-header">
+            <h2>Чат с агентом</h2>
+        </div>
+        <div id="chat-messages" class="ide-chat-messages">
+            <div class="ide-placeholder">Отправьте сообщение агенту для редактирования файлов в проекте</div>
+        </div>
+        <div id="agent-status" class="mx-4 mt-2 hidden">
+            <div class="ide-agent-status">
+                <span class="ide-status-dot"></span>
+                <span id="agent-status-text">Агент думает...</span>
+            </div>
+        </div>
+        <div class="ide-chat-input-wrap">
+            <div class="ide-chat-input-row">
+                <textarea id="chat-input" class="ide-chat-input" rows="2" placeholder="Опишите задачу или попросите отредактировать код..."></textarea>
+                <button id="btn-send" type="button" class="ide-btn-send">Отправить</button>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<script src="{% static 'js/ide.js' %}"></script>
+<script>
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const projectParam = urlParams.get('project');
+        if (projectParam) {
+            document.addEventListener('DOMContentLoaded', function() {
+                const selector = document.getElementById('project-selector');
+                if (selector) {
+                    selector.value = projectParam;
+                    selector.dispatchEvent(new Event('change'));
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}

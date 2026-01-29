@@ -41,4 +41,7 @@ urlpatterns = [
     path("api/mcp/servers/connect/", views.api_mcp_server_connect, name="api_mcp_server_connect"),
     path("api/mcp/servers/disconnect/", views.api_mcp_server_disconnect, name="api_mcp_server_disconnect"),
     path("api/mcp/servers/tools/", views.api_mcp_server_tools, name="api_mcp_server_tools"),
+    # Model selection and smart analysis
+    path("api/models/", views.api_list_models, name="api_list_models"),
+    path("api/smart-analyze/", views.api_smart_analyze, name="api_smart_analyze"),
 ]

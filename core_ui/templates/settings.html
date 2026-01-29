@@ -109,6 +109,19 @@
                         <p class="text-xs text-gray-500 mt-1">Используется в чате с провайдером Cursor Auto.</p>
                     </div>
 
+                    <div id="allow-model-selection-row" class="border-t border-white/5 pt-5">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <label class="block text-sm font-medium text-white mb-1" for="allow-model-selection">Разрешить выбор моделей в Workflow</label>
+                                <p class="text-xs text-gray-500">Если включено — можно выбирать модель для каждого шага. Если выключено — везде используется Auto.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer ml-4">
+                                <input type="checkbox" id="allow-model-selection" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
+
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="internal-llm-provider">LLM для внутренних задач</label>
                         <select id="internal-llm-provider" class="input-field w-full md:max-w-xs" aria-label="Провайдер для внутренних вызовов">
@@ -365,6 +378,14 @@
             const cursorMode = document.getElementById('cursor-chat-mode');
             if (cursorMode) cursorMode.value = (cfg.cursor_chat_mode || 'ask') === 'agent' ? 'agent' : 'ask';
 
+            // Разрешить выбор моделей в Workflow
+            const allowModelSelection = document.getElementById('allow-model-selection');
+            if (allowModelSelection) {
+                allowModelSelection.checked = cfg.allow_model_selection === true;
+                // Сохраняем в localStorage для доступа из agent_hub.js
+                localStorage.setItem('weu_allow_model_selection', allowModelSelection.checked ? '1' : '0');
+            }
+
             // LLM для внутренних задач
             const internalLlm = document.getElementById('internal-llm-provider');
             if (internalLlm) internalLlm.value = cfg.internal_llm_provider || 'grok';
@@ -434,8 +455,11 @@
             default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || '',
             cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask',
             internal_llm_provider: (document.getElementById('internal-llm-provider') && document.getElementById('internal-llm-provider').value) || 'grok',
-            delegate_ui: (document.getElementById('delegate-ui') && document.getElementById('delegate-ui').value) || 'chat'
+            delegate_ui: (document.getElementById('delegate-ui') && document.getElementById('delegate-ui').value) || 'chat',
+            allow_model_selection: document.getElementById('allow-model-selection') ? document.getElementById('allow-model-selection').checked : false
         };
+        // Сохраняем в localStorage для agent_hub.js
+        localStorage.setItem('weu_allow_model_selection', payload.allow_model_selection ? '1' : '0');
         try {
             const r = await fetch('/api/settings/', {
                 method: 'POST',
@@ -482,6 +506,14 @@
     document.addEventListener('DOMContentLoaded', function() {
         loadSettings();
         if (window.SettingsValidation && window.SettingsValidation.setupValidation) window.SettingsValidation.setupValidation();
+        
+        // Обработчик для переключателя моделей - сразу сохраняем в localStorage
+        var allowModelSel = document.getElementById('allow-model-selection');
+        if (allowModelSel) {
+            allowModelSel.addEventListener('change', function() {
+                localStorage.setItem('weu_allow_model_selection', this.checked ? '1' : '0');
+            });
+        }
     });
     var btnSave = document.getElementById('btn-save-models');
     if (btnSave) btnSave.addEventListener('click', saveSettings);
