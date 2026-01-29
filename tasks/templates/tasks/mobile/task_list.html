@@ -63,10 +63,10 @@
                             {% endif %}
                             <div class="mobile-task-footer">
                                 <span class="mobile-task-date">{{ task.created_at|date:"d M" }}</span>
-                                {% if task.subtasks.count %}
+                                {% if task.subtasks.exists %}
                                 <span class="mobile-task-subtasks">
                                     <span class="material-icons-round">checklist</span>
-                                    {{ task.subtasks.filter.is_completed.count }}/{{ task.subtasks.count }}
+                                    {{ task.subtasks.count }}
                                 </span>
                                 {% endif %}
                             </div>
