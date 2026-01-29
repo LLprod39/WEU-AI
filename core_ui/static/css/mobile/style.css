@@ -78,14 +78,28 @@
 html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
+    /* Disable browser pull-to-refresh completely */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
 }
 
 body {
     background: var(--mobile-bg-base);
     color: var(--mobile-text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Prevent pull-to-refresh and overscroll effects */
     overscroll-behavior: none;
-    touch-action: pan-y;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent pull-to-refresh on all scrollable containers */
+[style*="overflow"], 
+[style*="scroll"],
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+    overscroll-behavior: contain;
 }
 
 /* Selection */
@@ -201,6 +215,8 @@ body {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     -webkit-overflow-scrolling: touch;
     padding-top: calc(var(--mobile-header-height) + var(--mobile-safe-top));
     padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--mobile-safe-bottom));
@@ -355,6 +371,7 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: var(--mobile-spacing-sm) 0;
+    overscroll-behavior: contain;
 }
 
 .mobile-menu-item {
@@ -718,6 +735,8 @@ body {
     overflow-y: auto;
     padding: var(--mobile-spacing-md);
     padding-bottom: calc(80px + var(--mobile-spacing-md));
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .mobile-chat-message {

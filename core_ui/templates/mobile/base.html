@@ -204,6 +204,41 @@
             }
         });
         
+        // Prevent pull-to-refresh on iOS Safari
+        (function() {
+            var lastTouchY = 0;
+            var preventPullToRefresh = false;
+            
+            document.addEventListener('touchstart', function(e) {
+                if (e.touches.length !== 1) return;
+                lastTouchY = e.touches[0].clientY;
+                // Check if at top of page/scrollable element
+                preventPullToRefresh = window.scrollY === 0;
+            }, { passive: true });
+            
+            document.addEventListener('touchmove', function(e) {
+                var touchY = e.touches[0].clientY;
+                var touchYDelta = touchY - lastTouchY;
+                
+                // Pulling down at top of page
+                if (preventPullToRefresh && touchYDelta > 0 && window.scrollY === 0) {
+                    // Check if we're in a scrollable container
+                    var target = e.target;
+                    while (target && target !== document.body) {
+                        if (target.scrollTop > 0) {
+                            // Inside scrolled container - allow
+                            return;
+                        }
+                        target = target.parentElement;
+                    }
+                    // At top of everything - prevent refresh
+                    if (e.cancelable) {
+                        e.preventDefault();
+                    }
+                }
+            }, { passive: false });
+        })();
+        
         // Register Service Worker for PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
