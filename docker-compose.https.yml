@@ -4,7 +4,9 @@
 
 services:
   web:
-    ports: []   # 80/443 слушает только nginx
+    # С HTTPS порт 80 занят nginx — веб слушаем на 8000 (доступ по http://IP:8000 при отладке)
+    ports:
+      - "8000:8000"
 
   nginx:
     image: nginx:alpine
