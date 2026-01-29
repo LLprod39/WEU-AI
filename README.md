@@ -99,6 +99,10 @@ DJANGO_SUPERUSER_PASSWORD=admin
 WEU_BUILD=mini  # или 'full' для RAG
 ```
 
+### Домен не открывается (по IP работает, по домену — нет)
+
+Если по **http://IP** всё открывается, а по **http://weuai.site** — «The content of the page cannot be displayed»: при **только Docker** (без nginx) обнови код на сервере (`git pull`), проверь `.env` (ALLOWED_HOSTS — убери или поставь `*`), перезапусти контейнер (`docker compose restart web`). Подробно: [docs/DOMAIN_NGINX.md](docs/DOMAIN_NGINX.md).
+
 ### Конфигурация моделей (.model_config.json)
 
 ```json
