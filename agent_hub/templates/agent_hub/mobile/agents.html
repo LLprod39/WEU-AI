@@ -1,35 +1,473 @@
 {% extends 'mobile/base.html' %}
+{% load static %}
 
 {% block title %}Агенты - WEU AI{% endblock %}
 {% block header_title %}Агенты{% endblock %}
 
+{% block header_right %}
+<button type="button" id="mobile-agent-add-btn" class="mobile-header-btn">
+    <span class="material-icons-round">add</span>
+</button>
+{% endblock %}
+
 {% block content %}
 <div class="mobile-page" id="mobile-agents-page">
     
-    <!-- Agents Grid -->
-    <div class="mobile-agents-grid" id="mobile-agents-list">
-        <!-- Loading skeleton -->
-        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
-        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
-        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
+    <!-- Tabs -->
+    <div class="mobile-agents-tabs">
+        <button type="button" class="mobile-agent-tab active" data-tab="workflows">
+            <span class="material-icons-round">account_tree</span>
+            <span>Workflows</span>
+        </button>
+        <button type="button" class="mobile-agent-tab" data-tab="profiles">
+            <span class="material-icons-round">smart_toy</span>
+            <span>Агенты</span>
+        </button>
+        <button type="button" class="mobile-agent-tab" data-tab="runs">
+            <span class="material-icons-round">history</span>
+            <span>История</span>
+        </button>
     </div>
     
-    <!-- Empty state -->
-    <div class="mobile-empty-state hidden" id="mobile-agents-empty">
-        <span class="material-icons-round mobile-empty-icon">smart_toy</span>
-        <p class="mobile-empty-title">Нет агентов</p>
-        <p class="mobile-empty-text">Агенты пока не настроены</p>
+    <!-- Workflows Tab -->
+    <div class="mobile-agent-content" id="tab-workflows">
+        <div class="mobile-section-header">
+            <span class="mobile-section-title">Мои Workflows</span>
+            <button type="button" class="mobile-section-action" onclick="MobileAgents.createWorkflow()">
+                <span class="material-icons-round">add</span>
+            </button>
+        </div>
+        
+        {% if workflows %}
+            {% for workflow in workflows %}
+            <div class="mobile-workflow-card" data-id="{{ workflow.id }}">
+                <div class="mobile-workflow-header">
+                    <div class="mobile-workflow-icon">
+                        <span class="material-icons-round">schema</span>
+                    </div>
+                    <div class="mobile-workflow-info">
+                        <div class="mobile-workflow-name">{{ workflow.name }}</div>
+                        <div class="mobile-workflow-meta">
+                            {% if workflow.target_server %}
+                            <span class="material-icons-round">dns</span> {{ workflow.target_server.name }}
+                            {% else %}
+                            <span>Локально</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="mobile-workflow-actions">
+                    <button type="button" class="mobile-workflow-btn primary" onclick="MobileAgents.runWorkflow({{ workflow.id }})">
+                        <span class="material-icons-round">play_arrow</span>
+                        <span>Запустить</span>
+                    </button>
+                    <button type="button" class="mobile-workflow-btn" onclick="MobileAgents.editWorkflow({{ workflow.id }})">
+                        <span class="material-icons-round">edit</span>
+                    </button>
+                    <button type="button" class="mobile-workflow-btn" onclick="MobileAgents.deleteWorkflow({{ workflow.id }})">
+                        <span class="material-icons-round">delete</span>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="mobile-empty-state">
+                <span class="material-icons-round mobile-empty-icon">account_tree</span>
+                <p class="mobile-empty-title">Нет Workflows</p>
+                <p class="mobile-empty-text">Создайте первый workflow для автоматизации</p>
+                <button type="button" class="mobile-btn mobile-btn-primary" onclick="MobileAgents.createWorkflow()">
+                    <span class="material-icons-round">add</span>
+                    Создать Workflow
+                </button>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Profiles Tab -->
+    <div class="mobile-agent-content hidden" id="tab-profiles">
+        <div class="mobile-section-header">
+            <span class="mobile-section-title">Доступные агенты</span>
+        </div>
+        
+        <div class="mobile-agents-grid" id="mobile-agents-list">
+            {% if profiles %}
+                {% for profile in profiles %}
+                <div class="mobile-profile-card" data-id="{{ profile.id }}">
+                    <div class="mobile-profile-icon">
+                        <span class="material-icons-round">
+                            {% if profile.agent_type == 'react' %}psychology{% elif profile.agent_type == 'ralph' %}terminal{% else %}smart_toy{% endif %}
+                        </span>
+                    </div>
+                    <div class="mobile-profile-name">{{ profile.name }}</div>
+                    <div class="mobile-profile-type">{{ profile.agent_type }}</div>
+                    <button type="button" class="mobile-profile-run" onclick="MobileAgents.runAgent('{{ profile.name }}')">
+                        <span class="material-icons-round">play_arrow</span>
+                    </button>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="mobile-empty-state" style="grid-column: 1/-1;">
+                    <span class="material-icons-round mobile-empty-icon">smart_toy</span>
+                    <p class="mobile-empty-title">Нет агентов</p>
+                    <p class="mobile-empty-text">Создайте профиль агента</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Presets -->
+        <div class="mobile-section-header" style="margin-top: 24px;">
+            <span class="mobile-section-title">Шаблоны агентов</span>
+        </div>
+        
+        <div class="mobile-presets-list">
+            {% for preset in presets %}
+            <div class="mobile-preset-card" onclick="MobileAgents.usePreset('{{ preset.name }}')">
+                <div class="mobile-preset-icon">
+                    <span class="material-icons-round">auto_awesome</span>
+                </div>
+                <div class="mobile-preset-info">
+                    <div class="mobile-preset-name">{{ preset.name }}</div>
+                    <div class="mobile-preset-desc">{{ preset.description|truncatechars:50 }}</div>
+                </div>
+                <span class="material-icons-round mobile-preset-arrow">chevron_right</span>
+            </div>
+            {% empty %}
+            <p class="text-sm text-gray-500 text-center py-4">Нет доступных шаблонов</p>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Runs Tab -->
+    <div class="mobile-agent-content hidden" id="tab-runs">
+        <div class="mobile-section-header">
+            <span class="mobile-section-title">История запусков</span>
+        </div>
+        
+        {% if workflow_runs %}
+            {% for item in workflow_runs %}
+            <div class="mobile-run-card" onclick="MobileAgents.viewRun({{ item.run.id }})">
+                <div class="mobile-run-status {% if item.run.status == 'completed' %}success{% elif item.run.status == 'failed' %}error{% elif item.run.status == 'running' %}running{% else %}pending{% endif %}">
+                    <span class="material-icons-round">
+                        {% if item.run.status == 'completed' %}check_circle{% elif item.run.status == 'failed' %}error{% elif item.run.status == 'running' %}sync{% else %}schedule{% endif %}
+                    </span>
+                </div>
+                <div class="mobile-run-info">
+                    <div class="mobile-run-name">{{ item.run.workflow.name }}</div>
+                    <div class="mobile-run-meta">
+                        {{ item.run.started_at|date:"d M H:i" }}
+                        {% if item.run.status == 'running' %}
+                        • Шаг {{ item.run.current_step }}/{{ item.total_steps }}
+                        {% endif %}
+                    </div>
+                </div>
+                {% if item.run.status == 'running' %}
+                <div class="mobile-run-progress">
+                    <div class="mobile-run-progress-bar" style="width: {{ item.progress_pct }}%"></div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="mobile-empty-state">
+                <span class="material-icons-round mobile-empty-icon">history</span>
+                <p class="mobile-empty-title">Нет запусков</p>
+                <p class="mobile-empty-text">Запустите workflow или агента</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- FAB -->
+    <button type="button" class="mobile-fab" id="mobile-agent-fab" onclick="MobileAgents.showQuickActions()">
+        <span class="material-icons-round">bolt</span>
+    </button>
+    
+    <!-- Quick Actions Modal -->
+    <div id="mobile-quick-actions" class="mobile-modal hidden">
+        <div class="mobile-modal-overlay"></div>
+        <div class="mobile-modal-content mobile-quick-actions-content">
+            <div class="mobile-modal-header">
+                <h2 class="text-lg font-semibold">Быстрые действия</h2>
+                <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideQuickActions()">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-modal-body">
+                <button type="button" class="mobile-quick-action-btn" onclick="MobileAgents.createWorkflow()">
+                    <div class="mobile-quick-action-icon" style="background: rgba(99, 102, 241, 0.2);">
+                        <span class="material-icons-round" style="color: #6366f1;">schema</span>
+                    </div>
+                    <div class="mobile-quick-action-info">
+                        <span class="mobile-quick-action-title">Новый Workflow</span>
+                        <span class="mobile-quick-action-desc">Создать цепочку действий</span>
+                    </div>
+                </button>
+                <button type="button" class="mobile-quick-action-btn" onclick="MobileAgents.createAgent()">
+                    <div class="mobile-quick-action-icon" style="background: rgba(34, 197, 94, 0.2);">
+                        <span class="material-icons-round" style="color: #22c55e;">smart_toy</span>
+                    </div>
+                    <div class="mobile-quick-action-info">
+                        <span class="mobile-quick-action-title">Новый агент</span>
+                        <span class="mobile-quick-action-desc">Создать профиль агента</span>
+                    </div>
+                </button>
+                <button type="button" class="mobile-quick-action-btn" onclick="MobileAgents.runQuickTask()">
+                    <div class="mobile-quick-action-icon" style="background: rgba(245, 158, 11, 0.2);">
+                        <span class="material-icons-round" style="color: #f59e0b;">flash_on</span>
+                    </div>
+                    <div class="mobile-quick-action-info">
+                        <span class="mobile-quick-action-title">Быстрая задача</span>
+                        <span class="mobile-quick-action-desc">Выполнить задачу через AI</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Run Workflow Modal -->
+    <div id="mobile-run-workflow-modal" class="mobile-modal hidden">
+        <div class="mobile-modal-overlay"></div>
+        <div class="mobile-modal-content">
+            <div class="mobile-modal-header">
+                <h2 class="text-lg font-semibold">Запуск Workflow</h2>
+                <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideRunModal()">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-modal-body">
+                <div id="run-workflow-info" class="mb-4">
+                    <div class="text-sm text-gray-400 mb-2">Workflow:</div>
+                    <div class="text-white font-medium" id="run-workflow-name">—</div>
+                </div>
+                
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Сервер (опционально)</label>
+                    <select id="run-workflow-server" class="mobile-input">
+                        <option value="">Локально</option>
+                        {% for server in servers_data %}
+                        <option value="{{ server.id }}">{{ server.name }} ({{ server.host }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mobile-modal-footer">
+                <button type="button" class="mobile-btn mobile-btn-secondary" onclick="MobileAgents.hideRunModal()">Отмена</button>
+                <button type="button" class="mobile-btn mobile-btn-primary" onclick="MobileAgents.confirmRunWorkflow()">
+                    <span class="material-icons-round">play_arrow</span>
+                    Запустить
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Run Agent Modal -->
+    <div id="mobile-run-agent-modal" class="mobile-modal hidden">
+        <div class="mobile-modal-overlay"></div>
+        <div class="mobile-modal-content">
+            <div class="mobile-modal-header">
+                <h2 class="text-lg font-semibold">Запуск агента</h2>
+                <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideAgentModal()">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-modal-body">
+                <div id="run-agent-info" class="mb-4">
+                    <div class="text-sm text-gray-400 mb-2">Агент:</div>
+                    <div class="text-white font-medium" id="run-agent-name">—</div>
+                </div>
+                
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Задача для агента</label>
+                    <textarea id="run-agent-task" class="mobile-input mobile-textarea" placeholder="Опишите что должен сделать агент..." rows="4"></textarea>
+                </div>
+                
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Проект</label>
+                    <select id="run-agent-project" class="mobile-input">
+                        <option value="">Без проекта</option>
+                        {% for project in projects_data %}
+                        <option value="{{ project.path }}">{{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mobile-modal-footer">
+                <button type="button" class="mobile-btn mobile-btn-secondary" onclick="MobileAgents.hideAgentModal()">Отмена</button>
+                <button type="button" class="mobile-btn mobile-btn-primary" onclick="MobileAgents.confirmRunAgent()">
+                    <span class="material-icons-round">play_arrow</span>
+                    Запустить
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
 <style>
+    .mobile-agents-tabs {
+        display: flex;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-lg);
+        padding: 4px;
+        margin-bottom: 16px;
+    }
+    
+    .mobile-agent-tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 10px 8px;
+        border-radius: var(--mobile-radius-md);
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-muted);
+        font-size: 11px;
+        transition: var(--mobile-transition-fast);
+        cursor: pointer;
+    }
+    
+    .mobile-agent-tab .material-icons-round {
+        font-size: 20px;
+    }
+    
+    .mobile-agent-tab.active {
+        background: var(--mobile-bg-elevated);
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-agent-content {
+        display: block;
+    }
+    
+    .mobile-agent-content.hidden {
+        display: none;
+    }
+    
+    .mobile-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--mobile-text-secondary);
+        text-transform: uppercase;
+    }
+    
+    .mobile-section-action {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--mobile-primary-glow);
+        border: none;
+        border-radius: var(--mobile-radius-md);
+        color: var(--mobile-primary);
+        cursor: pointer;
+    }
+    
+    /* Workflow Card */
+    .mobile-workflow-card {
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-workflow-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-workflow-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: var(--mobile-radius-md);
+        background: var(--mobile-primary-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-workflow-icon .material-icons-round {
+        font-size: 24px;
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-workflow-name {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-workflow-meta {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .mobile-workflow-meta .material-icons-round {
+        font-size: 14px;
+    }
+    
+    .mobile-workflow-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .mobile-workflow-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px;
+        background: var(--mobile-bg-elevated);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-md);
+        color: var(--mobile-text-secondary);
+        font-size: 12px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-workflow-btn:active {
+        background: var(--mobile-bg-surface);
+    }
+    
+    .mobile-workflow-btn.primary {
+        background: var(--mobile-primary);
+        border-color: var(--mobile-primary);
+        color: white;
+        flex: 2;
+    }
+    
+    .mobile-workflow-btn.primary:active {
+        background: var(--mobile-primary-dark);
+    }
+    
+    .mobile-workflow-btn .material-icons-round {
+        font-size: 18px;
+    }
+    
+    /* Agents Grid */
     .mobile-agents-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
     }
     
-    .mobile-agent-card {
+    .mobile-profile-card {
         background: var(--mobile-bg-surface);
         border: 1px solid var(--mobile-border-color);
         border-radius: var(--mobile-radius-lg);
@@ -38,16 +476,10 @@
         flex-direction: column;
         align-items: center;
         text-align: center;
-        cursor: pointer;
-        transition: var(--mobile-transition-fast);
+        position: relative;
     }
     
-    .mobile-agent-card:active {
-        background: var(--mobile-bg-elevated);
-        transform: scale(0.98);
-    }
-    
-    .mobile-agent-icon {
+    .mobile-profile-icon {
         width: 48px;
         height: 48px;
         border-radius: var(--mobile-radius-lg);
@@ -55,29 +487,241 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
     }
     
-    .mobile-agent-icon .material-icons-round {
+    .mobile-profile-icon .material-icons-round {
         font-size: 24px;
         color: var(--mobile-primary);
     }
     
-    .mobile-agent-name {
+    .mobile-profile-name {
         font-size: 14px;
         font-weight: 500;
         color: var(--mobile-text-primary);
-        margin-bottom: 4px;
+        margin-bottom: 2px;
     }
     
-    .mobile-agent-desc {
+    .mobile-profile-type {
         font-size: 11px;
         color: var(--mobile-text-muted);
-        line-height: 1.3;
+        text-transform: uppercase;
     }
     
-    .mobile-agent-skeleton {
+    .mobile-profile-run {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--mobile-success);
+        border: none;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+    
+    .mobile-profile-run .material-icons-round {
+        font-size: 18px;
+    }
+    
+    /* Presets */
+    .mobile-preset-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-md);
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-preset-card:active {
+        background: var(--mobile-bg-elevated);
+    }
+    
+    .mobile-preset-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--mobile-radius-md);
+        background: rgba(245, 158, 11, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-preset-icon .material-icons-round {
+        color: #f59e0b;
+    }
+    
+    .mobile-preset-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .mobile-preset-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-preset-desc {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-preset-arrow {
+        color: var(--mobile-text-muted);
+    }
+    
+    /* Run Card */
+    .mobile-run-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-md);
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-run-card:active {
+        background: var(--mobile-bg-elevated);
+    }
+    
+    .mobile-run-status {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-run-status.success {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+    
+    .mobile-run-status.error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+    
+    .mobile-run-status.running {
+        background: var(--mobile-primary-glow);
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-run-status.running .material-icons-round {
+        animation: spin 1s linear infinite;
+    }
+    
+    .mobile-run-status.pending {
+        background: rgba(245, 158, 11, 0.2);
+        color: #f59e0b;
+    }
+    
+    .mobile-run-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .mobile-run-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-run-meta {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-run-progress {
+        width: 100%;
+        height: 4px;
+        background: var(--mobile-bg-elevated);
+        border-radius: 2px;
+        margin-top: 8px;
+        overflow: hidden;
+    }
+    
+    .mobile-run-progress-bar {
+        height: 100%;
+        background: var(--mobile-primary);
+        border-radius: 2px;
+        transition: width 0.3s ease;
+    }
+    
+    /* Quick Actions */
+    .mobile-quick-actions-content {
+        max-height: 70vh;
+    }
+    
+    .mobile-quick-action-btn {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        padding: 16px;
+        background: var(--mobile-bg-elevated);
+        border: 1px solid var(--mobile-border-color);
         border-radius: var(--mobile-radius-lg);
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+        text-align: left;
+    }
+    
+    .mobile-quick-action-btn:active {
+        background: var(--mobile-bg-surface);
+    }
+    
+    .mobile-quick-action-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: var(--mobile-radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-quick-action-icon .material-icons-round {
+        font-size: 24px;
+    }
+    
+    .mobile-quick-action-info {
+        flex: 1;
+    }
+    
+    .mobile-quick-action-title {
+        display: block;
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-quick-action-desc {
+        display: block;
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+        margin-top: 2px;
+    }
+    
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
 </style>
 {% endblock %}
@@ -87,59 +731,255 @@
 (function() {
     'use strict';
     
-    function loadAgents() {
-        fetch('/api/agents/', { credentials: 'same-origin' })
+    window.MobileAgents = {
+        currentWorkflowId: null,
+        currentAgentName: null,
+        
+        init: function() {
+            this.bindEvents();
+            console.log('[MobileAgents] Initialized');
+        },
+        
+        bindEvents: function() {
+            var self = this;
+            
+            // Tab switching
+            document.querySelectorAll('.mobile-agent-tab').forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    var tabName = tab.dataset.tab;
+                    self.switchTab(tabName);
+                });
+            });
+            
+            // Modal overlays
+            document.querySelectorAll('.mobile-modal-overlay').forEach(function(overlay) {
+                overlay.addEventListener('click', function() {
+                    self.hideAllModals();
+                });
+            });
+        },
+        
+        switchTab: function(tabName) {
+            // Update tabs
+            document.querySelectorAll('.mobile-agent-tab').forEach(function(tab) {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+            
+            // Update content
+            document.querySelectorAll('.mobile-agent-content').forEach(function(content) {
+                content.classList.add('hidden');
+            });
+            
+            var activeContent = document.getElementById('tab-' + tabName);
+            if (activeContent) {
+                activeContent.classList.remove('hidden');
+            }
+        },
+        
+        showQuickActions: function() {
+            document.getElementById('mobile-quick-actions').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        },
+        
+        hideQuickActions: function() {
+            document.getElementById('mobile-quick-actions').classList.add('hidden');
+            document.body.style.overflow = '';
+        },
+        
+        hideAllModals: function() {
+            document.querySelectorAll('.mobile-modal').forEach(function(modal) {
+                modal.classList.add('hidden');
+            });
+            document.body.style.overflow = '';
+        },
+        
+        // Workflow actions
+        createWorkflow: function() {
+            this.hideAllModals();
+            // Redirect to workflow creation or show form
+            showToast('Создание workflow в разработке', 'info');
+        },
+        
+        runWorkflow: function(workflowId) {
+            this.hideQuickActions();
+            this.currentWorkflowId = workflowId;
+            
+            var workflow = document.querySelector('[data-id="' + workflowId + '"] .mobile-workflow-name');
+            var name = workflow ? workflow.textContent : 'Workflow';
+            document.getElementById('run-workflow-name').textContent = name;
+            
+            document.getElementById('mobile-run-workflow-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        },
+        
+        hideRunModal: function() {
+            document.getElementById('mobile-run-workflow-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+        },
+        
+        confirmRunWorkflow: function() {
+            var self = this;
+            var serverId = document.getElementById('run-workflow-server').value;
+            
+            showToast('Запуск workflow...', 'info');
+            
+            fetch('/agents/api/workflow/' + this.currentWorkflowId + '/run/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify({
+                    server_id: serverId || null
+                })
+            })
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                renderAgents(data.agents || []);
+                self.hideRunModal();
+                if (data.success || data.run_id) {
+                    showToast('Workflow запущен!', 'success');
+                    // Switch to runs tab
+                    self.switchTab('runs');
+                    // Reload after delay
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showToast(data.error || 'Ошибка запуска', 'error');
+                }
             })
             .catch(function(err) {
-                console.error('Error loading agents:', err);
-                document.getElementById('mobile-agents-empty').classList.remove('hidden');
+                self.hideRunModal();
+                showToast('Ошибка запуска workflow', 'error');
+                console.error(err);
             });
-    }
-    
-    function renderAgents(agents) {
-        var container = document.getElementById('mobile-agents-list');
-        var empty = document.getElementById('mobile-agents-empty');
+        },
         
-        if (!agents.length) {
-            container.innerHTML = '';
-            empty.classList.remove('hidden');
-            return;
-        }
+        editWorkflow: function(workflowId) {
+            showToast('Редактирование в разработке', 'info');
+        },
         
-        empty.classList.add('hidden');
-        container.innerHTML = '';
-        
-        agents.forEach(function(agent) {
-            var card = document.createElement('div');
-            card.className = 'mobile-agent-card';
-            card.innerHTML = 
-                '<div class="mobile-agent-icon">' +
-                    '<span class="material-icons-round">smart_toy</span>' +
-                '</div>' +
-                '<div class="mobile-agent-name">' + escapeHtml(agent.name || 'Agent') + '</div>' +
-                '<div class="mobile-agent-desc">' + escapeHtml((agent.description || '').substring(0, 50)) + '</div>';
+        deleteWorkflow: function(workflowId) {
+            if (!confirm('Удалить workflow?')) return;
             
-            card.addEventListener('click', function() {
-                // Launch agent or show details
-                if (confirm('Запустить агента "' + agent.name + '"?')) {
-                    window.location.href = '/?agent=' + encodeURIComponent(agent.name);
+            var self = this;
+            fetch('/agents/api/workflow/' + workflowId + '/delete/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
                 }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showToast('Workflow удалён', 'success');
+                    var card = document.querySelector('.mobile-workflow-card[data-id="' + workflowId + '"]');
+                    if (card) card.remove();
+                } else {
+                    showToast(data.error || 'Ошибка удаления', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка удаления', 'error');
             });
+        },
+        
+        // Agent actions
+        runAgent: function(agentName) {
+            this.currentAgentName = agentName;
+            document.getElementById('run-agent-name').textContent = agentName;
+            document.getElementById('run-agent-task').value = '';
             
-            container.appendChild(card);
-        });
-    }
+            document.getElementById('mobile-run-agent-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        },
+        
+        hideAgentModal: function() {
+            document.getElementById('mobile-run-agent-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+        },
+        
+        confirmRunAgent: function() {
+            var self = this;
+            var task = document.getElementById('run-agent-task').value.trim();
+            var project = document.getElementById('run-agent-project').value;
+            
+            if (!task) {
+                showToast('Опишите задачу для агента', 'warning');
+                return;
+            }
+            
+            showToast('Запуск агента...', 'info');
+            
+            fetch('/agents/api/run/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify({
+                    profile_name: this.currentAgentName,
+                    task: task,
+                    project_path: project || null
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                self.hideAgentModal();
+                if (data.success || data.run_id) {
+                    showToast('Агент запущен!', 'success');
+                    self.switchTab('runs');
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showToast(data.error || 'Ошибка запуска', 'error');
+                }
+            })
+            .catch(function(err) {
+                self.hideAgentModal();
+                showToast('Ошибка запуска агента', 'error');
+                console.error(err);
+            });
+        },
+        
+        createAgent: function() {
+            this.hideQuickActions();
+            showToast('Создание агента в разработке', 'info');
+        },
+        
+        usePreset: function(presetName) {
+            showToast('Использование шаблона: ' + presetName, 'info');
+        },
+        
+        viewRun: function(runId) {
+            window.location.href = '/agents/logs/?type=workflow&run_id=' + runId;
+        },
+        
+        runQuickTask: function() {
+            this.hideQuickActions();
+            var task = prompt('Опишите задачу для AI:');
+            if (!task) return;
+            
+            // Redirect to chat with task
+            window.location.href = '/?prompt=' + encodeURIComponent(task);
+        },
+        
+        getCsrfToken: function() {
+            var cookie = document.cookie
+                .split(';')
+                .find(function(c) { return c.trim().startsWith('csrftoken='); });
+            return cookie ? cookie.split('=')[1] : '';
+        }
+    };
     
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-    
-    document.addEventListener('DOMContentLoaded', loadAgents);
+    document.addEventListener('DOMContentLoaded', function() {
+        MobileAgents.init();
+    });
 })();
 </script>
 {% endblock %}
