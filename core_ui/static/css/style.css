@@ -1209,6 +1209,195 @@ body.page-agent-hub > main > div.flex-1 {
 .agent-hub .agent-log-line.log-stats { color: #60a5fa; font-weight: 500; }
 .agent-hub .agent-log-cmd { color: #6ee7b7; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; display: block; margin: 8px 0; }
 
+.agent-logs-page .btn-ghost {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5f5;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+.agent-logs-page .btn-ghost:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+.agent-logs-page .log-status-badge {
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(148, 163, 184, 0.1);
+    color: #cbd5f5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.agent-logs-page .log-status-badge.status-running { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+.agent-logs-page .log-status-badge.status-success { background: rgba(34, 197, 94, 0.2); color: #6ee7b7; }
+.agent-logs-page .log-status-badge.status-error { background: rgba(248, 113, 113, 0.2); color: #fca5a5; }
+.agent-logs-page .log-status-badge.status-paused { background: rgba(250, 204, 21, 0.2); color: #fde047; }
+
+.agent-logs-page .log-filter-chip {
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.agent-logs-page .log-filter-chip.active,
+.agent-logs-page .log-filter-chip:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #fff;
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.agent-logs-page .log-search input {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #e2e8f0;
+    min-width: 200px;
+}
+
+.agent-logs-page .log-timeline {
+    max-height: 65vh;
+    overflow-y: auto;
+    padding-right: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.agent-logs-page .log-event-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 14px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.agent-logs-page .log-event-card:hover { border-color: rgba(99, 102, 241, 0.35); }
+.agent-logs-page .log-event-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+.agent-logs-page .log-event-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+.agent-logs-page .log-event-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+.agent-logs-page .log-event-meta {
+    font-size: 11px;
+    color: #94a3b8;
+}
+.agent-logs-page .log-event-message {
+    font-size: 12px;
+    color: #cbd5f5;
+    margin-top: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.agent-logs-page .log-event-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+.agent-logs-page .log-event-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5f5;
+}
+
+.agent-logs-page .log-empty-state {
+    padding: 20px;
+    text-align: center;
+}
+
+.agent-logs-page .log-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.agent-logs-page .log-flow-step {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.5);
+}
+.agent-logs-page .log-flow-step.active { border-color: rgba(59, 130, 246, 0.5); box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2); }
+.agent-logs-page .log-flow-step.completed { border-color: rgba(34, 197, 94, 0.4); }
+.agent-logs-page .log-flow-step.failed { border-color: rgba(248, 113, 113, 0.4); }
+.agent-logs-page .log-flow-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.6);
+}
+.agent-logs-page .log-flow-step.active .log-flow-dot {
+    background: #3b82f6;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+    animation: logPulse 1.4s infinite;
+}
+.agent-logs-page .log-flow-step.completed .log-flow-dot { background: #22c55e; }
+.agent-logs-page .log-flow-step.failed .log-flow-dot { background: #f87171; }
+.agent-logs-page .log-flow-title { font-size: 12px; font-weight: 600; color: #e2e8f0; }
+.agent-logs-page .log-flow-subtitle { font-size: 11px; color: #94a3b8; }
+.agent-logs-page .log-flow-arrow { margin-left: auto; color: #475569; font-size: 14px; }
+
+.agent-logs-page .log-details {
+    font-size: 12px;
+    color: #cbd5f5;
+}
+.agent-logs-page .log-detail-title { font-weight: 600; color: #e2e8f0; margin-bottom: 6px; }
+.agent-logs-page .log-detail-meta { font-size: 11px; color: #94a3b8; margin-bottom: 8px; }
+.agent-logs-page .log-detail-message { margin-bottom: 8px; white-space: pre-wrap; }
+.agent-logs-page .log-detail-json {
+    background: rgba(15, 23, 42, 0.8);
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 11px;
+    color: #94a3b8;
+    max-height: 200px;
+    overflow: auto;
+}
+
+.agent-logs-page .log-raw {
+    background: rgba(15, 23, 42, 0.8);
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 11px;
+    color: #9ca3af;
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+
+@keyframes logPulse {
+    0% { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(0.9); opacity: 0.7; }
+}
+
 .agent-hub .section-hint {
     font-size: var(--text-xs);
     color: var(--text-tertiary);

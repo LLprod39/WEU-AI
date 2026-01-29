@@ -5,6 +5,7 @@ app_name = "agent_hub"
 
 urlpatterns = [
     path("", views.agents_page, name="agents_page"),
+    path("logs/", views.logs_page, name="logs_page"),
     path("api/profiles/", views.api_profiles_list, name="api_profiles_list"),
     path("api/profiles/create/", views.api_profiles_create, name="api_profiles_create"),
     path("api/profiles/<int:profile_id>/update/", views.api_profiles_update, name="api_profiles_update"),

@@ -56,11 +56,11 @@ if %errorlevel% neq 0 (
     echo.
 )
 
-:: Get port from environment variable or use default
+:: Get port from environment variable or use default (80 = дефолтный HTTP)
 if defined DJANGO_PORT (
     set SERVER_PORT=%DJANGO_PORT%
 ) else (
-    set SERVER_PORT=9000
+    set SERVER_PORT=80
 )
 
 echo.

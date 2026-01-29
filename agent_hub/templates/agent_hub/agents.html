@@ -207,7 +207,7 @@
                         
                         <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/5">
                             <div class="flex gap-2">
-                                <button onclick="openWorkflowLogs({{ item.run.id }})" class="px-2 py-1 text-xs bg-primary/20 text-primary rounded hover:bg-primary/30">Logs</button>
+                                <a href="/agents/logs/?type=workflow&run_id={{ item.run.id }}" class="px-2 py-1 text-xs bg-primary/20 text-primary rounded hover:bg-primary/30">Logs</a>
                                 {% if item.run.status == 'running' %}
                                 <button onclick="stopWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30">Stop</button>
                                 {% else %}
@@ -318,7 +318,7 @@
                         <div class="text-xs text-gray-200 mt-2 line-clamp-2">{{ run.input_task }}</div>
                         <div class="flex items-center justify-between mt-2">
                             <div class="flex gap-3">
-                                <button onclick="openAgentLogs({{ run.id }})" class="text-xs text-primary">Logs</button>
+                                <a href="/agents/logs/?type=run&run_id={{ run.id }}" class="text-xs text-primary">Logs</a>
                                 <button onclick="stopAgentRun({{ run.id }})" class="text-xs text-red-400">Stop</button>
                                 <button onclick="deleteAgentRun({{ run.id }})" class="text-xs text-gray-400">Delete</button>
                             </div>
@@ -367,6 +367,7 @@
                 <div id="workflowLogsMeta" class="text-sm text-gray-400 mt-1 flex items-center gap-2">Загрузка...</div>
             </div>
             <div class="flex items-center gap-2">
+                <a id="workflowLogsOpenPage" href="#" class="px-3 py-1.5 text-sm bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition">Открыть в логах</a>
                 <div id="workflowLogsActions" class="flex gap-2 flex-wrap"></div>
                 <button type="button" onclick="closeWorkflowLogs()" class="px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition" aria-label="Закрыть">Закрыть</button>
             </div>
@@ -396,7 +397,10 @@
             <h2 id="agentLogsTitle" class="text-xl font-bold text-white">Agent logs</h2>
             <div id="agentLogsMeta" class="text-xs text-gray-400 mt-1">Loading...</div>
         </div>
-        <button type="button" onclick="closeAgentLogs()" class="text-xs text-gray-400" aria-label="Close">Close</button>
+        <div class="flex items-center gap-2">
+            <a id="agentLogsOpenPage" href="#" class="px-3 py-1.5 text-xs bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition">Открыть в логах</a>
+            <button type="button" onclick="closeAgentLogs()" class="text-xs text-gray-400" aria-label="Close">Close</button>
+        </div>
         </div>
         <pre id="agentLogsContent" class="bg-bg-base border border-white/10 rounded-xl p-3 text-xs text-gray-200 max-h-[60vh] overflow-y-auto"></pre>
     </div>

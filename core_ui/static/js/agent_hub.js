@@ -113,6 +113,8 @@
     window.openWorkflowLogs = function (runId) {
         var m = document.getElementById('workflowLogsModal');
         if (m) { m.classList.remove('hidden'); m.setAttribute('aria-hidden', 'false'); }
+        var openLink = document.getElementById('workflowLogsOpenPage');
+        if (openLink) openLink.href = '/agents/logs/?type=workflow&run_id=' + runId;
         if (workflowLogsInterval) clearInterval(workflowLogsInterval);
         fetchWorkflowLogs(runId);
         workflowLogsInterval = setInterval(function () { fetchWorkflowLogs(runId); }, 2000);
@@ -277,6 +279,8 @@
     window.openAgentLogs = function (runId) {
         var m = document.getElementById('agentLogsModal');
         if (m) { m.classList.remove('hidden'); m.setAttribute('aria-hidden', 'false'); }
+        var openLink = document.getElementById('agentLogsOpenPage');
+        if (openLink) openLink.href = '/agents/logs/?type=run&run_id=' + runId;
         if (agentLogsInterval) clearInterval(agentLogsInterval);
         fetchAgentLogs(runId);
         agentLogsInterval = setInterval(function () { fetchAgentLogs(runId); }, 2000);

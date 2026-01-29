@@ -364,6 +364,22 @@ def agents_page(request):
     )
 
 
+@login_required
+@require_feature('agents', redirect_on_forbidden=True)
+@require_http_methods(["GET"])
+def logs_page(request):
+    run_type = (request.GET.get("type") or "workflow").strip()
+    run_id = (request.GET.get("run_id") or "").strip()
+    return render(
+        request,
+        "agent_hub/logs.html",
+        {
+            "run_type": run_type,
+            "run_id": run_id,
+        },
+    )
+
+
 @csrf_exempt
 @login_required
 @require_feature('agents')
@@ -524,7 +540,16 @@ def api_agent_run(request):
         run_obj = AgentRun.objects.get(id=run_id)
         run_obj.status = "running"
         run_obj.started_at = timezone.now()
-        run_obj.save(update_fields=["status", "started_at"])
+        _append_log_event(
+            run_obj,
+            {
+                "type": "run",
+                "subtype": "start",
+                "title": "Старт запуска",
+                "message": f"Runtime: {runtime}",
+            },
+        )
+        run_obj.save(update_fields=["status", "started_at", "log_events", "meta"])
 
         # Фаза проверки задачи через Cursor (ask) перед запуском
         if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and runtime in ("ralph", "cursor"):
@@ -537,11 +562,29 @@ def api_agent_run(request):
                 except Exception:
                     workspace = str(settings.BASE_DIR)
             run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
-            run_obj.save(update_fields=["logs"])
+            _append_log_event(
+                run_obj,
+                {
+                    "type": "phase",
+                    "subtype": "start",
+                    "title": "Cursor analyze",
+                    "message": "Анализ задачи перед запуском",
+                },
+            )
+            run_obj.save(update_fields=["logs", "log_events", "meta"])
             analyze_result = _run_cursor_ask_analyze(workspace, task[:6000], timeout_sec=90)
             run_obj.logs = (run_obj.logs or "") + (analyze_result.get("output", "") or "")[:3000] + "\n"
             run_obj.logs = (run_obj.logs or "") + "[Cursor analyze done — запуск агента]\n"
-            run_obj.save(update_fields=["logs"])
+            _append_log_event(
+                run_obj,
+                {
+                    "type": "phase",
+                    "subtype": "done",
+                    "title": "Cursor analyze",
+                    "status": "ready" if analyze_result.get("ready") else "review",
+                },
+            )
+            run_obj.save(update_fields=["logs", "log_events", "meta"])
 
         try:
             if runtime == "internal":
@@ -557,13 +600,22 @@ def api_agent_run(request):
                 run_obj.output_text = result.get("output", "")
                 run_obj.logs = result.get("logs", "")
                 run_obj.status = "succeeded" if result.get("success") else "failed"
-                run_obj.meta = result.get("meta", {})
+                run_obj.meta = {**(run_obj.meta or {}), **(result.get("meta") or {})}
         except Exception as exc:
             logger.error(f"Agent run failed: {exc}")
             run_obj.status = "failed"
             run_obj.logs = str(exc)
         finally:
             run_obj.finished_at = timezone.now()
+            _append_log_event(
+                run_obj,
+                {
+                    "type": "run",
+                    "subtype": "finish",
+                    "title": "Завершение запуска",
+                    "status": run_obj.status,
+                },
+            )
             run_obj.save()
 
     thread = threading.Thread(
@@ -602,6 +654,17 @@ def api_runs_list(request):
 @require_http_methods(["GET"])
 def api_run_status(request, run_id: int):
     run = get_object_or_404(AgentRun, id=run_id, initiated_by=request.user)
+    after_id = request.GET.get("after_id")
+    events = list(run.log_events or [])
+    if after_id:
+        try:
+            after_id_int = int(after_id)
+            events = [e for e in events if int(e.get("id", 0)) > after_id_int]
+        except ValueError:
+            events = events[-200:]
+    else:
+        events = events[-200:]
+    last_event_id = events[-1]["id"] if events else (run.log_events or [])[-1]["id"] if run.log_events else 0
     return JsonResponse(
         {
             "status": run.status,
@@ -609,6 +672,8 @@ def api_run_status(request, run_id: int):
             "logs": (run.logs or "")[-5000:],
             "output": (run.output_text or "")[-2000:],
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "events": events,
+            "last_event_id": last_event_id,
         }
     )
 
@@ -1029,6 +1094,73 @@ def _short_path(path: str, max_len: int = 50) -> str:
     return f"...{path[-(max_len - 3):]}"
 
 
+def _append_log_event(run_obj, event: Dict[str, Any]) -> Dict[str, Any]:
+    meta = run_obj.meta or {}
+    next_id = int(meta.get("log_event_id", 0)) + 1
+    meta["log_event_id"] = next_id
+    enriched = {
+        **event,
+        "id": next_id,
+        "ts": timezone.now().isoformat(),
+    }
+    run_obj.meta = meta
+    run_obj.log_events = list(run_obj.log_events or []) + [enriched]
+    return enriched
+
+
+def _tool_call_to_event(tool_call: Dict[str, Any], subtype: str, step_label: str) -> Dict[str, Any]:
+    tool_key = next((k for k in tool_call.keys() if k.endswith("ToolCall")), None)
+    tool_payload = tool_call.get(tool_key or "", {}) if tool_call else {}
+    args = tool_payload.get("args", {}) if isinstance(tool_payload, dict) else {}
+    title = _format_tool_started(tool_call) if subtype == "started" else _format_tool_completed(tool_call)
+    return {
+        "type": "tool_call",
+        "subtype": subtype,
+        "title": title or "🔧 Операция...",
+        "tool": tool_key or "tool",
+        "step_label": step_label,
+        "data": {
+            "args": args,
+        },
+    }
+
+
+def _stream_json_to_event(data: Dict[str, Any], step_label: str) -> Dict[str, Any]:
+    msg_type = data.get("type")
+    subtype = data.get("subtype")
+    if msg_type == "system" and subtype == "init":
+        return {
+            "type": "system",
+            "subtype": "init",
+            "title": "Инициализация модели",
+            "message": f"🤖 Модель: {data.get('model', 'unknown')}",
+            "model": data.get("model"),
+            "step_label": step_label,
+        }
+    if msg_type == "assistant":
+        content = data.get("message", {}).get("content", [])
+        if content and isinstance(content, list) and content[0].get("text"):
+            text = content[0].get("text", "")
+            return {
+                "type": "assistant",
+                "title": "Сообщение ассистента",
+                "message": text,
+                "step_label": step_label,
+            }
+    if msg_type == "tool_call":
+        tool_call = data.get("tool_call", {})
+        if subtype in {"started", "completed"}:
+            return _tool_call_to_event(tool_call, subtype, step_label)
+    if msg_type == "result":
+        return {
+            "type": "result",
+            "title": "Завершение шага",
+            "duration_ms": data.get("duration_ms", 0),
+            "step_label": step_label,
+        }
+    return None
+
+
 def _format_tool_started(tool_call: Dict[str, Any]) -> str:
     if "writeToolCall" in tool_call:
         path = tool_call["writeToolCall"].get("args", {}).get("path", "?")
@@ -1113,7 +1245,17 @@ def _run_cli_stream(
     if spawn_env and os.environ:
         spawn_env = {**os.environ, **spawn_env}
     run_obj.logs = (run_obj.logs or "") + f"\n{'='*50}\n[CMD] {' '.join(cmd)}\n{'='*50}\n"
-    run_obj.save(update_fields=["logs"])
+    _append_log_event(
+        run_obj,
+        {
+            "type": "cmd",
+            "subtype": "start",
+            "title": "Запуск команды",
+            "command": " ".join(cmd),
+            "step_label": step_label,
+        },
+    )
+    run_obj.save(update_fields=["logs", "log_events", "meta"])
     popen_kw = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.STDOUT,
@@ -1131,12 +1273,24 @@ def _run_cli_stream(
     accumulated_text = ""
     tool_count = 0
     pending_lines = 0
+    pending_events = 0
+    dirty_logs = False
+    dirty_events = False
 
     def maybe_flush():
-        nonlocal pending_lines
-        if pending_lines >= _LOG_SAVE_BATCH_SIZE:
-            run_obj.save(update_fields=["logs"])
+        nonlocal pending_lines, pending_events, dirty_logs, dirty_events
+        if pending_lines >= _LOG_SAVE_BATCH_SIZE or pending_events >= _LOG_SAVE_BATCH_SIZE:
+            fields = []
+            if dirty_logs:
+                fields.append("logs")
+            if dirty_events:
+                fields.extend(["log_events", "meta"])
+            if fields:
+                run_obj.save(update_fields=fields)
             pending_lines = 0
+            pending_events = 0
+            dirty_logs = False
+            dirty_events = False
 
     for line in process.stdout:
         output_chunks.append(line)
@@ -1151,18 +1305,27 @@ def _run_cli_stream(
                     content = data.get("message", {}).get("content", [])
                     if content and isinstance(content, list) and content[0].get("text"):
                         accumulated_text += content[0].get("text", "")
+                event = _stream_json_to_event(data, step_label)
+                if event:
+                    _append_log_event(run_obj, event)
+                    pending_events += 1
+                    dirty_events = True
+                    maybe_flush()
                 if log_line:
                     run_obj.logs = (run_obj.logs or "") + log_line + "\n"
                     pending_lines += 1
+                    dirty_logs = True
                     maybe_flush()
             except json.JSONDecodeError:
                 run_obj.logs = (run_obj.logs or "") + line
                 pending_lines += 1
+                dirty_logs = True
                 maybe_flush()
         else:
             if line_stripped:
                 run_obj.logs = (run_obj.logs or "") + line
                 pending_lines += 1
+                dirty_logs = True
                 maybe_flush()
 
     timeout_sec = getattr(settings, "CLI_RUNTIME_TIMEOUT_SECONDS", None)
@@ -1171,7 +1334,16 @@ def _run_cli_stream(
     except subprocess.TimeoutExpired:
         process.kill()
         run_obj.logs = (run_obj.logs or "") + "[TIMEOUT] Process killed after timeout\n"
-        run_obj.save(update_fields=["logs"])
+        _append_log_event(
+            run_obj,
+            {
+                "type": "error",
+                "title": "Превышено время ожидания",
+                "message": "Process killed after timeout",
+                "step_label": step_label,
+            },
+        )
+        run_obj.save(update_fields=["logs", "log_events", "meta"])
         return {"success": False, "output": "".join(output_chunks), "exit_code": -1}
 
     output_str = "".join(output_chunks)
@@ -1185,7 +1357,16 @@ def _run_cli_stream(
     summary += "✅ Успешно завершено\n" if exit_code == 0 else f"❌ Завершено с ошибкой (код {exit_code})\n"
     summary += f"{'─'*40}\n"
     run_obj.logs = (run_obj.logs or "") + summary
-    run_obj.save(update_fields=["logs"])
+    _append_log_event(
+        run_obj,
+        {
+            "type": "summary",
+            "title": "Итоги шага",
+            "step_label": step_label,
+            "stats": {"tools": tool_count, "chars": len(accumulated_text), "exit_code": exit_code},
+        },
+    )
+    run_obj.save(update_fields=["logs", "log_events", "meta"])
     return {"success": exit_code == 0, "output": output_str, "exit_code": exit_code}
 
 
@@ -1375,12 +1556,23 @@ def _execute_workflow_run(run_id: int):
     # Получаем путь к workspace
     workspace = _get_workspace_path(workflow)
     run_obj.logs = (run_obj.logs or "") + f"[Workflow started]\n[Workspace: {workspace}]\n"
+    _append_log_event(
+        run_obj,
+        {
+            "type": "workflow",
+            "subtype": "start",
+            "title": "Старт workflow",
+            "workflow_id": workflow.id,
+            "workflow_name": workflow.name,
+            "workspace": workspace,
+        },
+    )
     if target_server_id:
         run_obj.logs = (run_obj.logs or "") + f"[Target server: {workflow.target_server.name if workflow.target_server else target_server_id}]\n"
         run_obj.logs = (run_obj.logs or "") + "[Servers context loaded from DB]\n"
     else:
         run_obj.logs = (run_obj.logs or "") + "[No target server - local/code-only workflow]\n"
-    run_obj.save(update_fields=["status", "started_at", "logs"])
+    run_obj.save(update_fields=["status", "started_at", "logs", "log_events", "meta"])
 
     steps = (workflow.script or {}).get("steps", [])
     step_results = []
@@ -1388,7 +1580,16 @@ def _execute_workflow_run(run_id: int):
     # Фаза проверки задачи через Cursor (ask) перед запуском
     if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace:
         run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
-        run_obj.save(update_fields=["logs"])
+        _append_log_event(
+            run_obj,
+            {
+                "type": "phase",
+                "subtype": "start",
+                "title": "Cursor analyze",
+                "message": "Проверка шагов перед запуском",
+            },
+        )
+        run_obj.save(update_fields=["logs", "log_events", "meta"])
         summary_lines = [f"Воркфлоу: {workflow.name}. Шаги ({len(steps)}):"]
         for i, s in enumerate(steps[:20], 1):
             title = s.get("title", f"Step {i}")
@@ -1401,7 +1602,16 @@ def _execute_workflow_run(run_id: int):
             run_obj.logs = (run_obj.logs or "") + "[Cursor: READY — запуск выполнения]\n"
         else:
             run_obj.logs = (run_obj.logs or "") + "[Cursor: анализ выполнен, запуск выполнения]\n"
-        run_obj.save(update_fields=["logs"])
+        _append_log_event(
+            run_obj,
+            {
+                "type": "phase",
+                "subtype": "done",
+                "title": "Cursor analyze",
+                "status": "ready" if analyze_result.get("ready") else "review",
+            },
+        )
+        run_obj.save(update_fields=["logs", "log_events", "meta"])
 
     try:
         if workflow.runtime == "ralph":
@@ -1437,13 +1647,22 @@ def _execute_workflow_run(run_id: int):
 
         run_obj.status = "succeeded"
         run_obj.output_text = json.dumps(step_results, ensure_ascii=False)
-        run_obj.meta = {"steps": len(steps), "workspace": workspace}
+        run_obj.meta = {**(run_obj.meta or {}), "steps": len(steps), "workspace": workspace}
     except Exception as exc:
         run_obj.status = "failed"
         run_obj.logs = (run_obj.logs or "") + f"\n{exc}\n"
         run_obj.output_text = json.dumps(step_results, ensure_ascii=False)
     finally:
         run_obj.finished_at = timezone.now()
+        _append_log_event(
+            run_obj,
+            {
+                "type": "workflow",
+                "subtype": "finish",
+                "title": "Завершение workflow",
+                "status": run_obj.status,
+            },
+        )
         run_obj.save()
 
 
@@ -1485,6 +1704,17 @@ def _run_steps_with_backend(
         run_obj.save(update_fields=["current_step", "retry_count"])
 
         step_title = step.get("title", f"Step {idx}")
+        _append_log_event(
+            run_obj,
+            {
+                "type": "step",
+                "subtype": "start",
+                "title": step_title,
+                "step_idx": idx,
+                "prompt_preview": (step.get("prompt") or "")[:200],
+            },
+        )
+        run_obj.save(update_fields=["log_events", "meta"])
         step_prompt = step.get("prompt", "")
         completion_promise = (step.get("completion_promise") or "STEP_DONE").strip()
         max_iterations = step.get("max_iterations", 10)
@@ -1597,6 +1827,18 @@ def _run_steps_with_backend(
                 step_results_existing.append(sr)
                 run_obj.step_results = step_results_existing
                 run_obj.save(update_fields=["step_results"])
+                _append_log_event(
+                    run_obj,
+                    {
+                        "type": "step",
+                        "subtype": "completed",
+                        "title": step_title,
+                        "step_idx": idx,
+                        "retries": retry_attempt,
+                        "status": "completed",
+                    },
+                )
+                run_obj.save(update_fields=["log_events", "meta"])
             except Exception as e:
                 last_error = str(e)
                 retry_attempt += 1
@@ -1607,6 +1849,19 @@ def _run_steps_with_backend(
             step_results_existing.append(sr)
             run_obj.step_results = step_results_existing
             run_obj.save(update_fields=["step_results"])
+            _append_log_event(
+                run_obj,
+                {
+                    "type": "step",
+                    "subtype": "failed",
+                    "title": step_title,
+                    "step_idx": idx,
+                    "retries": retry_attempt,
+                    "status": "failed",
+                    "error": last_error,
+                },
+            )
+            run_obj.save(update_fields=["log_events", "meta"])
             raise RuntimeError(f"Step {idx} ({step_title}) failed after {max_retries} retries: {last_error}")
 
 
@@ -1632,6 +1887,17 @@ def api_workflow_run_status(request, run_id: int):
         id=run_id,
         initiated_by=request.user,
     )
+    after_id = request.GET.get("after_id")
+    events = list(run.log_events or [])
+    if after_id:
+        try:
+            after_id_int = int(after_id)
+            events = [e for e in events if int(e.get("id", 0)) > after_id_int]
+        except ValueError:
+            events = events[-200:]
+    else:
+        events = events[-200:]
+    last_event_id = events[-1]["id"] if events else (run.log_events or [])[-1]["id"] if run.log_events else 0
     script = run.workflow.script or {}
     steps = script.get("steps", [])
     total_steps = len(steps)
@@ -1669,6 +1935,8 @@ def api_workflow_run_status(request, run_id: int):
             "steps": steps_info,
             "logs": (run.logs or "")[-8000:] if run.logs else "",
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "events": events,
+            "last_event_id": last_event_id,
         }
     )
 

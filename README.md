@@ -42,7 +42,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Приложение будет доступно по адресу: **http://localhost:8000**
+Приложение будет доступно по адресу: **http://localhost** (порт 80 по умолчанию; при необходимости задай `WEU_PORT=8000` в `.env`).
 
 ### Локальная установка
 
@@ -88,8 +88,9 @@ POSTGRES_USER=weu
 POSTGRES_PASSWORD=your_password
 POSTGRES_PORT=5432
 
-# Django
-DJANGO_PORT=8000
+# Django (порт 80 — дефолтный HTTP; если порт 80 занят или нет прав — задай 8000)
+DJANGO_PORT=80
+WEU_PORT=80
 ALLOWED_HOSTS=*
 DJANGO_SUPERUSER_USERNAME=admin
 DJANGO_SUPERUSER_PASSWORD=admin
