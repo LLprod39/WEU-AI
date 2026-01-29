@@ -1,0 +1,149 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}Пароли - WEU AI{% endblock %}
+{% block header_title %}Пароли{% endblock %}
+
+{% block header_right %}
+<button type="button" id="mobile-pwd-add-btn" class="mobile-header-btn">
+    <span class="material-icons-round">add</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mobile-page" id="mobile-passwords-page">
+    
+    <!-- Search -->
+    <div class="mobile-pwd-search">
+        <span class="material-icons-round">search</span>
+        <input type="text" id="mobile-pwd-search" placeholder="Поиск..." class="mobile-pwd-search-input">
+    </div>
+    
+    <!-- Credentials List -->
+    <div class="mobile-list" id="mobile-pwd-list">
+        {% if credentials %}
+            {% for cred in credentials %}
+            <div class="mobile-list-item mobile-pwd-item" data-id="{{ cred.id }}">
+                <div class="mobile-list-item-icon">
+                    <span class="material-icons-round">{% if cred.category %}folder{% else %}key{% endif %}</span>
+                </div>
+                <div class="mobile-list-item-content">
+                    <div class="mobile-list-item-title">{{ cred.name }}</div>
+                    <div class="mobile-list-item-subtitle">{{ cred.username|default:cred.email|default:"—" }}</div>
+                </div>
+                <button type="button" class="mobile-pwd-copy-btn" data-username="{{ cred.username }}" data-email="{{ cred.email }}">
+                    <span class="material-icons-round">content_copy</span>
+                </button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="mobile-empty-state">
+                <span class="material-icons-round mobile-empty-icon">lock</span>
+                <p class="mobile-empty-title">Нет сохранённых паролей</p>
+                <p class="mobile-empty-text">Добавьте первый пароль</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- FAB -->
+    <button type="button" class="mobile-fab" id="mobile-pwd-fab">
+        <span class="material-icons-round">add</span>
+    </button>
+</div>
+
+<style>
+    .mobile-pwd-search {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        height: 48px;
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        margin-bottom: 16px;
+    }
+    
+    .mobile-pwd-search .material-icons-round {
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-pwd-search-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-primary);
+        font-size: 15px;
+        outline: none;
+    }
+    
+    .mobile-pwd-item {
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-md);
+        margin-bottom: 8px;
+    }
+    
+    .mobile-pwd-copy-btn {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-muted);
+        cursor: pointer;
+        border-radius: var(--mobile-radius-md);
+    }
+    
+    .mobile-pwd-copy-btn:active {
+        background: var(--mobile-primary-glow);
+        color: var(--mobile-primary);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    
+    // Copy to clipboard
+    document.querySelectorAll('.mobile-pwd-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var username = btn.dataset.username || btn.dataset.email || '';
+            if (username && navigator.clipboard) {
+                navigator.clipboard.writeText(username).then(function() {
+                    showToast('Скопировано', 'success');
+                });
+            }
+        });
+    });
+    
+    // Search filter
+    var searchInput = document.getElementById('mobile-pwd-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var query = searchInput.value.toLowerCase();
+            document.querySelectorAll('.mobile-pwd-item').forEach(function(item) {
+                var title = item.querySelector('.mobile-list-item-title').textContent.toLowerCase();
+                var subtitle = item.querySelector('.mobile-list-item-subtitle').textContent.toLowerCase();
+                var match = title.includes(query) || subtitle.includes(query);
+                item.style.display = match ? '' : 'none';
+            });
+        });
+    }
+    
+    // Add buttons
+    var addBtn = document.getElementById('mobile-pwd-add-btn');
+    var fab = document.getElementById('mobile-pwd-fab');
+    
+    function openAddForm() {
+        window.location.href = '/passwords/add/';
+    }
+    
+    if (addBtn) addBtn.addEventListener('click', openAddForm);
+    if (fab) fab.addEventListener('click', openAddForm);
+})();
+</script>
+{% endblock %}

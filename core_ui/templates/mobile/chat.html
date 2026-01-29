@@ -1,0 +1,648 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}Чат - WEU AI{% endblock %}
+{% block header_title %}Чат{% endblock %}
+
+{% block header_left %}
+<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn">
+    <span class="material-icons-round">history</span>
+</button>
+{% endblock %}
+
+{% block header_right %}
+<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn">
+    <span class="material-icons-round">add</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mobile-chat-container" id="mobile-chat-page">
+    
+    <!-- Chat History Drawer (Left) -->
+    <div id="mobile-chat-history-drawer" class="mobile-drawer hidden">
+        <div class="mobile-drawer-overlay"></div>
+        <div class="mobile-drawer-content" style="left: 0; right: auto;">
+            <div class="mobile-drawer-header">
+                <span class="text-lg font-semibold">История чатов</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-drawer-body" id="mobile-chat-history-list">
+                <!-- Chat history items loaded dynamically -->
+                <div class="mobile-empty-state" id="mobile-chat-history-empty">
+                    <span class="material-icons-round mobile-empty-icon">chat_bubble_outline</span>
+                    <p class="mobile-empty-title">Нет чатов</p>
+                    <p class="mobile-empty-text">Начните новый диалог</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chat Messages -->
+    <div class="mobile-chat-messages" id="mobile-chat-messages">
+        
+        <!-- Welcome Screen -->
+        <div id="mobile-welcome" class="mobile-empty-state" style="padding-top: 20vh;">
+            <div class="w-20 h-20 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-6">
+                <span class="material-icons-round text-5xl text-primary">support_agent</span>
+            </div>
+            <h2 class="mobile-empty-title text-xl">WEU AI Assistant</h2>
+            <p class="mobile-empty-text mb-8">Ваш умный помощник для работы с документами, веб-поиском и автоматизацией задач.</p>
+            
+            <!-- Quick Actions -->
+            <div class="grid grid-cols-2 gap-3 w-full max-w-xs">
+                <button type="button" class="mobile-quick-action" onclick="MobileChat.insertPrompt('Поиск в интернете')">
+                    <span class="material-icons-round text-blue-400">language</span>
+                    <span>Веб-поиск</span>
+                </button>
+                <button type="button" class="mobile-quick-action" onclick="MobileChat.insertPrompt('Проанализируй файл')">
+                    <span class="material-icons-round text-amber-400">description</span>
+                    <span>Файлы</span>
+                </button>
+                <button type="button" class="mobile-quick-action" onclick="MobileChat.insertPrompt('Подключись к серверу')">
+                    <span class="material-icons-round text-emerald-400">terminal</span>
+                    <span>SSH</span>
+                </button>
+                <button type="button" class="mobile-quick-action" onclick="MobileChat.insertPrompt('Какие у тебя инструменты?')">
+                    <span class="material-icons-round text-purple-400">build</span>
+                    <span>Инструменты</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Messages will be inserted here -->
+    </div>
+    
+    <!-- Chat Input -->
+    <div class="mobile-chat-input-container" id="mobile-chat-input-container">
+        <!-- Options bar -->
+        <div class="mobile-chat-options" id="mobile-chat-options">
+            <button type="button" class="mobile-chat-option-btn" id="mobile-rag-toggle" title="RAG">
+                <span class="material-icons-round">storage</span>
+            </button>
+            <span class="text-xs text-gray-500" id="mobile-model-label">auto</span>
+        </div>
+        
+        <div class="mobile-chat-input-wrapper">
+            <textarea 
+                id="mobile-chat-input" 
+                class="mobile-chat-input" 
+                placeholder="Напишите сообщение..." 
+                rows="1"
+                autocomplete="off"
+                autocorrect="on"
+                spellcheck="true"
+            ></textarea>
+            <button type="button" id="mobile-chat-send" class="mobile-chat-send-btn" disabled>
+                <span class="material-icons-round">send</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Typing indicator -->
+    <div id="mobile-typing-indicator" class="mobile-typing-indicator hidden">
+        <div class="mobile-typing-dots">
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Additional mobile chat styles */
+    .mobile-quick-action {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 12px;
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        font-size: 12px;
+        color: var(--mobile-text-secondary);
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-quick-action:active {
+        background: var(--mobile-bg-elevated);
+        transform: scale(0.98);
+    }
+    
+    .mobile-quick-action .material-icons-round {
+        font-size: 28px;
+    }
+    
+    .mobile-chat-options {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 0 4px;
+    }
+    
+    .mobile-chat-option-btn {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--mobile-radius-md);
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        color: var(--mobile-text-muted);
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-chat-option-btn.active {
+        background: var(--mobile-primary-glow);
+        border-color: var(--mobile-primary);
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-chat-option-btn .material-icons-round {
+        font-size: 18px;
+    }
+    
+    .mobile-typing-indicator {
+        position: fixed;
+        bottom: calc(var(--mobile-bottom-nav-height) + var(--mobile-safe-bottom) + 90px);
+        left: var(--mobile-spacing-md);
+        padding: 12px 16px;
+        background: var(--mobile-bg-elevated);
+        border-radius: var(--mobile-radius-lg);
+        border-bottom-left-radius: 4px;
+    }
+    
+    .mobile-typing-dots {
+        display: flex;
+        gap: 4px;
+    }
+    
+    .mobile-typing-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--mobile-text-muted);
+        animation: typingDot 1.4s infinite;
+    }
+    
+    .mobile-typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+    
+    .mobile-typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+    
+    @keyframes typingDot {
+        0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-4px); }
+    }
+    
+    /* History drawer from left */
+    #mobile-chat-history-drawer .mobile-drawer-content {
+        animation: slideInLeft 0.3s ease;
+    }
+    
+    @keyframes slideInLeft {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
+    }
+    
+    .mobile-chat-history-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--mobile-border-color);
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-chat-history-item:active {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .mobile-chat-history-item.active {
+        background: var(--mobile-primary-glow);
+        border-left: 3px solid var(--mobile-primary);
+    }
+    
+    .mobile-chat-history-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--mobile-radius-md);
+        background: var(--mobile-bg-elevated);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-chat-history-icon .material-icons-round {
+        font-size: 18px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-chat-history-content {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .mobile-chat-history-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .mobile-chat-history-date {
+        font-size: 11px;
+        color: var(--mobile-text-muted);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    
+    window.MobileChat = {
+        chatId: null,
+        isStreaming: false,
+        useRag: {% if rag_available %}true{% else %}false{% endif %},
+        model: 'auto',
+        
+        init: function() {
+            this.bindEvents();
+            this.loadChatHistory();
+            this.autoResizeInput();
+            console.log('[MobileChat] Initialized');
+        },
+        
+        bindEvents: function() {
+            var self = this;
+            
+            // Input handling
+            var input = document.getElementById('mobile-chat-input');
+            var sendBtn = document.getElementById('mobile-chat-send');
+            
+            input.addEventListener('input', function() {
+                sendBtn.disabled = !input.value.trim();
+                self.autoResizeInput();
+            });
+            
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    self.sendMessage();
+                }
+            });
+            
+            sendBtn.addEventListener('click', function() {
+                self.sendMessage();
+            });
+            
+            // RAG toggle
+            var ragBtn = document.getElementById('mobile-rag-toggle');
+            if (ragBtn) {
+                ragBtn.classList.toggle('active', this.useRag);
+                ragBtn.addEventListener('click', function() {
+                    self.useRag = !self.useRag;
+                    ragBtn.classList.toggle('active', self.useRag);
+                    showToast(self.useRag ? 'RAG включён' : 'RAG выключён', 'info');
+                });
+            }
+            
+            // History drawer
+            var historyBtn = document.getElementById('mobile-chat-history-btn');
+            var historyDrawer = document.getElementById('mobile-chat-history-drawer');
+            var historyClose = document.getElementById('mobile-chat-history-close');
+            var historyOverlay = historyDrawer.querySelector('.mobile-drawer-overlay');
+            
+            historyBtn.addEventListener('click', function() {
+                historyDrawer.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            });
+            
+            var closeHistory = function() {
+                historyDrawer.classList.add('hidden');
+                document.body.style.overflow = '';
+            };
+            
+            historyClose.addEventListener('click', closeHistory);
+            historyOverlay.addEventListener('click', closeHistory);
+            
+            // New chat button
+            var newBtn = document.getElementById('mobile-chat-new-btn');
+            newBtn.addEventListener('click', function() {
+                self.newChat();
+            });
+        },
+        
+        autoResizeInput: function() {
+            var input = document.getElementById('mobile-chat-input');
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        },
+        
+        loadChatHistory: function() {
+            var self = this;
+            var listEl = document.getElementById('mobile-chat-history-list');
+            var emptyEl = document.getElementById('mobile-chat-history-empty');
+            
+            fetch('/api/chats/', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var chats = data.chats || [];
+                    
+                    if (chats.length === 0) {
+                        emptyEl.classList.remove('hidden');
+                        return;
+                    }
+                    
+                    emptyEl.classList.add('hidden');
+                    listEl.innerHTML = '';
+                    
+                    chats.forEach(function(chat) {
+                        var item = document.createElement('div');
+                        item.className = 'mobile-chat-history-item';
+                        if (chat.id === self.chatId) {
+                            item.classList.add('active');
+                        }
+                        
+                        item.innerHTML = 
+                            '<div class="mobile-chat-history-icon">' +
+                                '<span class="material-icons-round">chat_bubble_outline</span>' +
+                            '</div>' +
+                            '<div class="mobile-chat-history-content">' +
+                                '<div class="mobile-chat-history-title">' + self.escapeHtml(chat.title) + '</div>' +
+                                '<div class="mobile-chat-history-date">' + self.formatDate(chat.updated_at) + '</div>' +
+                            '</div>';
+                        
+                        item.addEventListener('click', function() {
+                            self.loadChat(chat.id);
+                            document.getElementById('mobile-chat-history-drawer').classList.add('hidden');
+                            document.body.style.overflow = '';
+                        });
+                        
+                        listEl.appendChild(item);
+                    });
+                })
+                .catch(function(err) {
+                    console.error('Error loading chat history:', err);
+                });
+        },
+        
+        loadChat: function(chatId) {
+            var self = this;
+            this.chatId = chatId;
+            
+            fetch('/api/chats/' + chatId + '/', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    self.clearMessages();
+                    
+                    (data.messages || []).forEach(function(msg) {
+                        self.addMessage(msg.content, msg.role);
+                    });
+                    
+                    self.scrollToBottom();
+                })
+                .catch(function(err) {
+                    console.error('Error loading chat:', err);
+                    showToast('Ошибка загрузки чата', 'error');
+                });
+        },
+        
+        newChat: function() {
+            this.chatId = null;
+            this.clearMessages();
+            document.getElementById('mobile-welcome').classList.remove('hidden');
+            document.getElementById('mobile-chat-input').focus();
+        },
+        
+        clearMessages: function() {
+            var container = document.getElementById('mobile-chat-messages');
+            var welcome = document.getElementById('mobile-welcome');
+            
+            // Remove all messages except welcome
+            var messages = container.querySelectorAll('.mobile-chat-message');
+            messages.forEach(function(msg) {
+                msg.remove();
+            });
+        },
+        
+        sendMessage: function() {
+            var self = this;
+            var input = document.getElementById('mobile-chat-input');
+            var message = input.value.trim();
+            
+            if (!message || this.isStreaming) return;
+            
+            // Hide welcome
+            document.getElementById('mobile-welcome').classList.add('hidden');
+            
+            // Add user message
+            this.addMessage(message, 'user');
+            
+            // Clear input
+            input.value = '';
+            input.style.height = 'auto';
+            document.getElementById('mobile-chat-send').disabled = true;
+            
+            // Show typing indicator
+            this.showTyping();
+            this.isStreaming = true;
+            
+            // Scroll to bottom
+            this.scrollToBottom();
+            
+            // Send to API
+            var body = {
+                message: message,
+                model: this.model,
+                use_rag: this.useRag,
+                chat_id: this.chatId
+            };
+            
+            fetch('/api/chat/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify(body)
+            })
+            .then(function(response) {
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var accumulated = '';
+                var msgElement = null;
+                
+                function read() {
+                    return reader.read().then(function(result) {
+                        if (result.done) {
+                            self.hideTyping();
+                            self.isStreaming = false;
+                            self.loadChatHistory();
+                            return;
+                        }
+                        
+                        var chunk = decoder.decode(result.value, { stream: true });
+                        
+                        // Check for chat ID in first chunk
+                        if (chunk.startsWith('CHAT_ID:')) {
+                            var lines = chunk.split('\n');
+                            var idLine = lines[0];
+                            self.chatId = parseInt(idLine.replace('CHAT_ID:', ''));
+                            chunk = lines.slice(1).join('\n');
+                        }
+                        
+                        accumulated += chunk;
+                        
+                        if (!msgElement) {
+                            self.hideTyping();
+                            msgElement = self.addMessage('', 'assistant');
+                        }
+                        
+                        var bubble = msgElement.querySelector('.mobile-chat-bubble');
+                        bubble.innerHTML = self.formatMessage(accumulated);
+                        self.scrollToBottom();
+                        
+                        return read();
+                    });
+                }
+                
+                return read();
+            })
+            .catch(function(err) {
+                console.error('Error sending message:', err);
+                self.hideTyping();
+                self.isStreaming = false;
+                showToast('Ошибка отправки сообщения', 'error');
+            });
+        },
+        
+        addMessage: function(content, role) {
+            var container = document.getElementById('mobile-chat-messages');
+            var welcome = document.getElementById('mobile-welcome');
+            
+            var msg = document.createElement('div');
+            msg.className = 'mobile-chat-message ' + role;
+            msg.innerHTML = 
+                '<div class="mobile-chat-bubble">' +
+                    this.formatMessage(content) +
+                '</div>';
+            
+            container.insertBefore(msg, welcome.nextSibling);
+            return msg;
+        },
+        
+        insertPrompt: function(text) {
+            var input = document.getElementById('mobile-chat-input');
+            input.value = text;
+            input.focus();
+            document.getElementById('mobile-chat-send').disabled = false;
+            this.autoResizeInput();
+        },
+        
+        showTyping: function() {
+            document.getElementById('mobile-typing-indicator').classList.remove('hidden');
+        },
+        
+        hideTyping: function() {
+            document.getElementById('mobile-typing-indicator').classList.add('hidden');
+        },
+        
+        scrollToBottom: function() {
+            var container = document.getElementById('mobile-chat-messages');
+            container.scrollTop = container.scrollHeight;
+        },
+        
+        formatMessage: function(text) {
+            // Basic markdown-like formatting
+            text = this.escapeHtml(text);
+            
+            // Code blocks
+            text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="mobile-code-block"><code>$2</code></pre>');
+            
+            // Inline code
+            text = text.replace(/`([^`]+)`/g, '<code class="mobile-inline-code">$1</code>');
+            
+            // Bold
+            text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            
+            // Italic
+            text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            
+            // Line breaks
+            text = text.replace(/\n/g, '<br>');
+            
+            return text;
+        },
+        
+        formatDate: function(dateStr) {
+            var date = new Date(dateStr);
+            var now = new Date();
+            var diff = Math.floor((now - date) / 1000);
+            
+            if (diff < 60) return 'только что';
+            if (diff < 3600) return Math.floor(diff / 60) + ' мин';
+            if (diff < 86400) return Math.floor(diff / 3600) + ' ч';
+            
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        },
+        
+        escapeHtml: function(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        },
+        
+        getCsrfToken: function() {
+            var cookie = document.cookie
+                .split(';')
+                .find(function(c) { return c.trim().startsWith('csrftoken='); });
+            return cookie ? cookie.split('=')[1] : '';
+        }
+    };
+    
+    // Global helper
+    window.insertPrompt = function(text) {
+        MobileChat.insertPrompt(text);
+    };
+    
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', function() {
+        MobileChat.init();
+    });
+})();
+</script>
+
+<style>
+    .mobile-code-block {
+        background: var(--mobile-bg-base);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-md);
+        padding: 12px;
+        margin: 8px 0;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+    }
+    
+    .mobile-inline-code {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}

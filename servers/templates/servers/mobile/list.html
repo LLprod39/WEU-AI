@@ -1,0 +1,188 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}Серверы - WEU AI{% endblock %}
+{% block header_title %}Серверы{% endblock %}
+
+{% block header_right %}
+<button type="button" id="mobile-server-add-btn" class="mobile-header-btn">
+    <span class="material-icons-round">add</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mobile-page" id="mobile-servers-page">
+    
+    <!-- Servers List -->
+    <div class="mobile-list" id="mobile-servers-list">
+        {% if servers %}
+            {% for server in servers %}
+            <div class="mobile-server-card" data-id="{{ server.id }}">
+                <div class="mobile-server-header">
+                    <div class="mobile-server-status {% if server.is_active %}online{% else %}offline{% endif %}"></div>
+                    <div class="mobile-server-info">
+                        <div class="mobile-server-name">{{ server.name }}</div>
+                        <div class="mobile-server-host">{{ server.username }}@{{ server.host }}:{{ server.port }}</div>
+                    </div>
+                </div>
+                <div class="mobile-server-actions">
+                    <button type="button" class="mobile-server-action-btn" onclick="connectServer({{ server.id }})">
+                        <span class="material-icons-round">terminal</span>
+                        <span>Подключиться</span>
+                    </button>
+                    <button type="button" class="mobile-server-action-btn" onclick="testServer({{ server.id }})">
+                        <span class="material-icons-round">speed</span>
+                        <span>Тест</span>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="mobile-empty-state">
+                <span class="material-icons-round mobile-empty-icon">dns</span>
+                <p class="mobile-empty-title">Нет серверов</p>
+                <p class="mobile-empty-text">Добавьте первый сервер</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- FAB -->
+    <button type="button" class="mobile-fab" id="mobile-server-fab">
+        <span class="material-icons-round">add</span>
+    </button>
+</div>
+
+<style>
+    .mobile-server-card {
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-server-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-server-status {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    
+    .mobile-server-status.online {
+        background: var(--mobile-success);
+        box-shadow: 0 0 8px var(--mobile-success);
+    }
+    
+    .mobile-server-status.offline {
+        background: var(--mobile-text-muted);
+    }
+    
+    .mobile-server-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .mobile-server-name {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-server-host {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+        font-family: monospace;
+    }
+    
+    .mobile-server-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .mobile-server-action-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px;
+        background: var(--mobile-bg-elevated);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-md);
+        color: var(--mobile-text-secondary);
+        font-size: 12px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-server-action-btn:active {
+        background: var(--mobile-primary-glow);
+        border-color: var(--mobile-primary);
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-server-action-btn .material-icons-round {
+        font-size: 18px;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    
+    window.connectServer = function(serverId) {
+        window.location.href = '/?prompt=Подключись к серверу ' + serverId;
+    };
+    
+    window.testServer = function(serverId) {
+        showToast('Тестирование подключения...', 'info');
+        
+        fetch('/servers/api/' + serverId + '/test/', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('Подключение успешно!', 'success');
+            } else {
+                showToast(data.error || 'Ошибка подключения', 'error');
+            }
+        })
+        .catch(function() {
+            showToast('Ошибка тестирования', 'error');
+        });
+    };
+    
+    function getCsrfToken() {
+        var cookie = document.cookie
+            .split(';')
+            .find(function(c) { return c.trim().startsWith('csrftoken='); });
+        return cookie ? cookie.split('=')[1] : '';
+    }
+    
+    // Add buttons
+    var addBtn = document.getElementById('mobile-server-add-btn');
+    var fab = document.getElementById('mobile-server-fab');
+    
+    function openAddForm() {
+        window.location.href = '/servers/add/';
+    }
+    
+    if (addBtn) addBtn.addEventListener('click', openAddForm);
+    if (fab) fab.addEventListener('click', openAddForm);
+})();
+</script>
+{% endblock %}

@@ -1,12 +1,9 @@
-# HTTPS через Nginx + Let's Encrypt. Запуск:
-#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+# HTTPS через Nginx + Let's Encrypt. Запуск (WEU_PORT=8000 нужен при разборе — освобождает 80 для nginx):
+#   WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
 # Сначала используй docker/nginx-http-first.conf, получи серт, потом переключи на docker/nginx-https.conf.
 
 services:
-  web:
-    # Порт 80 занят nginx — веб только на 8000 (базовый compose: ${WEU_PORT:-80}:8000)
-    environment:
-      WEU_PORT: "8000"
+  web: {}
 
   nginx:
     image: nginx:alpine

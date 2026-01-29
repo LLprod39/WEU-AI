@@ -14,6 +14,7 @@ from .ai import improve_task_description, breakdown_task
 from .ai_assistant import analyze_task_sync, improve_description_sync, breakdown_task_sync
 from .smart_analyzer import SmartTaskAnalyzer
 from core_ui.decorators import require_feature
+from core_ui.middleware import get_template_name
 
 
 def _tasks_queryset_for_user(user):
@@ -69,7 +70,13 @@ def task_list(request):
     tasks_in_progress = base_qs.filter(status='IN_PROGRESS').order_by('-created_at')[:limit]
     tasks_done = base_qs.filter(status='DONE').order_by('-created_at')[:limit]
 
-    return render(request, 'tasks/task_list.html', {
+    # Mobile or desktop template
+    if getattr(request, 'is_mobile', False):
+        template = 'tasks/mobile/task_list.html'
+    else:
+        template = 'tasks/task_list.html'
+    
+    return render(request, template, {
         'tasks_todo': tasks_todo,
         'tasks_in_progress': tasks_in_progress,
         'tasks_done': tasks_done,

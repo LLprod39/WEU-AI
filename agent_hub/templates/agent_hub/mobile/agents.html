@@ -1,0 +1,145 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}Агенты - WEU AI{% endblock %}
+{% block header_title %}Агенты{% endblock %}
+
+{% block content %}
+<div class="mobile-page" id="mobile-agents-page">
+    
+    <!-- Agents Grid -->
+    <div class="mobile-agents-grid" id="mobile-agents-list">
+        <!-- Loading skeleton -->
+        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
+        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
+        <div class="mobile-agent-skeleton mobile-skeleton" style="height: 120px;"></div>
+    </div>
+    
+    <!-- Empty state -->
+    <div class="mobile-empty-state hidden" id="mobile-agents-empty">
+        <span class="material-icons-round mobile-empty-icon">smart_toy</span>
+        <p class="mobile-empty-title">Нет агентов</p>
+        <p class="mobile-empty-text">Агенты пока не настроены</p>
+    </div>
+</div>
+
+<style>
+    .mobile-agents-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .mobile-agent-card {
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-agent-card:active {
+        background: var(--mobile-bg-elevated);
+        transform: scale(0.98);
+    }
+    
+    .mobile-agent-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: var(--mobile-radius-lg);
+        background: var(--mobile-primary-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-agent-icon .material-icons-round {
+        font-size: 24px;
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-agent-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+        margin-bottom: 4px;
+    }
+    
+    .mobile-agent-desc {
+        font-size: 11px;
+        color: var(--mobile-text-muted);
+        line-height: 1.3;
+    }
+    
+    .mobile-agent-skeleton {
+        border-radius: var(--mobile-radius-lg);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    
+    function loadAgents() {
+        fetch('/api/agents/', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                renderAgents(data.agents || []);
+            })
+            .catch(function(err) {
+                console.error('Error loading agents:', err);
+                document.getElementById('mobile-agents-empty').classList.remove('hidden');
+            });
+    }
+    
+    function renderAgents(agents) {
+        var container = document.getElementById('mobile-agents-list');
+        var empty = document.getElementById('mobile-agents-empty');
+        
+        if (!agents.length) {
+            container.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+        
+        empty.classList.add('hidden');
+        container.innerHTML = '';
+        
+        agents.forEach(function(agent) {
+            var card = document.createElement('div');
+            card.className = 'mobile-agent-card';
+            card.innerHTML = 
+                '<div class="mobile-agent-icon">' +
+                    '<span class="material-icons-round">smart_toy</span>' +
+                '</div>' +
+                '<div class="mobile-agent-name">' + escapeHtml(agent.name || 'Agent') + '</div>' +
+                '<div class="mobile-agent-desc">' + escapeHtml((agent.description || '').substring(0, 50)) + '</div>';
+            
+            card.addEventListener('click', function() {
+                // Launch agent or show details
+                if (confirm('Запустить агента "' + agent.name + '"?')) {
+                    window.location.href = '/?agent=' + encodeURIComponent(agent.name);
+                }
+            });
+            
+            container.appendChild(card);
+        });
+    }
+    
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+    
+    document.addEventListener('DOMContentLoaded', loadAgents);
+})();
+</script>
+{% endblock %}

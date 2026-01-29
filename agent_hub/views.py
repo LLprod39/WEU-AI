@@ -24,6 +24,7 @@ from loguru import logger
 from .models import AgentProfile, AgentRun, AgentPreset, AgentWorkflow, AgentWorkflowRun
 from app.agents.manager import get_agent_manager
 from core_ui.decorators import require_feature
+from core_ui.middleware import get_template_name
 from app.core.llm import LLMProvider
 from app.agents.cli_runtime import CliRuntimeManager
 from app.tools.manager import get_tool_manager
@@ -347,9 +348,15 @@ def agents_page(request):
         {"id": s.id, "name": s.name, "host": s.host}
         for s in Server.objects.filter(user=request.user).only("id", "name", "host")
     ]
+    # Mobile or desktop template
+    if getattr(request, 'is_mobile', False):
+        template = "agent_hub/mobile/agents.html"
+    else:
+        template = "agent_hub/agents.html"
+    
     return render(
         request,
-        "agent_hub/agents.html",
+        template,
         {
             "profiles": profiles,
             "presets": presets,

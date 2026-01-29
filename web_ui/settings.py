@@ -70,6 +70,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core_ui.middleware.AdminRussianMiddleware',
+    'core_ui.middleware.MobileDetectionMiddleware',
 ]
 
 ROOT_URLCONF = 'web_ui.urls'

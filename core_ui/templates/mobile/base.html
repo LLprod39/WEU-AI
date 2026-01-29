@@ -1,0 +1,222 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>{% block title %}WEU AI{% endblock %}</title>
+    <meta name="description" content="WEU AI Agent - Enterprise AI Assistant">
+    
+    <!-- PWA Meta -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WEU AI">
+    <meta name="theme-color" content="#09090b">
+    <meta name="msapplication-TileColor" content="#6366f1">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    
+    <!-- Favicon & App Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'icons/icon-32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'icons/icon-16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.png' %}">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        bg: {
+                            deep: '#050507',
+                            base: '#09090b',
+                            surface: '#111113',
+                            elevated: '#18181b',
+                        },
+                        border: {
+                            subtle: 'rgba(255, 255, 255, 0.06)',
+                            DEFAULT: 'rgba(255, 255, 255, 0.1)',
+                            strong: 'rgba(255, 255, 255, 0.15)',
+                        },
+                        primary: {
+                            DEFAULT: '#6366f1',
+                            hover: '#4f46e5',
+                            light: '#818cf8',
+                            dark: '#4338ca',
+                        },
+                        accent: '#06b6d4',
+                    },
+                    spacing: {
+                        'safe-top': 'env(safe-area-inset-top)',
+                        'safe-bottom': 'env(safe-area-inset-bottom)',
+                        'safe-left': 'env(safe-area-inset-left)',
+                        'safe-right': 'env(safe-area-inset-right)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Mobile Styles -->
+    <link rel="stylesheet" href="{% static 'css/mobile/style.css' %}">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-bg-base text-gray-100 font-sans antialiased overflow-hidden h-screen flex flex-col" data-theme="dark">
+    
+    <!-- Mobile Header -->
+    <header id="mobile-header" class="mobile-header">
+        <div class="mobile-header-inner">
+            <!-- Left action -->
+            <div class="mobile-header-left">
+                {% block header_left %}
+                <button type="button" id="mobile-back-btn" class="mobile-header-btn hidden" onclick="history.back()">
+                    <span class="material-icons-round">arrow_back</span>
+                </button>
+                {% endblock %}
+            </div>
+            
+            <!-- Title -->
+            <div class="mobile-header-center">
+                <h1 class="mobile-header-title">{% block header_title %}WEU AI{% endblock %}</h1>
+            </div>
+            
+            <!-- Right action -->
+            <div class="mobile-header-right">
+                {% block header_right %}
+                <div id="mobile-connection-status" class="mobile-status-dot online" title="Онлайн"></div>
+                {% endblock %}
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content Area -->
+    <main id="mobile-main" class="mobile-main">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Bottom Navigation -->
+    <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
+        <a href="{% url 'index' %}" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}" data-page="chat">
+            <span class="material-icons-round mobile-nav-icon">chat</span>
+            <span class="mobile-nav-label">Чат</span>
+        </a>
+        {% if user_can_tasks %}
+        <a href="{% url 'tasks:task_list' %}" class="mobile-nav-item {% if 'tasks' in request.path %}active{% endif %}" data-page="tasks">
+            <span class="material-icons-round mobile-nav-icon">check_circle</span>
+            <span class="mobile-nav-label">Задачи</span>
+        </a>
+        {% endif %}
+        {% if user_can_agents %}
+        <a href="{% url 'agent_hub:agents_page' %}" class="mobile-nav-item {% if 'agents' in request.path %}active{% endif %}" data-page="agents">
+            <span class="material-icons-round mobile-nav-icon">hub</span>
+            <span class="mobile-nav-label">Агенты</span>
+        </a>
+        {% endif %}
+        {% if user_can_knowledge_base %}
+        <a href="{% url 'knowledge_base' %}" class="mobile-nav-item {% if 'knowledge' in request.path %}active{% endif %}" data-page="knowledge">
+            <span class="material-icons-round mobile-nav-icon">storage</span>
+            <span class="mobile-nav-label">База</span>
+        </a>
+        {% endif %}
+        <button type="button" class="mobile-nav-item" id="mobile-more-btn" data-page="more">
+            <span class="material-icons-round mobile-nav-icon">more_horiz</span>
+            <span class="mobile-nav-label">Ещё</span>
+        </button>
+    </nav>
+    
+    <!-- More Menu (Drawer) -->
+    <div id="mobile-more-drawer" class="mobile-drawer hidden">
+        <div class="mobile-drawer-overlay"></div>
+        <div class="mobile-drawer-content">
+            <div class="mobile-drawer-header">
+                <span class="text-lg font-semibold">Меню</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-drawer-close">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-drawer-body">
+                {% if user_can_servers %}
+                <a href="{% url 'servers:server_list' %}" class="mobile-menu-item">
+                    <span class="material-icons-round">terminal</span>
+                    <span>Серверы</span>
+                </a>
+                {% endif %}
+                <a href="{% url 'passwords:password_list' %}" class="mobile-menu-item">
+                    <span class="material-icons-round">lock</span>
+                    <span>Пароли</span>
+                </a>
+                {% if user_can_settings %}
+                <a href="{% url 'settings' %}" class="mobile-menu-item">
+                    <span class="material-icons-round">settings</span>
+                    <span>Настройки</span>
+                </a>
+                {% endif %}
+                <div class="mobile-menu-divider"></div>
+                <div class="mobile-menu-item mobile-user-info">
+                    <div class="mobile-user-avatar">{{ request.user.username|slice:":2"|upper }}</div>
+                    <div class="mobile-user-details">
+                        <span class="mobile-user-name">{{ request.user.username }}</span>
+                        <span class="mobile-user-role">Пользователь</span>
+                    </div>
+                </div>
+                <form action="{% url 'logout' %}" method="post" class="mobile-logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="mobile-menu-item mobile-logout-btn">
+                        <span class="material-icons-round">logout</span>
+                        <span>Выйти</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="mobile-toast-container" class="mobile-toast-container"></div>
+    
+    <!-- Mobile Scripts -->
+    <script src="{% static 'js/mobile/app.js' %}"></script>
+    
+    {% block scripts %}{% endblock %}
+    
+    <script>
+        // Initialize mobile app
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.MobileApp) {
+                window.MobileApp.init();
+            }
+        });
+        
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(function(registration) {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+
+</html>

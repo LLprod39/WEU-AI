@@ -1,0 +1,635 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}Задачи - WEU AI{% endblock %}
+{% block header_title %}Задачи{% endblock %}
+
+{% block header_right %}
+<button type="button" id="mobile-task-filter-btn" class="mobile-header-btn">
+    <span class="material-icons-round">filter_list</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mobile-page" id="mobile-tasks-page">
+    
+    <!-- Filter Tabs -->
+    <div class="mobile-tasks-tabs" id="mobile-tasks-tabs">
+        <button type="button" class="mobile-tab active" data-tab="todo">
+            <span class="mobile-tab-count">{{ tasks_todo|length }}</span>
+            <span class="mobile-tab-label">К выполнению</span>
+        </button>
+        <button type="button" class="mobile-tab" data-tab="in_progress">
+            <span class="mobile-tab-count">{{ tasks_in_progress|length }}</span>
+            <span class="mobile-tab-label">В работе</span>
+        </button>
+        <button type="button" class="mobile-tab" data-tab="done">
+            <span class="mobile-tab-count">{{ tasks_done|length }}</span>
+            <span class="mobile-tab-label">Готово</span>
+        </button>
+    </div>
+    
+    <!-- Task Lists -->
+    <div class="mobile-tasks-content">
+        
+        <!-- TODO Tasks -->
+        <div class="mobile-task-list" id="mobile-tasks-todo">
+            {% if tasks_todo %}
+                {% for task in tasks_todo %}
+                <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
+                    <div class="mobile-swipe-actions">
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
+                            <span class="material-icons-round">edit</span>
+                        </button>
+                        <button type="button" class="mobile-swipe-action delete" onclick="MobileTasks.deleteTask({{ task.id }})">
+                            <span class="material-icons-round">delete</span>
+                        </button>
+                    </div>
+                    <div class="mobile-swipe-content">
+                        <div class="mobile-task-card" onclick="MobileTasks.openTask({{ task.id }})">
+                            <div class="mobile-task-header">
+                                <span class="mobile-task-priority mobile-task-priority-{{ task.priority|lower }}">
+                                    {{ task.priority }}
+                                </span>
+                                {% if task.is_ai_executable %}
+                                <span class="mobile-task-ai-badge">
+                                    <span class="material-icons-round">smart_toy</span>
+                                </span>
+                                {% endif %}
+                            </div>
+                            <h3 class="mobile-task-title">{{ task.title }}</h3>
+                            {% if task.description %}
+                            <p class="mobile-task-desc">{{ task.description|truncatechars:80 }}</p>
+                            {% endif %}
+                            <div class="mobile-task-footer">
+                                <span class="mobile-task-date">{{ task.created_at|date:"d M" }}</span>
+                                {% if task.subtasks.count %}
+                                <span class="mobile-task-subtasks">
+                                    <span class="material-icons-round">checklist</span>
+                                    {{ task.subtasks.filter.is_completed.count }}/{{ task.subtasks.count }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="mobile-empty-state">
+                    <span class="material-icons-round mobile-empty-icon">task_alt</span>
+                    <p class="mobile-empty-title">Нет задач</p>
+                    <p class="mobile-empty-text">Создайте первую задачу</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- IN PROGRESS Tasks -->
+        <div class="mobile-task-list hidden" id="mobile-tasks-in_progress">
+            {% if tasks_in_progress %}
+                {% for task in tasks_in_progress %}
+                <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
+                    <div class="mobile-swipe-actions">
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
+                            <span class="material-icons-round">edit</span>
+                        </button>
+                    </div>
+                    <div class="mobile-swipe-content">
+                        <div class="mobile-task-card in-progress" onclick="MobileTasks.openTask({{ task.id }})">
+                            <div class="mobile-task-header">
+                                <span class="mobile-task-status-badge">В работе</span>
+                                {% if task.is_ai_executable %}
+                                <span class="mobile-task-ai-badge">
+                                    <span class="material-icons-round">smart_toy</span>
+                                </span>
+                                {% endif %}
+                            </div>
+                            <h3 class="mobile-task-title">{{ task.title }}</h3>
+                            {% if task.description %}
+                            <p class="mobile-task-desc">{{ task.description|truncatechars:80 }}</p>
+                            {% endif %}
+                            <div class="mobile-task-footer">
+                                <span class="mobile-task-date">{{ task.created_at|date:"d M" }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="mobile-empty-state">
+                    <span class="material-icons-round mobile-empty-icon">hourglass_empty</span>
+                    <p class="mobile-empty-title">Нет активных задач</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- DONE Tasks -->
+        <div class="mobile-task-list hidden" id="mobile-tasks-done">
+            {% if tasks_done %}
+                {% for task in tasks_done %}
+                <div class="mobile-task-card done" onclick="MobileTasks.openTask({{ task.id }})">
+                    <div class="mobile-task-header">
+                        <span class="mobile-task-check">
+                            <span class="material-icons-round">check_circle</span>
+                        </span>
+                    </div>
+                    <h3 class="mobile-task-title">{{ task.title }}</h3>
+                    <div class="mobile-task-footer">
+                        <span class="mobile-task-date">{{ task.created_at|date:"d M" }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="mobile-empty-state">
+                    <span class="material-icons-round mobile-empty-icon">celebration</span>
+                    <p class="mobile-empty-title">Нет завершённых задач</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- FAB - Create Task -->
+    <button type="button" class="mobile-fab" id="mobile-task-create-btn">
+        <span class="material-icons-round">add</span>
+    </button>
+    
+    <!-- Create Task Modal -->
+    <div id="mobile-task-modal" class="mobile-modal hidden">
+        <div class="mobile-modal-overlay"></div>
+        <div class="mobile-modal-content">
+            <div class="mobile-modal-header">
+                <h2 class="text-lg font-semibold">Новая задача</h2>
+                <button type="button" class="mobile-modal-close" id="mobile-task-modal-close">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-modal-body">
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Название</label>
+                    <input type="text" id="mobile-task-title" class="mobile-input" placeholder="Что нужно сделать?">
+                </div>
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Описание</label>
+                    <textarea id="mobile-task-description" class="mobile-input mobile-textarea" placeholder="Подробности задачи..."></textarea>
+                </div>
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Приоритет</label>
+                    <div class="mobile-priority-select">
+                        <button type="button" class="mobile-priority-btn" data-priority="LOW">Низкий</button>
+                        <button type="button" class="mobile-priority-btn active" data-priority="MEDIUM">Средний</button>
+                        <button type="button" class="mobile-priority-btn" data-priority="HIGH">Высокий</button>
+                    </div>
+                </div>
+            </div>
+            <div class="mobile-modal-footer">
+                <button type="button" class="mobile-btn mobile-btn-secondary" onclick="MobileTasks.closeModal()">Отмена</button>
+                <button type="button" class="mobile-btn mobile-btn-primary" onclick="MobileTasks.createTask()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .mobile-tasks-tabs {
+        display: flex;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-lg);
+        padding: 4px;
+        margin-bottom: var(--mobile-spacing-md);
+    }
+    
+    .mobile-tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 8px;
+        border-radius: var(--mobile-radius-md);
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-muted);
+        transition: var(--mobile-transition-fast);
+        cursor: pointer;
+    }
+    
+    .mobile-tab.active {
+        background: var(--mobile-bg-elevated);
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-tab-count {
+        font-size: 18px;
+        font-weight: 600;
+    }
+    
+    .mobile-tab-label {
+        font-size: 10px;
+        margin-top: 2px;
+    }
+    
+    .mobile-task-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--mobile-spacing-sm);
+    }
+    
+    .mobile-task-list.hidden {
+        display: none;
+    }
+    
+    .mobile-task-card {
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        padding: var(--mobile-spacing-md);
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-task-card:active {
+        background: var(--mobile-bg-elevated);
+    }
+    
+    .mobile-task-card.in-progress {
+        border-left: 3px solid var(--mobile-primary);
+    }
+    
+    .mobile-task-card.done {
+        opacity: 0.6;
+    }
+    
+    .mobile-task-header {
+        display: flex;
+        align-items: center;
+        gap: var(--mobile-spacing-sm);
+        margin-bottom: var(--mobile-spacing-sm);
+    }
+    
+    .mobile-task-priority {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: var(--mobile-radius-full);
+        text-transform: uppercase;
+    }
+    
+    .mobile-task-priority-high {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+    
+    .mobile-task-priority-medium {
+        background: rgba(245, 158, 11, 0.2);
+        color: #f59e0b;
+    }
+    
+    .mobile-task-priority-low {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+    
+    .mobile-task-ai-badge {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--mobile-primary-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .mobile-task-ai-badge .material-icons-round {
+        font-size: 14px;
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-task-status-badge {
+        font-size: 10px;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: var(--mobile-radius-full);
+        background: var(--mobile-primary-glow);
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-task-check {
+        color: var(--mobile-success);
+    }
+    
+    .mobile-task-title {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+        margin-bottom: var(--mobile-spacing-xs);
+    }
+    
+    .mobile-task-desc {
+        font-size: 13px;
+        color: var(--mobile-text-muted);
+        line-height: 1.4;
+        margin-bottom: var(--mobile-spacing-sm);
+    }
+    
+    .mobile-task-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-task-subtasks {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .mobile-task-subtasks .material-icons-round {
+        font-size: 14px;
+    }
+    
+    /* Modal */
+    .mobile-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+    }
+    
+    .mobile-modal.hidden {
+        display: none;
+    }
+    
+    .mobile-modal-overlay {
+        position: absolute;
+        inset: 0;
+        background: var(--mobile-bg-overlay);
+    }
+    
+    .mobile-modal-content {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-xl) var(--mobile-radius-xl) 0 0;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        animation: slideInUp 0.3s ease;
+        padding-bottom: var(--mobile-safe-bottom);
+    }
+    
+    .mobile-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--mobile-spacing-md);
+        border-bottom: 1px solid var(--mobile-border-color);
+    }
+    
+    .mobile-modal-close {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-muted);
+        cursor: pointer;
+    }
+    
+    .mobile-modal-body {
+        flex: 1;
+        padding: var(--mobile-spacing-md);
+        overflow-y: auto;
+    }
+    
+    .mobile-modal-footer {
+        display: flex;
+        gap: var(--mobile-spacing-sm);
+        padding: var(--mobile-spacing-md);
+        border-top: 1px solid var(--mobile-border-color);
+    }
+    
+    .mobile-modal-footer .mobile-btn {
+        flex: 1;
+    }
+    
+    .mobile-priority-select {
+        display: flex;
+        gap: var(--mobile-spacing-sm);
+    }
+    
+    .mobile-priority-btn {
+        flex: 1;
+        padding: 10px;
+        border-radius: var(--mobile-radius-md);
+        background: var(--mobile-bg-elevated);
+        border: 1px solid var(--mobile-border-color);
+        color: var(--mobile-text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-priority-btn.active {
+        background: var(--mobile-primary-glow);
+        border-color: var(--mobile-primary);
+        color: var(--mobile-primary);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/mobile/gestures.js' %}"></script>
+<script>
+(function() {
+    'use strict';
+    
+    window.MobileTasks = {
+        currentTab: 'todo',
+        selectedPriority: 'MEDIUM',
+        
+        init: function() {
+            this.bindEvents();
+            this.initSwipeables();
+            console.log('[MobileTasks] Initialized');
+        },
+        
+        bindEvents: function() {
+            var self = this;
+            
+            // Tab switching
+            var tabs = document.querySelectorAll('.mobile-tab');
+            tabs.forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    var tabName = tab.dataset.tab;
+                    self.switchTab(tabName);
+                });
+            });
+            
+            // FAB - create task
+            var createBtn = document.getElementById('mobile-task-create-btn');
+            createBtn.addEventListener('click', function() {
+                self.openModal();
+            });
+            
+            // Modal close
+            var modalOverlay = document.querySelector('#mobile-task-modal .mobile-modal-overlay');
+            var modalClose = document.getElementById('mobile-task-modal-close');
+            
+            modalOverlay.addEventListener('click', function() {
+                self.closeModal();
+            });
+            
+            modalClose.addEventListener('click', function() {
+                self.closeModal();
+            });
+            
+            // Priority buttons
+            var priorityBtns = document.querySelectorAll('.mobile-priority-btn');
+            priorityBtns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    priorityBtns.forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    self.selectedPriority = btn.dataset.priority;
+                });
+            });
+        },
+        
+        initSwipeables: function() {
+            if (window.MobileGestures) {
+                window.MobileGestures.initSwipeableItems();
+            }
+        },
+        
+        switchTab: function(tabName) {
+            this.currentTab = tabName;
+            
+            // Update tab buttons
+            var tabs = document.querySelectorAll('.mobile-tab');
+            tabs.forEach(function(tab) {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+            
+            // Show/hide lists
+            var lists = document.querySelectorAll('.mobile-task-list');
+            lists.forEach(function(list) {
+                list.classList.add('hidden');
+            });
+            
+            var activeList = document.getElementById('mobile-tasks-' + tabName);
+            if (activeList) {
+                activeList.classList.remove('hidden');
+            }
+        },
+        
+        openTask: function(taskId) {
+            // Navigate to task detail or open modal
+            window.location.href = '/tasks/#task-' + taskId;
+        },
+        
+        editTask: function(taskId) {
+            window.location.href = '/tasks/' + taskId + '/edit/';
+        },
+        
+        deleteTask: function(taskId) {
+            if (!confirm('Удалить задачу?')) return;
+            
+            var self = this;
+            fetch('/tasks/api/' + taskId + '/delete/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': this.getCsrfToken(),
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showToast('Задача удалена', 'success');
+                    // Remove from DOM
+                    var container = document.querySelector('[data-task-id="' + taskId + '"]');
+                    if (container) container.remove();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка удаления', 'error');
+            });
+        },
+        
+        openModal: function() {
+            document.getElementById('mobile-task-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            document.getElementById('mobile-task-title').focus();
+        },
+        
+        closeModal: function() {
+            document.getElementById('mobile-task-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            
+            // Clear form
+            document.getElementById('mobile-task-title').value = '';
+            document.getElementById('mobile-task-description').value = '';
+            this.selectedPriority = 'MEDIUM';
+            
+            var priorityBtns = document.querySelectorAll('.mobile-priority-btn');
+            priorityBtns.forEach(function(btn) {
+                btn.classList.toggle('active', btn.dataset.priority === 'MEDIUM');
+            });
+        },
+        
+        createTask: function() {
+            var title = document.getElementById('mobile-task-title').value.trim();
+            var description = document.getElementById('mobile-task-description').value.trim();
+            
+            if (!title) {
+                showToast('Введите название задачи', 'warning');
+                return;
+            }
+            
+            var self = this;
+            fetch('/tasks/api/create/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': this.getCsrfToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: title,
+                    description: description,
+                    priority: this.selectedPriority
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success || data.id) {
+                    showToast('Задача создана', 'success');
+                    self.closeModal();
+                    // Reload page to show new task
+                    window.location.reload();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка создания', 'error');
+            });
+        },
+        
+        getCsrfToken: function() {
+            var cookie = document.cookie
+                .split(';')
+                .find(function(c) { return c.trim().startsWith('csrftoken='); });
+            return cookie ? cookie.split('=')[1] : '';
+        }
+    };
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        MobileTasks.init();
+    });
+})();
+</script>
+{% endblock %}

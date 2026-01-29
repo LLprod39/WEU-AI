@@ -23,6 +23,7 @@ from .models import (
 from app.tools.ssh_tools import ssh_manager
 from passwords.encryption import PasswordEncryption
 from core_ui.decorators import require_feature
+from core_ui.middleware import get_template_name
 
 
 @login_required
@@ -50,7 +51,13 @@ def server_list(request):
     ).distinct()
     group_tags = ServerGroupTag.objects.filter(user=request.user)
     
-    return render(request, 'servers/list.html', {
+    # Mobile or desktop template
+    if getattr(request, 'is_mobile', False):
+        template = 'servers/mobile/list.html'
+    else:
+        template = 'servers/list.html'
+    
+    return render(request, template, {
         'servers': servers,
         'groups': groups,
         'group_tags': group_tags,

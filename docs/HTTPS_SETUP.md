@@ -1,12 +1,10 @@
-# HTTPS для weuai.site (Nginx + Let's Encrypt)
+# HTTPS для weuai.site — что делать по порядку
 
-Чтобы сайт открывался по **https://weuai.site** и браузер не ругался, нужен SSL-сертификат. Ниже — пошаговая настройка на сервере.
+Чтобы **https://weuai.site** и **https://www.weuai.site** открывались без «Небезопасно» и «The content of the page cannot be displayed», сделай на сервере шаги ниже. Все команды — в папке проекта `~/WEU-AI`.
 
 ---
 
-## 1. Подготовка на сервере
-
-В папке проекта (рядом с `docker-compose.yml`):
+## Шаг 1. Подготовка
 
 ```bash
 cd ~/WEU-AI
@@ -15,78 +13,110 @@ mkdir -p certbot/www
 
 ---
 
-## 2. Запуск с Nginx (сначала только HTTP)
+## Шаг 2. Запуск с Nginx (сейчас у тебя уже есть)
 
-Останови текущие контейнеры и подними с Nginx:
+Если контейнеры уже подняты с nginx — ничего не делай. Если перезапускаешь — всегда с **WEU_PORT=8000**:
 
 ```bash
-docker compose down
-docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.https.yml down
+WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
 ```
 
-Проверь: **http://weuai.site** должен открываться (редирект на логин). Nginx слушает 80 и проксирует в Django.
+Проверка: в браузере **http://weuai.site** или **http://www.weuai.site** — должна открываться страница логина.
 
 ---
 
-## 3. Получение сертификата Let's Encrypt
-
-На сервере установи certbot (если ещё нет):
+## Шаг 3. Установка certbot (если ещё нет)
 
 ```bash
-# Debian/Ubuntu
-sudo apt update && sudo apt install -y certbot
+sudo apt update
+sudo apt install -y certbot
 ```
 
-Получи сертификат (Nginx уже отдаёт сайт и `.well-known` из `certbot/www`):
+Если была ошибка dpkg: сначала `sudo dpkg --configure -a`, потом снова `apt install`.
+
+---
+
+## Шаг 4. Получение бесплатного сертификата Let's Encrypt
+
+Подставь **свой email** вместо `твой@email.com`:
 
 ```bash
 cd ~/WEU-AI
 sudo certbot certonly --webroot -w "$(pwd)/certbot/www" -d weuai.site -d www.weuai.site --email твой@email.com --agree-tos --no-eff-email
 ```
 
-Сертификаты появятся в `/etc/letsencrypt/live/weuai.site/`.
+Если всё ок — в конце будет сообщение, что сертификат сохранён в `/etc/letsencrypt/live/weuai.site/`.
 
 ---
 
-## 4. Включение HTTPS в Nginx
+## Шаг 5. Включение HTTPS в Nginx
 
-В `docker-compose.https.yml` замени конфиг Nginx на вариант с SSL:
+На сервере отредактируй файл **docker-compose.https.yml**:
 
-Было:
+```bash
+nano ~/WEU-AI/docker-compose.https.yml
+```
+
+Найди строку:
+
 ```yaml
 - ./docker/nginx-http-first.conf:/etc/nginx/conf.d/default.conf
 ```
 
-Сделай:
+Замени на:
+
 ```yaml
 - ./docker/nginx-https.conf:/etc/nginx/conf.d/default.conf
 ```
 
-Перезапусти Nginx:
+Сохрани (Ctrl+O, Enter, Ctrl+X).
+
+Перезапусти nginx:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx
+cd ~/WEU-AI
+WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx
 ```
-
-После этого:
-- **https://weuai.site** и **https://www.weuai.site** открываются по HTTPS
-- **http://weuai.site** перенаправляется на **https://weuai.site**
 
 ---
 
-## 5. Обновление сертификата (раз в ~3 месяца)
+## Шаг 6. Проверка
 
-Let's Encrypt выдаёт серты на 90 дней. Обновление:
+Открой в браузере:
+
+- **https://weuai.site**
+- **https://www.weuai.site**
+
+Должна открываться страница логина, в адресной строке — замочек (без «Небезопасно»).  
+**http://weuai.site** будет автоматически перенаправляться на **https://weuai.site**.
+
+---
+
+## Обновление сертификата (раз в ~3 месяца)
+
+Let's Encrypt выдаёт серт на 90 дней. Обновить:
 
 ```bash
 sudo certbot renew
-docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx
+cd ~/WEU-AI
+WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx
 ```
 
-Можно повесить в cron: `0 3 * * * certbot renew --quiet && docker compose -f /root/WEU-AI/docker-compose.yml -f /root/WEU-AI/docker-compose.https.yml restart nginx`
+Можно добавить в cron (каждый день в 3:00):
+
+```bash
+sudo crontab -e
+```
+
+Строка:
+
+```
+0 3 * * * certbot renew --quiet && cd /root/WEU-AI && WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx
+```
 
 ---
 
 ## Если домен другой
 
-В `docker/nginx-https.conf` и `docker/nginx-http-first.conf` замени **weuai.site** на свой домен. В команде certbot укажи свой домен и email.
+В файлах **docker/nginx-http-first.conf** и **docker/nginx-https.conf** замени **weuai.site** на свой домен. В команде certbot (шаг 4) укажи свой домен и email.

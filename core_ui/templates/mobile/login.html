@@ -1,0 +1,168 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Вход - WEU AI</title>
+    
+    <!-- PWA Meta -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#09090b">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Mobile Styles -->
+    <link rel="stylesheet" href="{% static 'css/mobile/style.css' %}">
+    
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 24px;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            background: linear-gradient(180deg, #09090b 0%, #111113 100%);
+        }
+        
+        .login-logo {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.2);
+        }
+        
+        .login-logo .material-icons-round {
+            font-size: 40px;
+            color: #6366f1;
+        }
+        
+        .login-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        
+        .login-subtitle {
+            font-size: 14px;
+            color: #71717a;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .login-input {
+            width: 100%;
+            height: 52px;
+            padding: 0 16px;
+            font-size: 16px;
+            color: white;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        
+        .login-input:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+        
+        .login-input::placeholder {
+            color: #52525b;
+        }
+        
+        .login-btn {
+            width: 100%;
+            height: 52px;
+            background: #6366f1;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        
+        .login-btn:active {
+            background: #4f46e5;
+            transform: scale(0.98);
+        }
+        
+        .login-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+
+<body class="bg-bg-base text-gray-100">
+    <div class="login-container">
+        <div class="login-logo">
+            <span class="material-icons-round">auto_awesome</span>
+        </div>
+        
+        <h1 class="login-title">WEU AI</h1>
+        <p class="login-subtitle">Войдите в свой аккаунт</p>
+        
+        {% if form.errors %}
+        <div class="login-error">
+            <span class="material-icons-round" style="font-size: 18px; vertical-align: middle; margin-right: 8px;">error_outline</span>
+            Неверное имя пользователя или пароль
+        </div>
+        {% endif %}
+        
+        <form method="post" class="login-form">
+            {% csrf_token %}
+            <input type="text" 
+                   name="username" 
+                   class="login-input" 
+                   placeholder="Имя пользователя"
+                   autocomplete="username"
+                   autocapitalize="none"
+                   required>
+            <input type="password" 
+                   name="password" 
+                   class="login-input" 
+                   placeholder="Пароль"
+                   autocomplete="current-password"
+                   required>
+            <button type="submit" class="login-btn">Войти</button>
+        </form>
+    </div>
+</body>
+
+</html>

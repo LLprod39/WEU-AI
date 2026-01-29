@@ -1,0 +1,549 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}База знаний - WEU AI{% endblock %}
+{% block header_title %}База знаний{% endblock %}
+
+{% block header_right %}
+<button type="button" id="mobile-kb-add-btn" class="mobile-header-btn">
+    <span class="material-icons-round">add</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="mobile-page" id="mobile-knowledge-page">
+    
+    <!-- RAG Status -->
+    <div class="mobile-kb-status">
+        <div class="mobile-kb-status-icon {% if rag_available %}online{% else %}offline{% endif %}">
+            <span class="material-icons-round">{% if rag_available %}check_circle{% else %}error{% endif %}</span>
+        </div>
+        <div class="mobile-kb-status-info">
+            <span class="mobile-kb-status-title">RAG {% if rag_available %}Активен{% else %}Недоступен{% endif %}</span>
+            <span class="mobile-kb-status-desc">{{ rag_type }} • {{ rag_build }}</span>
+        </div>
+    </div>
+    
+    <!-- Search -->
+    <div class="mobile-kb-search">
+        <span class="material-icons-round">search</span>
+        <input type="text" id="mobile-kb-search-input" placeholder="Поиск в базе знаний..." class="mobile-kb-search-input">
+    </div>
+    
+    <!-- Documents List -->
+    <div class="mobile-kb-section">
+        <div class="mobile-kb-section-header">
+            <span class="mobile-kb-section-title">Документы</span>
+            <span class="mobile-kb-section-count" id="mobile-kb-doc-count">0</span>
+        </div>
+        
+        <div id="mobile-kb-documents" class="mobile-list">
+            <div class="mobile-empty-state" id="mobile-kb-empty">
+                <span class="material-icons-round mobile-empty-icon">folder_open</span>
+                <p class="mobile-empty-title">Нет документов</p>
+                <p class="mobile-empty-text">Добавьте документы для работы с RAG</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- FAB - Add Document -->
+    <button type="button" class="mobile-fab" id="mobile-kb-fab">
+        <span class="material-icons-round">upload_file</span>
+    </button>
+    
+    <!-- Add Document Modal -->
+    <div id="mobile-kb-modal" class="mobile-modal hidden">
+        <div class="mobile-modal-overlay"></div>
+        <div class="mobile-modal-content">
+            <div class="mobile-modal-header">
+                <h2 class="text-lg font-semibold">Добавить документ</h2>
+                <button type="button" class="mobile-modal-close" id="mobile-kb-modal-close">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="mobile-modal-body">
+                <!-- File Upload -->
+                <div class="mobile-kb-upload-area" id="mobile-kb-upload-area">
+                    <input type="file" id="mobile-kb-file-input" class="hidden" accept=".txt,.pdf,.doc,.docx,.md">
+                    <span class="material-icons-round text-4xl text-gray-500 mb-2">cloud_upload</span>
+                    <p class="text-sm text-gray-400">Нажмите для загрузки файла</p>
+                    <p class="text-xs text-gray-500 mt-1">PDF, DOCX, TXT, MD</p>
+                </div>
+                
+                <div class="mobile-kb-divider">
+                    <span>или</span>
+                </div>
+                
+                <!-- Text Input -->
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Текст</label>
+                    <textarea id="mobile-kb-text-input" class="mobile-input mobile-textarea" placeholder="Введите или вставьте текст..." rows="5"></textarea>
+                </div>
+                
+                <div class="mobile-input-group">
+                    <label class="mobile-input-label">Источник</label>
+                    <input type="text" id="mobile-kb-source-input" class="mobile-input" placeholder="Название источника">
+                </div>
+            </div>
+            <div class="mobile-modal-footer">
+                <button type="button" class="mobile-btn mobile-btn-secondary" onclick="MobileKB.closeModal()">Отмена</button>
+                <button type="button" class="mobile-btn mobile-btn-primary" onclick="MobileKB.addDocument()">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .mobile-kb-status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-lg);
+        margin-bottom: 16px;
+    }
+    
+    .mobile-kb-status-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .mobile-kb-status-icon.online {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+    
+    .mobile-kb-status-icon.offline {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+    
+    .mobile-kb-status-title {
+        display: block;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+    }
+    
+    .mobile-kb-status-desc {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-kb-search {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        height: 48px;
+        background: var(--mobile-bg-surface);
+        border: 1px solid var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        margin-bottom: 16px;
+    }
+    
+    .mobile-kb-search .material-icons-round {
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-kb-search-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-primary);
+        font-size: 15px;
+        outline: none;
+    }
+    
+    .mobile-kb-section {
+        margin-bottom: 16px;
+    }
+    
+    .mobile-kb-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    
+    .mobile-kb-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--mobile-text-secondary);
+        text-transform: uppercase;
+    }
+    
+    .mobile-kb-section-count {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+        background: var(--mobile-bg-elevated);
+        padding: 2px 8px;
+        border-radius: var(--mobile-radius-full);
+    }
+    
+    .mobile-kb-upload-area {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        border: 2px dashed var(--mobile-border-color);
+        border-radius: var(--mobile-radius-lg);
+        cursor: pointer;
+        transition: var(--mobile-transition-fast);
+    }
+    
+    .mobile-kb-upload-area:active {
+        border-color: var(--mobile-primary);
+        background: var(--mobile-primary-glow);
+    }
+    
+    .mobile-kb-divider {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin: 20px 0;
+        color: var(--mobile-text-muted);
+        font-size: 12px;
+    }
+    
+    .mobile-kb-divider::before,
+    .mobile-kb-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--mobile-border-color);
+    }
+    
+    .mobile-kb-doc-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        background: var(--mobile-bg-surface);
+        border-radius: var(--mobile-radius-md);
+        margin-bottom: 8px;
+    }
+    
+    .mobile-kb-doc-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--mobile-radius-md);
+        background: var(--mobile-primary-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .mobile-kb-doc-icon .material-icons-round {
+        color: var(--mobile-primary);
+    }
+    
+    .mobile-kb-doc-content {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .mobile-kb-doc-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--mobile-text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .mobile-kb-doc-meta {
+        font-size: 12px;
+        color: var(--mobile-text-muted);
+    }
+    
+    .mobile-kb-doc-delete {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--mobile-radius-md);
+        background: transparent;
+        border: none;
+        color: var(--mobile-text-muted);
+        cursor: pointer;
+    }
+    
+    .mobile-kb-doc-delete:active {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    
+    window.MobileKB = {
+        init: function() {
+            this.bindEvents();
+            this.loadDocuments();
+            console.log('[MobileKB] Initialized');
+        },
+        
+        bindEvents: function() {
+            var self = this;
+            
+            // FAB and header button
+            document.getElementById('mobile-kb-fab').addEventListener('click', function() {
+                self.openModal();
+            });
+            document.getElementById('mobile-kb-add-btn').addEventListener('click', function() {
+                self.openModal();
+            });
+            
+            // Modal
+            document.querySelector('#mobile-kb-modal .mobile-modal-overlay').addEventListener('click', function() {
+                self.closeModal();
+            });
+            document.getElementById('mobile-kb-modal-close').addEventListener('click', function() {
+                self.closeModal();
+            });
+            
+            // File upload
+            var uploadArea = document.getElementById('mobile-kb-upload-area');
+            var fileInput = document.getElementById('mobile-kb-file-input');
+            
+            uploadArea.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files.length > 0) {
+                    self.uploadFile(fileInput.files[0]);
+                }
+            });
+            
+            // Search
+            var searchInput = document.getElementById('mobile-kb-search-input');
+            searchInput.addEventListener('input', MobileApp.debounce(function() {
+                self.searchDocuments(searchInput.value);
+            }, 300));
+        },
+        
+        loadDocuments: function() {
+            var self = this;
+            
+            fetch('/api/rag/documents/?limit=50', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    self.renderDocuments(data.documents || []);
+                    document.getElementById('mobile-kb-doc-count').textContent = data.doc_count || 0;
+                })
+                .catch(function(err) {
+                    console.error('Error loading documents:', err);
+                });
+        },
+        
+        renderDocuments: function(docs) {
+            var container = document.getElementById('mobile-kb-documents');
+            var empty = document.getElementById('mobile-kb-empty');
+            
+            if (!docs.length) {
+                empty.classList.remove('hidden');
+                container.innerHTML = '';
+                container.appendChild(empty);
+                return;
+            }
+            
+            empty.classList.add('hidden');
+            container.innerHTML = '';
+            
+            var self = this;
+            docs.forEach(function(doc) {
+                var item = document.createElement('div');
+                item.className = 'mobile-kb-doc-item';
+                item.innerHTML = 
+                    '<div class="mobile-kb-doc-icon">' +
+                        '<span class="material-icons-round">description</span>' +
+                    '</div>' +
+                    '<div class="mobile-kb-doc-content">' +
+                        '<div class="mobile-kb-doc-title">' + self.escapeHtml(doc.source || 'Документ') + '</div>' +
+                        '<div class="mobile-kb-doc-meta">' + (doc.text || '').substring(0, 50) + '...</div>' +
+                    '</div>' +
+                    '<button type="button" class="mobile-kb-doc-delete" data-id="' + doc.id + '">' +
+                        '<span class="material-icons-round">delete</span>' +
+                    '</button>';
+                
+                item.querySelector('.mobile-kb-doc-delete').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    self.deleteDocument(doc.id);
+                });
+                
+                container.appendChild(item);
+            });
+        },
+        
+        searchDocuments: function(query) {
+            if (!query.trim()) {
+                this.loadDocuments();
+                return;
+            }
+            
+            var self = this;
+            fetch('/api/rag/query/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify({ query: query, n_results: 10 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                // Convert query results to document format
+                var docs = (data.documents[0] || []).map(function(text, i) {
+                    var meta = (data.metadatas[0] || [])[i] || {};
+                    return {
+                        id: meta.id || i,
+                        source: meta.source || 'Результат поиска',
+                        text: text
+                    };
+                });
+                self.renderDocuments(docs);
+            })
+            .catch(function(err) {
+                console.error('Search error:', err);
+            });
+        },
+        
+        openModal: function() {
+            document.getElementById('mobile-kb-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        },
+        
+        closeModal: function() {
+            document.getElementById('mobile-kb-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            
+            // Clear form
+            document.getElementById('mobile-kb-text-input').value = '';
+            document.getElementById('mobile-kb-source-input').value = '';
+            document.getElementById('mobile-kb-file-input').value = '';
+        },
+        
+        addDocument: function() {
+            var text = document.getElementById('mobile-kb-text-input').value.trim();
+            var source = document.getElementById('mobile-kb-source-input').value.trim() || 'manual';
+            
+            if (!text) {
+                showToast('Введите текст документа', 'warning');
+                return;
+            }
+            
+            var self = this;
+            fetch('/api/rag/add/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify({ text: text, source: source })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showToast('Документ добавлен', 'success');
+                    self.closeModal();
+                    self.loadDocuments();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка добавления', 'error');
+            });
+        },
+        
+        uploadFile: function(file) {
+            var self = this;
+            var formData = new FormData();
+            formData.append('file', file);
+            
+            showToast('Загрузка файла...', 'info');
+            
+            fetch('/api/upload/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: formData
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showToast('Файл загружен', 'success');
+                    self.closeModal();
+                    self.loadDocuments();
+                } else {
+                    showToast(data.error || 'Ошибка загрузки', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка загрузки файла', 'error');
+            });
+        },
+        
+        deleteDocument: function(docId) {
+            if (!confirm('Удалить документ?')) return;
+            
+            var self = this;
+            fetch('/api/rag/delete/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: JSON.stringify({ doc_id: docId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    showToast('Документ удалён', 'success');
+                    self.loadDocuments();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            })
+            .catch(function() {
+                showToast('Ошибка удаления', 'error');
+            });
+        },
+        
+        escapeHtml: function(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        },
+        
+        getCsrfToken: function() {
+            var cookie = document.cookie
+                .split(';')
+                .find(function(c) { return c.trim().startsWith('csrftoken='); });
+            return cookie ? cookie.split('=')[1] : '';
+        }
+    };
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        MobileKB.init();
+    });
+})();
+</script>
+{% endblock %}

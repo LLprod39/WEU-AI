@@ -33,6 +33,7 @@ from app.agents.manager import get_agent_manager
 from core_ui.context_processors import user_can_feature
 from core_ui.decorators import require_feature, async_login_required, async_require_feature
 from core_ui.models import ChatSession, ChatMessage
+from core_ui.middleware import get_template_name
 
 # Singleton instances
 _orchestrator = None
@@ -107,6 +108,10 @@ def api_health(request):
 class CustomLoginView(LoginView):
     template_name = 'login.html'
     redirect_authenticated_user = True
+    
+    def get_template_names(self):
+        """Return mobile or desktop login template based on device."""
+        return [get_template_name(self.request, 'login.html')]
 
 
 # ============================================
@@ -152,8 +157,9 @@ def index(request):
             context['initial_prompt'] = initial_prompt.replace('\n', '\\n').replace("'", "\\'")
         except Exception as exc:
             logger.warning(f"Failed to prefill task prompt for task_id={task_id}: {exc}")
-            
-    return render(request, 'chat.html', context)
+    
+    template = get_template_name(request, 'chat.html')
+    return render(request, template, context)
 
 
 @login_required
@@ -165,7 +171,8 @@ def orchestrator_view(request):
     context = {
         'tool_count': 0,  # Will be updated via API
     }
-    return render(request, 'orchestrator.html', context)
+    template = get_template_name(request, 'orchestrator.html')
+    return render(request, template, context)
 
 
 @login_required
@@ -181,7 +188,8 @@ def knowledge_base_view(request):
         'rag_type': rag_type,
         'rag_build': getattr(rag, 'rag_build', 'full'),
     }
-    return render(request, 'knowledge_base.html', context)
+    template = get_template_name(request, 'knowledge_base.html')
+    return render(request, template, context)
 
 
 @login_required
@@ -189,7 +197,8 @@ def settings_view(request):
     """Settings page — конфиг подгружается через /api/settings/ и /api/models/. Only for staff or users with settings permission."""
     if not user_can_feature(request.user, 'settings'):
         return redirect('index')
-    return render(request, 'settings.html', {})
+    template = get_template_name(request, 'settings.html')
+    return render(request, template, {})
 
 
 # ============================================

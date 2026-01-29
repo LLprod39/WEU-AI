@@ -103,6 +103,18 @@ WEU_BUILD=mini  # или 'full' для RAG
 
 Если по **http://IP** всё открывается, а по **http://weuai.site** — «The content of the page cannot be displayed»: при **только Docker** (без nginx) обнови код на сервере (`git pull`), проверь `.env` (ALLOWED_HOSTS — убери или поставь `*`), перезапусти контейнер (`docker compose restart web`). Подробно: [docs/DOMAIN_NGINX.md](docs/DOMAIN_NGINX.md).
 
+### HTTPS для weuai.site — что делать
+
+Чтобы **https://weuai.site** и **www.weuai.site** открывались без «Небезопасно» и ошибки страницы:
+
+1. На сервере: `cd ~/WEU-AI`, `mkdir -p certbot/www`.
+2. Установи certbot: `sudo apt install -y certbot`.
+3. Получи серт: `sudo certbot certonly --webroot -w "$(pwd)/certbot/www" -d weuai.site -d www.weuai.site --email твой@email.com --agree-tos --no-eff-email`.
+4. В **docker-compose.https.yml** замени в volume nginx конфиг на `./docker/nginx-https.conf` (вместо `nginx-http-first.conf`).
+5. Перезапусти nginx: `WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx`.
+
+Подробно по шагам: [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md).
+
 ### Конфигурация моделей (.model_config.json)
 
 ```json

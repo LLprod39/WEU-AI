@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 from .models import Credential, CredentialCategory, CredentialTag
 from .encryption import PasswordEncryption
+from core_ui.middleware import get_template_name
 
 
 @login_required
@@ -34,7 +35,13 @@ def password_list(request):
     
     categories = CredentialCategory.objects.all()
     
-    return render(request, 'passwords/list.html', {
+    # Mobile or desktop template
+    if getattr(request, 'is_mobile', False):
+        template = 'passwords/mobile/list.html'
+    else:
+        template = 'passwords/list.html'
+    
+    return render(request, template, {
         'credentials': credentials,
         'categories': categories,
     })
