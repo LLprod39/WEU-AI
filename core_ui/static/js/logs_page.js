@@ -12,7 +12,9 @@
         autoScroll: true,
         filter: 'all',
         search: '',
-        fallback: false
+        fallback: false,
+        steps: [],
+        currentStep: 0
     };
 
     var timelineEl = document.getElementById('logsTimeline');
@@ -29,6 +31,7 @@
     var copyAllBtn = document.getElementById('logsCopyAll');
     var autoScrollBtn = document.getElementById('logsAutoScrollToggle');
     var refreshBtn = document.getElementById('logsRefreshBtn');
+    var runActionsEl = document.getElementById('logsRunActions');
 
     function statusClass(status) {
         if (status === 'running') return 'status-running';
@@ -149,6 +152,7 @@
 
     function renderFlow(steps, currentStep) {
         if (!flowEl) return;
+        state.steps = steps || [];
         if (!steps || !steps.length) {
             flowEl.innerHTML = '<div class="text-gray-500 text-sm">Нет данных по шагам.</div>';
             if (flowMetaEl) flowMetaEl.textContent = '—';
@@ -158,11 +162,20 @@
         flowEl.innerHTML = steps.map(function (step, idx) {
             var status = step.status || 'pending';
             var isActive = (currentStep === step.idx);
+            var stepActions = '';
+            // Show action buttons for failed/pending steps when workflow is paused/failed
+            if (state.status === 'failed' || state.status === 'paused') {
+                stepActions = '<div class="log-flow-actions">' +
+                    '<button type="button" class="log-flow-action-btn" data-action="skip-step" data-step="' + step.idx + '" title="Пропустить">⏭️</button>' +
+                    '<button type="button" class="log-flow-action-btn" data-action="continue-from" data-step="' + step.idx + '" title="Продолжить отсюда">▶️</button>' +
+                '</div>';
+            }
             return '<div class="log-flow-step ' + status + (isActive ? ' active' : '') + '" data-step-idx="' + step.idx + '">' +
                 '<div class="log-flow-dot"></div>' +
                 '<div class="log-flow-content">' +
                     '<div class="log-flow-title">' + escapeHtml(step.title || ('Шаг ' + step.idx)) + '</div>' +
-                    '<div class="log-flow-subtitle">' + escapeHtml(step.prompt || '') + '</div>' +
+                    '<div class="log-flow-subtitle">' + escapeHtml(step.prompt || '').substring(0, 60) + '</div>' +
+                    stepActions +
                 '</div>' +
                 (idx < steps.length - 1 ? '<div class="log-flow-arrow">→</div>' : '') +
             '</div>';
@@ -178,12 +191,174 @@
             .replace(/'/g, '&#039;');
     }
 
-    function applyStatus(status) {
+    function applyStatus(status, currentStep) {
         state.status = status || 'queued';
+        state.currentStep = currentStep || 0;
         if (statusBadge) {
             statusBadge.className = 'log-status-badge ' + statusClass(state.status);
             statusBadge.textContent = statusLabel(state.status);
         }
+        renderRunActions();
+    }
+
+    function renderRunActions() {
+        if (!runActionsEl) return;
+        if (runType !== 'workflow') {
+            // For agent runs - only stop
+            if (state.status === 'running') {
+                runActionsEl.innerHTML = '<button type="button" class="btn-ghost btn-danger" data-action="stop-agent">⏹️ Остановить</button>';
+            } else {
+                runActionsEl.innerHTML = '';
+            }
+            return;
+        }
+        // For workflows
+        var html = '';
+        if (state.status === 'failed' || state.status === 'paused') {
+            html += '<button type="button" class="btn-ghost btn-warning" data-action="retry">🔄 Повторить шаг</button>';
+            html += '<button type="button" class="btn-ghost btn-info" data-action="skip">⏭️ Пропустить</button>';
+            html += '<button type="button" class="btn-ghost btn-success" data-action="continue">▶️ Продолжить</button>';
+        } else if (state.status === 'running') {
+            html += '<button type="button" class="btn-ghost btn-danger" data-action="stop">⏹️ Остановить</button>';
+        }
+        runActionsEl.innerHTML = html;
+    }
+
+    function getCsrfToken() {
+        var cookie = document.cookie.split(';').find(function (c) {
+            return c.trim().startsWith('csrftoken=');
+        });
+        return cookie ? cookie.split('=')[1] : '';
+    }
+
+    function showToast(msg, type) {
+        if (window.showToast) {
+            window.showToast(msg, type);
+        } else {
+            alert(msg);
+        }
+    }
+
+    function stopRun() {
+        var url = runType === 'workflow'
+            ? '/agents/api/workflows/run/' + runId + '/stop/'
+            : '/agents/api/runs/' + runId + '/stop/';
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Остановлено', 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось остановить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
+    }
+
+    function skipStep() {
+        if (!confirm('Пропустить текущий шаг?')) return;
+        fetch('/agents/api/workflows/run/' + runId + '/skip/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Шаг пропущен', 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось пропустить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
+    }
+
+    function continueRun() {
+        fetch('/agents/api/workflows/run/' + runId + '/continue/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ from_step: state.currentStep })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Продолжено', 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось продолжить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
+    }
+
+    function retryStep() {
+        fetch('/agents/api/workflows/run/' + runId + '/retry/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken() }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Повтор шага запущен', 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось повторить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
+    }
+
+    function skipSpecificStep(stepIdx) {
+        if (!confirm('Пропустить шаг ' + stepIdx + '?')) return;
+        fetch('/agents/api/workflows/run/' + runId + '/skip-step/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ step_idx: stepIdx })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Шаг ' + stepIdx + ' пропущен', 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось пропустить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
+    }
+
+    function continueFromStep(stepIdx) {
+        fetch('/agents/api/workflows/run/' + runId + '/continue/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ from_step: stepIdx })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToast('Продолжено с шага ' + stepIdx, 'success');
+                    fetchStatus();
+                } else {
+                    showToast(data.error || 'Не удалось продолжить', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToast('Ошибка: ' + (e.message || e), 'error');
+            });
     }
 
     function mergeEvents(newEvents) {
@@ -259,7 +434,7 @@
         fetch(url)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                applyStatus(data.status);
+                applyStatus(data.status, data.current_step || 0);
                 if (titleEl) {
                     var label = runType === 'workflow' ? ('Workflow #' + runId) : ('Run #' + runId);
                     titleEl.textContent = label;
@@ -344,6 +519,29 @@
         if (refreshBtn) {
             refreshBtn.addEventListener('click', function () {
                 fetchStatus();
+            });
+        }
+        // Run actions (stop, skip, continue, retry)
+        if (runActionsEl) {
+            runActionsEl.addEventListener('click', function (e) {
+                var action = e.target.getAttribute('data-action');
+                if (!action) return;
+                if (action === 'stop' || action === 'stop-agent') stopRun();
+                else if (action === 'skip') skipStep();
+                else if (action === 'continue') continueRun();
+                else if (action === 'retry') retryStep();
+            });
+        }
+        // Flow step actions
+        if (flowEl) {
+            flowEl.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                var action = btn.getAttribute('data-action');
+                var stepIdx = parseInt(btn.getAttribute('data-step'), 10);
+                if (isNaN(stepIdx)) return;
+                if (action === 'skip-step') skipSpecificStep(stepIdx);
+                else if (action === 'continue-from') continueFromStep(stepIdx);
             });
         }
     }
