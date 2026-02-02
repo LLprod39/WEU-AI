@@ -1,0 +1,20 @@
+{
+  "name": "Првоерить простарствно на диске",
+  "runtime": "claude",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Проверить утилиту и API проверки диска",
+      "prompt": "Проверить модуль app/utils/disk_usage.py (get_disk_usage, get_disk_usage_report) и view api_disk_usage в core_ui/views.py: корректность параметров (include_root, media_root, base_dir, agent_projects_dir), передача путей из settings, обработка ошибок доступа и отсутствующих путей. Убедиться что API GET /api/disk/ возвращает paths с полями path, total, used, free, percent_used и человекочитаемыми total_human, used_human, free_human.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Проверить работу проверки диска на практике",
+      "prompt": "Выполнить проверку: вызвать get_disk_usage_report из Django shell или выполнить GET /api/disk/ (если приложение запущено). Убедиться что отчёт формируется без исключений и значения total/used/free/percent_used выглядят корректно для корня ФС и каталогов проекта.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-12.json"
+}

@@ -15,10 +15,15 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(next_page='login'), name='logout'),
 
     # Main Pages
-    path('', views.index, name='index'),
-    path('chat/', views.index, name='chat'),
+    path('', views.dashboard_view, name='index'),
+    path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('chat/', views.chat_view, name='chat'),
     path('orchestrator/', views.orchestrator_view, name='orchestrator'),
+    path('monitor/', views.monitor_view, name='monitor'),
     path('knowledge-base/', views.knowledge_base_view, name='knowledge_base'),
+
+    # Dashboard API
+    path('api/dashboard/stats/', views.api_dashboard_stats, name='api_dashboard_stats'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/access/', views.settings_access_view, name='settings_access'),
     path('settings/users/', views.settings_users_view, name='settings_users'),
@@ -49,6 +54,7 @@ urlpatterns = [
     # Settings API
     path('api/settings/', views.api_settings, name='api_settings'),
     path('api/settings/check/', views.api_settings_check, name='api_settings_check'),
+    path('api/disk/', views.api_disk_usage, name='api_disk_usage'),
     path('api/clear-history/', views.api_clear_history, name='api_clear_history'),
     
     # File Upload API

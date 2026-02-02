@@ -6,10 +6,19 @@ app_name = "agent_hub"
 urlpatterns = [
     path("", views.agents_page, name="agents_page"),
     path("logs/", views.logs_page, name="logs_page"),
+    path("admin/logs/", views.admin_logs_page, name="admin_logs_page"),
+    path("admin/api/runs/", views.admin_api_runs_list, name="admin_api_runs_list"),
+    path("admin/api/runs/<int:run_id>/status/", views.admin_api_run_status, name="admin_api_run_status"),
+    path("admin/api/runs/<int:run_id>/update/", views.admin_api_run_update, name="admin_api_run_update"),
+    path("admin/api/runs/<int:run_id>/restart/", views.admin_api_run_restart, name="admin_api_run_restart"),
+    path("admin/api/workflows/run/<int:run_id>/status/", views.admin_api_workflow_run_status, name="admin_api_workflow_run_status"),
+    path("admin/api/workflows/run/<int:run_id>/update/", views.admin_api_workflow_run_update, name="admin_api_workflow_run_update"),
+    path("admin/api/workflows/run/<int:run_id>/restart/", views.admin_api_workflow_run_restart, name="admin_api_workflow_run_restart"),
     path("api/profiles/", views.api_profiles_list, name="api_profiles_list"),
     path("api/profiles/create/", views.api_profiles_create, name="api_profiles_create"),
     path("api/profiles/<int:profile_id>/update/", views.api_profiles_update, name="api_profiles_update"),
     path("api/profiles/<int:profile_id>/delete/", views.api_profiles_delete, name="api_profiles_delete"),
+    path("api/profiles/<int:profile_id>/run/", views.api_profile_run, name="api_profile_run"),
     path("api/run/", views.api_agent_run, name="api_agent_run"),
     path("api/runs/", views.api_runs_list, name="api_runs_list"),
     path("api/runs/<int:run_id>/status/", views.api_run_status, name="api_run_status"),
@@ -45,4 +54,9 @@ urlpatterns = [
     # Model selection and smart analysis
     path("api/models/", views.api_list_models, name="api_list_models"),
     path("api/smart-analyze/", views.api_smart_analyze, name="api_smart_analyze"),
+    # Custom Agents
+    path("custom-agents/", views.custom_agents_view, name="custom_agents"),
+    path("api/custom-agents/", views.api_custom_agents_list, name="api_custom_agents_list"),
+    path("api/custom-agents/<int:agent_id>/", views.api_custom_agent_detail, name="api_custom_agent_detail"),
+    path("api/custom-agents/<int:agent_id>/export/", views.api_custom_agent_export, name="api_custom_agent_export"),
 ]

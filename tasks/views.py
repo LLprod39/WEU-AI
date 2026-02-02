@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.db.models import Q
 from asgiref.sync import async_to_sync
 import json
+from loguru import logger
 
 from .models import Task, SubTask, TaskNotification, TaskExecution, TaskShare
 from .ai import improve_task_description, breakdown_task
@@ -15,25 +16,12 @@ from .ai_assistant import analyze_task_sync, improve_description_sync, breakdown
 from .smart_analyzer import SmartTaskAnalyzer
 from core_ui.decorators import require_feature
 from core_ui.middleware import get_template_name
-
-
-def _tasks_queryset_for_user(user):
-    """Tasks visible to user: created by, assigned to, or shared with."""
-    return Task.objects.filter(
-        Q(created_by=user) | Q(assignee=user) | Q(shares__user=user)
-    ).distinct()
-
-
-def _user_can_see_task(user, task):
-    """Whether task is in user's visible set."""
-    return _tasks_queryset_for_user(user).filter(pk=task.pk).exists()
-
-
-def _user_can_edit_task(user, task):
-    """User may edit if owner, assignee, or has TaskShare with can_edit=True."""
-    if task.created_by_id == user.id or task.assignee_id == user.id:
-        return True
-    return task.shares.filter(user=user, can_edit=True).exists()
+from app.services.permissions import (
+    PermissionService,
+    _tasks_queryset_for_user,  # backward compatibility alias
+    _user_can_see_task,        # backward compatibility alias
+    _user_can_edit_task,       # backward compatibility alias
+)
 
 
 def _delegate_redirect_url(user, task_id):
@@ -424,19 +412,19 @@ def notification_action(request, notification_id):
                 notification.is_read = True
                 notification.save()
 
-                if redirect_to == 'task_form':
-                    message = 'Открываю форму задачи агента. Будет создан воркфлоу в Agents и запущен.'
-                else:
-                    # Запускаем выполнение через TaskExecutor (чат с контекстом задачи)
-                    from .task_executor import TaskExecutor
-                    executor = TaskExecutor()
-                    import threading
-                    thread = threading.Thread(
-                        target=lambda: async_to_sync(executor.execute_task)(task.id, request.user.id)
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    message = 'Выполнение запущено'
+                # Создаём workflow и запускаем его
+                try:
+                    from app.services.workflow_service import create_workflow_from_task
+                    workflow, run = create_workflow_from_task(task, request.user)
+                    if workflow:
+                        message = f'Workflow создан и запущен (ID: {workflow.id}, Run: {run.id})'
+                        logger.info(f"Workflow {workflow.id} created from notification action for task {task.id}")
+                    else:
+                        message = 'Workflow не удалось создать, но задача одобрена'
+                        logger.warning(f"Failed to create workflow from notification for task {task.id}")
+                except Exception as e:
+                    logger.error(f"Error creating workflow from notification: {e}")
+                    message = f'Задача одобрена, но ошибка создания workflow: {e}'
 
                 return JsonResponse({
                     'success': True,
@@ -470,19 +458,19 @@ def notification_action(request, notification_id):
                 notification.is_read = True
                 notification.save()
                 
-                if redirect_to == 'task_form':
-                    message = 'Сервер изменён. Открываю форму задачи агента.'
-                else:
-                    # Запускаем выполнение
-                    from .task_executor import TaskExecutor
-                    executor = TaskExecutor()
-                    import threading
-                    thread = threading.Thread(
-                        target=lambda: async_to_sync(executor.execute_task)(task.id, request.user.id)
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    message = f'Сервер изменён. Выполнение запущено на {task.target_server.name}'
+                # Создаём workflow и запускаем его
+                try:
+                    from app.services.workflow_service import create_workflow_from_task
+                    workflow, run = create_workflow_from_task(task, request.user)
+                    if workflow:
+                        message = f'Сервер изменён на {task.target_server.name}. Workflow создан и запущен (ID: {workflow.id})'
+                        logger.info(f"Workflow {workflow.id} created after server change for task {task.id}")
+                    else:
+                        message = f'Сервер изменён на {task.target_server.name}, но workflow не удалось создать'
+                        logger.warning(f"Failed to create workflow after server change for task {task.id}")
+                except Exception as e:
+                    logger.error(f"Error creating workflow after server change: {e}")
+                    message = f'Сервер изменён, но ошибка создания workflow: {e}'
                 
                 return JsonResponse({
                     'success': True,
@@ -520,6 +508,17 @@ def notification_action(request, notification_id):
                 task, request.user, answers, selected_server_id
             )
             
+            # Если workflow был автоматически создан
+            if result.get('workflow_created'):
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Спасибо за ответы! Workflow создан и запущен (ID: {result.get('workflow_id')})",
+                    'workflow_created': True,
+                    'workflow_id': result.get('workflow_id'),
+                    'run_id': result.get('run_id'),
+                })
+            
+            # Если workflow не создан - показываем стандартное сообщение
             return JsonResponse({
                 'success': True,
                 'message': 'Задача повторно проанализирована с учётом ваших ответов',
@@ -543,6 +542,8 @@ def notification_action(request, notification_id):
                 server = Server.objects.get(id=selected_server_id, user=request.user, is_active=True)
                 task.target_server = server
                 task.server_name_mentioned = server.name
+                task.assigned_to_ai = True
+                task.ai_execution_status = 'PENDING'
                 task.save()
                 
                 notification.is_actioned = True
@@ -550,15 +551,35 @@ def notification_action(request, notification_id):
                 notification.is_read = True
                 notification.save()
                 
-                # Повторный анализ задачи с установленным сервером
-                analyzer = SmartTaskAnalyzer()
-                result = analyzer.analyze_task(task, request.user)
+                # Создаём workflow и запускаем его
+                try:
+                    from app.services.workflow_service import create_workflow_from_task
+                    workflow, run = create_workflow_from_task(task, request.user)
+                    if workflow:
+                        message = f'Сервер {server.name} установлен. Workflow создан и запущен (ID: {workflow.id})'
+                        logger.info(f"Workflow {workflow.id} created after server selection for task {task.id}")
+                        return JsonResponse({
+                            'success': True,
+                            'message': message,
+                            'can_auto_execute': True,
+                            'workflow_id': workflow.id,
+                            'run_id': run.id,
+                        })
+                    else:
+                        logger.warning(f"Failed to create workflow after server selection for task {task.id}")
+                        return JsonResponse({
+                            'success': True,
+                            'message': f'Сервер {server.name} установлен, но workflow не удалось создать.',
+                            'can_auto_execute': False,
+                        })
+                except Exception as e:
+                    logger.error(f"Error creating workflow after server selection: {e}")
+                    return JsonResponse({
+                        'success': True,
+                        'message': f'Сервер {server.name} установлен, но ошибка создания workflow: {e}',
+                        'can_auto_execute': False,
+                    })
                 
-                return JsonResponse({
-                    'success': True,
-                    'message': f'Сервер {server.name} установлен. Задача переанализирована.',
-                    'can_auto_execute': result.get('can_auto_execute', False),
-                })
             except Server.DoesNotExist:
                 return JsonResponse({
                     'success': False,

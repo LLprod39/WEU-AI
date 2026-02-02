@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body_extra_class %}page-dashboard{% endblock %}
+{% block title %}Dashboard - WEU AI{% endblock %}
+{% block header_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Stats Grid -->
+    <div class="dashboard-stats">
+        <div class="stat-card stat-card-servers">
+            <div class="stat-icon">
+                <span class="material-icons-round">dns</span>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statServersActive">{{ servers.active }}</div>
+                <div class="stat-label">Active Servers</div>
+                <div class="stat-secondary">{{ servers.total }} total</div>
+            </div>
+            <a href="{% url 'servers:server_list' %}" class="stat-link">
+                <span class="material-icons-round">arrow_forward</span>
+            </a>
+        </div>
+
+        <div class="stat-card stat-card-tasks">
+            <div class="stat-icon">
+                <span class="material-icons-round">task_alt</span>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statTasksPending">{{ tasks.pending }}</div>
+                <div class="stat-label">Pending Tasks</div>
+                <div class="stat-secondary">{{ tasks.in_progress }} in progress</div>
+            </div>
+            <a href="{% url 'tasks:task_list' %}" class="stat-link">
+                <span class="material-icons-round">arrow_forward</span>
+            </a>
+        </div>
+
+        <div class="stat-card stat-card-agents">
+            <div class="stat-icon">
+                <span class="material-icons-round">smart_toy</span>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statAgentsRunning">{{ agents.running }}</div>
+                <div class="stat-label">Running Agents</div>
+                <div class="stat-secondary">{{ agents.today }} today</div>
+            </div>
+            <a href="{% url 'monitor' %}" class="stat-link">
+                <span class="material-icons-round">arrow_forward</span>
+            </a>
+        </div>
+
+        <div class="stat-card stat-card-workflows">
+            <div class="stat-icon">
+                <span class="material-icons-round">account_tree</span>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statWorkflows">{{ workflows.total }}</div>
+                <div class="stat-label">Workflows</div>
+                <div class="stat-secondary">Automation</div>
+            </div>
+            <a href="{% url 'agent_hub:agents_page' %}" class="stat-link">
+                <span class="material-icons-round">arrow_forward</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="dashboard-grid">
+        <!-- Quick Actions -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">bolt</span>
+                    Quick Actions
+                </h2>
+            </div>
+            <div class="card-content">
+                <div class="quick-actions">
+                    <a href="{% url 'agent_hub:agents_page' %}" class="quick-action-btn">
+                        <span class="material-icons-round">play_arrow</span>
+                        <span>Run Agent</span>
+                    </a>
+                    <a href="{% url 'tasks:task_list' %}?action=new" class="quick-action-btn">
+                        <span class="material-icons-round">add_task</span>
+                        <span>New Task</span>
+                    </a>
+                    <a href="{% url 'servers:server_list' %}" class="quick-action-btn">
+                        <span class="material-icons-round">add</span>
+                        <span>Add Server</span>
+                    </a>
+                    <a href="{% url 'chat' %}" class="quick-action-btn">
+                        <span class="material-icons-round">chat</span>
+                        <span>AI Chat</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Agent Runs -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">history</span>
+                    Recent Agent Runs
+                </h2>
+                <a href="{% url 'monitor' %}" class="card-action">View All</a>
+            </div>
+            <div class="card-content">
+                <div class="runs-list" id="recentRunsList">
+                    {% for run in recent_runs %}
+                    <div class="run-item">
+                        <div class="run-status run-status-{{ run.status }}">
+                            {% if run.status == 'running' %}
+                            <span class="material-icons-round animate-spin">sync</span>
+                            {% elif run.status == 'succeeded' %}
+                            <span class="material-icons-round">check_circle</span>
+                            {% elif run.status == 'failed' %}
+                            <span class="material-icons-round">error</span>
+                            {% else %}
+                            <span class="material-icons-round">schedule</span>
+                            {% endif %}
+                        </div>
+                        <div class="run-info">
+                            <div class="run-name">{{ run.profile.name|default:run.runtime|default:"Agent Run" }}</div>
+                            <div class="run-prompt">{{ run.input_task|truncatewords:10 }}</div>
+                        </div>
+                        <div class="run-meta">
+                            <span class="run-time">{{ run.created_at|timesince }} ago</span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="runs-empty">
+                        <span class="material-icons-round">inbox</span>
+                        <p>No recent runs</p>
+                        <a href="{% url 'agent_hub:agents_page' %}" class="btn-primary-sm">Run an Agent</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">monitor_heart</span>
+                    System Status
+                </h2>
+            </div>
+            <div class="card-content">
+                <div class="status-list">
+                    <div class="status-item">
+                        <span class="status-name">API</span>
+                        <span class="status-badge status-online" id="statusApi">
+                            <span class="status-dot"></span>
+                            Online
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-name">Database</span>
+                        <span class="status-badge status-online" id="statusDb">
+                            <span class="status-dot"></span>
+                            Online
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-name">RAG Engine</span>
+                        <span class="status-badge" id="statusRag">
+                            <span class="status-dot"></span>
+                            Checking...
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-name">MCP Server</span>
+                        <span class="status-badge" id="statusMcp">
+                            <span class="status-dot"></span>
+                            Checking...
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check health status
+    fetch('/api/health/')
+        .then(r => r.json())
+        .then(data => {
+            const ragEl = document.getElementById('statusRag');
+            const apiEl = document.getElementById('statusApi');
+
+            if (ragEl) {
+                const ragStatus = data.services?.rag || 'unavailable';
+                ragEl.className = 'status-badge ' + (ragStatus === 'ok' ? 'status-online' : 'status-offline');
+                ragEl.innerHTML = '<span class="status-dot"></span>' + (ragStatus === 'ok' ? 'Online' : 'Offline');
+            }
+
+            if (apiEl && data.status) {
+                apiEl.className = 'status-badge ' + (data.status === 'ok' ? 'status-online' : 'status-warning');
+                apiEl.innerHTML = '<span class="status-dot"></span>' + (data.status === 'ok' ? 'Online' : 'Degraded');
+            }
+        })
+        .catch(() => {
+            const apiEl = document.getElementById('statusApi');
+            if (apiEl) {
+                apiEl.className = 'status-badge status-offline';
+                apiEl.innerHTML = '<span class="status-dot"></span>Error';
+            }
+        });
+
+    // MCP status check
+    const mcpEl = document.getElementById('statusMcp');
+    if (mcpEl) {
+        // Assume MCP is available if the page loaded
+        mcpEl.className = 'status-badge status-online';
+        mcpEl.innerHTML = '<span class="status-dot"></span>Available';
+    }
+
+    // Refresh stats every 30 seconds
+    setInterval(function() {
+        fetch('/api/dashboard/stats/')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    const d = data.data;
+                    const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+                    el('statServersActive', d.servers?.active || 0);
+                    el('statTasksPending', d.tasks?.pending || 0);
+                    el('statAgentsRunning', d.agents?.running || 0);
+                    el('statWorkflows', d.workflows?.total || 0);
+                }
+            })
+            .catch(() => {});
+    }, 30000);
+});
+</script>
+{% endblock %}

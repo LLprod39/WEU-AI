@@ -1,0 +1,20 @@
+{
+  "name": "Проверить работу API и утилиты проверки диска",
+  "runtime": "cursor",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Проверить работу API и утилиты проверки диска",
+      "prompt": "Убедиться, что GET /api/disk/ и app.utils.disk_usage.get_disk_usage_report работают: вызвать API (curl или из кода) и проверить, что в ответе есть paths с total, used, free, percent_used и human-форматом для корня и путей приложения (BASE_DIR, MEDIA_ROOT и т.д.). При ошибках — исправить.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Добавить блок «Место на диске» на страницу настроек",
+      "prompt": "На странице настроек (core_ui: settings) добавить секцию «Место на диске»: по загрузке или по кнопке «Обновить» выполнять GET /api/disk/ и отображать таблицу/карточки: путь (label или path), всего/занято/свободно в человекочитаемом виде, percent_used. Обработать ошибку ответа и показать сообщение при недоступности API.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-8.json"
+}

@@ -1,0 +1,19 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Step 1"
+    description: "Добавить сервис Redis в docker-compose.yml"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "В docker-compose.yml добавить сервис redis: образ redis:7-alpine, порт 6379:6379, volume redis_data для персистентности данных, restart: unless-stopped, healthcheck (redis-cli ping). В секции volumes добавить redis_data. Разместить сервис после qdrant, перед web."
+  step_2:
+    name: "Step 2"
+    description: "Проброс REDIS_URL и зависимость от Redis"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "В сервисах web и agent-runner добавить в environment переменную REDIS_URL=redis://redis:6379/0 и в depends_on — redis с condition: service_healthy (после postgres). Добавить healthcheck к redis, чтобы condition работал."

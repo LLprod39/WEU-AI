@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body_extra_class %}page-admin-logs{% endblock %}
+{% block title %}Debug Console - WEU AI{% endblock %}
+{% block header_title %}Debug Console{% endblock %}
+
+{% block content %}
+<div class="admin-logs-container">
+    <div class="admin-logs-header">
+        <div class="header-content">
+            <div class="header-badge">ADMIN</div>
+            <h1 class="header-title">Debug Console</h1>
+            <p class="header-subtitle">Live monitoring, full context, edit & replay</p>
+        </div>
+        <div class="header-controls">
+            <button type="button" id="adminLogsAutoToggle" class="control-btn active" data-active="true">
+                <span class="control-icon">●</span>
+                <span>Live</span>
+            </button>
+            <button type="button" id="adminLogsRefreshBtn" class="control-btn">
+                <span class="control-icon">↻</span>
+                <span>Refresh</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="admin-logs-layout">
+        <!-- Sidebar: Runs List + Filters -->
+        <aside class="admin-sidebar" id="adminSidebar">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Свернуть/развернуть">
+                <span class="toggle-icon">◀</span>
+            </button>
+            <div class="sidebar-section">
+                <h3 class="section-title">Filters</h3>
+                <div class="filters-grid">
+                    <input id="adminLogsSearch" type="text" class="filter-input" placeholder="Search runs..." />
+                    <select id="adminLogsType" class="filter-select">
+                        <option value="all">All Types</option>
+                        <option value="run">Agent Run</option>
+                        <option value="workflow">Workflow Run</option>
+                    </select>
+                    <select id="adminLogsStatus" class="filter-select">
+                        <option value="all">All Status</option>
+                        <option value="queued">Queued</option>
+                        <option value="running">Running</option>
+                        <option value="succeeded">Succeeded</option>
+                        <option value="failed">Failed</option>
+                        <option value="paused">Paused</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <select id="adminLogsRuntime" class="filter-select">
+                        <option value="all">All Runtimes</option>
+                        <option value="cursor">cursor</option>
+                        <option value="claude">claude</option>
+                        <option value="gemini">gemini</option>
+                        <option value="grok">grok</option>
+                        <option value="internal">internal</option>
+                        <option value="ralph">ralph</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="sidebar-section runs-section">
+                <h3 class="section-title">Runs <span id="runsCount" class="count-badge">0</span></h3>
+                <div id="adminRunsList" class="runs-list"></div>
+                <div id="adminRunsEmpty" class="runs-empty hidden">No runs found</div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <!-- Run Header -->
+            <div class="run-header" id="runHeader">
+                <div class="run-info">
+                    <div class="run-label">Selected Run</div>
+                    <h2 id="adminRunTitle" class="run-title">—</h2>
+                    <div id="adminRunMeta" class="run-meta">—</div>
+                </div>
+                <div class="run-actions">
+                    <button type="button" id="adminRunSaveBtn" class="action-btn save-btn">
+                        <span class="btn-icon">💾</span>
+                        <span>Save</span>
+                    </button>
+                    <button type="button" id="adminRunRestartBtn" class="action-btn restart-btn">
+                        <span class="btn-icon">▶</span>
+                        <span>Restart</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs-nav">
+                <button type="button" class="tab-btn active" data-tab="events">📊 События</button>
+                <button type="button" class="tab-btn" data-tab="command">⚙️ Команда & Аргументы</button>
+                <button type="button" class="tab-btn" data-tab="console">🖥️ Консоль</button>
+                <button type="button" class="tab-btn" data-tab="context">📝 Редактор</button>
+                <button type="button" class="tab-btn" data-tab="details">🔍 Детали</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content active" data-tab="events">
+                <div class="events-container">
+                    <div class="events-toolbar">
+                        <div class="toolbar-info">📊 События сгруппированы по типу (последовательные сообщения объединены)</div>
+                        <input type="text" id="eventsSearchInput" class="search-input" placeholder="Поиск..." />
+                        <div class="events-filters">
+                            <button type="button" class="filter-chip active" data-filter="all">Все</button>
+                            <button type="button" class="filter-chip" data-filter="assistant">Assistant</button>
+                            <button type="button" class="filter-chip" data-filter="tool_call">Tools</button>
+                            <button type="button" class="filter-chip" data-filter="cmd">Команды</button>
+                            <button type="button" class="filter-chip" data-filter="error">Ошибки</button>
+                        </div>
+                    </div>
+                    <div id="adminEventsTimeline" class="events-timeline"></div>
+                    <div id="eventsEmpty" class="events-empty hidden">No events yet</div>
+                </div>
+            </div>
+
+            <div class="tab-content" data-tab="command">
+                <div class="command-container">
+                    <div class="command-section">
+                        <h3 class="command-section-title">🎯 Полная команда запуска CLI</h3>
+                        <div class="command-info-text">
+                            <strong>Для AgentRun:</strong> показана команда, которая была выполнена.<br>
+                            <strong>Для WorkflowRun:</strong> показаны команды всех шагов (▶ = текущий шаг).
+                        </div>
+                        <pre id="adminCommandFull" class="command-output">—</pre>
+                        <button type="button" id="adminCopyCommand" class="toolbar-btn-inline">📋 Копировать команду</button>
+                    </div>
+
+                    <div class="command-section">
+                        <h3 class="command-section-title">📄 Входной промпт (что передано агенту)</h3>
+                        <div class="command-info-text">
+                            Полный текст задачи, включая системные инструкции и контекст серверов.<br>
+                            <strong>Для WorkflowRun:</strong> показан промпт текущего шага.
+                        </div>
+                        <pre id="adminPromptFull" class="command-output">—</pre>
+                        <button type="button" id="adminCopyPromptFull" class="toolbar-btn-inline">📋 Копировать промпт</button>
+                    </div>
+
+                    <div class="command-section">
+                        <h3 class="command-section-title">⚙️ Конфигурация (config)</h3>
+                        <div class="command-info-text">Параметры запуска: workspace, модель, флаги, MCP и т.д.</div>
+                        <pre id="adminConfigFull" class="command-output">—</pre>
+                        <button type="button" id="adminCopyConfigFull" class="toolbar-btn-inline">📋 Копировать config</button>
+                    </div>
+
+                    <div class="command-section">
+                        <h3 class="command-section-title">🌍 Переменные окружения</h3>
+                        <div class="command-info-text">ENV переменные, переданные процессу (без секретов).</div>
+                        <pre id="adminEnvVars" class="command-output">—</pre>
+                    </div>
+
+                    <div class="command-section">
+                        <h3 class="command-section-title">🔌 MCP Конфигурация</h3>
+                        <div class="command-info-text">MCP серверы и инструменты, доступные агенту.</div>
+                        <pre id="adminMcpConfig" class="command-output">—</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" data-tab="console">
+                <div class="console-container">
+                    <div class="console-toolbar">
+                        <div class="toolbar-info">📺 Полный вывод stdout/stderr от CLI агента</div>
+                        <button type="button" id="consoleCopyBtn" class="toolbar-btn">📋 Копировать всё</button>
+                    </div>
+                    <pre id="adminRawLogs" class="console-output">—</pre>
+                </div>
+            </div>
+
+            <div class="tab-content" data-tab="context">
+                <div class="context-container">
+                    <div class="context-toolbar">
+                        <div class="toolbar-info">✏️ Редактируй и жми «Сохранить» вверху, затем «Перезапустить»</div>
+                    </div>
+                    <div class="context-grid">
+                        <div class="context-field">
+                            <label class="field-label">📝 Задача (для AgentRun)</label>
+                            <textarea id="adminPromptInput" rows="12" placeholder="Нет запуска"></textarea>
+                        </div>
+                        <div class="context-field">
+                            <label class="field-label">⚙️ Config (JSON)</label>
+                            <textarea id="adminConfigInput" rows="12" placeholder="Нет config"></textarea>
+                        </div>
+                        <div class="context-field full-width">
+                            <label class="field-label">📋 Workflow Script (JSON, только для WorkflowRun)</label>
+                            <textarea id="adminWorkflowScript" rows="14" placeholder="Только для Workflow"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" data-tab="details">
+                <div class="details-container">
+                    <pre id="adminRunDetails" class="details-output">—</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/admin_logs_page.js' %}"></script>
+{% endblock %}

@@ -1,49 +1,18 @@
 {
-  "name": "Snake Game Network Workflow",
-  "description": "Automates the setup and deployment of a networked Snake game.",
-  "runtime": "gemini",
-  "prompt": "Develop a networked version of the classic Snake game with multiplayer capabilities.",
-  "steps": [
-    {
-      "title": "Setup Project Structure",
-      "prompt": "Create a new project directory for the Snake game with necessary folders for source code, assets, and configuration files. Initialize a git repository.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Check if the project directory and git repository are correctly initialized. Output <promise>PASS</promise> if setup is correct.",
-      "verify_promise": "PASS"
+  "code": "Some requested entity was not found",
+  "error": "The model grok-beta was deprecated on 2025-09-15 and is no longer accessible via the API. Please use grok-3 instead.",
+  "steps": [],
+  "runtime": "ralph",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
     },
-    {
-      "title": "Implement Game Logic",
-      "prompt": "Write the core game logic for the Snake game including snake movement, collision detection, and food spawning in a suitable programming language.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Test the game logic for correct snake movement and collision detection. Output <promise>PASS</promise> if tests pass.",
-      "verify_promise": "PASS"
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
     },
-    {
-      "title": "Add Network Functionality",
-      "prompt": "Integrate networking capabilities to support multiplayer mode using sockets or a similar technology. Implement server-client communication for game state synchronization.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Verify that multiple clients can connect to the server and game states are synchronized. Output <promise>PASS</promise> if networking works correctly.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Develop User Interface",
-      "prompt": "Create a simple graphical user interface for the Snake game using a suitable library or framework. Ensure it displays the game state and supports user input.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Test the UI to ensure it displays the game correctly and handles user input. Output <promise>PASS</promise> if UI functions as expected.",
-      "verify_promise": "PASS"
-    },
-    {
-      "title": "Final Testing and Deployment",
-      "prompt": "Perform end-to-end testing of the networked Snake game with multiple players. Package the game for deployment and provide instructions for running the server and client.",
-      "completion_promise": "STEP_DONE",
-      "max_iterations": 5,
-      "verify_prompt": "Confirm that the game works with multiple players and deployment instructions are clear. Output <promise>PASS</promise> if final tests pass.",
-      "verify_promise": "PASS"
-    }
-  ],
-  "script_file": "C:\\work_ai\\media\\workflows\\workflow-3.json"
+    "hats": {}
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-3.json"
 }

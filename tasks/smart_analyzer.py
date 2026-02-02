@@ -63,22 +63,55 @@ class SmartTaskAnalyzer:
             for s in user_servers
         ]
         
+        # 3.5. Получаем список CustomAgent пользователя для анализа
+        from agent_hub.models import CustomAgent
+        custom_agents = CustomAgent.objects.filter(owner=user, is_active=True)
+        
+        agents_context = []
+        for agent in custom_agents:
+            # Формируем краткое описание агента для ИИ
+            allowed_servers_desc = "все серверы"
+            if agent.allowed_servers and isinstance(agent.allowed_servers, list):
+                server_ids = agent.allowed_servers
+                server_names = Server.objects.filter(id__in=server_ids, user=user).values_list('name', flat=True)
+                allowed_servers_desc = ", ".join(server_names) if server_names else "нет доступа к серверам"
+            
+            agents_context.append({
+                "id": agent.id,
+                "name": agent.name,
+                "description": agent.description,
+                "instructions": agent.instructions[:200] if agent.instructions else "",  # Краткое
+                "allowed_tools": agent.allowed_tools,
+                "allowed_servers": allowed_servers_desc,
+                "runtime": agent.runtime,
+            })
+        
         # 4. Анализ через ИИ: может ли ИИ выполнить задачу (can_delegate_to_ai, reason, recommended_agent, ...)
         ai_analysis = async_to_sync(self.ai_assistant.analyze_task)(
             task.title,
             task.description,
             servers_context=servers_context,
+            agents_context=agents_context,
         )
         
         if ai_analysis.get('success') and ai_analysis.get('analysis'):
             analysis = ai_analysis['analysis']
             result['recommended_agent'] = analysis.get('recommended_agent', 'react')
+            result['recommended_custom_agent_id'] = analysis.get('recommended_custom_agent_id')
             result['ai_reason'] = analysis.get('reason', '')
             result['missing_info'] = analysis.get('missing_info')
             result['risks'] = analysis.get('risks')
             result['estimated_duration_hours'] = self._parse_duration(
                 analysis.get('estimated_time', '')
             )
+            
+            # Сохраняем рекомендованного агента в Task
+            if result['recommended_custom_agent_id']:
+                try:
+                    task.recommended_custom_agent_id = result['recommended_custom_agent_id']
+                except Exception as e:
+                    logger.warning(f"Failed to set recommended_custom_agent: {e}")
+            
             task.ai_agent_type = result['recommended_agent']
             if result['estimated_duration_hours']:
                 task.estimated_duration_hours = result['estimated_duration_hours']
@@ -275,11 +308,22 @@ class SmartTaskAnalyzer:
         complexity = (analysis or {}).get('complexity', '')
         risks = (analysis or {}).get('risks')
         
+        # Информация об агенте
+        agent_info = ""
+        custom_agent_id = (analysis or {}).get('recommended_custom_agent_id')
+        if custom_agent_id:
+            from agent_hub.models import CustomAgent
+            agent = CustomAgent.objects.filter(id=custom_agent_id, owner=user).first()
+            if agent:
+                agent_info = f'🤖 Агент: **{agent.name}** ({agent.runtime})'
+        
         message_parts = [
             f'🖥️ Обнаружен сервер: **{server.name}** ({server.host})',
             f'📋 Задача: «{task.title}»',
             '',
         ]
+        if agent_info:
+            message_parts.append(agent_info)
         if reason:
             message_parts.append(f'✅ {reason}')
         if estimated_time:
@@ -715,5 +759,19 @@ class SmartTaskAnalyzer:
         # Восстанавливаем оригинальное описание (ответы сохранены в action_data уведомления)
         task.description = original_description
         task.save()
+        
+        # Если задача может быть делегирована и сервер установлен - сразу создаем workflow
+        if result.get('can_auto_execute') and task.target_server:
+            try:
+                from app.services.workflow_service import create_workflow_from_task
+                workflow, run = create_workflow_from_task(task, user)
+                if workflow:
+                    logger.info(f"Auto-created workflow {workflow.id} after answering questions for task {task.id}")
+                    result['workflow_created'] = True
+                    result['workflow_id'] = workflow.id
+                    result['run_id'] = run.id
+            except Exception as e:
+                logger.error(f"Failed to auto-create workflow after questions: {e}")
+                result['workflow_error'] = str(e)
         
         return result

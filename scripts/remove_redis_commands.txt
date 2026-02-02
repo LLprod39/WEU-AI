@@ -1,0 +1,34 @@
+# Удаление Redis с сервера — команды для выполнения НА СЕРВЕРЕ
+# Подключитесь: ssh USER@HOST -p 22
+# Затем выполните по порядку (sudo запросит пароль при необходимости).
+# Команды идемпотентны: безопасно повторить, если Redis уже удалён.
+
+# 1) Проверка
+systemctl list-units --type=service --all 2>/dev/null | grep -i redis
+dpkg -l 2>/dev/null | grep -i redis
+docker ps -a 2>/dev/null | grep -i redis
+pgrep -a redis-server
+
+# 2) Остановка systemd-сервиса
+sudo systemctl stop redis-server 2>/dev/null || sudo systemctl stop redis 2>/dev/null || true
+sudo systemctl disable redis-server 2>/dev/null || sudo systemctl disable redis 2>/dev/null || true
+
+# 3) Остановка и удаление Docker-контейнеров с redis в имени
+for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null); do
+  echo "$c" | grep -qi redis && (docker stop "$c" && docker rm "$c") || true
+done
+
+# 4) Завершение процесса, если ещё запущен
+sudo pkill -x redis-server 2>/dev/null || true
+
+# 5) Удаление пакетов (Debian/Ubuntu)
+sudo apt-get remove -y redis-server redis-tools 2>/dev/null || true
+sudo apt-get purge -y redis-server redis-tools 2>/dev/null || true
+
+# 6) Опционально — удалить данные
+# sudo rm -rf /var/lib/redis /etc/redis
+
+# Проверка: Redis не должен быть в списке
+systemctl list-units --type=service --all 2>/dev/null | grep -i redis || echo "Сервисов redis нет"
+dpkg -l 2>/dev/null | grep -i redis || echo "Пакетов redis нет"
+docker ps -a 2>/dev/null | grep -i redis || echo "Контейнеров redis нет"

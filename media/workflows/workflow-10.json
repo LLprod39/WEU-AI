@@ -1,0 +1,26 @@
+{
+  "name": "Проверка локального диска (текущий хост)",
+  "runtime": "cursor",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Проверка локального диска (текущий хост)",
+      "prompt": "Убедиться, что проверка места на диске на текущем сервере (где крутится приложение) работает: endpoint GET /api/disk/ (core_ui), get_disk_usage_report из app.utils.disk_usage с путями root, BASE_DIR, MEDIA_ROOT, agent_projects. При необходимости добавить вызов из UI (настройки/админка) или краткую документацию для оператора.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Проверка диска на удалённом сервере (Servers)",
+      "prompt": "Обеспечить проверку места на диске на удалённом сервере из раздела Servers: через server_execute с командой df -h (или df -h / и нужные пути). Проверить, что в чате при фразах «место на диске», «диск» подставляется command=df -h. При необходимости добавить в UI Servers кнопку/действие «Проверить место на диске» с вызовом server_execute(server, 'df -h') и отображением вывода.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Проверка и документирование сценария",
+      "prompt": "Выполнить ручную проверку: 1) GET /api/disk/ для локального хоста; 2) для одного из Servers — выполнение df -h через server_execute или из чата. Зафиксировать в документации (README или docs) шаги: «Как проверить место на диске на сервере» (локально и удалённо).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-10.json"
+}

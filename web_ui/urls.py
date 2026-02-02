@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from app.integrations import jira_views
 
 admin.site.site_header = "WEU AI Admin"
 admin.site.site_title = "WEU AI — Админка"
@@ -30,6 +31,12 @@ urlpatterns = [
     path('passwords/', include('passwords.urls')),
     path('servers/', include('servers.urls')),
     path('agents/', include('agent_hub.urls')),
+    
+    # Jira Integration API
+    path('api/jira/sync/', jira_views.api_jira_sync, name='api_jira_sync'),
+    path('api/jira/update-status/', jira_views.api_jira_update_status, name='api_jira_update_status'),
+    path('api/jira/test/', jira_views.api_jira_test, name='api_jira_test'),
+    path('api/jira/projects/', jira_views.api_jira_projects, name='api_jira_projects'),
 ]
 
 # Serve media files in development

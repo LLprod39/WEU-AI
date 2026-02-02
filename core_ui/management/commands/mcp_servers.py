@@ -42,6 +42,24 @@ MCP_TOOLS = [
 ]
 
 
+def handle_initialize(req_id, params):
+    """Handle MCP initialize handshake."""
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {
+            "protocolVersion": params.get("protocolVersion", "2024-11-05"),
+            "serverInfo": {
+                "name": "weu-servers",
+                "version": "1.0.0",
+            },
+            "capabilities": {
+                "tools": {},
+            },
+        },
+    }
+
+
 def handle_tools_list(req_id):
     return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": MCP_TOOLS}}
 
@@ -80,6 +98,8 @@ def handle_tools_call(req_id, params, user_id):
 
 def main():
     user_id = _get_user_id()
+    # Сообщение в stderr (не ломает MCP stdio: ответы идут только в stdout)
+    print("MCP server (mcp_servers) started, WEU_USER_ID=%s, waiting for requests..." % (user_id,), file=sys.stderr, flush=True)
     while True:
         line = sys.stdin.readline()
         if not line:
@@ -96,7 +116,12 @@ def main():
         req_id = msg.get("id")
         method = msg.get("method")
         params = msg.get("params")
-        if method == "tools/list":
+        if method == "initialize":
+            out = handle_initialize(req_id, params or {})
+        elif method == "notifications/initialized":
+            # Client notification after initialize - no response needed
+            continue
+        elif method == "tools/list":
             out = handle_tools_list(req_id)
         elif method == "tools/call":
             out = handle_tools_call(req_id, params, user_id)

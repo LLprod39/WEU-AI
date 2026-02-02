@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(/home/lunix/.local/bin/claude:*)",
+      "Bash(HOME=/home/lunix /home/lunix/.local/bin/claude:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:ghuntley.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(xargs:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(echo:*)",
+      "Bash(timeout 5 bash -c '. .venv/bin/activate && export WEU_USER_ID=4 && python manage.py mcp_servers')",
+      "Bash(timeout 3 .venv/bin/python:*)",
+      "Bash(timeout 5 .venv/bin/python:*)",
+      "Bash(stdbuf -oL .venv/bin/python:*)",
+      "Bash(timeout:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(bash -c:*)",
+      "Bash(env -i PATH=\"$PATH\" HOME=\"$HOME\" timeout 10 .venv/bin/python:*)",
+      "Bash(chmod:*)",
+      "Bash(WEU_USER_ID=4 timeout 10 .venv/bin/python:*)",
+      "Bash(WEU_USER_ID=4 timeout 5 /mnt/c/work_ai/agent_projects/web_rA/.venv/bin/python:*)",
+      "Bash(# Test with multiple requests\n\\(echo ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"initialize\"\",\"\"id\"\":1}''; sleep 0.1; echo ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"tools/list\"\",\"\"id\"\":2}''\\))",
+      "Bash(# Test with unbuffered Python\n\\(echo ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"initialize\"\",\"\"id\"\":1}''; sleep 0.5; echo ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"tools/list\"\",\"\"id\"\":2}''; sleep 0.5\\))",
+      "Bash(WEU_USER_ID=4 timeout 5 .venv/bin/python:*)",
+      "Bash(pstree:*)",
+      "Bash(ps:*)",
+      "Bash(# Kill any hanging Claude processes pkill -9 -f \"\"claude.*mcp-config\"\" || true sleep 1 # Quick test without MCP timeout 15 /home/lunix/.local/bin/claude -p \"\"Say test\"\" 2>&1)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(.venvScriptspython.exe manage.py check)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)"
+    ]
+  }
+}

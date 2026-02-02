@@ -1,290 +1,319 @@
-# Архитектура системы выбора моделей
+# WEU AI Platform - Architecture
 
-## Общая схема
+## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         USER INTERFACE                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌───────────────────────┐      ┌──────────────────────────┐   │
-│  │   Chat Interface      │      │   Settings Dialog        │   │
-│  │   (chat.py)           │      │   (settings.py)          │   │
-│  │                       │      │                          │   │
-│  │  [Provider ▼]         │      │  🤖 Gemini Models        │   │
-│  │  [Model ▼]            │      │    💬 Chat Model         │   │
-│  │  [RAG ☑]              │      │    🤖 Agent Model        │   │
-│  │                       │      │                          │   │
-│  │  selected_provider ───┼──┐   │  🚀 Grok Models          │   │
-│  │  selected_model ──────┼──┤   │    💬 Chat Model         │   │
-│  └───────────────────────┘  │   │    🤖 Agent Model        │   │
-│                             │   │                          │   │
-│                             │   │  📚 RAG Model            │   │
-│                             │   │  ⚙️  Default Provider    │   │
-│                             │   └──────────────────────────┘   │
-└─────────────────────────────┼───────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      ORCHESTRATION LAYER                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Orchestrator (orchestrator.py)                          │  │
-│  │                                                          │  │
-│  │  process_user_message(                                   │  │
-│  │    message,                                              │  │
-│  │    model_preference,  ◄── Provider (gemini/grok)        │  │
-│  │    specific_model,    ◄── Specific model override       │  │
-│  │    use_rag            ◄── RAG toggle                     │  │
-│  │  )                                                       │  │
-│  │                                                          │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐        │  │
-│  │  │   ReAct    │  │    RAG     │  │   Tools    │        │  │
-│  │  │   Loop     │  │   Engine   │  │  Manager   │        │  │
-│  │  └────────────┘  └────────────┘  └────────────┘        │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                              │                                  │
-└──────────────────────────────┼──────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         LLM PROVIDER LAYER                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  LLMProvider (llm.py)                                    │  │
-│  │                                                          │  │
-│  │  stream_chat(                                            │  │
-│  │    prompt,                                               │  │
-│  │    model,           ◄── Provider (gemini/grok)          │  │
-│  │    specific_model   ◄── Specific model override         │  │
-│  │  )                                                       │  │
-│  │                                                          │  │
-│  │  ┌─────────────────────┐  ┌──────────────────────┐     │  │
-│  │  │  Gemini Handler     │  │   Grok Handler       │     │  │
-│  │  │                     │  │                      │     │  │
-│  │  │  - Get model from   │  │  - Get model from    │     │  │
-│  │  │    specific_model   │  │    specific_model    │     │  │
-│  │  │    OR config        │  │    OR config         │     │  │
-│  │  │  - Configure model  │  │  - Configure model   │     │  │
-│  │  │  - Stream response  │  │  - Stream response   │     │  │
-│  │  └─────────────────────┘  └──────────────────────┘     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                              │                                  │
-└──────────────────────────────┼──────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    CONFIGURATION LAYER                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  ModelManager (model_config.py)                          │  │
-│  │                                                          │  │
-│  │  ┌────────────────────────────────────────────────────┐ │  │
-│  │  │  ModelConfig                                       │ │  │
-│  │  │  - chat_model_gemini                               │ │  │
-│  │  │  - chat_model_grok                                 │ │  │
-│  │  │  - agent_model_gemini                              │ │  │
-│  │  │  - agent_model_grok                                │ │  │
-│  │  │  - rag_model                                       │ │  │
-│  │  │  - default_provider                                │ │  │
-│  │  └────────────────────────────────────────────────────┘ │  │
-│  │                                                          │  │
-│  │  Methods:                                                │  │
-│  │  - get_chat_model(provider)                              │  │
-│  │  - get_agent_model(provider)                             │  │
-│  │  - get_rag_model()                                       │  │
-│  │  - get_available_models(provider)                        │  │
-│  │  - update_config(**kwargs)                               │  │
-│  │  - save_config() / load_config()                         │  │
-│  │  - refresh_models() ◄── Fetch from API                  │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                              │                                  │
-└──────────────────────────────┼──────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         EXTERNAL APIs                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────────┐         ┌──────────────────────┐     │
-│  │   Gemini API         │         │    Grok API          │     │
-│  │                      │         │                      │     │
-│  │  - List models       │         │  - List models       │     │
-│  │  - Generate content  │         │  - Chat completions  │     │
-│  │  - Embeddings        │         │                      │     │
-│  └──────────────────────┘         └──────────────────────┘     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Поток данных
-
-### 1. Выбор модели в UI
-```
-User clicks [Model ▼]
-  ↓
-ChatInterface._on_model_change()
-  ↓
-self.selected_model = new_model
-  ↓
-ui.notify("Модель изменена")
-```
-
-### 2. Отправка сообщения
-```
-User sends message
-  ↓
-ChatInterface.send_message()
-  ↓
-orchestrator.process_user_message(
-  message,
-  model_preference = self.selected_provider,
-  specific_model = self.selected_model,
-  use_rag = self.use_rag
-)
-  ↓
-Orchestrator.process_user_message()
-  ↓
-llm.stream_chat(
-  prompt,
-  model = model_preference,
-  specific_model = specific_model
-)
-  ↓
-LLMProvider.stream_chat()
-  ↓
-target_model = specific_model OR model_manager.get_chat_model(model)
-  ↓
-API call with target_model
-  ↓
-Stream response back to UI
-```
-
-### 3. Сохранение настроек
-```
-User clicks [Сохранить] in Settings
-  ↓
-SettingsDialog.save()
-  ↓
-model_manager.update_config(
-  chat_model_gemini = ...,
-  agent_model_gemini = ...,
-  chat_model_grok = ...,
-  agent_model_grok = ...,
-  rag_model = ...,
-  default_provider = ...
-)
-  ↓
-model_manager.save_config()
-  ↓
-Write to .model_config.json
-  ↓
-Write API keys to .env
-  ↓
-ui.notify("Настройки сохранены!")
-```
-
-### 4. Обновление списка моделей
-```
-User clicks [🔄] in Settings
-  ↓
-SettingsDialog.refresh_models()
-  ↓
-model_manager.refresh_models()
-  ↓
-fetch_available_gemini_models() (if API key set)
-  ↓
-genai.list_models()
-  ↓
-Filter generative models
-  ↓
-Update self.available_gemini_models
-  ↓
-fetch_available_grok_models() (if API key set)
-  ↓
-GET https://api.x.ai/v1/models
-  ↓
-Update self.available_grok_models
-  ↓
-Update UI selectors
-  ↓
-ui.notify("Модели загружены!")
-```
-
-## Приоритет выбора модели
+WEU AI Platform is a Django-based web application for DevOps/IT task automation. It integrates multiple AI agents (Claude Code, Cursor, Ralph) with SSH server management, task execution, and knowledge base (RAG).
 
 ```
-specific_model (from UI)
-    ↓ if None
-config.chat_model_<provider> (from settings)
-    ↓ if None
-Default model (hardcoded)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           WEB INTERFACE                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │   Chat   │  │  Tasks   │  │  Agents  │  │ Servers  │  │ Settings │ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘ │
+└───────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┘
+        │             │             │             │             │
+        ▼             ▼             ▼             ▼             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        ORCHESTRATION LAYER                               │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  UnifiedOrchestrator                                               │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │ │
+│  │  │  ReAct Mode  │  │ Ralph Mode   │  │  CLI Mode    │             │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘             │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                  │
+│  │  RAG Engine  │  │ Tool Manager │  │  LLM Provider │                  │
+│  └──────────────┘  └──────────────┘  └──────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          AGENT LAYER                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ SimpleAgent  │  │ ComplexAgent │  │  ReActAgent  │  │ RalphAgent │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                      CLI Runtime                                  │  │
+│  │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │  │
+│  │   │ Claude Code │  │   Cursor    │  │   Ralph     │              │  │
+│  │   │    CLI      │  │    CLI      │  │    CLI      │              │  │
+│  │   └─────────────┘  └─────────────┘  └─────────────┘              │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           TOOLS LAYER                                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │  SSH Tools   │  │ File Tools   │  │ Server Tools │  │  MCP Tools │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        EXTERNAL SERVICES                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │  Gemini API  │  │   Grok API   │  │ SSH Servers  │  │   Qdrant   │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Пример:
+## Directory Structure
+
+```
+web_rA/
+├── app/                        # Core AI/orchestration layer
+│   ├── agents/                 # Agent implementations
+│   │   ├── base_agent.py       # Base class for all agents
+│   │   ├── simple_agent.py     # Single LLM call agent
+│   │   ├── complex_agent.py    # Multi-step agent
+│   │   ├── react_agent.py      # ReAct pattern agent
+│   │   ├── ralph_agent.py      # Ralph iterative agent
+│   │   ├── claude_code_agent.py # Claude Code CLI wrapper
+│   │   ├── cli_runtime.py      # External CLI execution
+│   │   └── manager.py          # Agent factory/manager
+│   ├── core/                   # Core orchestration
+│   │   ├── unified_orchestrator.py # Main orchestrator (ReAct/Ralph/CLI modes)
+│   │   ├── llm.py              # LLM provider abstraction
+│   │   ├── model_config.py     # Model configuration
+│   │   └── modes/              # Orchestrator modes
+│   ├── rag/                    # RAG (Retrieval-Augmented Generation)
+│   │   └── engine.py           # Qdrant or InMemory RAG
+│   ├── tools/                  # Built-in tools
+│   │   ├── manager.py          # Tool registry
+│   │   ├── ssh_tools.py        # SSH connection/execution
+│   │   ├── server_tools.py     # Server management
+│   │   ├── filesystem_tools.py # File operations
+│   │   └── safety.py           # Dangerous command blocking
+│   ├── services/               # Business logic layer
+│   │   ├── permissions.py      # Authorization checks
+│   │   └── workflow_service.py # Workflow operations
+│   └── mcp/                    # Model Context Protocol
+│       └── client.py           # MCP server connections
+│
+├── core_ui/                    # Main web interface
+│   ├── views.py                # Chat, settings, orchestrator views
+│   ├── templates/              # HTML templates
+│   └── static/                 # CSS, JS assets
+│
+├── agent_hub/                  # Agent management
+│   ├── models.py               # AgentProfile, Workflow, Run models
+│   ├── views/                  # Split views (pages, API)
+│   │   ├── pages.py            # HTML page views
+│   │   ├── utils.py            # Helper functions
+│   │   └── __init__.py         # Backward compat re-exports
+│   └── views_legacy.py         # Legacy API views (being migrated)
+│
+├── tasks/                      # Task management
+│   ├── models.py               # Task, SubTask, TaskShare models
+│   ├── views.py                # Task CRUD, analysis
+│   ├── smart_analyzer.py       # AI task analysis
+│   └── tasks.py                # Celery async tasks
+│
+├── servers/                    # SSH server management
+│   ├── models.py               # Server model
+│   └── views.py                # Server CRUD
+│
+├── passwords/                  # Password manager
+│   └── encryption.py           # AES-256 encryption
+│
+├── web_ui/                     # Django project settings
+│   ├── settings.py             # Main configuration
+│   ├── urls.py                 # URL routing
+│   └── celery.py               # Celery configuration
+│
+├── tests/                      # Test suite
+│   ├── test_permissions.py     # Permission tests
+│   └── test_safety.py          # Safety tests
+│
+├── mcp_server.py               # Standalone MCP server
+├── conftest.py                 # Pytest fixtures
+└── pyproject.toml              # Project config (ruff, pytest)
+```
+
+## Key Components
+
+### UnifiedOrchestrator (`app/core/unified_orchestrator.py`)
+
+Central orchestrator supporting multiple modes:
+
+1. **ReAct Mode** - Iterative reasoning with tools (Reason + Act)
+2. **Ralph Internal** - Iterative self-improvement
+3. **Ralph CLI** - External Ralph binary execution
+
 ```python
-# В чате выбрана: gemini-1.5-pro
-specific_model = "gemini-1.5-pro"
-
-# В настройках: gemini-2.0-flash-exp
-config.chat_model_gemini = "gemini-2.0-flash-exp"
-
-# Будет использована: gemini-1.5-pro (из UI)
-target_model = specific_model or config.chat_model_gemini
-# Result: "gemini-1.5-pro"
+async for chunk in orchestrator.process_user_message(
+    message="Check disk space on server",
+    model_preference="gemini",
+    mode="react",  # or "ralph_internal", "ralph_cli"
+    execution_context={"connection_id": "...", "server": {...}}
+):
+    yield chunk
 ```
 
-## Файловая структура
+### CLI Runtime (`app/agents/cli_runtime.py`)
+
+Executes external AI CLI tools (Cursor, Claude Code, Ralph) in headless mode with JSON streaming.
+
+**Supported CLIs:**
+- `cursor` - Cursor AI with `--output-format stream-json`
+- `claude` - Claude Code with `-p --verbose --output-format stream-json`
+- `ralph` - Ralph iterative agent
+
+### Tool Safety (`app/tools/safety.py`)
+
+Blocks dangerous commands:
+- `rm -rf`, `rm -r` - Recursive deletion
+- `mkfs` - Filesystem formatting
+- `dd if=` - Direct disk writes
+- `shutdown`, `reboot` - System shutdown
+- `systemctl stop/disable/mask` - Service disruption
+
+### Permission Service (`app/services/permissions.py`)
+
+Centralized authorization:
+- Task permissions (view, edit, delete, share)
+- Server permissions (access, execute)
+- Workflow permissions (view, run, edit)
+
+## Data Flow
+
+### Chat Request
 
 ```
-work_ai/
-├── app/
-│   ├── core/
-│   │   ├── llm.py              # LLM Provider с specific_model
-│   │   ├── orchestrator.py     # Orchestrator с specific_model
-│   │   └── model_config.py     # ModelManager и ModelConfig
-│   ├── ui/
-│   │   ├── chat.py             # Chat UI с селекторами
-│   │   └── settings.py         # Settings UI с конфигурацией
-│   └── rag/
-│       └── engine.py           # RAG Engine
-├── docs/
-│   ├── MODEL_SELECTION.md      # Руководство пользователя
-│   ├── UI_GUIDE.md             # Визуальное руководство
-│   └── ARCHITECTURE.md         # Этот файл
-├── .model_config.json          # Конфигурация моделей
-├── .env                        # API ключи
-├── QUICKSTART.md               # Быстрый старт
-├── IMPLEMENTATION_SUMMARY.md   # Сводка изменений
-└── test_simple.py              # Тесты
+User Message
+    │
+    ▼
+core_ui/views.py::chat_api()
+    │
+    ▼
+UnifiedOrchestrator.process_user_message()
+    │
+    ├─► RAG Query (if enabled)
+    │
+    ├─► ReAct Loop
+    │   ├─► LLM Call (Gemini/Grok)
+    │   ├─► Tool Execution (if ACTION found)
+    │   └─► Continue or Finish
+    │
+    ▼
+Streamed Response
 ```
 
-## Ключевые компоненты
+### Workflow Execution
 
-### ModelManager
-- **Назначение**: Централизованное управление конфигурацией моделей
-- **Ответственность**: Хранение, загрузка, сохранение настроек
-- **API**: get_chat_model(), get_agent_model(), update_config()
+```
+Workflow Start
+    │
+    ▼
+agent_hub/views.py::api_workflow_run()
+    │
+    ▼
+CLI Runtime (Cursor/Claude/Ralph)
+    │
+    ├─► Stream JSON output
+    ├─► Parse tool calls
+    └─► Update AgentWorkflowRun status
+    │
+    ▼
+Completion/Error
+```
 
-### LLMProvider
-- **Назначение**: Абстракция над API провайдеров
-- **Ответственность**: Вызов API, стриминг ответов
-- **API**: stream_chat(prompt, model, specific_model)
+## Configuration
 
-### Orchestrator
-- **Назначение**: Координация работы компонентов
-- **Ответственность**: ReAct цикл, RAG, инструменты
-- **API**: process_user_message(message, model_preference, specific_model)
+### Environment Variables (`.env`)
 
-### ChatInterface
-- **Назначение**: UI для чата
-- **Ответственность**: Отображение, выбор моделей
-- **API**: render(), send_message(), _on_model_change()
+```bash
+# LLM API Keys
+GEMINI_API_KEY=...
+GROK_API_KEY=...
+CURSOR_API_KEY=...        # For Cursor CLI headless mode
 
-### SettingsDialog
-- **Назначение**: UI для настроек
-- **Ответственность**: Конфигурация моделей, сохранение
-- **API**: open(), save(), refresh_models()
+# Database
+POSTGRES_HOST=...         # If not set, uses SQLite
+POSTGRES_DB=...
+POSTGRES_USER=...
+POSTGRES_PASSWORD=...
+
+# Security
+SECRET_KEY=...
+MASTER_PASSWORD=...       # Server password decryption
+
+# Build Type
+WEU_BUILD=mini            # or "full" for RAG support
+```
+
+### Model Configuration (`.model_config.json`)
+
+```json
+{
+  "chat_model_gemini": "gemini-2.0-flash-exp",
+  "agent_model_gemini": "gemini-2.0-flash-exp",
+  "chat_model_grok": "grok-2",
+  "default_provider": "gemini",
+  "default_orchestrator_mode": "react"
+}
+```
+
+## Database Models
+
+### Core Models
+
+| Model | App | Description |
+|-------|-----|-------------|
+| `Task` | tasks | Tasks with subtasks, shares, AI analysis |
+| `Server` | servers | SSH servers with encrypted passwords |
+| `AgentProfile` | agent_hub | Agent configurations |
+| `AgentWorkflow` | agent_hub | Workflow definitions (JSON script) |
+| `AgentWorkflowRun` | agent_hub | Workflow execution instances |
+| `ChatSession` | core_ui | Chat conversation sessions |
+| `ChatMessage` | core_ui | Individual chat messages |
+
+## API Endpoints
+
+### Chat
+- `POST /api/chat/` - Send message, stream response
+
+### Agents
+- `GET /agents/` - Agent management page
+- `GET /api/profiles/` - List agent profiles
+- `POST /api/workflow/run/` - Start workflow
+- `GET /api/workflow/run/{id}/status/` - Get run status
+
+### Tasks
+- `GET /tasks/` - Task list page
+- `POST /api/tasks/analyze/` - AI task analysis
+- `POST /api/tasks/workflow/` - Create workflow from task
+
+### Servers
+- `GET /servers/` - Server list
+- `POST /api/servers/` - Add server
+- `POST /api/server-execute/` - Execute command on server
+
+## Testing
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_safety.py -v
+
+# With coverage
+pytest --cov=app --cov-report=html
+```
+
+## Development
+
+```bash
+# Start development server
+python manage.py runserver 0.0.0.0:9000
+
+# Run with Celery (for async tasks)
+celery -A web_ui worker -l info
+celery -A web_ui beat -l info
+
+# Lint code
+ruff check .
+ruff format .
+```

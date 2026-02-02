@@ -153,63 +153,78 @@
         <!-- Navigation -->
         <nav class="flex-1 overflow-y-auto" style="padding: var(--spacing-md);" aria-label="Main">
             <div class="space-y-1">
-            <div class="px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Core</div>
-            <a href="{% url 'index' %}" class="sidebar-link {% if request.path == '/' %}active{% endif %}" aria-label="Chat">
-                <span class="material-icons-round text-lg {% if request.path == '/' %}text-primary{% endif %}" aria-hidden="true">chat</span>
+            <!-- MAIN -->
+            <div class="px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Main</div>
+            <a href="{% url 'dashboard' %}" class="sidebar-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" aria-label="Dashboard">
+                <span class="material-icons-round text-lg {% if request.resolver_match.url_name == 'dashboard' %}text-primary{% endif %}" aria-hidden="true">dashboard</span>
+                <span class="nav-text">Dashboard</span>
+            </a>
+            {% if user_can_agents %}
+            <a href="{% url 'monitor' %}" class="sidebar-link {% if request.resolver_match.url_name == 'monitor' %}active{% endif %}" aria-label="Monitor">
+                <span class="material-icons-round text-lg {% if request.resolver_match.url_name == 'monitor' %}text-primary{% endif %}" aria-hidden="true">monitor_heart</span>
+                <span class="nav-text">Monitor</span>
+            </a>
+            {% endif %}
+
+            <!-- SERVERS -->
+            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Servers</div>
+            {% if user_can_servers %}
+            <a href="{% url 'servers:server_list' %}" class="sidebar-link {% if 'servers' in request.path %}active{% endif %}" aria-label="Servers">
+                <span class="material-icons-round text-lg {% if 'servers' in request.path %}text-primary{% endif %}" aria-hidden="true">dns</span>
+                <span class="nav-text">Servers</span>
+            </a>
+            {% endif %}
+            {% if user_can_tasks %}
+            <a href="{% url 'tasks:task_list' %}" class="sidebar-link {% if 'tasks' in request.path %}active{% endif %}" aria-label="Tasks">
+                <span class="material-icons-round text-lg {% if 'tasks' in request.path %}text-primary{% endif %}" aria-hidden="true">task_alt</span>
+                <span class="nav-text">Tasks</span>
+            </a>
+            {% endif %}
+
+            <!-- AI AGENTS -->
+            {% if user_can_agents %}
+            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">AI Agents</div>
+            <a href="{% url 'agent_hub:agents_page' %}" class="sidebar-link {% if 'agents' in request.path %}active{% endif %}" aria-label="Agents">
+                <span class="material-icons-round text-lg {% if 'agents' in request.path %}text-primary{% endif %}" aria-hidden="true">smart_toy</span>
+                <span class="nav-text">Agents</span>
+            </a>
+            <a href="{% url 'agent_hub:agents_page' %}?legacy=1" class="sidebar-link" aria-label="Workflows (Legacy View)">
+                <span class="material-icons-round text-lg" aria-hidden="true">account_tree</span>
+                <span class="nav-text">Workflows</span>
+            </a>
+            {% endif %}
+
+            <!-- TOOLS -->
+            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tools</div>
+            <a href="{% url 'chat' %}" class="sidebar-link {% if request.path == '/chat/' %}active{% endif %}" aria-label="Chat">
+                <span class="material-icons-round text-lg {% if request.path == '/chat/' %}text-primary{% endif %}" aria-hidden="true">chat</span>
                 <span class="nav-text">Chat</span>
             </a>
             {% if user_can_orchestrator %}
-            <a href="{% url 'orchestrator' %}" class="sidebar-link {% if 'orchestrator' in request.path %}active{% endif %}" aria-label="Orchestrator">
-                <span class="material-icons-round text-lg {% if 'orchestrator' in request.path %}text-primary{% endif %}" aria-hidden="true">account_tree</span>
-                <span class="nav-text">Orchestrator</span>
-            </a>
             <a href="{% url 'ide' %}" class="sidebar-link {% if 'ide' in request.path %}active{% endif %}" aria-label="IDE">
                 <span class="material-icons-round text-lg {% if 'ide' in request.path %}text-primary{% endif %}" aria-hidden="true">code</span>
                 <span class="nav-text">IDE</span>
             </a>
             {% endif %}
-            {% if user_can_agents %}
-            <a href="{% url 'agent_hub:agents_page' %}" class="sidebar-link {% if 'agents' in request.path %}active{% endif %}" aria-label="Agents">
-                <span class="material-icons-round text-lg {% if 'agents' in request.path %}text-primary{% endif %}" aria-hidden="true">hub</span>
-                <span class="nav-text">Agents</span>
-            </a>
-            {% endif %}
-
-            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Automation</div>
-            {% if user_can_tasks %}
-            <a href="{% url 'tasks:task_list' %}" class="sidebar-link {% if 'tasks' in request.path %}active{% endif %}" aria-label="Tasks">
-                <span class="material-icons-round text-lg {% if 'tasks' in request.path %}text-primary{% endif %}" aria-hidden="true">check_circle</span>
-                <span class="nav-text">Tasks</span>
-            </a>
-            {% endif %}
-
-            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Data</div>
             {% if user_can_knowledge_base %}
             <a href="{% url 'knowledge_base' %}" class="sidebar-link {% if 'knowledge' in request.path %}active{% endif %}" aria-label="Knowledge Base">
-                <span class="material-icons-round text-lg {% if 'knowledge' in request.path %}text-primary{% endif %}" aria-hidden="true">storage</span>
-                <span class="nav-text">Knowledge Base</span>
+                <span class="material-icons-round text-lg {% if 'knowledge' in request.path %}text-primary{% endif %}" aria-hidden="true">library_books</span>
+                <span class="nav-text">Knowledge</span>
             </a>
             {% endif %}
 
-            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tools</div>
-            {% if user_can_servers %}
-            <a href="{% url 'servers:server_list' %}" class="sidebar-link {% if 'servers' in request.path %}active{% endif %}" aria-label="Servers">
-                <span class="material-icons-round text-lg {% if 'servers' in request.path %}text-primary{% endif %}" aria-hidden="true">terminal</span>
-                <span class="nav-text">Servers</span>
-            </a>
-            {% endif %}
-            <a href="{% url 'passwords:password_list' %}" class="sidebar-link {% if 'passwords' in request.path %}active{% endif %}" aria-label="Passwords">
-                <span class="material-icons-round text-lg {% if 'passwords' in request.path %}text-primary{% endif %}" aria-hidden="true">lock</span>
-                <span class="nav-text">Passwords</span>
-            </a>
-
+            <!-- SETTINGS -->
             {% if user_can_settings %}
-            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Admin</div>
+            <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Settings</div>
             <a href="{% url 'settings' %}" class="sidebar-link {% if 'settings' in request.path %}active{% endif %}" aria-label="Settings">
                 <span class="material-icons-round text-lg {% if 'settings' in request.path %}text-primary{% endif %}" aria-hidden="true">settings</span>
                 <span class="nav-text">Settings</span>
             </a>
             {% endif %}
+            <a href="{% url 'passwords:password_list' %}" class="sidebar-link {% if 'passwords' in request.path %}active{% endif %}" aria-label="Passwords">
+                <span class="material-icons-round text-lg {% if 'passwords' in request.path %}text-primary{% endif %}" aria-hidden="true">key</span>
+                <span class="nav-text">Passwords</span>
+            </a>
             </div>
         </nav>
 

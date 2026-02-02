@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body_extra_class %}page-agents{% endblock %}
+{% block title %}Agents - WEU AI{% endblock %}
+{% block header_title %}AI Agents{% endblock %}
+
+{% block content %}
+<div class="agents-container">
+    <!-- Two Column Layout -->
+    <div class="agents-layout">
+        <!-- Left: Agent Cards -->
+        <aside class="agents-sidebar">
+            <div class="sidebar-header">
+                <h2>Agents</h2>
+                <!-- DEPRECATED: Профили больше не создаются. Используйте Custom Agents (/agents/custom-agents/) -->
+            </div>
+
+            <div class="agents-list" id="agentsList">
+                {% for profile in profiles %}
+                <div class="agent-card {% if forloop.first %}active{% endif %}" data-agent-id="{{ profile.id }}" onclick="selectAgent({{ profile.id }}, this)">
+                    <div class="agent-card-icon agent-type-{{ profile.agent_type }}">
+                        {% if profile.agent_type == 'claude_code' %}
+                        <span class="material-icons-round">terminal</span>
+                        {% elif profile.agent_type == 'react' %}
+                        <span class="material-icons-round">psychology</span>
+                        {% elif profile.agent_type == 'ralph' %}
+                        <span class="material-icons-round">smart_toy</span>
+                        {% else %}
+                        <span class="material-icons-round">bolt</span>
+                        {% endif %}
+                    </div>
+                    <div class="agent-card-content">
+                        <div class="agent-card-name">{{ profile.name }}</div>
+                        <div class="agent-card-type">{{ profile.get_agent_type_display }}</div>
+                    </div>
+                    <div class="agent-card-badge">{{ profile.get_runtime_display }}</div>
+                </div>
+                {% empty %}
+                <div class="agents-empty">
+                    <span class="material-icons-round">smart_toy</span>
+                    <p>No agents yet</p>
+                    <p style="font-size: 0.8rem; color: #888; margin-top: 0.5rem;">Use <a href="/agents/custom-agents/" style="color: #6366f1;">Custom Agents</a></p>
+                </div>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <!-- Right: Run Panel -->
+        <main class="agents-main">
+            <!-- Run Form -->
+            <div class="run-panel">
+                <div class="run-panel-header">
+                    <h3 id="selectedAgentName">{% if profiles %}{{ profiles.0.name }}{% else %}Select an Agent{% endif %}</h3>
+                    <!-- DEPRECATED: Edit Agent button removed -->
+                    <div class="run-panel-actions">
+                    </div>
+                </div>
+
+                <form id="runForm" onsubmit="runAgent(event)">
+                    <input type="hidden" id="selectedAgentId" value="{% if profiles %}{{ profiles.0.id }}{% endif %}">
+
+                    <div class="form-group">
+                        <label for="runPrompt">Task / Prompt</label>
+                        <textarea id="runPrompt" rows="4" placeholder="What do you need help with?&#10;&#10;Example: Check nginx status on the server" required></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="runServer">Server (optional)</label>
+                            <select id="runServer">
+                                <option value="">No server / Local</option>
+                                {% for server in servers_data %}
+                                <option value="{{ server.id }}">{{ server.name }} ({{ server.host }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="runWorkdir">Working Directory</label>
+                            <select id="runWorkdir">
+                                <option value="">Default</option>
+                                {% for project in projects_data %}
+                                <option value="{{ project.path }}">{{ project.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-run" id="btnRun">
+                            <span class="material-icons-round">play_arrow</span>
+                            Run Agent
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Recent Runs -->
+            <div class="recent-runs">
+                <div class="recent-runs-header">
+                    <h3>Recent Runs</h3>
+                    <a href="{% url 'monitor' %}" class="link-monitor">View All in Monitor</a>
+                </div>
+
+                <div class="runs-list" id="recentRunsList">
+                    {% for run in recent_runs %}
+                    <div class="run-item run-status-{{ run.status }}">
+                        <div class="run-item-icon">
+                            {% if run.status == 'running' %}
+                            <span class="material-icons-round spin">sync</span>
+                            {% elif run.status == 'succeeded' %}
+                            <span class="material-icons-round">check_circle</span>
+                            {% elif run.status == 'failed' %}
+                            <span class="material-icons-round">error</span>
+                            {% else %}
+                            <span class="material-icons-round">schedule</span>
+                            {% endif %}
+                        </div>
+                        <div class="run-item-content">
+                            <div class="run-item-title">{{ run.input_task|truncatewords:8 }}</div>
+                            <div class="run-item-meta">
+                                <span>{{ run.runtime|title }}</span>
+                                <span>{{ run.created_at|timesince }} ago</span>
+                            </div>
+                        </div>
+                        <div class="run-item-actions">
+                            <a href="{% url 'monitor' %}?run={{ run.id }}" class="btn-icon-sm" title="View Logs">
+                                <span class="material-icons-round">description</span>
+                            </a>
+                            {% if run.status == 'running' %}
+                            <button onclick="stopAgentRun({{ run.id }})" class="btn-icon-sm btn-danger" title="Stop">
+                                <span class="material-icons-round">stop</span>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="runs-empty">
+                        <span class="material-icons-round">inbox</span>
+                        <p>No runs yet. Select an agent and run a task.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Profile Modal (simplified) -->
+<!-- DEPRECATED: Profile Modal removed. Use Custom Agents (/agents/custom-agents/) instead -->
+
+{{ presets_data|json_script:"preset-data" }}
+{{ workflows_data|json_script:"workflows-data" }}
+{{ projects_data|json_script:"projects-data" }}
+{{ servers_data|json_script:"servers-data" }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedAgentId = {% if profiles %}{{ profiles.0.id }}{% else %}null{% endif %};
+
+function selectAgent(agentId, element) {
+    selectedAgentId = agentId;
+    document.getElementById('selectedAgentId').value = agentId;
+
+    // Update UI
+    document.querySelectorAll('.agent-card').forEach(card => card.classList.remove('active'));
+    element.classList.add('active');
+
+    // Update name
+    const name = element.querySelector('.agent-card-name').textContent;
+    document.getElementById('selectedAgentName').textContent = name;
+}
+
+function runAgent(event) {
+    event.preventDefault();
+
+    if (!selectedAgentId) {
+        if (window.showToast) showToast('Please select an agent first', 'warning');
+        return;
+    }
+
+    const prompt = document.getElementById('runPrompt').value.trim();
+    if (!prompt) {
+        if (window.showToast) showToast('Please enter a task', 'warning');
+        return;
+    }
+
+    const serverId = document.getElementById('runServer').value;
+    const workdir = document.getElementById('runWorkdir').value;
+
+    const btn = document.getElementById('btnRun');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-icons-round spin">sync</span> Starting...';
+
+    fetch('/agents/api/profiles/' + selectedAgentId + '/run/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrf(),
+        },
+        body: JSON.stringify({
+            prompt: prompt,
+            server_id: serverId || null,
+            working_directory: workdir || null,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (window.showToast) showToast('Agent started!', 'success');
+            // Redirect to monitor
+            if (data.run_id) {
+                window.location.href = '/monitor/?run=' + data.run_id;
+            }
+        } else {
+            if (window.showToast) showToast(data.error || 'Failed to start agent', 'error');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        if (window.showToast) showToast('Network error', 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons-round">play_arrow</span> Run Agent';
+    });
+}
+
+// DEPRECATED: Profile modal functions removed. Use Custom Agents (/agents/custom-agents/) instead.
+
+function stopAgentRun(runId) {
+    if (!confirm('Stop this run?')) return;
+
+    fetch('/agents/api/runs/' + runId + '/stop/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrf() }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (window.showToast) showToast('Run stopped', 'success');
+            location.reload();
+        }
+    });
+}
+
+function getCsrf() {
+    const el = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (el) return el.value;
+    const cookies = document.cookie.split(';');
+    for (let c of cookies) {
+        const [name, val] = c.trim().split('=');
+        if (name === 'csrftoken') return val;
+    }
+    return '';
+}
+
+// DEPRECATED: Escape key listener for profile modal removed
+</script>
+{% endblock %}

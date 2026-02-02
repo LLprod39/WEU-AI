@@ -1,0 +1,26 @@
+{
+  "name": "Првоерить простарствно на диске",
+  "runtime": "claude",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Определить целевой сервер prod",
+      "prompt": "Убедиться, что в контексте задачи указан сервер «prod server» (172.25.173.251). Если агент работает через server_execute — использовать server_name_or_id «prod server» или соответствующий id из Servers. При отсутствии в базе — использовать подключение по host 172.25.173.251 (логин/пароль из окружения или passwords, см. OPERATOR_DISK_CHECK.md).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Выполнить проверку диска на prod",
+      "prompt": "На сервере 172.25.173.251 выполнить команду проверки места: df -h. Альтернатива: если на сервере запущено приложение WEU — выполнить curl -s http://127.0.0.1:8000/api/disk/ и использовать JSON-отчёт. Использовать server_execute с командой «df -h» (или curl для /api/disk/).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Интерпретировать результат и отчёт",
+      "prompt": "По выводу df -h или ответу /api/disk/ сформировать краткий отчёт: файловые системы, total/used/free, процент использования. Отметить разделы с использованием >85% как предупреждение о нехватке места; при ошибке подключения или выполнения команды — сообщить причину.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-13.json"
+}

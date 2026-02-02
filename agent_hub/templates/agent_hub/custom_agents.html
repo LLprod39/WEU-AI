@@ -1,0 +1,671 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Кастомные агенты - WEU Agent{% endblock %}
+
+{% block extra_head %}
+<style>
+.agent-builder {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.agent-card {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1px solid #334155;
+}
+
+.agent-card:hover {
+    border-color: #3b82f6;
+}
+
+.agent-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.agent-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.agent-runtime {
+    background: #3b82f6;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.agent-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-agent {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-edit {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-test {
+    background: #10b981;
+    color: white;
+}
+
+.btn-delete {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-export {
+    background: #8b5cf6;
+    color: white;
+}
+
+/* Agent Builder Form */
+.builder-section {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1px solid #334155;
+}
+
+.builder-section h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #3b82f6;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #cbd5e1;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #f1f5f9;
+    font-family: inherit;
+}
+
+.form-group textarea {
+    font-family: 'Courier New', monospace;
+    min-height: 120px;
+}
+
+.tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.tool-checkbox {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.tool-checkbox:hover {
+    border-color: #3b82f6;
+}
+
+.tool-checkbox input {
+    margin-right: 8px;
+    width: auto;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #64748b;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+#builder-form {
+    display: none;
+}
+
+#builder-form.active {
+    display: block;
+}
+
+.mcp-server-config {
+    background: #0f172a;
+    padding: 16px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    border: 1px solid #334155;
+}
+
+.mcp-server-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.success-message, .error-message {
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.success-message {
+    background: #10b981;
+    color: white;
+}
+
+.error-message {
+    background: #ef4444;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="agent-builder">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h1>Кастомные агенты</h1>
+        <button class="btn-primary" onclick="showBuilder()">+ Создать агента</button>
+    </div>
+    
+    <div id="message-container"></div>
+    
+    <!-- Agent Builder Form -->
+    <div id="builder-form">
+        <form id="agent-form">
+            <input type="hidden" id="agent-id" name="agent_id">
+            
+            <!-- Basics -->
+            <div class="builder-section">
+                <h3>Основная информация</h3>
+                <div class="form-group">
+                    <label>Имя агента</label>
+                    <input type="text" id="agent-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Описание</label>
+                    <textarea id="agent-description" name="description"></textarea>
+                </div>
+            </div>
+            
+            <!-- Behavior -->
+            <div class="builder-section">
+                <h3>Поведение агента</h3>
+                <div class="form-group">
+                    <label>Системный промпт (роль агента)</label>
+                    <textarea id="agent-system-prompt" name="system_prompt" rows="8">Ты DevOps агент, специализирующийся на автоматизации инфраструктурных задач.
+
+Твои обязанности:
+- Анализ и выполнение DevOps задач
+- Работа с серверами через SSH
+- Настройка сервисов (Nginx, Docker, PostgreSQL)
+- Безопасное выполнение команд
+
+Всегда:
+- Проверяй перед выполнением опасных команд
+- Логируй все действия
+- Предлагай rollback план</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Дополнительные инструкции</label>
+                    <textarea id="agent-instructions" name="instructions" rows="4"></textarea>
+                </div>
+            </div>
+            
+            <!-- Capabilities -->
+            <div class="builder-section">
+                <h3>Инструменты</h3>
+                <div class="tools-grid" id="tools-grid">
+                    <!-- Заполняется через JS -->
+                </div>
+            </div>
+            
+            <!-- Runtime -->
+            <div class="builder-section">
+                <h3>Runtime конфигурация</h3>
+                <div class="form-group">
+                    <label>Runtime</label>
+                    <select id="agent-runtime" name="runtime">
+                        <option value="claude">Claude Code CLI</option>
+                        <option value="cursor">Cursor CLI</option>
+                        <option value="ralph">Ralph Orchestrator</option>
+                        <option value="internal">Internal (Python)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Модель</label>
+                    <select id="agent-model" name="model">
+                        <option value="claude-4.5-opus">Claude 4.5 Opus</option>
+                        <option value="claude-4.5-sonnet">Claude 4.5 Sonnet</option>
+                        <option value="claude-4.5-haiku">Claude 4.5 Haiku</option>
+                        <option value="grok-3">Grok 3</option>
+                        <option value="auto">Auto</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Режим оркестратора</label>
+                    <select id="agent-orchestrator-mode" name="orchestrator_mode">
+                        <option value="ralph_internal">Ralph Internal (рекомендуется)</option>
+                        <option value="react">ReAct Loop</option>
+                        <option value="ralph_cli">Ralph CLI</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Max Iterations</label>
+                    <input type="number" id="agent-max-iterations" name="max_iterations" value="10" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label>Temperature (0.0 - 1.0)</label>
+                    <input type="number" id="agent-temperature" name="temperature" value="0.7" min="0" max="1" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Completion Promise (для Ralph)</label>
+                    <input type="text" id="agent-completion-promise" name="completion_promise" value="COMPLETE">
+                </div>
+            </div>
+            
+            <!-- MCP -->
+            <div class="builder-section">
+                <h3>MCP Servers</h3>
+                <div id="mcp-servers">
+                    <!-- Заполняется через JS -->
+                </div>
+                <label style="display: flex; align-items: center; margin-top: 12px;">
+                    <input type="checkbox" id="mcp-auto-approve" name="mcp_auto_approve" style="width: auto; margin-right: 8px;">
+                    Автоматически одобрять MCP инструменты
+                </label>
+            </div>
+            
+            <!-- Actions -->
+            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                <button type="submit" class="btn-primary">Сохранить агента</button>
+                <button type="button" class="btn-secondary" onclick="hideBuilder()">Отмена</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Agents List -->
+    <div id="agents-list">
+        <!-- Заполняется через JS -->
+    </div>
+</div>
+
+<script>
+const AVAILABLE_TOOLS = [
+    {id: 'ssh_execute', name: 'SSH Execute', category: 'ssh'},
+    {id: 'ssh_connect', name: 'SSH Connect', category: 'ssh'},
+    {id: 'ssh_disconnect', name: 'SSH Disconnect', category: 'ssh'},
+    {id: 'servers_list', name: 'Servers List', category: 'ssh'},
+    {id: 'server_execute', name: 'Server Execute', category: 'ssh'},
+    {id: 'read_file', name: 'Read File', category: 'filesystem'},
+    {id: 'write_file', name: 'Write File', category: 'filesystem'},
+    {id: 'list_directory', name: 'List Directory', category: 'filesystem'},
+    {id: 'create_directory', name: 'Create Directory', category: 'filesystem'},
+    {id: 'delete_file', name: 'Delete File', category: 'filesystem'},
+    {id: 'web_search', name: 'Web Search', category: 'web'},
+    {id: 'fetch_webpage', name: 'Fetch Webpage', category: 'web'},
+];
+
+const DEFAULT_MCP_SERVERS = {
+    filesystem: {
+        enabled: false,
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
+        description: 'File system operations'
+    },
+    github: {
+        enabled: false,
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-github'],
+        env: {GITHUB_PERSONAL_ACCESS_TOKEN: ''},
+        description: 'GitHub operations'
+    },
+    postgres: {
+        enabled: false,
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://localhost/db'],
+        description: 'PostgreSQL operations'
+    }
+};
+
+function showBuilder(agentId = null) {
+    document.getElementById('builder-form').classList.add('active');
+    document.getElementById('agents-list').style.display = 'none';
+    
+    if (agentId) {
+        loadAgent(agentId);
+    } else {
+        resetForm();
+    }
+    
+    renderTools();
+    renderMCPServers();
+}
+
+function hideBuilder() {
+    document.getElementById('builder-form').classList.remove('active');
+    document.getElementById('agents-list').style.display = 'block';
+    resetForm();
+}
+
+function resetForm() {
+    document.getElementById('agent-form').reset();
+    document.getElementById('agent-id').value = '';
+}
+
+function renderTools() {
+    const grid = document.getElementById('tools-grid');
+    grid.innerHTML = '';
+    
+    AVAILABLE_TOOLS.forEach(tool => {
+        const label = document.createElement('label');
+        label.className = 'tool-checkbox';
+        label.innerHTML = `
+            <input type="checkbox" name="tools" value="${tool.id}">
+            <span>${tool.name}</span>
+        `;
+        grid.appendChild(label);
+    });
+}
+
+function renderMCPServers() {
+    const container = document.getElementById('mcp-servers');
+    container.innerHTML = '';
+    
+    Object.entries(DEFAULT_MCP_SERVERS).forEach(([name, config]) => {
+        const div = document.createElement('div');
+        div.className = 'mcp-server-config';
+        div.innerHTML = `
+            <div class="mcp-server-header">
+                <label style="display: flex; align-items: center;">
+                    <input type="checkbox" name="mcp_${name}_enabled" style="width: auto; margin-right: 8px;">
+                    <strong>${name}</strong>
+                </label>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">
+                ${config.description}
+            </div>
+            <div class="form-group">
+                <label style="font-size: 12px;">Command</label>
+                <input type="text" name="mcp_${name}_command" value="${config.command}" style="font-size: 12px;">
+            </div>
+            <div class="form-group">
+                <label style="font-size: 12px;">Args (comma-separated)</label>
+                <input type="text" name="mcp_${name}_args" value="${config.args.join(', ')}" style="font-size: 12px;">
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+async function loadAgents() {
+    try {
+        const response = await fetch('/agent-hub/api/custom-agents/');
+        const data = await response.json();
+        
+        const list = document.getElementById('agents-list');
+        list.innerHTML = '';
+        
+        if (data.agents.length === 0) {
+            list.innerHTML = '<p style="text-align: center; color: #94a3b8;">Нет кастомных агентов. Создайте первого!</p>';
+            return;
+        }
+        
+        data.agents.forEach(agent => {
+            const card = document.createElement('div');
+            card.className = 'agent-card';
+            card.innerHTML = `
+                <div class="agent-header">
+                    <div>
+                        <div class="agent-name">${agent.name}</div>
+                        <div style="color: #94a3b8; font-size: 14px; margin-top: 4px;">
+                            ${agent.description || 'Нет описания'}
+                        </div>
+                    </div>
+                    <div class="agent-runtime">${agent.runtime}</div>
+                </div>
+                <div style="color: #cbd5e1; font-size: 14px; margin-bottom: 12px;">
+                    Модель: ${agent.model} | Режим: ${agent.orchestrator_mode} | Инструментов: ${agent.allowed_tools.length}
+                </div>
+                <div style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">
+                    Использований: ${agent.usage_count} | Создан: ${new Date(agent.created_at).toLocaleDateString()}
+                </div>
+                <div class="agent-actions">
+                    <button class="btn-agent btn-edit" onclick="editAgent(${agent.id})">Редактировать</button>
+                    <button class="btn-agent btn-test" onclick="testAgent(${agent.id})">Тест</button>
+                    <button class="btn-agent btn-export" onclick="exportAgent(${agent.id})">Export JSON</button>
+                    <button class="btn-agent btn-delete" onclick="deleteAgent(${agent.id})">Удалить</button>
+                </div>
+            `;
+            list.appendChild(card);
+        });
+    } catch (error) {
+        console.error('Failed to load agents:', error);
+        showMessage('Ошибка загрузки агентов', 'error');
+    }
+}
+
+async function saveAgent(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const agentId = formData.get('agent_id');
+    
+    // Собираем данные
+    const data = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        system_prompt: formData.get('system_prompt'),
+        instructions: formData.get('instructions'),
+        runtime: formData.get('runtime'),
+        model: formData.get('model'),
+        orchestrator_mode: formData.get('orchestrator_mode'),
+        max_iterations: parseInt(formData.get('max_iterations')),
+        temperature: parseFloat(formData.get('temperature')),
+        completion_promise: formData.get('completion_promise'),
+        mcp_auto_approve: formData.get('mcp_auto_approve') === 'on',
+        allowed_tools: [],
+        mcp_servers: {}
+    };
+    
+    // Tools
+    formData.getAll('tools').forEach(tool => {
+        data.allowed_tools.push(tool);
+    });
+    
+    // MCP servers
+    Object.keys(DEFAULT_MCP_SERVERS).forEach(name => {
+        if (formData.get(`mcp_${name}_enabled`) === 'on') {
+            data.mcp_servers[name] = {
+                enabled: true,
+                command: formData.get(`mcp_${name}_command`),
+                args: formData.get(`mcp_${name}_args`).split(',').map(s => s.trim()),
+                description: DEFAULT_MCP_SERVERS[name].description
+            };
+        }
+    });
+    
+    try {
+        const url = agentId ? `/agent-hub/api/custom-agents/${agentId}/` : '/agent-hub/api/custom-agents/';
+        const method = agentId ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showMessage('Агент сохранён успешно!', 'success');
+            hideBuilder();
+            loadAgents();
+        } else {
+            showMessage('Ошибка: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Ошибка сохранения: ' + error.message, 'error');
+    }
+}
+
+async function editAgent(agentId) {
+    showBuilder(agentId);
+}
+
+async function loadAgent(agentId) {
+    try {
+        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const agent = data.agent;
+            document.getElementById('agent-id').value = agent.id;
+            document.getElementById('agent-name').value = agent.name;
+            document.getElementById('agent-description').value = agent.description || '';
+            document.getElementById('agent-system-prompt').value = agent.system_prompt;
+            document.getElementById('agent-instructions').value = agent.instructions || '';
+            document.getElementById('agent-runtime').value = agent.runtime;
+            document.getElementById('agent-model').value = agent.model;
+            document.getElementById('agent-orchestrator-mode').value = agent.orchestrator_mode;
+            document.getElementById('agent-max-iterations').value = agent.max_iterations;
+            document.getElementById('agent-temperature').value = agent.temperature;
+            document.getElementById('agent-completion-promise').value = agent.completion_promise;
+            document.getElementById('mcp-auto-approve').checked = agent.mcp_auto_approve;
+            
+            // Select tools
+            agent.allowed_tools.forEach(tool => {
+                const checkbox = document.querySelector(`input[name="tools"][value="${tool}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
+            
+            // MCP servers
+            Object.entries(agent.mcp_servers || {}).forEach(([name, config]) => {
+                const enabledCheckbox = document.querySelector(`input[name="mcp_${name}_enabled"]`);
+                if (enabledCheckbox && config.enabled) {
+                    enabledCheckbox.checked = true;
+                }
+            });
+        }
+    } catch (error) {
+        showMessage('Ошибка загрузки агента', 'error');
+    }
+}
+
+async function deleteAgent(agentId) {
+    if (!confirm('Удалить этого агента?')) return;
+    
+    try {
+        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showMessage('Агент удалён', 'success');
+            loadAgents();
+        } else {
+            showMessage('Ошибка удаления', 'error');
+        }
+    } catch (error) {
+        showMessage('Ошибка: ' + error.message, 'error');
+    }
+}
+
+async function testAgent(agentId) {
+    const task = prompt('Введите тестовую задачу для агента:');
+    if (!task) return;
+    
+    showMessage('Тестируем агента...', 'info');
+    
+    // TODO: Открыть чат с агентом или показать результат
+    window.location.href = `/agent-hub/agents/${agentId}/test?task=${encodeURIComponent(task)}`;
+}
+
+async function exportAgent(agentId) {
+    try {
+        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/export/`);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Download as JSON file
+            const blob = new Blob([JSON.stringify(data.config, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${data.config.name.replace(/\s+/g, '_')}.agent.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showMessage('Агент экспортирован', 'success');
+        }
+    } catch (error) {
+        showMessage('Ошибка экспорта', 'error');
+    }
+}
+
+function showMessage(text, type = 'info') {
+    const container = document.getElementById('message-container');
+    container.innerHTML = `<div class="${type}-message">${text}</div>`;
+    setTimeout(() => {
+        container.innerHTML = '';
+    }, 3000);
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+    loadAgents();
+    document.getElementById('agent-form').addEventListener('submit', saveAgent);
+});
+</script>
+{% endblock %}

@@ -27,12 +27,27 @@ class CliRuntimeManager:
     def _get_runtime(self, runtime: str) -> Dict[str, Any]:
         return self.config.get(runtime, {})
 
-    async def run(self, runtime: str, task: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, runtime: str, task: str, config: Dict[str, Any], mcp_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Run CLI command once or in a Ralph-like loop if enabled.
+
+        Args:
+            runtime: CLI runtime (cursor, claude)
+            task: Task description
+            config: Runtime configuration
+            mcp_config: MCP servers configuration (per-agent)
+
+        Note: "ralph" is not a CLI runtime. It's an internal orchestration pattern.
+              Use cursor/claude with use_ralph_loop=True instead.
         """
         if runtime == "ralph":
-            return await self._run_ralph_orchestrator(task, config)
+            # Ralph is not a CLI - it's an orchestration pattern
+            # Fall back to cursor with ralph loop enabled
+            logger.warning("runtime='ralph' is deprecated. Using 'cursor' with ralph loop instead.")
+            runtime = "cursor"
+            config = {**config, "use_ralph_loop": True}
+            if not config.get("completion_promise"):
+                config["completion_promise"] = "COMPLETE"
 
         use_ralph_loop = bool(config.get("use_ralph_loop"))
         max_iterations = config.get("max_iterations", 1)
@@ -79,7 +94,7 @@ class CliRuntimeManager:
 
         return await self._run_once(runtime, task, config)
 
-    async def _run_once(self, runtime: str, task: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_once(self, runtime: str, task: str, config: Dict[str, Any], mcp_config: Dict[str, Any] = None) -> Dict[str, Any]:
         runtime_cfg = self._get_runtime(runtime)
         if not runtime_cfg:
             raise ValueError(f"Runtime '{runtime}' is not configured")
@@ -92,6 +107,13 @@ class CliRuntimeManager:
         args_template = [self._format_arg(runtime_cfg, arg) for arg in args_template]
         prompt_style = runtime_cfg.get("prompt_style", "flag")
         allowed_args = runtime_cfg.get("allowed_args", [])
+        
+        # Setup MCP if provided
+        mcp_config_file = None
+        if mcp_config and runtime in ["cursor", "claude"]:
+            from app.core.mcp_manager import get_mcp_manager
+            mcp_manager = get_mcp_manager()
+            mcp_config_file = mcp_manager.create_mcp_config_file(mcp_config)
 
         # Build args from config: only allow whitelisted keys
         cli_args = []
@@ -128,6 +150,18 @@ class CliRuntimeManager:
             subprocess_env = dict(os.environ)
             extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
             subprocess_env.update(extra)
+            
+            # MCP config file для Cursor
+            if mcp_config_file:
+                subprocess_env['MCP_CONFIG_PATH'] = mcp_config_file
+        
+        elif runtime == "claude":
+            subprocess_env = dict(os.environ)
+            
+            # MCP config file для Claude
+            if mcp_config_file:
+                # Claude использует переменную MCP_CONFIG или .cursor/mcp.json
+                subprocess_env['MCP_CONFIG_PATH'] = mcp_config_file
 
         create_kw = {"stdout": asyncio.subprocess.PIPE, "stderr": asyncio.subprocess.PIPE}
         if subprocess_env is not None:
@@ -153,61 +187,6 @@ class CliRuntimeManager:
             "output": stdout.strip(),
             "logs": stderr.strip(),
             "meta": {"exit_code": process.returncode, "pid": process.pid},
-        }
-
-    async def _run_ralph_orchestrator(self, task: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        runtime_cfg = self._get_runtime("ralph")
-        if not runtime_cfg:
-            raise ValueError("Runtime 'ralph' is not configured")
-
-        backend = config.get("ralph_backend") or config.get("backend") or config.get("model") or "gemini"
-        max_iterations = config.get("max_iterations", 20)
-        completion_promise = config.get("completion_promise") or "DONE"
-
-        args = [
-            "--backend",
-            backend,
-            "--max-iterations",
-            str(max_iterations),
-            "--completion-promise",
-            completion_promise,
-            "--no-tui",
-        ]
-
-        command_template = runtime_cfg.get("command")
-        base_args = runtime_cfg.get("args", [])
-        cmd = [self._resolve_command(runtime_cfg, command_template)] + base_args + args + [task]
-
-        logger.info(f"Running Ralph orchestrator -> {' '.join(shlex.quote(c) for c in cmd)}")
-        subprocess_env = None
-        if backend == "cursor":
-            extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
-            if extra:
-                subprocess_env = {**os.environ, **extra}
-        create_kw = {"stdout": asyncio.subprocess.PIPE, "stderr": asyncio.subprocess.PIPE}
-        if subprocess_env is not None:
-            create_kw["env"] = subprocess_env
-        process = await asyncio.create_subprocess_exec(*cmd, **create_kw)
-        timeout_seconds = runtime_cfg.get("timeout_seconds") or getattr(settings, "CLI_RUNTIME_TIMEOUT_SECONDS", 600)
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.communicate()
-            return {
-                "success": False,
-                "output": "",
-                "logs": f"Timeout after {timeout_seconds} seconds",
-                "meta": {"exit_code": -1, "timeout": True, "backend": backend, "pid": process.pid},
-            }
-        stdout = stdout_bytes.decode("utf-8", errors="ignore")
-        stderr = stderr_bytes.decode("utf-8", errors="ignore")
-
-        return {
-            "success": process.returncode == 0,
-            "output": stdout.strip(),
-            "logs": stderr.strip(),
-            "meta": {"exit_code": process.returncode, "backend": backend, "pid": process.pid},
         }
 
     @staticmethod

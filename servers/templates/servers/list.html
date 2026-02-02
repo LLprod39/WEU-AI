@@ -140,6 +140,12 @@
                         <span>{{ server.tags }}</span>
                     </div>
                     {% endif %}
+                    {% if server.corporate_context %}
+                    <div class="flex items-center gap-2 text-xs text-amber-400" title="{{ server.corporate_context|truncatewords:20 }}">
+                        <span class="material-icons-round text-sm">business</span>
+                        <span>Корпоративные требования</span>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="flex gap-2">
                     <button onclick="testConnection({{ server.id }})"
@@ -311,14 +317,40 @@
                         placeholder="/path/to/key">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Notes</label>
-                    <textarea id="server-notes" rows="2"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"></textarea>
-                </div>
-                <div>
                     <label class="block text-xs font-medium text-gray-400 mb-1">Tags</label>
                     <input type="text" id="server-tags" placeholder="prod, staging, db"
                         class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                </div>
+                
+                <!-- Общие заметки -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Notes</label>
+                    <textarea id="server-notes" rows="2"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
+                        placeholder="Общие заметки о сервере..."></textarea>
+                </div>
+                
+                <!-- Корпоративные требования -->
+                <div class="bg-white/5 rounded-lg p-3 border border-white/10">
+                    <div class="flex items-start gap-2 mb-2">
+                        <span class="material-icons-round text-amber-400 text-sm">business</span>
+                        <div class="flex-1">
+                            <label class="block text-xs font-medium text-gray-300 mb-1">
+                                Корпоративные требования / Контекст доступа
+                            </label>
+                            <p class="text-xs text-gray-500 mb-2">
+                                Важная информация для AI агента: прокси, VPN, переменные окружения, специальные условия подключения
+                            </p>
+                        </div>
+                    </div>
+                    <textarea id="server-corporate-context" rows="5"
+                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
+                        placeholder="Примеры:
+• Для работы интернета в SSH сессии передать: export http_proxy=http://proxy.corp:8080
+• Обязательно подключиться через VPN: vpn.company.com
+• Environment variables: CORPORATE_API_KEY=xxx, REGION=eu-west
+• Bastion host: ssh -J bastion.corp:22 user@target
+• Firewall: только порты 22, 443 открыты"></textarea>
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-6">
@@ -424,6 +456,7 @@ function toggleAuthFields() {
 
 async function saveServer(e) {
     e.preventDefault();
+    
     const formData = {
         name: document.getElementById('server-name').value,
         host: document.getElementById('server-host').value,
@@ -435,7 +468,8 @@ async function saveServer(e) {
         master_password: document.getElementById('server-master-password').value,
         key_path: document.getElementById('server-key-path').value,
         notes: document.getElementById('server-notes').value,
-        tags: document.getElementById('server-tags').value
+        tags: document.getElementById('server-tags').value,
+        corporate_context: document.getElementById('server-corporate-context')?.value || ''
     };
 
     try {

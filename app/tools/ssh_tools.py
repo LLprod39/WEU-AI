@@ -22,10 +22,21 @@ class SSHConnectionManager:
         password: Optional[str] = None,
         key_path: Optional[str] = None,
         port: int = 22,
+        network_config: Optional[Dict] = None,
     ) -> str:
         """
-        Establish SSH connection
-        Returns connection ID
+        Establish SSH connection с учётом network_config
+        
+        Args:
+            network_config: Конфигурация корпоративной сети:
+                - proxy: {http_proxy, https_proxy, no_proxy}
+                - vpn: {required, type, notes}
+                - network: {bastion_host, subnet, gateway}
+                - firewall: {inbound_ports, outbound_restrictions}
+                - environment: {HTTP_PROXY, custom_vars, ...}
+        
+        Returns:
+            connection ID
         """
         conn_id = f"{username}@{host}:{port}"
         
@@ -45,6 +56,39 @@ class SSHConnectionManager:
                 "keepalive_count_max": 3,
             }
             
+            # Network config handling
+            if network_config:
+                nc = network_config
+                
+                # Bastion/Jump host
+                bastion = nc.get('network', {}).get('bastion_host')
+                if bastion:
+                    # Format: host:port или host
+                    if ':' in bastion:
+                        jump_host, jump_port = bastion.split(':')
+                        options['jump_host'] = (jump_host, int(jump_port))
+                    else:
+                        options['jump_host'] = bastion
+                    logger.info(f"Using bastion host: {bastion}")
+                
+                # Proxy command (для работы через HTTP прокси)
+                proxy = nc.get('proxy', {}).get('http_proxy')
+                if proxy:
+                    # Используем ProxyCommand через netcat
+                    # Формат прокси: http://proxy.corp.com:8080
+                    proxy_url = proxy.replace('http://', '').replace('https://', '')
+                    if ':' in proxy_url:
+                        proxy_host, proxy_port = proxy_url.split(':')
+                        # ProxyCommand: nc -X connect -x proxy:port %h %p
+                        options['tunnel'] = (proxy_host, int(proxy_port))
+                    logger.info(f"Using proxy: {proxy}")
+                
+                # Environment variables (для команд на удалённом сервере)
+                # Сохраняем для использования в execute
+                if nc.get('environment'):
+                    # Будем добавлять в команды: export VAR=value && command
+                    pass
+            
             if password:
                 options['password'] = password
             elif key_path:
@@ -57,7 +101,11 @@ class SSHConnectionManager:
                 **options,
             )
             
-            self.connections[conn_id] = conn
+            # Сохраняем network_config вместе с connection для использования в execute
+            self.connections[conn_id] = {
+                'connection': conn,
+                'network_config': network_config
+            }
             logger.success(f"Connected to {conn_id}")
             return conn_id
             
@@ -68,19 +116,48 @@ class SSHConnectionManager:
     async def disconnect(self, conn_id: str):
         """Close SSH connection"""
         if conn_id in self.connections:
-            self.connections[conn_id].close()
-            await self.connections[conn_id].wait_closed()
+            conn_data = self.connections[conn_id]
+            # Поддержка старого формата (прямой connection) и нового (dict)
+            if isinstance(conn_data, dict):
+                conn_data['connection'].close()
+                await conn_data['connection'].wait_closed()
+            else:
+                conn_data.close()
+                await conn_data.wait_closed()
             del self.connections[conn_id]
             logger.info(f"Disconnected from {conn_id}")
     
     async def execute(self, conn_id: str, command: str) -> Dict[str, Any]:
-        """Execute command on remote host"""
+        """Execute command on remote host с учётом network_config"""
         if conn_id not in self.connections:
             raise ValueError(f"No active connection: {conn_id}")
         
         try:
-            conn = self.connections[conn_id]
-            result = await conn.run(command, check=False)
+            conn_data = self.connections[conn_id]
+            
+            # Поддержка старого формата (прямой connection) и нового (dict)
+            if isinstance(conn_data, dict):
+                conn = conn_data['connection']
+                network_config = conn_data.get('network_config', {})
+            else:
+                conn = conn_data
+                network_config = {}
+            
+            # Добавляем environment variables из network_config
+            final_command = command
+            if network_config.get('environment'):
+                env_vars = network_config['environment']
+                # Формируем export команды
+                exports = []
+                for key, value in env_vars.items():
+                    if key and value:
+                        exports.append(f"export {key}={value}")
+                
+                if exports:
+                    final_command = "; ".join(exports) + "; " + command
+                    logger.debug(f"Command with env: {final_command}")
+            
+            result = await conn.run(final_command, check=False)
             
             return {
                 "stdout": result.stdout,

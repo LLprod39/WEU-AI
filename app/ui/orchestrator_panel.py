@@ -1,10 +1,10 @@
 import asyncio
 from nicegui import ui, app
-from app.core.orchestrator import Orchestrator
+from app.core.unified_orchestrator import UnifiedOrchestrator
 import os
 
-# Initialize Orchestrator
-orchestrator = Orchestrator()
+# Initialize UnifiedOrchestrator
+orchestrator = UnifiedOrchestrator()
 
 async def init_state():
     """Initialize the orchestrator on startup."""

@@ -163,12 +163,14 @@ class ServerExecuteTool(BaseTool):
                 password = getattr(server, "_plain_password", None)
         key_path = server.key_path if server.auth_method in ("key", "key_password") else None
         try:
+            # Подключение с network_config
             conn_id = await ssh_manager.connect(
                 host=server.host,
                 username=server.username,
                 password=password,
                 key_path=key_path or None,
                 port=server.port,
+                network_config=server.network_config or {},
             )
             result = await ssh_manager.execute(conn_id, command)
             await ssh_manager.disconnect(conn_id)
@@ -176,7 +178,46 @@ class ServerExecuteTool(BaseTool):
             if not out:
                 out = str(result)
             code = result.get("exit_code", -1)
-            return f"Exit code: {code}\n{out}"
+            
+            # Save command to history
+            try:
+                from servers.models import ServerCommandHistory
+                from django.contrib.auth.models import User
+                user = User.objects.filter(id=user_id).first()
+                ServerCommandHistory.objects.create(
+                    server=server,
+                    user=user,
+                    command=command,
+                    output=out[:10000],  # Limit output size
+                    exit_code=code
+                )
+            except Exception as hist_err:
+                logger.debug(f"Failed to save command history: {hist_err}")
+
+            # Analyze output and save AI knowledge
+            try:
+                from servers.knowledge_service import ServerKnowledgeService
+                from django.contrib.auth.models import User
+                user = User.objects.filter(id=user_id).first()
+                task_id = ctx.get("task_id")
+                ServerKnowledgeService.analyze_and_save_knowledge(
+                    server=server,
+                    command_output=out,
+                    command=command,
+                    task_id=task_id,
+                    user=user
+                )
+            except Exception as knowledge_err:
+                logger.debug(f"Failed to analyze knowledge: {knowledge_err}")
+
+            # Добавляем информацию о network context если есть
+            network_info = ""
+            if server.network_config or server.corporate_context:
+                network_summary = server.get_network_context_summary()
+                if network_summary and network_summary != "Стандартная сеть":
+                    network_info = f"\n\n=== Server Context ===\n{network_summary}\n===================="
+
+            return f"Exit code: {code}{network_info}\n{out}"
         except Exception as e:
             logger.exception("server_execute failed")
             return f"Ошибка выполнения на {server.name}: {e}"

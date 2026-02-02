@@ -245,6 +245,7 @@ def server_create(request):
             key_path=data.get('key_path', ''),
             tags=data.get('tags', ''),
             notes=data.get('notes', ''),
+            corporate_context=data.get('corporate_context', ''),
             group=group,
         )
         
@@ -264,6 +265,90 @@ def server_create(request):
             'success': True,
             'server_id': server.id,
             'message': 'Server created successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_update(request, server_id):
+    """Update server configuration including network_config"""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user)
+        data = json.loads(request.body)
+        
+        # Update basic fields
+        if 'name' in data:
+            server.name = data['name']
+        if 'host' in data:
+            server.host = data['host']
+        if 'port' in data:
+            server.port = data['port']
+        if 'username' in data:
+            server.username = data['username']
+        if 'auth_method' in data:
+            server.auth_method = data['auth_method']
+        if 'key_path' in data:
+            server.key_path = data['key_path']
+        if 'tags' in data:
+            server.tags = data['tags']
+        if 'notes' in data:
+            server.notes = data['notes']
+        if 'corporate_context' in data:
+            server.corporate_context = data['corporate_context']
+        if 'is_active' in data:
+            server.is_active = data['is_active']
+        
+        # Update group
+        if 'group_id' in data:
+            group_id = data.get('group_id')
+            if group_id:
+                try:
+                    group = ServerGroup.objects.get(id=group_id)
+                    if _get_group_role(group, request.user) == "":
+                        return JsonResponse({'error': 'Permission denied for group'}, status=403)
+                    server.group = group
+                except ServerGroup.DoesNotExist:
+                    return JsonResponse({'error': 'Invalid group'}, status=400)
+            else:
+                server.group = None
+        
+        # Update network_config
+        if 'network_config' in data:
+            network_config = data['network_config']
+            if isinstance(network_config, dict):
+                server.network_config = network_config
+                # Обновляем helper flags
+                server.update_network_flags()
+        
+        # Update password if provided
+        if 'password' in data and 'master_password' in data:
+            password = data['password']
+            master_password = data['master_password']
+            if password and master_password:
+                server.salt = PasswordEncryption.generate_salt()
+                server.encrypted_password = PasswordEncryption.encrypt_password(
+                    password,
+                    master_password,
+                    bytes(server.salt)
+                )
+        
+        server.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Server updated successfully',
+            'server': {
+                'id': server.id,
+                'name': server.name,
+                'host': server.host,
+                'port': server.port,
+                'network_context': server.get_network_context_summary()
+            }
         })
         
     except Exception as e:

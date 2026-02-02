@@ -22,6 +22,7 @@ class TaskAIAssistant:
         task_title: str,
         task_description: str,
         servers_context: Optional[List[Dict[str, Any]]] = None,
+        agents_context: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Анализ задачи: может ли ИИ выполнить её сам (есть нужный сервер и тип операции допустим).
@@ -33,25 +34,46 @@ class TaskAIAssistant:
             model = model_manager.config.default_provider
 
             servers_text = ""
-            servers_list = ""
             if servers_context:
                 parts = [
                     f"- {s.get('name', '')} (хост: {s.get('host', '')}, порт: {s.get('port', 22)})"
                     for s in servers_context
                 ]
-                servers_list = "\n".join(parts)
-                servers_text = f"Доступные серверы пользователя:\n{servers_list}"
+                servers_text = f"Доступные серверы пользователя:\n" + "\n".join(parts)
             else:
                 servers_text = "Список доступных серверов пуст — пользователь не добавил серверы."
+            
+            # Контекст агентов
+            agents_text = ""
+            if agents_context:
+                parts = []
+                for agent in agents_context:
+                    agent_desc = f"- ID: {agent['id']}, Имя: {agent['name']}"
+                    if agent.get('description'):
+                        agent_desc += f"\n  Описание: {agent['description']}"
+                    if agent.get('instructions'):
+                        agent_desc += f"\n  Инструкции: {agent['instructions']}"
+                    if agent.get('allowed_tools'):
+                        tools_str = ", ".join(agent['allowed_tools']) if isinstance(agent['allowed_tools'], list) else str(agent['allowed_tools'])
+                        agent_desc += f"\n  Инструменты: {tools_str}"
+                    if agent.get('allowed_servers'):
+                        agent_desc += f"\n  Доступ к серверам: {agent['allowed_servers']}"
+                    agent_desc += f"\n  Runtime: {agent['runtime']}"
+                    parts.append(agent_desc)
+                agents_text = f"Созданные агенты пользователя:\n" + "\n".join(parts)
+            else:
+                agents_text = "У пользователя нет созданных агентов. Можно использовать стандартные типы (react, simple, complex, ralph)."
 
-            prompt = f"""Ты ИИ-помощник, который анализирует задачи пользователя и решает, может ли взять их на себя.
+            prompt = f"""Ты ИИ-анализатор задач. Твоя роль — определить, может ли ИИ автоматически выполнить задачу на основе ТОЛЬКО имеющихся данных.
 
 ЗАДАЧА: {task_title}
 ОПИСАНИЕ: {task_description}
 
 {servers_text}
 
-ТВОИ ВОЗМОЖНОСТИ:
+{agents_text}
+
+ТВОИ ВОЗМОЖНОСТИ (базовые):
 - Подключение к серверам по SSH и выполнение команд
 - Установка пакетов (apt, yum, pip)
 - Проверка статуса сервисов, логов, места на диске
@@ -63,19 +85,26 @@ class TaskAIAssistant:
 - Отключение production-сервисов
 - Изменение паролей и ключей доступа
 
-ИНСТРУКЦИИ:
-1. Определи, упоминается ли в задаче конкретный сервер из списка доступных
-2. Если сервер не указан явно — попробуй понять из контекста (например, "на проде" может означать production сервер)
-3. Оцени, можешь ли ты выполнить эту задачу с имеющимися возможностями
-4. Если не можешь — объясни почему (нет нужного сервера, опасная операция, нужны данные от пользователя и т.д.)
+СТРОГИЕ ПРАВИЛА АНАЛИЗА:
+1. Определи, упоминается ли в задаче конкретный сервер из списка доступных.
+2. Если сервер не указан явно — попробуй понять из контекста (например, "на проде" может означать production сервер).
+3. Проверь, есть ли среди созданных агентов подходящий для этой задачи (по описанию, инструментам, доступу к серверам).
+4. Если есть подходящий агент И нужный сервер — можешь предложить выполнение. Укажи ID агента в `recommended_custom_agent_id`.
+5. Если подходящего агента нет, но задача типовая — можешь предложить стандартный тип агента (react/simple/complex/ralph).
+6. Если НЕТ уверенности (нет нужного сервера, нет подходящего агента, непонятна задача) — НЕ ЗАЯВЛЯЙ о возможности выполнения. Вместо этого:
+   - Установи `can_delegate_to_ai: false`
+   - Укажи в `reason` причину отказа
+   - Если нужна дополнительная информация — заполни `missing_info`
+7. Если задача опасная (удаление, отключение сервисов и т.д.) — НЕ ПРЕДЛАГАЙ автоматическое выполнение, установи `can_delegate_to_ai: false` и укажи риски.
 
 Верни строго JSON:
 {{
     "can_delegate_to_ai": true или false,
     "target_server_name": "имя сервера из списка или null если не определён",
+    "recommended_custom_agent_id": ID агента из списка (int) или null,
+    "recommended_agent": "react|simple|complex|ralph" (используется если recommended_custom_agent_id null),
     "reason": "подробное обоснование на русском — почему можешь или не можешь выполнить",
     "missing_info": "что нужно уточнить у пользователя (или null)",
-    "recommended_agent": "react|simple|complex|ralph",
     "estimated_time": "оценка времени на русском",
     "complexity": "simple|medium|complex",
     "risks": "потенциальные риски операции (или null)"
@@ -95,6 +124,10 @@ class TaskAIAssistant:
                     analysis = json.loads(json_match.group())
                     if not isinstance(analysis.get('can_delegate_to_ai'), bool):
                         analysis['can_delegate_to_ai'] = False
+                    # Валидация recommended_custom_agent_id
+                    if analysis.get('recommended_custom_agent_id'):
+                        if not isinstance(analysis['recommended_custom_agent_id'], int):
+                            analysis['recommended_custom_agent_id'] = None
                     return {
                         'success': True,
                         'analysis': analysis,
@@ -109,6 +142,7 @@ class TaskAIAssistant:
                     'can_delegate_to_ai': False,
                     'reason': 'Не удалось разобрать ответ ИИ.',
                     'recommended_agent': 'react',
+                    'recommended_custom_agent_id': None,
                     'estimated_time': '',
                     'complexity': 'medium',
                     'raw_analysis': response_text
@@ -236,10 +270,11 @@ def analyze_task_sync(
     task_title: str,
     task_description: str,
     servers_context: Optional[List[Dict[str, Any]]] = None,
+    agents_context: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Synchronous wrapper for analyze_task"""
     assistant = TaskAIAssistant()
-    return async_to_sync(assistant.analyze_task)(task_title, task_description, servers_context)
+    return async_to_sync(assistant.analyze_task)(task_title, task_description, servers_context, agents_context)
 
 
 def improve_description_sync(task_title: str, task_description: str) -> str:

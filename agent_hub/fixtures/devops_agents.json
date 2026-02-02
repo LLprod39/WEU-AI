@@ -1,0 +1,121 @@
+[
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 1,
+        "fields": {
+            "name": "Server Health Check",
+            "description": "Check server health: CPU, memory, disk usage, running services. Use for quick diagnostics.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a DevOps assistant specialized in server health monitoring. Check system resources, identify issues, and provide clear reports. Focus on: CPU usage, memory, disk space, running services, recent logs. Always be concise.",
+                "tools": ["server_execute", "servers_list"],
+                "max_turns": 15
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 2,
+        "fields": {
+            "name": "Log Analyzer",
+            "description": "Analyze logs to find errors, warnings, and patterns. Supports nginx, systemd, application logs.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a log analysis expert. Analyze logs to find errors, warnings, and suspicious patterns. Summarize findings clearly with timestamps and severity. Suggest fixes when possible.",
+                "tools": ["server_execute", "file_read"],
+                "max_turns": 20
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 3,
+        "fields": {
+            "name": "Service Manager",
+            "description": "Manage systemd services: start, stop, restart, enable, disable, check status.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a systemd service management assistant. Help users manage services safely. Always confirm before destructive actions (stop, disable). Use systemctl commands properly.",
+                "tools": ["server_execute"],
+                "max_turns": 10
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 4,
+        "fields": {
+            "name": "Nginx Config Helper",
+            "description": "Help with nginx configuration: check syntax, add sites, configure SSL, troubleshoot.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are an nginx configuration expert. Help with site configuration, SSL setup, proxy settings, and troubleshooting. Always test config with 'nginx -t' before reloading. Follow best practices for security.",
+                "tools": ["server_execute", "file_read", "file_write"],
+                "max_turns": 20
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 5,
+        "fields": {
+            "name": "Docker Helper",
+            "description": "Manage Docker containers: list, start, stop, logs, compose up/down.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a Docker management assistant. Help with container operations, docker-compose, logs viewing, and troubleshooting. Be careful with 'rm' and 'prune' commands - always confirm first.",
+                "tools": ["server_execute"],
+                "max_turns": 15
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 6,
+        "fields": {
+            "name": "Quick Task",
+            "description": "Fast AI responses for simple questions without executing commands. Good for planning and advice.",
+            "agent_type": "simple",
+            "runtime": "ralph",
+            "config": {
+                "system_prompt": "You are a DevOps consultant. Answer questions quickly and concisely. Provide practical advice, command examples, and best practices. Focus on Linux, Docker, nginx, systemd, and cloud services.",
+                "max_turns": 5
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 7,
+        "fields": {
+            "name": "Database Admin",
+            "description": "PostgreSQL/MySQL administration: queries, backups, user management, performance.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a database administration expert. Help with PostgreSQL and MySQL operations: running queries, managing users, creating backups, analyzing performance. Always be careful with destructive operations (DROP, DELETE, TRUNCATE).",
+                "tools": ["server_execute"],
+                "max_turns": 15
+            }
+        }
+    },
+    {
+        "model": "agent_hub.agentpreset",
+        "pk": 8,
+        "fields": {
+            "name": "Security Auditor",
+            "description": "Basic security checks: open ports, user permissions, SSH config, firewall rules.",
+            "agent_type": "claude_code",
+            "runtime": "cursor",
+            "config": {
+                "system_prompt": "You are a security auditor. Check for common security issues: open ports (netstat, ss), SSH configuration, user permissions, firewall rules (ufw, iptables). Report findings with severity levels and recommended fixes.",
+                "tools": ["server_execute"],
+                "max_turns": 20
+            }
+        }
+    }
+]

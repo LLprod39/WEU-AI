@@ -1,31 +1,31 @@
 """
-ReAct Agent - wrapper for existing Orchestrator with ReAct loop
+ReAct Agent - wrapper for UnifiedOrchestrator with ReAct mode
 """
 from typing import Dict, Any, Optional
 from loguru import logger
 from app.agents.base_agent import BaseAgent
-from app.core.orchestrator import Orchestrator
+from app.core.unified_orchestrator import UnifiedOrchestrator
 from app.core.model_config import model_manager
 
 
 class ReActAgent(BaseAgent):
     """
-    ReAct Agent - uses the existing Orchestrator with ReAct loop.
-    This is a wrapper around the existing functionality.
+    ReAct Agent - uses UnifiedOrchestrator in ReAct mode.
+    Implements the Reason + Act pattern with tools, RAG, and iterative reasoning.
     """
-    
+
     def __init__(self):
         super().__init__(
             name="ReAct Agent",
             description="Advanced agent with ReAct (Reason + Act) loop. Uses tools, RAG, and iterative reasoning."
         )
         self._orchestrator = None
-    
+
     @property
     def orchestrator(self):
         """Lazy load orchestrator"""
         if self._orchestrator is None:
-            self._orchestrator = Orchestrator()
+            self._orchestrator = UnifiedOrchestrator()
             # Mark as not initialized yet
             self._orchestrator.initialized = False
         return self._orchestrator
@@ -58,7 +58,7 @@ class ReActAgent(BaseAgent):
                     'task_id': context.get('task_id'),
                 }
 
-            # Collect response from orchestrator
+            # Collect response from orchestrator (using ReAct mode)
             result_parts = []
             async for chunk in self.orchestrator.process_user_message(
                 task,
@@ -66,6 +66,7 @@ class ReActAgent(BaseAgent):
                 use_rag=use_rag,
                 specific_model=specific_model,
                 execution_context=execution_context,
+                mode="react",  # Explicitly use ReAct mode
             ):
                 result_parts.append(chunk)
             

@@ -56,26 +56,34 @@ class LLMProvider:
         # Set keys in model manager
         model_manager.set_api_keys(self.gemini_api_key, self.grok_api_key)
         
-        self._configure_gemini()
+        # Lazy initialization of Gemini client (only when enabled)
+        self._gemini_client = None
 
-    def _configure_gemini(self):
-        if self.gemini_api_key:
+    def _get_gemini_client(self):
+        """Lazy load Gemini client only when enabled"""
+        if not model_manager.config.gemini_enabled:
+            return None
+        
+        if self._gemini_client is None and self.gemini_api_key:
             try:
-                # Create client with API key
-                self.gemini_client = genai.Client(api_key=self.gemini_api_key)
+                self._gemini_client = genai.Client(api_key=self.gemini_api_key)
                 logger.info("Configured Gemini client")
             except Exception as e:
                 logger.error(f"Failed to configure Gemini: {e}")
-                self.gemini_client = None
-        else:
-            logger.warning("GEMINI_API_KEY not found.")
-            self.gemini_client = None
+                self._gemini_client = None
+        
+        return self._gemini_client
+    
+    @property
+    def gemini_client(self):
+        """Property for backward compatibility"""
+        return self._get_gemini_client()
 
     def set_api_key(self, model: str, key: str):
         if model == "gemini":
             self.gemini_api_key = key
             model_manager.set_api_keys(gemini_key=key)
-            self._configure_gemini()
+            self._gemini_client = None  # Reset client to reinitialize
         elif model == "grok":
             self.grok_api_key = key
             model_manager.set_api_keys(grok_key=key)
@@ -96,6 +104,11 @@ class LLMProvider:
         logger.info(f"Streaming chat from {model} with prompt: {prompt[:50]}...")
         
         if model == "gemini":
+            # Check if Gemini is enabled
+            if not model_manager.config.gemini_enabled:
+                yield "Error: Gemini API disabled. Enable in settings or use CLI agent (ralph/cursor/claude)."
+                return
+            
             if not self.gemini_client:
                 yield "Error: Gemini API Key not configured."
                 return
@@ -137,6 +150,11 @@ class LLMProvider:
                         return
 
         elif model == "grok":
+            # Check if Grok is enabled
+            if not model_manager.config.grok_enabled:
+                yield "Error: Grok API disabled. Enable in settings or use CLI agent (ralph/cursor/claude)."
+                return
+            
             if not self.grok_api_key:
                 yield "Error: Grok API Key not configured."
                 return

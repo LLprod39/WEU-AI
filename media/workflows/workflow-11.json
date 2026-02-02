@@ -1,0 +1,20 @@
+{
+  "name": "Проверить место на сервере",
+  "runtime": "cursor",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Запустить проверку места на диске",
+      "prompt": "Вызвать существующую проверку: либо GET /api/disk/ (если приложение запущено), либо написать и выполнить небольшой скрипт, который импортирует get_disk_usage_report из app.utils.disk_usage, передаёт include_root=True и пути из settings (BASE_DIR, MEDIA_ROOT, AGENT_PROJECTS_DIR, UPLOADED_FILES_DIR), и выводит отчёт (path, total, used, free, percent_used, human-readable размеры). Убедиться, что отчёт содержит корень ФС и каталоги приложения.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Проверить результат и критические пороги",
+      "prompt": "Просмотреть полученный отчёт: убедиться, что нет ошибок доступа (поле error), проверить percent_used по корню и по MEDIA_ROOT/AGENT_PROJECTS_DIR. Если занято >85% по какому-то пути — зафиксировать предупреждение в выводе или в кратком итоге для оператора.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-11.json"
+}

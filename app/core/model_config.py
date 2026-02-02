@@ -13,6 +13,10 @@ import json
 
 class ModelConfig(BaseModel):
     """Configuration for models"""
+    # API providers (optional, disabled by default)
+    gemini_enabled: bool = False
+    grok_enabled: bool = True  # Fallback for internal calls
+    
     # Chat models
     chat_model_gemini: str = "models/gemini-3-flash-preview"
     chat_model_grok: str = "grok-3"
@@ -24,13 +28,21 @@ class ModelConfig(BaseModel):
     agent_model_gemini: str = "models/gemini-3-flash-preview"
     agent_model_grok: str = "grok-3"
     
-    # Current provider: auto = Cursor CLI (Ask), gemini, grok
-    default_provider: str = "auto"
+    # Default provider (CLI agent): cursor = Cursor CLI, claude = Claude Code CLI
+    # Note: "ralph" is NOT a valid provider - it's an orchestrator mode
+    default_provider: str = "cursor"
     
     # Провайдер для ВНУТРЕННИХ вызовов LLM (генерация workflow, анализ задач).
-    # Когда default_provider="auto" (Cursor CLI), внутренние вызовы используют этот провайдер.
+    # Когда default_provider - CLI agent, внутренние вызовы используют этот провайдер.
     # Варианты: "gemini", "grok"
     internal_llm_provider: str = "grok"
+    
+    # Default orchestrator mode: react | ralph_internal | ralph_cli
+    default_orchestrator_mode: str = "ralph_internal"
+    
+    # Ralph settings
+    ralph_max_iterations: int = 20
+    ralph_completion_promise: str = "COMPLETE"
 
     # Папка по умолчанию для сохранения файлов агента (код, артефакты workflow).
     # Относительный путь внутри AGENT_PROJECTS_DIR или пусто = не задано.
@@ -219,6 +231,15 @@ class ModelManager:
             if not self.available_grok_models:
                 return self._get_default_grok_models()
             return self.available_grok_models
+    
+    def is_provider_enabled(self, provider: str) -> bool:
+        """Check if API provider is enabled"""
+        if provider == "gemini":
+            return self.config.gemini_enabled
+        elif provider == "grok":
+            return self.config.grok_enabled
+        # CLI providers always enabled if binary available
+        return True
 
 
 # Global model manager instance

@@ -1,21 +1,30 @@
 """
 Models for agent profiles, presets, and run logs.
 """
+from typing import Dict
 from django.db import models
 from django.contrib.auth.models import User
 
 
 class AgentProfile(models.Model):
-    """User-configurable agent profile"""
+    """
+    User-configurable agent profile
+    
+    DEPRECATED: AgentProfile больше не создаётся из воркфлоу (api_assist_auto).
+    Используется только для обратной совместимости со старыми AgentRun.
+    Для новых агентов используйте CustomAgent.
+    """
     AGENT_TYPE_CHOICES = [
         ("simple", "Simple"),
         ("complex", "Complex"),
         ("react", "ReAct"),
         ("ralph", "Ralph Wiggum"),
+        ("claude_code", "Claude Code"),
     ]
     RUNTIME_CHOICES = [
         ("internal", "Internal"),
         ("cursor", "Cursor CLI"),
+        ("claude", "Claude Code CLI"),
         ("opencode", "OpenCode CLI"),
         ("gemini", "Gemini CLI"),
         ("ralph", "Ralph Orchestrator"),
@@ -32,6 +41,18 @@ class AgentProfile(models.Model):
     runtime = models.CharField(max_length=20, choices=RUNTIME_CHOICES, default="internal")
     mode = models.CharField(max_length=20, choices=MODE_CHOICES, default="simple")
     config = models.JSONField(default=dict, blank=True)
+    
+    # MCP Configuration per agent
+    mcp_servers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="MCP серверы для этого агента (per-agent isolation)"
+    )
+    mcp_auto_approve = models.BooleanField(
+        default=False,
+        help_text="Автоматически одобрять MCP инструменты без подтверждения"
+    )
+    
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -167,3 +188,145 @@ class AgentWorkflowRun(models.Model):
 
     def __str__(self) -> str:
         return f"WorkflowRun {self.id} ({self.status})"
+
+
+class CustomAgent(models.Model):
+    """
+    Кастомные агенты пользователя (как в Claude Code)
+    
+    Пользователь может создать собственного агента с:
+    - Кастомным промптом и инструкциями
+    - Выбором инструментов
+    - Конфигурацией runtime и модели
+    - MCP серверами
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="custom_agents")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    
+    # Agent behavior
+    system_prompt = models.TextField(
+        help_text="Базовый промпт агента (роль, инструкции)",
+        default="Ты DevOps агент, специализирующийся на автоматизации задач."
+    )
+    instructions = models.TextField(
+        blank=True,
+        help_text="Дополнительные инструкции для агента"
+    )
+    
+    # Capabilities
+    allowed_tools = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Список разрешённых инструментов (ssh_execute, read_file, etc)"
+    )
+    max_iterations = models.IntegerField(
+        default=5,
+        help_text="Максимальное количество итераций для ReAct/Ralph"
+    )
+    temperature = models.FloatField(
+        default=0.7,
+        help_text="Temperature для LLM (0.0 - 1.0)"
+    )
+    completion_promise = models.CharField(
+        max_length=100,
+        default="COMPLETE",
+        help_text="Фраза для завершения (для Ralph mode)"
+    )
+    
+    # Runtime configuration
+    runtime = models.CharField(
+        max_length=20,
+        choices=AgentProfile.RUNTIME_CHOICES,
+        default="claude",
+        help_text="CLI runtime для выполнения"
+    )
+    model = models.CharField(
+        max_length=50,
+        default="claude-4.5-sonnet",
+        help_text="Модель для использования"
+    )
+    orchestrator_mode = models.CharField(
+        max_length=20,
+        choices=[
+            ("react", "ReAct Loop"),
+            ("ralph_internal", "Ralph Internal"),
+            ("ralph_cli", "Ralph CLI"),
+        ],
+        default="ralph_internal",
+        help_text="Режим оркестратора"
+    )
+    
+    # MCP Configuration
+    mcp_servers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="MCP серверы для этого агента"
+    )
+    mcp_auto_approve = models.BooleanField(
+        default=False,
+        help_text="Автоматически одобрять MCP инструменты"
+    )
+    
+    # Server access and knowledge
+    allowed_servers = models.JSONField(
+        default=None,
+        null=True,
+        blank=True,
+        help_text='null/"all" = все серверы пользователя, [id1, id2, ...] = только указанные серверы'
+    )
+    knowledge_base = models.TextField(
+        blank=True,
+        default='',
+        help_text="База знаний агента: инструкции, типичные проблемы, примеры (подставляется в системный промпт)"
+    )
+    
+    # Metadata
+    is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(
+        default=False,
+        help_text="Доступен ли агент другим пользователям"
+    )
+    usage_count = models.IntegerField(default=0, help_text="Количество использований")
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["owner", "-updated_at"]),
+            models.Index(fields=["is_active", "is_public"]),
+        ]
+    
+    def __str__(self) -> str:
+        return f"{self.name} ({self.runtime})"
+    
+    def to_cli_agent_config(self) -> Dict:
+        """Экспорт в формат для Claude Code CLI agent config"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "system_prompt": self.system_prompt,
+            "instructions": self.instructions,
+            "allowed_tools": self.allowed_tools,
+            "max_iterations": self.max_iterations,
+            "temperature": self.temperature,
+        }
+    
+    def get_allowed_servers(self, user):
+        """
+        Возвращает QuerySet серверов, доступных агенту
+        
+        Args:
+            user: User instance для фильтрации серверов
+            
+        Returns:
+            QuerySet[Server]: Доступные серверы
+        """
+        from servers.models import Server
+        if self.allowed_servers is None or self.allowed_servers == "all":
+            return Server.objects.filter(user=user, is_active=True)
+        elif isinstance(self.allowed_servers, list):
+            return Server.objects.filter(user=user, is_active=True, id__in=self.allowed_servers)
+        return Server.objects.none()

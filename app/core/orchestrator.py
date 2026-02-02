@@ -1,7 +1,22 @@
 """
 Enhanced Orchestrator with ReAct Loop and Full Tool Integration
 Central brain of the agentic system
+
+DEPRECATED: This module is deprecated. Use UnifiedOrchestrator from
+app.core.unified_orchestrator instead. It provides the same functionality
+plus additional modes (ralph_internal, ralph_cli).
+
+This module is kept for backward compatibility only.
 """
+import warnings
+
+warnings.warn(
+    "app.core.orchestrator.Orchestrator is deprecated. "
+    "Use app.core.unified_orchestrator.UnifiedOrchestrator instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 from app.core.llm import LLMProvider
 from app.rag.engine import RAGEngine
 from app.tools.manager import get_tool_manager
@@ -13,35 +28,8 @@ import os
 from typing import AsyncGenerator, List, Dict, Any
 
 
-# Инструкции и ограничения агента: язык и безопасность (одно место для переиспользования)
-AGENT_SYSTEM_RULES_RU = """
-ЯЗЫК И ОБЩИЕ ПРАВИЛА:
-- Отвечай и рассуждай только на русском. Все сообщения пользователю — на русском.
-- Не запрашивай и не используй пароли. Для SSH используй только переданный connection_id уже установленного соединения или инструменты servers_list / server_execute для серверов из раздела Servers.
-
-ДИАЛОГОВЫЙ ПРОТОКОЛ:
-- Если задачи не хватает данных или есть неоднозначности — задай 1-2 конкретных вопроса, предложи разумные дефолты и остановись, не делай ACTION.
-- Если задача большая или рискованная — кратко перечисли шаги и запроси подтверждение перед выполнением.
-- Не выдумывай факты. Если нужно — скажи, что нужно уточнить.
-
-КОД-СТАНДАРТ:
-- Пиши код аккуратно: проверяй граничные случаи, избегай заглушек и TODO, если не оговорено.
-- При изменении логики — предлагай проверку (тесты/линтеры) и описывай риск.
-- Сохраняй текущие соглашения проекта (стиль, структура).
-
-СЕРВЕРЫ ИЗ РАЗДЕЛА SERVERS (WEU SERVER и др.):
-- Сначала вызови servers_list — получи список серверов (id, name, host).
-- Чтобы выполнить команду на сервере по имени (например WEU SERVER), вызови server_execute с server_name_or_id="WEU SERVER" и command="df -h" (или другой командой).
-
-РАЗРЕШЁННЫЕ ОПЕРАЦИИ НА СЕРВЕРЕ:
-- Чтение и проверка: df, свободное место, логи, статус сервисов, списки файлов, чтение конфигов.
-- Выполняй только безопасные команды проверки (например: df -h, du, tail логов, systemctl status).
-
-ЗАПРЕЩЕНО БЕЗ ЯВНОГО ПОДТВЕРЖДЕНИЯ:
-- Удаление файлов и каталогов (rm -rf, rm и т.п.), перезапись критичных путей.
-- mkfs, разметка дисков, отключение/перезапуск системных сервисов.
-- Любые действия, необратимо меняющие состояние сервера.
-"""
+# Re-export AGENT_SYSTEM_RULES_RU from unified_orchestrator for backward compatibility
+from app.core.unified_orchestrator import AGENT_SYSTEM_RULES_RU
 
 
 class Orchestrator:

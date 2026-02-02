@@ -8,6 +8,7 @@ from app.agents.react_agent import ReActAgent
 from app.agents.simple_agent import SimpleAgent
 from app.agents.complex_agent import ComplexAgent
 from app.agents.ralph_agent import RalphWiggumAgent
+from app.agents.claude_code_agent import ClaudeCodeAgent
 
 
 class AgentManager:
@@ -27,6 +28,7 @@ class AgentManager:
             SimpleAgent(),
             ComplexAgent(),
             RalphWiggumAgent(),
+            ClaudeCodeAgent(),
         ]
         
         for agent in builtin_agents:

@@ -51,7 +51,15 @@ class Task(models.Model):
         max_length=50, 
         blank=True, 
         null=True,
-        help_text="Тип агента для выполнения (react, simple, complex, ralph)"
+        help_text="Тип агента для выполнения (react, simple, complex, ralph) — используется если recommended_custom_agent не задан"
+    )
+    recommended_custom_agent = models.ForeignKey(
+        'agent_hub.CustomAgent',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tasks',
+        help_text="Рекомендованный кастомный агент для выполнения задачи"
     )
     ai_execution_status = models.CharField(
         max_length=20,
@@ -106,6 +114,38 @@ class Task(models.Model):
     auto_execution_approved = models.BooleanField(
         default=False,
         help_text="Одобрено ли автоматическое выполнение"
+    )
+    
+    # External integration (Jira, GitHub, etc)
+    external_system = models.CharField(
+        max_length=50,
+        choices=[
+            ('jira', 'Jira'),
+            ('github', 'GitHub Issues'),
+            ('gitlab', 'GitLab Issues'),
+            ('internal', 'Internal'),
+        ],
+        default='internal',
+        help_text="Внешняя система, из которой импортирована задача"
+    )
+    external_id = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        help_text="ID задачи во внешней системе (например DEVOPS-123)"
+    )
+    external_url = models.URLField(
+        blank=True,
+        help_text="Прямая ссылка на задачу во внешней системе"
+    )
+    sync_back = models.BooleanField(
+        default=True,
+        help_text="Синхронизировать статус обратно во внешнюю систему"
+    )
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Время последней синхронизации с внешней системой"
     )
 
     class Meta:

@@ -44,9 +44,7 @@
                 <p class="text-gray-400 text-sm mt-1">Запуск агентов, управление workflow и просмотр логов выполнения.</p>
             </div>
             <div class="flex gap-2">
-                <button onclick="openProfileModal()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary">
-                    Новый профиль
-                </button>
+                <!-- DEPRECATED: Новый профиль button removed. Use Custom Agents -->
             </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -230,7 +228,8 @@
         </div>
 
         <div class="lg:col-span-2 flex flex-col space-y-4">
-            <div class="glass-card rounded-2xl p-4">
+            <!-- DEPRECATED: Секция "Профили" скрыта. Используйте Custom Agents (/agents/custom-agents/) -->
+            <!-- <div class="glass-card rounded-2xl p-4">
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <h2 class="text-lg font-semibold text-white">Профили</h2>
@@ -274,7 +273,7 @@
                     </div>
                     {% endfor %}
                 </div>
-            </div>
+            </div> -->
 
             <div class="glass-card rounded-2xl p-4">
                 <h2 class="text-lg font-semibold text-white mb-3">Presets</h2>
@@ -471,114 +470,7 @@
     </div>
 </div>
 
-<!-- Profile Modal -->
-<div id="profileModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle" aria-hidden="true">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeProfileModal()" aria-hidden="true"></div>
-    <div class="absolute top-1/2 left-1/2 w-full max-w-3xl transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4" id="profileModalTitle">Новый профиль</h2>
-        <div id="profile-questions" class="hidden mb-4 p-3 rounded-xl border border-amber-400/30 bg-amber-500/10 text-amber-200 text-xs">
-            <div class="font-medium mb-2">Уточняющие вопросы</div>
-            <ul id="profile-questions-list" class="list-disc list-inside space-y-1"></ul>
-            <div class="font-medium mt-3 mb-2">Предположения</div>
-            <ul id="profile-assumptions-list" class="list-disc list-inside space-y-1"></ul>
-        </div>
-        <form id="profileForm" onsubmit="saveProfile(event)">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Название</label>
-                    <input id="profile-name" required class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
-                    <select id="profile-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="ralph" selected>Ralph Orchestrator</option>
-                        <option value="cursor">Cursor</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Тип агента</label>
-                    <select id="profile-agent-type" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="react">ReAct</option>
-                        <option value="simple">Simple</option>
-                        <option value="complex">Complex</option>
-                        <option value="ralph">Ralph Wiggum</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Режим</label>
-                    <select id="profile-mode" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="simple">Простой</option>
-                        <option value="advanced">Продвинутый</option>
-                    </select>
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание</label>
-                    <textarea id="profile-description" rows="2" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm"></textarea>
-                </div>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div id="profile-model-container">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Модель</label>
-                    <select id="profile-model" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="gpt-5">GPT-5</option>
-                        <option value="sonnet-4">Sonnet 4</option>
-                        <option value="sonnet-4-thinking">Sonnet 4 Thinking</option>
-                    </select>
-                </div>
-                <div id="profile-specific-model-container">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Конкретная модель (опционально)</label>
-                    <input id="profile-specific-model" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                </div>
-                <div id="cursor-model-info" class="md:col-span-2 hidden">
-                    <div class="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs text-primary">
-                        <span class="font-medium">ℹ️ Для Cursor CLI можно выбрать модель: auto, gpt-5, sonnet-4, sonnet-4-thinking, opus-4</span>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Ralph Backend</label>
-                    <select id="profile-ralph-backend" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="">Auto</option>
-                        <option value="cursor">Cursor CLI</option>
-                    </select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="profile-use-rag" checked class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
-                    <label for="profile-use-rag" class="text-xs text-gray-400">Use RAG</label>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="profile-use-ralph-loop" class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
-                    <label for="profile-use-ralph-loop" class="text-xs text-gray-400">Ralph loop (Cursor)</label>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="profile-loop-include-previous" checked class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
-                    <label for="profile-loop-include-previous" class="text-xs text-gray-400">Include previous output</label>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="profile-is-default" class="w-4 h-4 rounded bg-white/10 border-white/20 text-primary">
-                    <label for="profile-is-default" class="text-xs text-gray-400">Сделать по умолчанию</label>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Макс. итераций</label>
-                    <input id="profile-max-iterations" type="number" value="10" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Completion Promise (Ralph)</label>
-                    <input id="profile-completion-promise" placeholder="DONE" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Расширенный конфиг (JSON)</label>
-                    <textarea id="profile-config-json" rows="3" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono"></textarea>
-                </div>
-            </div>
-
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" onclick="closeProfileModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
-                <button type="submit" id="btn-save-profile" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сохранить</button>
-            </div>
-        </form>
-    </div>
-</div>
+<!-- DEPRECATED: Profile Modal removed. Use Custom Agents (/agents/custom-agents/) instead -->
 
 <!-- AI Analysis Wizard Modal -->
 <div id="aiAnalysisModal" class="fixed inset-0 z-[200] hidden" role="dialog" aria-modal="true" aria-labelledby="aiAnalysisTitle" aria-hidden="true">

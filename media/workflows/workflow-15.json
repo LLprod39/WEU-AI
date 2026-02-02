@@ -1,0 +1,26 @@
+{
+  "name": "Сервис сбора метрик по SSH",
+  "runtime": "cursor",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Сервис сбора метрик по SSH",
+      "prompt": "Реализовать сервис/модуль (например app/services/server_metrics.py или app/utils/server_metrics.py), который по объекту Server (или host/username/credentials) подключается по SSH и выполняет стандартные команды для сбора метрик: free -b (RAM), df -B1 (диск по разделам), uptime или /proc/loadavg (нагрузка), при необходимости nproc и чтение /proc/cpuinfo или top -bn1 для CPU. Использовать существующие app/tools/ssh_tools (ssh_manager) и логику расшифровки пароля из app/tools/server_tools. Возвращать единую структуру (dict): ram (total, used, free, percent_used), disk (список разделов с path, total, used, free, percent_used), load (load1, load5, load15), cpu (количество ядер, опционально использование). Парсинг вывода free, df, uptime — в коде, без зависимости от локали (LANG=C при вызове команд).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Инструмент server_metrics для оркестратора",
+      "prompt": "Добавить в app/tools новый инструмент (например server_metrics или server_analyze), регистрируемый в ToolManager, который принимает server_name_or_id (и при необходимости _context с user_id, master_password). Внутри вызывает сервис сбора метрик для выбранного сервера из servers.models.Server (по user_id и name/id), возвращает агенту готовый текстовый или структурированный отчёт (RAM, диск, нагрузка, CPU) для анализа. Учитывать target_server_id из контекста и is_dangerous_command не требуется — команды только чтения (free, df, uptime, nproc).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Проверка и обработка ошибок",
+      "prompt": "Добавить обработку ошибок: таймаут SSH, недоступный хост, неверные учётные данные, отсутствие команд (free/df) на целевом хосте. Возвращать частичный результат с полем error по недоступным метрикам. Проверить работу на Linux-сервере (или в тестах с моком SSH): убедиться, что парсинг free/df/uptime корректен для типичного вывода.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-15.json"
+}

@@ -25,10 +25,11 @@ from loguru import logger
 load_dotenv()
 
 # Import core logic
-from app.core.orchestrator import Orchestrator
+from app.core.unified_orchestrator import UnifiedOrchestrator
 from app.core.model_config import model_manager
 from app.rag.engine import RAGEngine
 from app.utils.file_processor import FileProcessor
+from app.utils.disk_usage import get_disk_usage_report
 from app.agents.manager import get_agent_manager
 from core_ui.context_processors import user_can_feature
 from core_ui.decorators import require_feature, async_login_required, async_require_feature
@@ -36,25 +37,40 @@ from core_ui.models import ChatSession, ChatMessage
 from core_ui.middleware import get_template_name
 
 # Singleton instances
-_orchestrator = None
+_unified_orchestrator = None
 _orchestrator_lock = asyncio.Lock()
 _rag_engine = None
 
 
-def _init_orchestrator_sync():
-    """Sync init оркестратора — вызывать только из asyncio.to_thread."""
+def _init_unified_orchestrator_sync():
+    """Sync init unified оркестратора"""
     model_manager.load_config()
-    return Orchestrator()
+    return UnifiedOrchestrator()
 
 
-async def get_orchestrator():
-    """Get or create orchestrator instance (protected by lock to avoid race condition)"""
-    global _orchestrator
+async def get_unified_orchestrator():
+    """Get or create unified orchestrator instance"""
+    global _unified_orchestrator
     async with _orchestrator_lock:
-        if _orchestrator is None:
-            _orchestrator = await asyncio.to_thread(_init_orchestrator_sync)
-            await _orchestrator.initialize()
-    return _orchestrator
+        if _unified_orchestrator is None:
+            _unified_orchestrator = await asyncio.to_thread(_init_unified_orchestrator_sync)
+            await _unified_orchestrator.initialize()
+    return _unified_orchestrator
+
+
+# Backward compatibility alias (deprecated)
+async def get_orchestrator():
+    """
+    DEPRECATED: Use get_unified_orchestrator() instead.
+    This function is kept for backward compatibility only.
+    """
+    import warnings
+    warnings.warn(
+        "get_orchestrator() is deprecated. Use get_unified_orchestrator() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return await get_unified_orchestrator()
 
 
 def get_rag_engine():
@@ -133,7 +149,7 @@ def docs_ui_guide_view(request):
 # ============================================
 
 @login_required
-def index(request):
+def chat_view(request):
     """Main chat interface"""
     default_provider = model_manager.config.default_provider
     rag = get_rag_engine()
@@ -157,9 +173,13 @@ def index(request):
             context['initial_prompt'] = initial_prompt.replace('\n', '\\n').replace("'", "\\'")
         except Exception as exc:
             logger.warning(f"Failed to prefill task prompt for task_id={task_id}: {exc}")
-    
+
     template = get_template_name(request, 'chat.html')
     return render(request, template, context)
+
+
+# Backward compatibility alias
+index = chat_view
 
 
 @login_required
@@ -173,6 +193,75 @@ def orchestrator_view(request):
     }
     template = get_template_name(request, 'orchestrator.html')
     return render(request, template, context)
+
+
+@login_required
+@require_feature('agents', redirect_on_forbidden=True)
+def monitor_view(request):
+    """AI Monitor - unified monitoring dashboard for agent and workflow runs."""
+    return render(request, 'monitor.html', {})
+
+
+@login_required
+def dashboard_view(request):
+    """Dashboard - main page with system overview for DevOps admins."""
+    from datetime import date
+    from servers.models import Server
+    from tasks.models import Task
+    from agent_hub.models import AgentRun, AgentWorkflow
+
+    # Collect stats
+    context = {
+        'servers': {
+            'total': Server.objects.count(),
+            'active': Server.objects.filter(is_active=True).count(),
+        },
+        'tasks': {
+            'total': Task.objects.count(),
+            'pending': Task.objects.filter(status='pending').count(),
+            'in_progress': Task.objects.filter(status='in_progress').count(),
+        },
+        'agents': {
+            'running': AgentRun.objects.filter(status='running').count(),
+            'today': AgentRun.objects.filter(created_at__date=date.today()).count(),
+        },
+        'workflows': {
+            'total': AgentWorkflow.objects.count(),
+        },
+        'recent_runs': AgentRun.objects.order_by('-created_at')[:5],
+    }
+    return render(request, 'dashboard.html', context)
+
+
+@login_required
+def api_dashboard_stats(request):
+    """API endpoint for dashboard statistics (for real-time updates)."""
+    from datetime import date
+    from servers.models import Server
+    from tasks.models import Task
+    from agent_hub.models import AgentRun, AgentWorkflow
+
+    return JsonResponse({
+        'success': True,
+        'data': {
+            'servers': {
+                'total': Server.objects.count(),
+                'active': Server.objects.filter(is_active=True).count(),
+            },
+            'tasks': {
+                'total': Task.objects.count(),
+                'pending': Task.objects.filter(status='pending').count(),
+                'in_progress': Task.objects.filter(status='in_progress').count(),
+            },
+            'agents': {
+                'running': AgentRun.objects.filter(status='running').count(),
+                'today': AgentRun.objects.filter(created_at__date=date.today()).count(),
+            },
+            'workflows': {
+                'total': AgentWorkflow.objects.count(),
+            },
+        }
+    })
 
 
 @login_required
@@ -315,7 +404,8 @@ def _get_servers_context_for_prompt(user_id: int) -> str:
             if auth in ("password", "key_password") and s.encrypted_password and master_pwd and s.salt:
                 try:
                     pwd_decrypted = PasswordEncryption.decrypt_password(s.encrypted_password, master_pwd, bytes(s.salt))
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Password decryption failed for server {s.name}: {e}")
                     pwd_decrypted = ""
             if auth == "key" and key_path:
                 cmd_hint = f"ssh -i {key_path} -o StrictHostKeyChecking=no {s.username}@{s.host} -p {s.port} '<COMMAND>'"
@@ -416,8 +506,8 @@ async def _stream_cursor_cli(
         except (asyncio.TimeoutError, ProcessLookupError):
             try:
                 proc.kill()
-            except Exception:
-                pass
+            except (ProcessLookupError, OSError) as e:
+                logger.debug(f"Process already terminated: {e}")
         if proc.returncode and proc.returncode != 0 and proc.stderr:
             err = (await proc.stderr.read()).decode("utf-8", errors="replace").strip()
             if err:
@@ -456,7 +546,8 @@ async def _try_server_command_by_name(user_id: int, message: str):
     import re
     try:
         from app.tools.server_tools import ServerExecuteTool
-    except Exception:
+    except ImportError as e:
+        logger.debug(f"ServerExecuteTool not available: {e}")
         return None
     if not user_id or not (message or "").strip():
         return None
@@ -609,7 +700,12 @@ async def chat_api(request):
             accumulated = []
             created_session_id = None  # новый id, если создали сессию в этом запросе
             try:
+                # Заменяем "auto" на default_provider из настроек
+                effective_model = model
                 if model == "auto":
+                    effective_model = model_manager.config.default_provider or "cursor"
+                
+                if effective_model == "cursor" or effective_model == "auto":  # fallback
                     if not session and user_id:
                         session = await asyncio.to_thread(
                             lambda: ChatSession.objects.create(
@@ -691,15 +787,20 @@ async def chat_api(request):
                 # В режиме IDE не подмешиваем RAG (чтобы не тянуть чек-листы и посторонние данные)
                 use_rag_effective = use_rag if not workspace_path else False
                 
-                orchestrator = await get_orchestrator()
+                # Используем UnifiedOrchestrator с auto mode selection
+                orchestrator = await get_unified_orchestrator()
+                orchestrator_mode = data.get('mode')  # Опциональный параметр mode
+                
+                # Передаем effective_model (уже заменен auto -> default_provider)
                 async for chunk in orchestrator.process_user_message(
                     user_message,
-                    model_preference=model,
+                    model_preference=effective_model,
                     use_rag=use_rag_effective,
                     specific_model=specific_model,
                     user_id=user_id,
                     initial_history=initial_history,
                     execution_context=execution_context if execution_context else None,
+                    mode=orchestrator_mode,
                 ):
                     accumulated.append(chunk)
                     yield chunk
@@ -915,9 +1016,9 @@ def rag_documents_api(request):
 @login_required
 @require_feature('orchestrator')
 def api_tools_list(request):
-    """Get list of available tools - uses get_orchestrator() with initialize(), no direct Orchestrator creation"""
+    """Get list of available tools via UnifiedOrchestrator"""
     try:
-        orchestrator = asyncio.run(get_orchestrator())
+        orchestrator = asyncio.run(get_unified_orchestrator())
         tools = orchestrator.get_available_tools()
         return JsonResponse({'tools': tools, 'count': len(tools)})
     except Exception as e:
@@ -957,9 +1058,9 @@ def api_models_list(request):
 @login_required
 @require_http_methods(["POST"])
 def api_clear_history(request):
-    """Clear conversation history - uses get_orchestrator() for consistent access"""
+    """Clear conversation history via UnifiedOrchestrator"""
     try:
-        orchestrator = asyncio.run(get_orchestrator())
+        orchestrator = asyncio.run(get_unified_orchestrator())
         orchestrator.clear_history()
         return JsonResponse({'success': True, 'message': 'History cleared'})
     except Exception as e:
@@ -983,13 +1084,23 @@ def api_settings(request):
                 pref = UserDelegatePreference.objects.filter(user=request.user).first()
                 if pref:
                     delegate_ui = pref.delegate_ui
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to load delegate preference: {e}")
+            
+            # Provider Registry для статусов
+            from app.core.provider_registry import get_provider_registry
+            registry = get_provider_registry()
+            
             return JsonResponse({
                 'success': True,
                 'config': {
                     'default_provider': c.default_provider,
                     'internal_llm_provider': getattr(c, 'internal_llm_provider', 'grok') or 'grok',
+                    'default_orchestrator_mode': getattr(c, 'default_orchestrator_mode', 'ralph_internal') or 'ralph_internal',
+                    'ralph_max_iterations': getattr(c, 'ralph_max_iterations', 20) or 20,
+                    'ralph_completion_promise': getattr(c, 'ralph_completion_promise', 'COMPLETE') or 'COMPLETE',
+                    'gemini_enabled': getattr(c, 'gemini_enabled', False),
+                    'grok_enabled': getattr(c, 'grok_enabled', True),
                     'chat_model_gemini': c.chat_model_gemini,
                     'chat_model_grok': c.chat_model_grok,
                     'rag_model': c.rag_model,
@@ -1005,7 +1116,10 @@ def api_settings(request):
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
                     'grok_set': bool(os.getenv('GROK_API_KEY')),
+                    'anthropic_set': bool(os.getenv('ANTHROPIC_API_KEY')),
+                    'cursor_set': bool(os.getenv('CURSOR_API_KEY')),
                 },
+                'providers': registry.get_all_providers(),
             })
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -1020,6 +1134,11 @@ def api_settings(request):
                 'cursor_sandbox', 'cursor_approve_mcps',
                 'internal_llm_provider',  # Провайдер для внутренних вызовов (workflow, анализ)
                 'allow_model_selection',  # Разрешить выбор моделей в workflow
+                'gemini_enabled',  # Включение/отключение Gemini API
+                'grok_enabled',    # Включение/отключение Grok API
+                'default_orchestrator_mode',  # react | ralph_internal | ralph_cli
+                'ralph_max_iterations',
+                'ralph_completion_promise',
             }
             for key, value in data.items():
                 if key in allowed and value is not None:
@@ -1064,6 +1183,51 @@ def api_settings_check(request):
     except Exception as e:
         logger.exception('api_settings_check error: %s', e)
         return JsonResponse({'configured': False, 'missing': ['gemini_key', 'grok_key']}, status=500)
+
+
+@login_required
+@require_feature('settings')
+@require_GET
+def api_disk_usage(request):
+    """
+    GET /api/disk/
+    Возвращает проверку свободного/занятого места по путям: корень ФС, MEDIA_ROOT, при необходимости каталоги приложения.
+    Результат: { paths: [ { path, total, used, free, percent_used, label?, error? } ] }.
+    """
+    try:
+        report = get_disk_usage_report(
+            include_root=True,
+            media_root=getattr(settings, 'MEDIA_ROOT', None),
+            uploaded_files_dir=getattr(settings, 'UPLOADED_FILES_DIR', None),
+            agent_projects_dir=getattr(settings, 'AGENT_PROJECTS_DIR', None),
+            base_dir=getattr(settings, 'BASE_DIR', None),
+        )
+        # Добавляем человекочитаемые размеры для удобства
+        for entry in report:
+            if 'error' in entry:
+                continue
+            total = entry.get('total')
+            used = entry.get('used')
+            free = entry.get('free')
+            if total is not None:
+                entry['total_human'] = _format_bytes(total)
+            if used is not None:
+                entry['used_human'] = _format_bytes(used)
+            if free is not None:
+                entry['free_human'] = _format_bytes(free)
+        return JsonResponse({'paths': report})
+    except Exception as e:
+        logger.exception('api_disk_usage error: %s', e)
+        return JsonResponse({'paths': [], 'error': str(e)}, status=500)
+
+
+def _format_bytes(n: int) -> str:
+    """Форматирует байты в человекочитаемый вид (KB, MB, GB, TB)."""
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if abs(n) < 1024:
+            return f'{n:.1f} {unit}'
+        n /= 1024
+    return f'{n:.1f} PB'
 
 
 @login_required
@@ -1251,7 +1415,8 @@ def api_ide_list_files(request):
             workspace_resolved = workspace_root.resolve()
             if not str(target_resolved).startswith(str(workspace_resolved)):
                 return JsonResponse({'error': 'Path outside workspace'}, status=403)
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
         
         # Проверяем существование
@@ -1318,14 +1483,15 @@ def api_ide_read_file(request):
             return JsonResponse({'error': 'Invalid path'}, status=400)
         
         file_path = workspace_root / path_param
-        
+
         # Проверяем безопасность пути
         try:
             file_resolved = file_path.resolve()
             workspace_resolved = workspace_root.resolve()
             if not str(file_resolved).startswith(str(workspace_resolved)):
                 return JsonResponse({'error': 'Path outside workspace'}, status=403)
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
         
         # Проверяем существование и что это файл
@@ -1395,14 +1561,15 @@ def api_ide_write_file(request):
             return JsonResponse({'error': 'Invalid path'}, status=400)
         
         file_path = workspace_root / path_param
-        
+
         # Проверяем безопасность пути
         try:
             file_resolved = file_path.resolve()
             workspace_resolved = workspace_root.resolve()
             if not str(file_resolved).startswith(str(workspace_resolved)):
                 return JsonResponse({'error': 'Path outside workspace'}, status=403)
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
         
         # Создаём родительские директории если нужно

@@ -1,0 +1,20 @@
+{
+  "name": "Получить отчёт о месте на диске",
+  "runtime": "claude",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Получить отчёт о месте на диске",
+      "prompt": "Вызвать get_disk_usage_report (app.utils.disk_usage) с путями из настроек приложения (BASE_DIR, MEDIA_ROOT, корень /) или выполнить GET запрос к API /api/disk/ если приложение запущено. Получить список записей: path, total, used, free, percent_used, при наличии — error.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    },
+    {
+      "title": "Сформировать и вывести сводку",
+      "prompt": "По результату отчёта вывести для каждого пути: метку (label или path), занято/свободно в человекочитаемом виде (ГБ/МБ), процент занятости. Если есть error — указать. Отметить критические значения (например >90% занято).",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-9.json"
+}

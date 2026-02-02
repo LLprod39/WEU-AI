@@ -2,7 +2,9 @@
 Views for Agent Hub: profiles, runs, and AI config assistant.
 """
 import json
+import queue
 import threading
+import time
 from pathlib import Path
 import subprocess
 import os
@@ -11,26 +13,26 @@ import sys
 from datetime import datetime
 from typing import Dict, Any
 from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
 from asgiref.sync import async_to_sync
 from loguru import logger
 
-from .models import AgentProfile, AgentRun, AgentPreset, AgentWorkflow, AgentWorkflowRun
+from .models import AgentProfile, AgentRun, AgentPreset, AgentWorkflow, AgentWorkflowRun, CustomAgent
 from app.agents.manager import get_agent_manager
 from core_ui.decorators import require_feature
 from core_ui.middleware import get_template_name
 from app.core.llm import LLMProvider
-from app.agents.cli_runtime import CliRuntimeManager
 from app.tools.manager import get_tool_manager
 
-ALLOWED_RUNTIMES = {"ralph", "cursor"}
-ALLOWED_RALPH_BACKENDS = {"cursor"}
+ALLOWED_RUNTIMES = {"cursor", "claude", "gemini", "grok"}  # CLI агенты
+ALLOWED_RALPH_BACKENDS = {"cursor", "claude", "gemini", "grok"}  # Backends для Ralph
 
 
 def _get_project_folders(include_files_count: bool = False) -> list:
@@ -63,20 +65,75 @@ def _create_project_folder(name: str) -> str:
     return safe_name
 
 
-def _get_workspace_path(workflow: AgentWorkflow) -> str:
-    """Возвращает путь к workspace для workflow"""
+def _get_workspace_path(workflow: AgentWorkflow, is_server_task: bool = False) -> str:
+    """Возвращает путь к workspace для workflow.
+
+    Для SERVER_TASK: изолированная папка БЕЗ доступа к коду проекта.
+    Для CODE_TASK: папка в agent_projects/ для написания кода.
+    """
+    # Для серверных задач - создаём изолированную папку (без кода проекта!)
+    if is_server_task or workflow.target_server_id:
+        # Папка для серверных задач - минимальная, только для MCP
+        safe_name = (workflow.name or "server_task").replace(" ", "_")[:50]
+        isolated_path = settings.AGENT_PROJECTS_DIR / safe_name
+        isolated_path.mkdir(parents=True, exist_ok=True)
+        return str(isolated_path)
+
+    # Для кодовых задач - project_path или default
     path = (workflow.project_path or "").strip()
     if not path:
         try:
             from app.core.model_config import model_manager
             path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to load default_agent_output_path: {e}")
             path = ""
     if path:
         full_path = settings.AGENT_PROJECTS_DIR / path
         full_path.mkdir(parents=True, exist_ok=True)
         return str(full_path)
-    return str(settings.BASE_DIR)
+
+    # Fallback: изолированная папка (НЕ BASE_DIR чтобы не видеть код проекта)
+    safe_name = (workflow.name or "code_task").replace(" ", "_")[:50]
+    fallback_path = settings.AGENT_PROJECTS_DIR / safe_name
+    fallback_path.mkdir(parents=True, exist_ok=True)
+    return str(fallback_path)
+
+
+def _admin_required(request) -> bool:
+    return bool(getattr(request, "user", None) and request.user.is_authenticated and request.user.is_staff)
+
+
+def _redact_sensitive(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for k, v in value.items():
+            key_lower = str(k).lower()
+            if any(word in key_lower for word in ["password", "secret", "token", "api_key", "apikey", "key"]):
+                redacted[k] = "***"
+            else:
+                redacted[k] = _redact_sensitive(v)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_sensitive(v) for v in value]
+    return value
+
+
+def _sanitize_command(cmd: list) -> list:
+    sanitized = []
+    redact_next = False
+    for part in cmd:
+        if redact_next:
+            sanitized.append("***")
+            redact_next = False
+            continue
+        part_lower = str(part).lower()
+        if any(flag in part_lower for flag in ["--api-key", "--apikey", "--token", "--secret", "--password"]):
+            sanitized.append(part)
+            redact_next = True
+            continue
+        sanitized.append(part)
+    return sanitized
 
 
 def _parse_json_request(request) -> Dict[str, Any]:
@@ -175,10 +232,13 @@ Rules:
                 "safety_level": "safe",
             },
         }
-    parsed["runtime"] = parsed.get("runtime") if parsed.get("runtime") in ALLOWED_RUNTIMES else "ralph"
+    # Используем default_provider как fallback вместо жестко заданного "ralph"
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    parsed["runtime"] = parsed.get("runtime") if parsed.get("runtime") in ALLOWED_RUNTIMES else default_runtime
     cfg = parsed.get("config", {})
     if parsed["runtime"] == "ralph":
-        cfg["ralph_backend"] = "cursor"
+        cfg["ralph_backend"] = default_runtime
     # Модель теперь поддерживается для cursor - валидируем значение
     if parsed["runtime"] == "cursor" and cfg.get("model"):
         from django.conf import settings
@@ -194,31 +254,53 @@ def _generate_workflow_script(task: str, runtime: str, from_task: bool = False, 
     from app.core.model_config import model_manager
 
     model_preference = model_manager.config.default_provider
-    ralph_block = ""
-    if from_task:
-        ralph_block = """
-RALPH WORKFLOW (важно):
-- Ralph — оркестратор по шагам: каждый шаг = "шляпа" (hat) с triggers (событие предыдущего шага) и publishes (событие по завершении).
-- completion_promise (например STEP_DONE) — что должен вывести агент, чтобы шаг считался выполненным.
-- Обязательно заполняй verify_prompt и verify_promise для шагов, где нужны проверки и тесты: verify_prompt = инструкция агенту (запусти тесты, проверь результат), verify_promise = PASS; агент должен вывести <promise>PASS</promise> в выводе, когда проверка пройдена.
-- Шаги должны идти по порядку: подготовка → реализация → тесты/проверка. Для шагов с кодом/скриптами добавляй verify_prompt типа «Запусти тесты (pytest/unit/интеграцию по контексту). Убедись что всё зелёное. Выведи <promise>PASS</promise> если тесты прошли.»
+
+    # Определяем тип задачи: SERVER_TASK или CODE_TASK
+    is_server_task = target_server_id is not None
+
+    if is_server_task:
+        # СЕРВЕРНЫЕ ЗАДАЧИ: простые SSH команды, без кода проекта
+        prompt = f"""Generate a simple workflow for SERVER administration task.
+Return ONLY JSON:
+{{
+  "name": "Task name",
+  "description": "Short description",
+  "runtime": "{runtime}",
+  "task_type": "server",
+  "steps": [
+    {{
+      "title": "Step title",
+      "prompt": "Execute SSH command on server",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }}
+  ]
+}}
+
+CRITICAL RULES FOR SERVER TASKS:
+- Target server: «{target_server_name}»
+- Use ONLY server_execute MCP tool with server_name_or_id="{target_server_name}"
+- Generate SIMPLE shell commands: df -h, free -m, systemctl status, apt install, etc.
+- DO NOT mention any code, functions, APIs, or application logic
+- DO NOT reference get_disk_usage_report, django, python functions
+- Agent should ONLY run SSH commands via server_execute tool
+- Each step = one simple server command
+- When done, output <promise>STEP_DONE</promise>
+
+Example for "check disk space":
+  prompt: "Выполни команду df -h на сервере через server_execute. Выведи результат. Когда готово выведи <promise>STEP_DONE</promise>"
+
+Task: {task}
 """
-    # Контекст серверов: ТОЛЬКО если указан target_server
-    # Если target_server не указан — workflow НЕ связан с серверами, не показываем их вообще
-    servers_hint = ""
-    if target_server_id and target_server_name and user_id:
-        servers_hint = f"""
-ЦЕЛЕВОЙ СЕРВЕР (ВАЖНО!):
-Все SSH-команды должны выполняться ТОЛЬКО на сервере «{target_server_name}».
-НЕ используй другие серверы! Все шаги workflow должны работать с сервером «{target_server_name}».
-При генерации шагов учитывай, что целевой сервер уже определён.
-"""
-    prompt = f"""You generate workflow scripts for CLI agents.
+    else:
+        # КОДОВЫЕ ЗАДАЧИ: изолированная работа с кодом
+        prompt = f"""You generate workflow scripts for CLI agents (CODE tasks).
 Return ONLY JSON:
 {{
   "name": "Workflow name",
   "description": "Short description",
   "runtime": "{runtime}",
+  "task_type": "code",
   "prompt": "High-level goal summary",
   "questions": ["Clarifying question 1", "Clarifying question 2"],
   "assumptions": ["Assumption 1", "Assumption 2"],
@@ -235,13 +317,14 @@ Return ONLY JSON:
   ]
 }}
 
-Rules:
-- Keep steps short and actionable.
-- Each step must include completion_promise.
-- If tests are needed, include verify_prompt and verify_promise (агент выводит <promise>PASS</promise> когда тесты/проверка прошли).
-- If requirements are unclear, add 1-2 clarifying questions in "questions" and still proceed with reasonable assumptions.
-- Prefer safe and reversible actions on servers; avoid destructive commands unless explicitly requested.
-{ralph_block}{servers_hint}
+RULES FOR CODE TASKS:
+- Agent works in ISOLATED directory (agent_projects/task_name/)
+- Agent should NOT access main project code
+- Keep steps short and actionable
+- Each step must include completion_promise
+- Include verify_prompt and verify_promise for testing steps
+- Ralph workflow: шаги по порядку, completion_promise для завершения
+
 Task description:
 {task}
 """
@@ -260,36 +343,12 @@ Task description:
     if "steps" not in parsed:
         parsed["steps"] = []
 
+    # Сохраняем runtime для workflow (CLI агент: cursor, claude, etc)
     parsed["runtime"] = runtime
-
-    if runtime == "ralph":
-        completion = parsed.get("completion_promise", "LOOP_COMPLETE")
-        max_iter = parsed.get("max_iterations", 50)
-        backend = "cursor"
-
-        hats = {}
-        previous_event = "task.start"
-        for idx, step in enumerate(parsed.get("steps", []), start=1):
-            hat_name = f"step_{idx}"
-            next_event = f"step_{idx}.done"
-            hats[hat_name] = {
-                "name": f"Step {idx}",
-                "description": step.get("title", f"Step {idx}"),
-                "triggers": [previous_event],
-                "publishes": [next_event],
-                "instructions": step.get("prompt", ""),
-            }
-            previous_event = next_event
-
-        parsed["ralph_yml"] = {
-            "cli": {"backend": backend},
-            "event_loop": {
-                "completion_promise": completion,
-                "max_iterations": max_iter,
-                "starting_event": "task.start",
-            },
-            "hats": hats,
-        }
+    
+    # Ralph режим больше НЕ используется через этот путь
+    # Ralph это orchestrator_mode, а не runtime
+    # runtime всегда должен быть конкретный CLI: cursor, claude, gemini, grok
 
     return parsed
 
@@ -387,6 +446,15 @@ def logs_page(request):
     )
 
 
+@login_required
+@require_feature('agents', redirect_on_forbidden=True)
+@require_http_methods(["GET"])
+def admin_logs_page(request):
+    if not _admin_required(request):
+        return HttpResponseForbidden("Forbidden")
+    return render(request, "agent_hub/admin_logs.html", {})
+
+
 @csrf_exempt
 @login_required
 @require_feature('agents')
@@ -431,7 +499,7 @@ def api_profiles_create(request):
         AgentProfile.objects.filter(owner=request.user, is_default=True).update(is_default=False)
 
     if runtime not in ALLOWED_RUNTIMES:
-        return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
+        return JsonResponse({"error": f"Runtime '{runtime}' не поддерживается"}, status=400)
 
     # Валидация модели для cursor
     if runtime == "cursor" and config.get("model"):
@@ -464,9 +532,13 @@ def api_profiles_update(request, profile_id: int):
     profile.name = data.get("name", profile.name)
     profile.description = data.get("description", profile.description)
     profile.agent_type = data.get("agent_type", profile.agent_type)
-    if "runtime" in data and data.get("runtime") not in ALLOWED_RUNTIMES:
-        return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
-    profile.runtime = data.get("runtime", profile.runtime)
+    if "runtime" in data:
+        new_runtime = data.get("runtime")
+        if new_runtime not in ALLOWED_RUNTIMES:
+            return JsonResponse({"error": f"Runtime '{new_runtime}' не поддерживается"}, status=400)
+        profile.runtime = new_runtime
+    else:
+        profile.runtime = data.get("runtime", profile.runtime)
     profile.mode = data.get("mode", profile.mode)
     config = data.get("config", profile.config or {})
     # Валидация модели для cursor
@@ -501,64 +573,70 @@ def api_profiles_delete(request, profile_id: int):
     return JsonResponse({"success": True})
 
 
-@csrf_exempt
-@login_required
-@require_feature('agents')
-@require_http_methods(["POST"])
-def api_agent_run(request):
-    data = _parse_json_request(request)
-    task = data.get("task", "").strip()
-    if not task:
-        return JsonResponse({"error": "Task is required"}, status=400)
-
-    profile_id = data.get("profile_id")
-    profile = None
-    if profile_id:
-        profile = get_object_or_404(AgentProfile, id=profile_id, owner=request.user)
-
-    agent_type = data.get("agent_type") or (profile.agent_type if profile else "react")
-    runtime = data.get("runtime") or (profile.runtime if profile else "ralph")
-    config = data.get("config") or (profile.config if profile else {})
-    if runtime not in ALLOWED_RUNTIMES:
-        return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
-    # Валидация модели для cursor (если не указана - будет auto по умолчанию)
-    if runtime == "cursor":
-        if not config.get("model"):
-            config["model"] = "auto"
-        else:
-            valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
-            if config["model"] not in valid_models:
-                config["model"] = "auto"
-    if agent_type == "ralph" and runtime not in ["internal", "ralph"]:
-        config = {**config, "use_ralph_loop": True}
-        if not config.get("completion_promise"):
-            config["completion_promise"] = "COMPLETE"
-
+def _start_agent_run(
+    user,
+    agent_type: str,
+    runtime: str,
+    task: str,
+    config: Dict[str, Any],
+    profile: AgentProfile = None,
+) -> AgentRun:
     run = AgentRun.objects.create(
         profile=profile,
-        initiated_by=request.user,
+        initiated_by=user,
         runtime=runtime,
         status="queued",
         input_task=task,
         started_at=None,
+        meta={
+            "agent_type": agent_type,
+            "runtime": runtime,
+            "config": config or {},
+            "profile_id": profile.id if profile else None,
+        },
     )
+    thread = threading.Thread(
+        target=_execute_agent_run,
+        args=(run.id, agent_type, runtime, task, config),
+        daemon=True,
+    )
+    thread.start()
+    return run
 
-    def _execute_run(run_id: int, agent_type: str, runtime: str, task: str, config: Dict[str, Any]):
-        run_obj = AgentRun.objects.get(id=run_id)
-        run_obj.status = "running"
-        run_obj.started_at = timezone.now()
-        _append_log_event(
-            run_obj,
-            {
-                "type": "run",
-                "subtype": "start",
-                "title": "Старт запуска",
-                "message": f"Runtime: {runtime}",
-            },
-        )
-        run_obj.save(update_fields=["status", "started_at", "log_events", "meta"])
 
-        # Фаза проверки задачи через Cursor (ask) перед запуском
+def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, config: Dict[str, Any]):
+    run_obj = AgentRun.objects.get(id=run_id)
+    run_obj.status = "running"
+    run_obj.started_at = timezone.now()
+    _append_log_event(
+        run_obj,
+        {
+            "type": "run",
+            "subtype": "start",
+            "title": "Старт запуска",
+            "message": f"Runtime: {runtime}",
+        },
+    )
+    _append_log_event(
+        run_obj,
+        {
+            "type": "prompt",
+            "title": "Входная задача",
+            "message": task[:4000],
+        },
+    )
+    meta = run_obj.meta or {}
+    meta.update(
+        {
+            "agent_type": agent_type,
+            "runtime": runtime,
+            "config": config or {},
+        }
+    )
+    run_obj.meta = meta
+    run_obj.save(update_fields=["status", "started_at", "log_events", "meta"])
+
+    try:
         if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and runtime in ("ralph", "cursor"):
             workspace = config.get("workspace") or ""
             if not workspace:
@@ -592,46 +670,113 @@ def api_agent_run(request):
                 },
             )
             run_obj.save(update_fields=["logs", "log_events", "meta"])
-
-        try:
-            if runtime == "internal":
-                agent_manager = get_agent_manager()
-                agent_name = _agent_name_from_type(agent_type)
-                result = async_to_sync(agent_manager.execute_agent)(agent_name, task, config)
-                run_obj.output_text = result.get("result") or ""
-                run_obj.logs = json.dumps(result.get("metadata") or {}, ensure_ascii=False)
-                run_obj.status = "succeeded" if result.get("success") else "failed"
-            else:
-                cli_manager = CliRuntimeManager()
-                result = async_to_sync(cli_manager.run)(runtime, task, config)
-                run_obj.output_text = result.get("output", "")
-                run_obj.logs = result.get("logs", "")
-                run_obj.status = "succeeded" if result.get("success") else "failed"
-                run_obj.meta = {**(run_obj.meta or {}), **(result.get("meta") or {})}
-        except Exception as exc:
-            logger.error(f"Agent run failed: {exc}")
-            run_obj.status = "failed"
-            run_obj.logs = str(exc)
-        finally:
-            run_obj.finished_at = timezone.now()
+        if runtime == "internal":
+            agent_manager = get_agent_manager()
+            agent_name = _agent_name_from_type(agent_type)
+            result = async_to_sync(agent_manager.execute_agent)(agent_name, task, config)
+            run_obj.output_text = result.get("result") or ""
+            run_obj.logs = json.dumps(result.get("metadata") or {}, ensure_ascii=False)
+            run_obj.status = "succeeded" if result.get("success") else "failed"
+        else:
+            workspace = config.get("workspace") or ""
+            if not workspace:
+                try:
+                    from app.core.model_config import model_manager
+                    path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
+                    workspace = str(settings.AGENT_PROJECTS_DIR / path) if path else str(settings.BASE_DIR)
+                except Exception:
+                    workspace = str(settings.BASE_DIR)
+            cmd = _build_cli_command(runtime, task, config, workspace=workspace)
+            meta = run_obj.meta or {}
+            meta["cli_command"] = _sanitize_command(cmd)
+            meta["cli_command_full"] = cmd
+            meta["workspace"] = workspace
+            meta["runtime"] = runtime
+            meta["input_prompt"] = task
+            meta["config"] = _redact_sensitive(config)
+            run_obj.meta = meta
+            run_obj.logs = (run_obj.logs or "") + f"\n{'='*60}\n"
+            run_obj.logs = (run_obj.logs or "") + f"🔧 ЗАПУСК CLI АГЕНТА\n"
+            run_obj.logs = (run_obj.logs or "") + f"Runtime: {runtime}\n"
+            run_obj.logs = (run_obj.logs or "") + f"Workspace: {workspace}\n"
+            run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n"
+            run_obj.logs = (run_obj.logs or "") + f"[CMD] {' '.join(_sanitize_command(cmd))}\n"
+            run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n\n"
             _append_log_event(
                 run_obj,
                 {
-                    "type": "run",
-                    "subtype": "finish",
-                    "title": "Завершение запуска",
-                    "status": run_obj.status,
+                    "type": "cmd",
+                    "subtype": "start",
+                    "title": "Запуск команды",
+                    "command": " ".join(_sanitize_command(cmd)),
                 },
             )
-            run_obj.save()
-
-    thread = threading.Thread(
-        target=_execute_run,
-        args=(run.id, agent_type, runtime, task, config),
-        daemon=True,
+            run_obj.save(update_fields=["logs", "log_events", "meta"])
+            result = _run_cli_stream(
+                cmd,
+                run_obj,
+                step_label="agent-run",
+                extra_env=_get_cursor_cli_extra_env(),
+                add_output_events=True,
+            )
+            run_obj.output_text = result.get("output", "")
+            run_obj.status = "succeeded" if result.get("success") else "failed"
+            run_obj.meta = {**(run_obj.meta or {}), "exit_code": result.get("exit_code")}
+    except Exception as exc:
+        logger.error(f"Agent run failed: {exc}")
+        run_obj.status = "failed"
+        run_obj.logs = str(exc)
+    run_obj.finished_at = timezone.now()
+    _append_log_event(
+        run_obj,
+        {
+            "type": "run",
+            "subtype": "finish",
+            "title": "Завершение",
+            "status": run_obj.status,
+        },
     )
-    thread.start()
+    run_obj.save()
 
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_agent_run(request):
+    data = _parse_json_request(request)
+    task = data.get("task", "").strip()
+    if not task:
+        return JsonResponse({"error": "Task is required"}, status=400)
+
+    profile_id = data.get("profile_id")
+    profile = None
+    if profile_id:
+        profile = get_object_or_404(AgentProfile, id=profile_id, owner=request.user)
+
+    # Используем default_provider из настроек
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    
+    agent_type = data.get("agent_type") or (profile.agent_type if profile else "react")
+    runtime = data.get("runtime") or (profile.runtime if profile else default_runtime)
+    config = data.get("config") or (profile.config if profile else {})
+    if runtime not in ALLOWED_RUNTIMES:
+        return JsonResponse({"error": f"Runtime '{runtime}' не поддерживается"}, status=400)
+    # Валидация модели для cursor (если не указана - будет auto по умолчанию)
+    if runtime == "cursor":
+        if not config.get("model"):
+            config["model"] = "auto"
+        else:
+            valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
+            if config["model"] not in valid_models:
+                config["model"] = "auto"
+    if agent_type == "ralph" and runtime not in ["internal", "ralph"]:
+        config = {**config, "use_ralph_loop": True}
+        if not config.get("completion_promise"):
+            config["completion_promise"] = "COMPLETE"
+
+    run = _start_agent_run(request.user, agent_type, runtime, task, config, profile=profile)
     return JsonResponse({"success": True, "run_id": run.id, "status": "queued"})
 
 
@@ -653,6 +798,328 @@ def api_runs_list(request):
         for r in runs
     ]
     return JsonResponse({"runs": data})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def admin_api_runs_list(request):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    q = (request.GET.get("q") or "").strip()
+    type_filter = (request.GET.get("type") or "all").strip().lower()
+    status_filter = (request.GET.get("status") or "all").strip().lower()
+    runtime_filter = (request.GET.get("runtime") or "all").strip().lower()
+
+    items = []
+    if type_filter in ("all", "run"):
+        runs = AgentRun.objects.select_related("initiated_by", "profile")
+        if status_filter != "all":
+            runs = runs.filter(status=status_filter)
+        if runtime_filter != "all":
+            runs = runs.filter(runtime=runtime_filter)
+        if q:
+            runs = runs.filter(Q(input_task__icontains=q) | Q(profile__name__icontains=q))
+        runs = runs.order_by("-created_at")[:200]
+        for r in runs:
+            items.append(
+                {
+                    "id": r.id,
+                    "type": "run",
+                    "status": r.status,
+                    "runtime": r.runtime,
+                    "created_at": r.created_at.isoformat(),
+                    "title": (r.input_task or "")[:120],
+                    "user": r.initiated_by.username if r.initiated_by else "",
+                }
+            )
+    if type_filter in ("all", "workflow"):
+        runs = AgentWorkflowRun.objects.select_related("initiated_by", "workflow")
+        if status_filter != "all":
+            runs = runs.filter(status=status_filter)
+        if runtime_filter != "all":
+            runs = runs.filter(workflow__runtime=runtime_filter)
+        if q:
+            runs = runs.filter(Q(workflow__name__icontains=q) | Q(workflow__description__icontains=q))
+        runs = runs.order_by("-created_at")[:200]
+        for r in runs:
+            items.append(
+                {
+                    "id": r.id,
+                    "type": "workflow",
+                    "status": r.status,
+                    "runtime": r.workflow.runtime if r.workflow else "",
+                    "created_at": r.created_at.isoformat(),
+                    "title": r.workflow.name if r.workflow else "",
+                    "user": r.initiated_by.username if r.initiated_by else "",
+                }
+            )
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return JsonResponse({"items": items})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def admin_api_run_status(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentRun, id=run_id)
+    after_id = request.GET.get("after_id")
+    events = list(run.log_events or [])
+    if after_id:
+        try:
+            after_id_int = int(after_id)
+            events = [e for e in events if int(e.get("id", 0)) > after_id_int]
+        except ValueError:
+            events = events[-400:]
+    else:
+        events = events[-400:]
+    last_event_id = events[-1]["id"] if events else (run.log_events or [])[-1]["id"] if run.log_events else 0
+    meta = run.meta or {}
+    config = meta.get("config") or {}
+    cli_command = meta.get("cli_command") or []
+    workspace = meta.get("workspace") or ""
+    input_prompt = meta.get("input_prompt") or run.input_task or ""
+    
+    # Собираем полный контекст для отладки
+    runtime_cfg = settings.CLI_RUNTIME_CONFIG.get(run.runtime, {})
+    
+    # Дополнительная информация из settings
+    analyze_enabled = getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True)
+    cli_timeout = getattr(settings, "CLI_RUNTIME_TIMEOUT_SECONDS", 600)
+    cli_first_output_timeout = getattr(settings, "CLI_FIRST_OUTPUT_TIMEOUT_SECONDS", 120)
+    
+    # Системные инструкции и контекст
+    system_instructions = []
+    if run.runtime in ["cursor", "claude"]:
+        system_instructions.append(f"Pre-analyze: {'enabled' if analyze_enabled else 'disabled'}")
+        system_instructions.append(f"Timeout: {cli_timeout}s (first output: {cli_first_output_timeout}s)")
+    
+    # ENV переменные которые были/будут переданы
+    env_vars = {}
+    if run.runtime == "cursor":
+        cursor_extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", {})
+        if cursor_extra:
+            env_vars = _redact_sensitive(cursor_extra)
+    
+    details = {
+        "id": run.id,
+        "type": "run",
+        "runtime": run.runtime,
+        "status": run.status,
+        "created_at": run.created_at.isoformat(),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "user": run.initiated_by.username if run.initiated_by else None,
+        "profile": run.profile.name if run.profile else None,
+        "meta": meta,
+        "cli_command": cli_command,
+        "cli_command_full": meta.get("cli_command_full") or [],
+        "workspace": workspace,
+        "runtime_config": {
+            "command": runtime_cfg.get("command"),
+            "args": runtime_cfg.get("args", []),
+            "allowed_args": runtime_cfg.get("allowed_args", []),
+            "timeout_seconds": runtime_cfg.get("timeout_seconds"),
+            "prompt_style": runtime_cfg.get("prompt_style", "flag"),
+        },
+        "input_prompt_full": input_prompt,
+        "config": config,
+        "system_instructions": system_instructions,
+        "env_vars": env_vars,
+    }
+    meta_line = " • ".join(
+        [f"Runtime: {run.runtime}", f"Status: {run.status}", f"User: {details.get('user') or '—'}"]
+    )
+    return JsonResponse(
+        {
+            "type": "run",
+            "title": f"Run #{run.id}",
+            "meta": meta_line,
+            "prompt": input_prompt,
+            "config_json": json.dumps(config, ensure_ascii=False, indent=2),
+            "script_json": "",
+            "logs": (run.logs or "")[-20000:],
+            "output": (run.output_text or "")[-8000:],
+            "events": events,
+            "last_event_id": last_event_id,
+            "details": details,
+        }
+    )
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def admin_api_run_update(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentRun, id=run_id)
+    data = _parse_json_request(request)
+    updated_fields = []
+    if "input_task" in data:
+        run.input_task = data.get("input_task") or ""
+        updated_fields.append("input_task")
+    if "config" in data:
+        meta = run.meta or {}
+        meta["config"] = data.get("config") or {}
+        run.meta = meta
+        updated_fields.append("meta")
+    if updated_fields:
+        _append_log_event(
+            run,
+            {
+                "type": "edit",
+                "title": "Изменение параметров",
+                "message": "Обновлены поля: " + ", ".join(updated_fields),
+            },
+        )
+        run.save()
+    return JsonResponse({"success": True})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def admin_api_run_restart(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentRun, id=run_id)
+    data = _parse_json_request(request)
+    task = (data.get("input_task") or run.input_task or "").strip()
+    meta = run.meta or {}
+    config = data.get("config") or meta.get("config") or (run.profile.config if run.profile else {})
+    agent_type = meta.get("agent_type") or (run.profile.agent_type if run.profile else "react")
+    runtime = run.runtime
+    new_run = _start_agent_run(run.initiated_by or request.user, agent_type, runtime, task, config, profile=run.profile)
+    return JsonResponse({"success": True, "run_id": new_run.id})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def admin_api_workflow_run_status(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentWorkflowRun.objects.select_related("workflow"), id=run_id)
+    after_id = request.GET.get("after_id")
+    events = list(run.log_events or [])
+    if after_id:
+        try:
+            after_id_int = int(after_id)
+            events = [e for e in events if int(e.get("id", 0)) > after_id_int]
+        except ValueError:
+            events = events[-400:]
+    else:
+        events = events[-400:]
+    last_event_id = events[-1]["id"] if events else (run.log_events or [])[-1]["id"] if run.log_events else 0
+    script = run.workflow.script if run.workflow else {}
+    steps = script.get("steps", [])
+    current_step_idx = run.current_step
+    
+    # Формируем информацию о шагах с командами
+    steps_info = []
+    run_meta = run.meta or {}
+    for idx in range(1, len(steps) + 1):
+        step = steps[idx - 1] if idx <= len(steps) else {}
+        step_cmd = run_meta.get(f"step_{idx}_cmd") or []
+        step_prompt = run_meta.get(f"step_{idx}_prompt") or step.get("prompt", "")
+        steps_info.append({
+            "idx": idx,
+            "title": step.get("title", f"Шаг {idx}"),
+            "prompt": step_prompt[:200],
+            "cmd": step_cmd,
+            "is_current": idx == current_step_idx,
+        })
+    
+    details = {
+        "id": run.id,
+        "type": "workflow",
+        "status": run.status,
+        "runtime": run.workflow.runtime if run.workflow else None,
+        "workflow_id": run.workflow.id if run.workflow else None,
+        "workflow_name": run.workflow.name if run.workflow else None,
+        "created_at": run.created_at.isoformat(),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "user": run.initiated_by.username if run.initiated_by else None,
+        "meta": run_meta,
+        "steps": steps_info,
+        "current_step": current_step_idx,
+    }
+    
+    # Промпт текущего шага (если есть)
+    current_step_prompt = ""
+    if current_step_idx > 0 and current_step_idx <= len(steps):
+        current_step_prompt = run_meta.get(f"step_{current_step_idx}_prompt") or steps[current_step_idx - 1].get("prompt", "")
+    
+    meta_line = " • ".join(
+        [
+            f"Workflow: {details.get('workflow_name') or '—'}",
+            f"Status: {run.status}",
+            f"Step: {current_step_idx}/{len(steps)}",
+            f"User: {details.get('user') or '—'}",
+        ]
+    )
+    return JsonResponse(
+        {
+            "type": "workflow",
+            "title": f"WorkflowRun #{run.id}",
+            "meta": meta_line,
+            "prompt": current_step_prompt,
+            "config_json": json.dumps(run_meta, ensure_ascii=False, indent=2),
+            "script_json": json.dumps(script or {}, ensure_ascii=False, indent=2),
+            "logs": (run.logs or "")[-20000:] if run.logs else "",
+            "events": events,
+            "last_event_id": last_event_id,
+            "details": details,
+        }
+    )
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def admin_api_workflow_run_update(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentWorkflowRun.objects.select_related("workflow"), id=run_id)
+    data = _parse_json_request(request)
+    script = data.get("script")
+    if not isinstance(script, dict):
+        return JsonResponse({"error": "script must be JSON object"}, status=400)
+    workflow = run.workflow
+    workflow.script = script
+    workflow.save(update_fields=["script"])
+    _append_log_event(
+        run,
+        {
+            "type": "edit",
+            "title": "Workflow обновлен",
+            "message": "Обновлен script workflow",
+        },
+    )
+    run.save(update_fields=["log_events", "meta"])
+    return JsonResponse({"success": True})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def admin_api_workflow_run_restart(request, run_id: int):
+    if not _admin_required(request):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    run = get_object_or_404(AgentWorkflowRun.objects.select_related("workflow"), id=run_id)
+    new_run = _start_workflow_run(run.workflow, run.initiated_by or request.user)
+    return JsonResponse({"success": True, "run_id": new_run.id})
 
 
 @csrf_exempt
@@ -701,8 +1168,8 @@ def api_run_stop(request, run_id: int):
                 subprocess.Popen(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 os.kill(int(pid), 9)
-        except Exception:
-            pass
+        except (ProcessLookupError, OSError) as e:
+            logger.debug(f"Process {pid} already terminated: {e}")
 
     run.status = "cancelled"
     run.logs = (run.logs or "") + "\n[Stopped by user]\n"
@@ -792,8 +1259,8 @@ def api_workflow_delete(request, workflow_id: int):
         if file_path:
             try:
                 Path(file_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug(f"Failed to delete workflow file {file_path}: {e}")
     workflow.delete()
     return JsonResponse({"success": True})
 
@@ -805,7 +1272,12 @@ def api_workflow_delete(request, workflow_id: int):
 def api_workflow_generate(request):
     data = _parse_json_request(request)
     task = data.get("task", "").strip()
-    runtime = data.get("runtime", "ralph")
+    
+    # Используем default_provider из настроек вместо жестко заданного "ralph"
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    runtime = data.get("runtime", default_runtime)
+    
     project_path = data.get("project_path", "").strip()
     create_new_project = data.get("create_new_project", False)
     new_project_name = data.get("new_project_name", "").strip()
@@ -813,7 +1285,7 @@ def api_workflow_generate(request):
     if not task:
         return JsonResponse({"error": "Task is required"}, status=400)
     if runtime not in ALLOWED_RUNTIMES:
-        return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
+        return JsonResponse({"error": f"Runtime '{runtime}' не поддерживается"}, status=400)
 
     # Создаем новую папку проекта если нужно
     if create_new_project and new_project_name:
@@ -864,6 +1336,10 @@ def api_workflow_generate(request):
     return JsonResponse({"success": True, "workflow_id": workflow.id, "workflow": parsed})
 
 
+# Import from service layer - breaks circular import with tasks app
+from app.services.workflow_service import create_workflow_from_task
+
+
 @csrf_exempt
 @login_required
 @require_feature('agents')
@@ -887,65 +1363,14 @@ def api_workflow_from_task(request):
         return JsonResponse({"error": "Task not found"}, status=404)
     created_by_id = getattr(task, "created_by_id", None)
     if created_by_id is not None and created_by_id != request.user.id:
-        try:
-            from tasks.views import _user_can_edit_task
-            if not _user_can_edit_task(request.user, task):
-                return JsonResponse({"error": "No access to this task"}, status=403)
-        except Exception:
+        from app.services.permissions import PermissionService
+        if not PermissionService.can_edit_task(request.user, task):
             return JsonResponse({"error": "No access to this task"}, status=403)
-    task_text = f"{task.title}\n\n{task.description or ''}".strip()
-    if not task_text:
-        return JsonResponse({"error": "Task has no title/description"}, status=400)
-    project_path = ""
-    try:
-        from app.core.model_config import model_manager
-        project_path = (getattr(model_manager.config, "default_agent_output_path", None) or "").strip()
-    except Exception:
-        pass
-    # Получаем целевой сервер из задачи
-    target_server = getattr(task, 'target_server', None)
-    target_server_id = target_server.id if target_server else None
-    target_server_name = target_server.name if target_server else None
     
-    # Генерируем workflow с привязкой к целевому серверу
-    parsed = _generate_workflow_script(
-        task_text, "ralph", 
-        from_task=True, 
-        user_id=request.user.id,
-        target_server_id=target_server_id,
-        target_server_name=target_server_name
-    )
-    if not parsed:
-        return JsonResponse({"error": "Failed to generate workflow"}, status=500)
+    workflow, run = create_workflow_from_task(task, request.user)
+    if not workflow:
+        return JsonResponse({"error": "Failed to create workflow"}, status=500)
     
-    workflow = AgentWorkflow.objects.create(
-        owner=request.user,
-        name=parsed.get("name", (task.title or "Workflow")[:80]),
-        description=parsed.get("description", "") or (task.description or "")[:200],
-        runtime="ralph",
-        script=parsed,
-        project_path=project_path,
-        target_server=target_server,  # <-- Теперь workflow привязан к серверу из задачи!
-    )
-    
-    # Логирование для отладки
-    if target_server:
-        logger.info(f"Workflow {workflow.id} created from task {task.id} with target_server: {target_server.name} ({target_server.host})")
-    else:
-        logger.warning(f"Workflow {workflow.id} created from task {task.id} WITHOUT target_server!")
-    workflows_dir = Path(settings.MEDIA_ROOT) / "workflows"
-    workflows_dir.mkdir(parents=True, exist_ok=True)
-    file_path = workflows_dir / f"workflow-{workflow.id}.json"
-    parsed["script_file"] = str(file_path)
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(parsed, f, ensure_ascii=False, indent=2)
-    if parsed.get("ralph_yml"):
-        ralph_path = workflows_dir / f"workflow-{workflow.id}.ralph.yml"
-        parsed["ralph_yml_path"] = str(ralph_path)
-        _write_ralph_yml(ralph_path, parsed["ralph_yml"])
-    workflow.script = parsed
-    workflow.save(update_fields=["script"])
-    run = _start_workflow_run(workflow, request.user)
     return JsonResponse({
         "success": True,
         "workflow_id": workflow.id,
@@ -974,8 +1399,7 @@ def api_workflow_run(request):
         return JsonResponse({"error": "workflow_id required"}, status=400)
 
     workflow = get_object_or_404(AgentWorkflow, id=workflow_id, owner=request.user)
-    if workflow.runtime not in ALLOWED_RUNTIMES:
-        return JsonResponse({"error": "Runtime запрещен. Доступны: ralph, cursor"}, status=400)
+    # Не проверяем workflow.runtime т.к. используем настройки default_provider
     run = _start_workflow_run(workflow, request.user)
     return JsonResponse({"success": True, "run_id": run.id})
 
@@ -1030,12 +1454,42 @@ def _run_cursor_ask_analyze(workspace: str, task_text: str, timeout_sec: int = 9
 
 
 def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], workspace: str = None) -> list:
+    logger.info(f"\n{'🔧'*30}")
+    logger.info(f"🔧 _build_cli_command вызван")
+    logger.info(f"  Runtime: {runtime}")
+    logger.info(f"  Workspace: {workspace}")
+    logger.info(f"  Config keys: {list(config.keys())}")
+    logger.info(f"  Prompt length: {len(prompt)} символов")
+    
+    # Заменяем "auto" на default_provider
+    if runtime == "auto":
+        from app.core.model_config import model_manager
+        runtime = model_manager.config.default_provider or "cursor"
+        logger.info(f"  _build_cli_command: replaced 'auto' with '{runtime}'")
+    
     runtime_cfg = settings.CLI_RUNTIME_CONFIG.get(runtime)
     if not runtime_cfg:
+        logger.error(f"❌ Runtime '{runtime}' не найден в CLI_RUNTIME_CONFIG!")
+        logger.error(f"  Доступные runtime: {list(settings.CLI_RUNTIME_CONFIG.keys())}")
         raise ValueError(f"Runtime '{runtime}' is not configured")
-    cmd = [_resolve_cli_command(runtime)]
-    cmd += [_format_arg(runtime_cfg, arg, workspace) for arg in runtime_cfg.get("args", [])]
+    
+    logger.info(f"  Runtime config найден: {runtime_cfg}")
+    
+    resolved_cmd = _resolve_cli_command(runtime)
+    logger.info(f"  Resolved command: {resolved_cmd}")
+    
+    cmd = [resolved_cmd]
+    
+    base_args = runtime_cfg.get("args", [])
+    logger.info(f"  Base args от config: {base_args}")
+    
+    formatted_args = [_format_arg(runtime_cfg, arg, workspace) for arg in base_args]
+    logger.info(f"  Formatted args: {formatted_args}")
+    cmd += formatted_args
+    
     allowed_args = runtime_cfg.get("allowed_args", [])
+    logger.info(f"  Allowed args: {allowed_args}")
+    
     cli_args = []
     for arg_name in allowed_args:
         value = config.get(arg_name)
@@ -1045,10 +1499,19 @@ def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], worksp
         if value not in (None, "", []):
             if isinstance(value, bool):
                 if value:
+                    logger.info(f"  Добавляем bool arg: --{arg_name}")
                     cli_args.append(f"--{arg_name}")
             else:
+                logger.info(f"  Добавляем arg: --{arg_name} = {str(value)[:100]}")
                 cli_args.extend([f"--{arg_name}", str(value)])
+    
     prompt_style = runtime_cfg.get("prompt_style", "flag")
+    logger.info(f"  Prompt style: {prompt_style}")
+    
+    final_cmd = cmd + cli_args + [prompt]
+    logger.info(f"  Финальная команда: {len(final_cmd)} элементов")
+    logger.info(f"{'🔧'*30}\n")
+    
     if prompt_style == "positional":
         return cmd + cli_args + [prompt]
     return cmd + cli_args + [prompt]
@@ -1065,7 +1528,10 @@ def _get_cursor_cli_extra_env() -> dict:
 
 
 def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
-    """Создаёт/обновляет mcp_config.json в workspace для сервера weu-servers."""
+    """Создаёт/обновляет mcp_config.json в workspace для сервера weu-servers.
+    Используется standalone mcp_server.py вместо manage.py mcp_servers,
+    т.к. Django management command долго инициализируется и может зависать.
+    """
     if not workspace or not user_id:
         return ""
     cfg_path = Path(workspace) / "mcp_config.json"
@@ -1076,10 +1542,20 @@ def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
         except Exception:
             cfg = {}
     servers = cfg.get("mcpServers") or {}
+    base_dir = str(settings.BASE_DIR).replace("\\", "/")
+
+    # Путь к venv python и standalone MCP серверу
+    if os.name != "nt":
+        venv_python = f"{base_dir}/.venv/bin/python"
+    else:
+        venv_python = f"{base_dir}/.venv/Scripts/python.exe"
+    mcp_server_script = f"{base_dir}/mcp_server.py"
+
     servers["weu-servers"] = {
         "type": "stdio",
-        "command": sys.executable or "python",
-        "args": [str(settings.BASE_DIR / "manage.py"), "mcp_servers"],
+        "command": venv_python,
+        # -u для unbuffered output
+        "args": ["-u", mcp_server_script],
         "env": {"WEU_USER_ID": str(user_id)},
         "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)",
     }
@@ -1220,15 +1696,14 @@ def _format_tool_completed(tool_call: Dict[str, Any]) -> str:
 
 
 def _format_stream_json_log(data: Dict[str, Any], run_obj: AgentWorkflowRun) -> str:
+    """Форматирует одну строку лога для run_obj.logs. Для assistant возвращает None — текст пишется одним блоком при flush."""
     msg_type = data.get("type")
     subtype = data.get("subtype")
     if msg_type == "system" and subtype == "init":
         return f"🤖 Модель: {data.get('model', 'unknown')}"
     if msg_type == "assistant":
-        content = data.get("message", {}).get("content", [])
-        if content and isinstance(content, list) and content[0].get("text"):
-            text = content[0].get("text", "")
-            return f"💬 {text[:100]}..." if len(text) > 100 else f"💬 {text}"
+        # Не пишем каждый стрим-фрагмент отдельно; накопленный текст выводится одним блоком при flush/завершении
+        return None
     if msg_type == "tool_call":
         tool_call = data.get("tool_call", {})
         if subtype == "started":
@@ -1242,16 +1717,35 @@ def _format_stream_json_log(data: Dict[str, Any], run_obj: AgentWorkflowRun) -> 
 
 def _run_cli_stream(
     cmd: list,
-    run_obj: AgentWorkflowRun,
+    run_obj: Any,
     step_label: str,
     process_env: dict = None,
     extra_env: dict = None,
+    add_output_events: bool = False,
 ) -> Dict[str, Any]:
     """Запуск CLI с парсингом stream-json для детального логирования."""
-    spawn_env = extra_env or process_env
-    if spawn_env and os.environ:
-        spawn_env = {**os.environ, **spawn_env}
-    run_obj.logs = (run_obj.logs or "") + f"\n{'='*50}\n[CMD] {' '.join(cmd)}\n{'='*50}\n"
+    # ВАЖНО: всегда передаём os.environ чтобы CLI имели доступ к HOME, PATH и credentials
+    spawn_env = {**os.environ}
+    if process_env:
+        spawn_env.update(process_env)
+    if extra_env:
+        spawn_env.update(extra_env)
+    # Гарантируем что HOME установлен (для Claude CLI credentials)
+    if not spawn_env.get("HOME"):
+        spawn_env["HOME"] = os.path.expanduser("~")
+    
+    # Краткий заголовок шага в логах (без дампа промпта и env)
+    mcp_config_path = None
+    for i, arg in enumerate(cmd):
+        if arg == "--mcp-config" and i + 1 < len(cmd):
+            mcp_config_path = cmd[i + 1]
+            break
+    workspace = next((cmd[i + 1] for i, a in enumerate(cmd) if a == "--workspace" and i + 1 < len(cmd)), "")
+    debug_info = f"\n▶ Шаг: {step_label} | Команда: {cmd[0]} | Workspace: {workspace[:60]}{'...' if len(workspace) > 60 else ''}\n"
+    if mcp_config_path:
+        debug_info += f"  MCP config: {mcp_config_path}\n"
+    logger.info(debug_info.strip())
+    run_obj.logs = (run_obj.logs or "") + debug_info
     _append_log_event(
         run_obj,
         {
@@ -1273,16 +1767,46 @@ def _run_cli_stream(
     }
     if spawn_env:
         popen_kw["env"] = spawn_env
-    process = subprocess.Popen(cmd, **popen_kw)
-    run_obj.meta = {**(run_obj.meta or {}), f"pid_{step_label}": process.pid}
+    
+    logger.info(f"🚀 Запуск процесса: {cmd[0]}")
+    logger.info(f"🔧 Параметры Popen: stdout=PIPE, stderr=STDOUT, text=True, bufsize=1")
+    print(f"\n[DEBUG] 🚀 Запуск процесса: {cmd[0]}", flush=True)
+    print(f"[DEBUG] 🎯 Полная команда: {' '.join(cmd)}", flush=True)
+    
+    try:
+        process = subprocess.Popen(cmd, **popen_kw)
+        logger.info(f"✅ Процесс запущен успешно, PID: {process.pid}")
+        print(f"[DEBUG] ✅ Процесс запущен успешно, PID: {process.pid}", flush=True)
+    except Exception as e:
+        logger.error(f"❌ ОШИБКА запуска процесса: {e}")
+        print(f"[DEBUG] ❌ ОШИБКА запуска процесса: {e}", flush=True)
+        run_obj.logs = (run_obj.logs or "") + f"\n❌ КРИТИЧЕСКАЯ ОШИБКА запуска процесса: {e}\n"
+        run_obj.save(update_fields=["logs"])
+        raise
+    
+    run_obj.meta = {**(run_obj.meta or {}), f"pid_{step_label}": process.pid, "pid": process.pid}
     run_obj.save(update_fields=["meta"])
     output_chunks = []
     accumulated_text = ""
+    assistant_buffer = ""  # накопление фрагментов ответа модели для вывода одним блоком
     tool_count = 0
     pending_lines = 0
     pending_events = 0
     dirty_logs = False
     dirty_events = False
+    line_number = 0
+
+    def flush_assistant_buffer():
+        nonlocal assistant_buffer, pending_lines, dirty_logs
+        if not assistant_buffer.strip():
+            return
+        block = assistant_buffer.strip()
+        if len(block) > 8000:
+            block = block[:8000] + "\n... [обрезано, всего {} символов]".format(len(assistant_buffer))
+        run_obj.logs = (run_obj.logs or "") + "💬 Ответ модели:\n" + block + "\n\n"
+        pending_lines += 1
+        dirty_logs = True
+        assistant_buffer = ""
 
     def maybe_flush():
         nonlocal pending_lines, pending_events, dirty_logs, dirty_events
@@ -1299,19 +1823,120 @@ def _run_cli_stream(
             dirty_logs = False
             dirty_events = False
 
-    for line in process.stdout:
+    logger.info(f"📖 Начинаем читать вывод процесса PID={process.pid}")
+    print(f"[DEBUG] 📖 Начинаем читать вывод процесса PID={process.pid}", flush=True)
+    
+    # Очередь для чтения stdout в отдельном потоке (чтобы не блокировать и видеть "сердцебиение")
+    output_queue = queue.Queue()
+    
+    def _reader():
+        try:
+            for line in process.stdout:
+                output_queue.put(line)
+        except Exception as e:
+            logger.error(f"❌ Ошибка при чтении stdout: {e}")
+            print(f"[DEBUG] ❌ Ошибка чтения stdout: {e}", flush=True)
+        finally:
+            output_queue.put(None)  # сигнал конца вывода
+    
+    reader_thread = threading.Thread(target=_reader, daemon=True)
+    reader_thread.start()
+    
+    start_wait = time.time()
+    first_line_seen = False
+    
+    while True:
+        try:
+            line = output_queue.get(timeout=5)
+        except queue.Empty:
+            elapsed = int(time.time() - start_wait)
+            first_output_timeout = getattr(settings, "CLI_FIRST_OUTPUT_TIMEOUT_SECONDS", 120)
+            
+            if not first_line_seen and elapsed >= first_output_timeout:
+                # Claude так и не вывел ни одной строки — прерываем (вероятно, MCP не запустился)
+                logger.error(
+                    f"❌ Таймаут первого вывода: Claude не вывел ни одной строки за {elapsed} сек. "
+                    f"Прерываем процесс PID={process.pid}."
+                )
+                print(
+                    f"[DEBUG] ❌ Таймаут первого вывода ({elapsed} сек). Прерываем PID={process.pid}",
+                    flush=True,
+                )
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                err_msg = (
+                    f"Claude не вывел ни одной строки за {elapsed} сек. Процесс прерван.\n\n"
+                    f"Вероятная причина: Claude ждёт ответа MCP-сервера, который не успел запуститься или завис при старте Django.\n\n"
+                    f"Проверьте MCP-сервер вручную (из той же среды, откуда запускается workflow):\n"
+                    f"  WEU_USER_ID=<id> python manage.py mcp_servers\n"
+                    f"Если команда зависает или падает — исправьте окружение/БД/зависимости."
+                )
+                run_obj.logs = (run_obj.logs or "") + f"\n[ERROR] {err_msg}\n"
+                _append_log_event(
+                    run_obj,
+                    {
+                        "type": "error",
+                        "title": "Таймаут первого вывода (MCP?)",
+                        "message": err_msg,
+                        "step_label": step_label,
+                    },
+                )
+                run_obj.save(update_fields=["logs", "log_events", "meta"])
+                return {"success": False, "output": "".join(output_chunks), "exit_code": -2}
+            
+            msg = f"⏳ Ожидание вывода от Claude (PID={process.pid}), прошло {elapsed} сек..."
+            logger.warning(msg)
+            print(f"[DEBUG] {msg}", flush=True)
+            hint = ""
+            if elapsed >= 10:
+                hint = f" (Если > {first_output_timeout} сек — процесс будет прерван. Проверьте MCP: python manage.py mcp_servers)"
+            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] {msg}{hint}\n"
+            run_obj.save(update_fields=["logs"])
+            continue
+        
+        if line is None:
+            # stdout закрыт — процесс завершил вывод
+            flush_assistant_buffer()
+            logger.info(f"📭 stdout процесса PID={process.pid} закрыт")
+            print(f"[DEBUG] 📭 stdout закрыт", flush=True)
+            reader_thread.join(timeout=2)
+            break
+        
+        line_number += 1
         output_chunks.append(line)
         line_stripped = line.strip()
+        
+        if not first_line_seen:
+            first_line_seen = True
+            elapsed = time.time() - start_wait
+            logger.info(f"✅ Первая строка от Claude получена через {elapsed:.1f} сек")
+            print(f"[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек", flush=True)
+            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек\n"
+            run_obj.save(update_fields=["logs"])
+        
         if line_stripped.startswith("{"):
             try:
                 data = json.loads(line_stripped)
-                log_line = _format_stream_json_log(data, run_obj)
-                if data.get("type") == "tool_call" and data.get("subtype") == "started":
-                    tool_count += 1
+                
+                json_type = data.get("type", "unknown")
+                if json_type == "error":
+                    error_msg = data.get("message", "unknown error")
+                    logger.error(f"❌ Error в JSON: {error_msg}")
+
+                # Перед tool_call/result выводим накопленный ответ модели одним блоком
+                if data.get("type") in ("tool_call", "result"):
+                    flush_assistant_buffer()
                 if data.get("type") == "assistant":
                     content = data.get("message", {}).get("content", [])
                     if content and isinstance(content, list) and content[0].get("text"):
-                        accumulated_text += content[0].get("text", "")
+                        t = content[0].get("text", "")
+                        accumulated_text += t
+                        assistant_buffer += t
+                log_line = _format_stream_json_log(data, run_obj)
+                if data.get("type") == "tool_call" and data.get("subtype") == "started":
+                    tool_count += 1
                 event = _stream_json_to_event(data, step_label)
                 if event:
                     _append_log_event(run_obj, event)
@@ -1323,30 +1948,67 @@ def _run_cli_stream(
                     pending_lines += 1
                     dirty_logs = True
                     maybe_flush()
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ Не удалось распарсить JSON в строке #{line_number}: {e}")
+                logger.warning(f"   Содержимое строки: {line_stripped[:200]}...")
                 run_obj.logs = (run_obj.logs or "") + line
+                if add_output_events and line_stripped:
+                    _append_log_event(
+                        run_obj,
+                        {
+                            "type": "cmd_output",
+                            "title": "Вывод CLI",
+                            "message": line_stripped[:2000],
+                            "step_label": step_label,
+                            "line": line_number,
+                        },
+                    )
+                    pending_events += 1
+                    dirty_events = True
                 pending_lines += 1
                 dirty_logs = True
                 maybe_flush()
         else:
-            if line_stripped:
-                run_obj.logs = (run_obj.logs or "") + line
-                pending_lines += 1
-                dirty_logs = True
+            # Сырой вывод (промпт, эхо) не пишем в run_obj.logs — только JSON-события для читаемости
+            if line_stripped and add_output_events:
+                _append_log_event(
+                    run_obj,
+                    {
+                        "type": "cmd_output",
+                        "title": "Вывод CLI",
+                        "message": line_stripped[:2000],
+                        "step_label": step_label,
+                        "line": line_number,
+                    },
+                )
+                pending_events += 1
+                dirty_events = True
                 maybe_flush()
 
+    logger.info(f"⏳ Ожидаем завершения процесса PID={process.pid}")
+    print(f"[DEBUG] ⏳ Ожидаем завершения процесса PID={process.pid}", flush=True)
+    
     timeout_sec = getattr(settings, "CLI_RUNTIME_TIMEOUT_SECONDS", None)
+    logger.info(f"⏱️ Timeout настройка: {timeout_sec if timeout_sec else 'не установлен (ждем бесконечно)'}")
+    print(f"[DEBUG] ⏱️ Timeout: {timeout_sec if timeout_sec else 'не установлен'}", flush=True)
+    
     try:
         exit_code = process.wait(timeout=timeout_sec) if timeout_sec else process.wait()
+        logger.info(f"🏁 Процесс завершился с exit_code={exit_code}")
+        print(f"[DEBUG] 🏁 Exit code={exit_code}", flush=True)
     except subprocess.TimeoutExpired:
+        logger.error(f"⏰ TIMEOUT! Процесс PID={process.pid} превысил лимит {timeout_sec} секунд")
+        print(f"[DEBUG] ⏰ TIMEOUT! PID={process.pid}", flush=True)
         process.kill()
-        run_obj.logs = (run_obj.logs or "") + "[TIMEOUT] Process killed after timeout\n"
+        logger.info(f"🔪 Процесс PID={process.pid} принудительно завершен (kill)")
+        print(f"[DEBUG] 🔪 Процесс убит", flush=True)
+        run_obj.logs = (run_obj.logs or "") + f"[TIMEOUT] Process killed after {timeout_sec} seconds\n"
         _append_log_event(
             run_obj,
             {
                 "type": "error",
                 "title": "Превышено время ожидания",
-                "message": "Process killed after timeout",
+                "message": f"Process killed after timeout ({timeout_sec}s)",
                 "step_label": step_label,
             },
         )
@@ -1354,6 +2016,42 @@ def _run_cli_stream(
         return {"success": False, "output": "".join(output_chunks), "exit_code": -1}
 
     output_str = "".join(output_chunks)
+
+    # Полный ответ модели одним блоком для читаемости логов
+    if accumulated_text.strip():
+        run_obj.logs = (run_obj.logs or "") + "\n--- Ответ модели ---\n" + accumulated_text.strip() + "\n---\n"
+
+    # Краткая сводка завершения
+    completion_info = f"\n📊 Завершение: exit_code={exit_code}, строк={line_number}, вызовов инструментов={tool_count}, текст={len(accumulated_text)} символов\n"
+    
+    print(f"[DEBUG] 📊 ЗАВЕРШЕНИЕ: exit_code={exit_code}, строк={line_number}, размер={len(output_str)}", flush=True)
+    
+    if exit_code != 0:
+        completion_info += f"\n⚠️ ПРОЦЕСС ЗАВЕРШИЛСЯ С ОШИБКОЙ (exit_code={exit_code})\n"
+        print(f"[DEBUG] ⚠️ ОШИБКА! exit_code={exit_code}", flush=True)
+        
+        # Анализируем причину ошибки
+        if exit_code == -9:
+            completion_info += f"  Причина: Процесс был убит (SIGKILL) - возможно нехватка памяти или принудительное завершение\n"
+        elif exit_code == -15:
+            completion_info += f"  Причина: Процесс получил SIGTERM\n"
+        elif exit_code == 1:
+            completion_info += f"  Причина: Общая ошибка выполнения\n"
+        elif exit_code == 127:
+            completion_info += f"  Причина: Команда не найдена\n"
+        else:
+            completion_info += f"  Причина: Неизвестная ошибка\n"
+        
+        # Проверяем последние строки вывода
+        if output_str:
+            last_lines = output_str.strip().split('\n')[-10:]
+            completion_info += f"\n  Последние 10 строк вывода:\n"
+            for i, last_line in enumerate(last_lines, 1):
+                completion_info += f"    [{i}] {last_line[:150]}\n"
+    
+    logger.info(completion_info)
+    run_obj.logs = (run_obj.logs or "") + completion_info
+    
     if exit_code != 0 and ("Connection stalled" in output_str or "connection stalled" in output_str.lower()):
         run_obj.logs = (run_obj.logs or "") + (
             "\n⚠️ Ошибка соединения с Cursor API (Connection stalled). "
@@ -1378,48 +2076,88 @@ def _run_cli_stream(
 
 
 def _resolve_cli_command(runtime: str) -> str:
+    logger.info(f"\n{'🔍'*30}")
+    logger.info(f"🔍 _resolve_cli_command вызван для runtime: {runtime}")
+    
+    # Заменяем "auto" на default_provider
+    if runtime == "auto":
+        from app.core.model_config import model_manager
+        runtime = model_manager.config.default_provider or "cursor"
+        logger.info(f"  _resolve_cli_command: replaced 'auto' with '{runtime}'")
+    
     env_var = _cli_env_var(runtime)
-    # Для cursor в Docker/на хосте явно учитываем CURSOR_CLI_PATH при каждом вызове
-    if runtime == "cursor":
-        path_from_env = (os.getenv("CURSOR_CLI_PATH") or "").strip()
+    logger.info(f"  ENV переменная для {runtime}: {env_var}")
+    
+    # Для cursor и claude в Docker/на хосте явно учитываем env var при каждом вызове
+    if runtime in ["cursor", "claude"]:
+        path_from_env = (os.getenv(env_var) or "").strip()
+        logger.info(f"  Проверка ENV переменной {env_var}: {path_from_env if path_from_env else 'НЕ УСТАНОВЛЕНА'}")
+        
         if path_from_env:
             if Path(path_from_env).exists():
+                logger.info(f"  ✅ Найден CLI по пути из ENV: {path_from_env}")
+                logger.info(f"{'🔍'*30}\n")
                 return path_from_env
+            logger.error(f"  ❌ {env_var} задан, но файл не найден: {path_from_env}")
             raise RuntimeError(
-                f"CURSOR_CLI_PATH задан, но файл не найден: {path_from_env}. "
+                f"{env_var} задан, но файл не найден: {path_from_env}. "
                 "Проверь путь в .env (в Docker — путь внутри контейнера, например к смонтированному бинарнику)."
             )
 
     runtime_cfg = settings.CLI_RUNTIME_CONFIG.get(runtime) or {}
+    logger.info(f"  Runtime config: {runtime_cfg}")
+    
     command = runtime_cfg.get("command", "")
+    logger.info(f"  Command из config: {command}")
+    
     if not command:
+        logger.error(f"  ❌ CLI для '{runtime}' не настроен")
         raise RuntimeError(f"CLI для '{runtime}' не настроен")
+    
     if os.path.isabs(command):
+        logger.info(f"  Command является абсолютным путем")
         if not Path(command).exists():
+            logger.error(f"  ❌ CLI файл не существует: {command}")
             raise RuntimeError(
                 f"CLI для '{runtime}' не найден: {command}. "
                 f"Проверь путь или переменную окружения {env_var}"
             )
+        logger.info(f"  ✅ Найден CLI по абсолютному пути: {command}")
+        logger.info(f"{'🔍'*30}\n")
         return command
 
+    logger.info(f"  Ищем command в PATH: {command}")
     resolved = shutil.which(command)
+    logger.info(f"  Результат shutil.which: {resolved if resolved else 'НЕ НАЙДЕН'}")
+    
     if not resolved:
+        logger.error(f"  ❌ CLI для '{runtime}' не найден в PATH")
         if runtime == "cursor":
             raise RuntimeError(
                 "CLI для 'cursor' не найден (бинарник agent). "
                 "В Docker в .env задай CURSOR_CLI_PATH=/полный/путь/к/agent (бинарник должен быть в образе или смонтирован). "
                 "На хосте добавь agent в PATH или задай CURSOR_CLI_PATH."
             )
+        elif runtime == "claude":
+            raise RuntimeError(
+                "CLI для 'claude' не найден (бинарник claude). "
+                "В Docker в .env задай CLAUDE_CLI_PATH=/полный/путь/к/claude (бинарник должен быть в образе или смонтирован). "
+                "На хосте добавь claude в PATH или задай CLAUDE_CLI_PATH."
+            )
         raise RuntimeError(
             f"CLI для '{runtime}' не найден: {command}. "
             f"Добавь в PATH или задай переменную окружения {env_var}"
         )
+    
+    logger.info(f"  ✅ Найден CLI в PATH: {resolved}")
+    logger.info(f"{'🔍'*30}\n")
     return resolved
 
 
 def _cli_env_var(runtime: str) -> str:
     return {
         "cursor": "CURSOR_CLI_PATH",
+        "claude": "CLAUDE_CLI_PATH",
         "opencode": "OPENCODE_CLI_PATH",
         "gemini": "GEMINI_CLI_PATH",
         "ralph": "RALPH_CLI_PATH",
@@ -1427,11 +2165,16 @@ def _cli_env_var(runtime: str) -> str:
 
 
 def _format_arg(runtime_cfg: Dict[str, Any], arg: str, workspace: str = None) -> str:
+    logger.debug(f"  _format_arg: arg={arg}, workspace={workspace}")
     if arg != "{workspace}":
+        logger.debug(f"    -> возвращаем arg как есть: {arg}")
         return arg
     if workspace:
+        logger.debug(f"    -> заменяем {{workspace}} на: {workspace}")
         return workspace
-    return str(getattr(settings, "BASE_DIR", ""))
+    base_dir = str(getattr(settings, "BASE_DIR", ""))
+    logger.debug(f"    -> используем BASE_DIR: {base_dir}")
+    return base_dir
 
 
 def _write_ralph_yml(path: Path, content: Dict[str, Any]) -> None:
@@ -1488,22 +2231,28 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
             target_host = servers[0].host
             lines = [
                 f"\n\n{'='*60}",
-                f"=== ЦЕЛЕВОЙ СЕРВЕР: {target_name} ({target_host}) ===",
+                f"=== СЕРВЕРНАЯ ЗАДАЧА: {target_name} ({target_host}) ===",
                 f"{'='*60}",
                 "",
-                f"!!! КРИТИЧЕСКИ ВАЖНО !!!",
-                f"Все команды выполняй ТОЛЬКО на сервере «{target_name}»!",
-                f"НЕ ИСПОЛЬЗУЙ ДРУГИЕ СЕРВЕРЫ! Даже если они упомянуты где-то ещё.",
-                f"НЕ ПЕРЕКЛЮЧАЙСЯ на другие серверы!",
+                "!!! ЭТО СЕРВЕРНАЯ ЗАДАЧА - РАБОТАЙ ТОЛЬКО С СЕРВЕРОМ !!!",
                 "",
-                f"Для выполнения команд используй ТОЛЬКО:",
+                "ЗАПРЕЩЕНО:",
+                "- НЕ читай файлы проекта (*.py, *.js и др.)",
+                "- НЕ ищи функции или классы в коде",
+                "- НЕ вызывай python функции или API",
+                "- НЕ используй Glob, Grep, Read для поиска кода",
+                "",
+                "РАЗРЕШЕНО ТОЛЬКО:",
+                f"- Выполнять SSH команды на сервере «{target_name}»",
+                "- Использовать server_execute MCP tool",
+                "- Стандартные Linux команды: df, free, ps, systemctl, apt и т.д.",
+                "",
+                f"Целевой сервер: {target_name}",
+                f"Для выполнения команд используй:",
                 f"  server_execute с server_name_or_id=\"{target_name}\"",
                 "",
-                f"Пример правильного вызова:",
-                f"  tool server_execute {{\"server_name_or_id\": \"{target_name}\", \"command\": \"uname -a\"}}",
-                "",
-                f"НЕ вызывай server_execute с другим server_name_or_id!",
-                f"НЕ вызывай servers_list — у тебя уже есть целевой сервер!",
+                f"Пример:",
+                f"  tool server_execute {{\"server_name_or_id\": \"{target_name}\", \"command\": \"df -h\"}}",
                 "",
             ]
         else:
@@ -1522,7 +2271,8 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
             if auth in ("password", "key_password") and s.encrypted_password and master_pwd and s.salt:
                 try:
                     pwd_decrypted = PasswordEncryption.decrypt_password(s.encrypted_password, master_pwd, bytes(s.salt))
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Password decryption failed for server {s.name}: {e}")
                     pwd_decrypted = ""
             # Формируем готовую команду подключения
             cmd_hint = ""
@@ -1584,8 +2334,12 @@ def _execute_workflow_run(run_id: int):
     steps = (workflow.script or {}).get("steps", [])
     step_results = []
 
+    # Определяем тип задачи
+    is_server_task = workflow.target_server_id is not None
+
     # Фаза проверки задачи через Cursor (ask) перед запуском
-    if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace:
+    # ПРОПУСКАЕМ для серверных задач - им не нужен анализ кода!
+    if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace and not is_server_task:
         run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
         _append_log_event(
             run_obj,
@@ -1621,31 +2375,49 @@ def _execute_workflow_run(run_id: int):
         run_obj.save(update_fields=["logs", "log_events", "meta"])
 
     try:
-        if workflow.runtime == "ralph":
-            script = workflow.script or {}
-            backend = (
-                (script.get("ralph_yml") or {}).get("cli", {}).get("backend")
-                or script.get("backend")
-                or "cursor"
-            )
+        # Определяем CLI агента из глобальных настроек
+        from app.core.model_config import model_manager
+        cli_runtime = model_manager.config.default_provider or "cursor"
+        
+        # Если default_provider = "auto" или "ralph" - fallback на cursor
+        if cli_runtime in ["auto", "ralph"]:
+            cli_runtime = "cursor"
+            logger.warning(f"default_provider={cli_runtime} is invalid, using cursor")
+        
+        # Логируем настройки для отладки
+        logger.info(f"Workflow {workflow.id}: CLI runtime={cli_runtime}, orchestrator_mode={model_manager.config.default_orchestrator_mode}")
+        
+        # Режим оркестратора определяет КАК выполнять (Ralph с итерациями или обычный режим)
+        # CLI runtime определяет ЧТО запускать (cursor/claude)
+        orchestrator_mode = model_manager.config.default_orchestrator_mode or "ralph_internal"
+        
+        # Ralph mode: многократные вызовы CLI агента с итерациями
+        if orchestrator_mode.startswith("ralph"):
             run_obj.logs = (run_obj.logs or "") + (
-                f"[Ralph mode: orchestrate via {backend} CLI]\n"
+                f"[Settings: CLI={cli_runtime}, orchestrator={orchestrator_mode}]\n"
+                f"[Ralph mode: executing via {cli_runtime} CLI with iterations]\n"
             )
             run_obj.save(update_fields=["logs"])
             _run_steps_with_backend(
                 run_obj=run_obj,
                 steps=steps,
-                runtime=backend,
+                runtime=cli_runtime,  # Используем cursor/claude
                 workflow=workflow,
                 step_results=step_results,
                 workspace=workspace,
                 servers_context=servers_context,
             )
         else:
+            # Direct mode: прямой вызов CLI агента без Ralph оркестрации
+            run_obj.logs = (run_obj.logs or "") + (
+                f"[Settings: CLI={cli_runtime}, orchestrator={orchestrator_mode}]\n"
+                f"[Direct mode: single {cli_runtime} CLI call]\n"
+            )
+            run_obj.save(update_fields=["logs"])
             _run_steps_with_backend(
                 run_obj=run_obj,
                 steps=steps,
-                runtime=workflow.runtime,
+                runtime=cli_runtime,  # Используем cursor/claude
                 workflow=workflow,
                 step_results=step_results,
                 workspace=workspace,
@@ -1683,13 +2455,29 @@ def _run_steps_with_backend(
     start_from_step: int = 1,
     servers_context: str = "",
 ) -> None:
-    extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else None
-    if runtime == "cursor":
+    # Заменяем "auto" на default_provider СРАЗУ
+    if runtime == "auto":
+        from app.core.model_config import model_manager
+        runtime = model_manager.config.default_provider or "cursor"
+        logger.info(f"_run_steps_with_backend: replaced 'auto' with '{runtime}'")
+    
+    # Логируем runtime для отладки
+    logger.info(f"_run_steps_with_backend called with runtime={runtime} for workflow {workflow.id}")
+    
+    # Подготовка environment variables для CLI (cursor, claude и другие)
+    extra_env = None
+    mcp_config_file = None  # Путь к MCP конфигу для Claude CLI (--mcp-config)
+    if runtime in ["cursor", "claude"]:
+        extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else {}
         extra_env = dict(extra_env or {})
+        # ВАЖНО: передаём HOME для Claude CLI (credentials в ~/.claude/)
+        extra_env.setdefault("HOME", os.path.expanduser("~"))
+
         if run_obj.initiated_by_id:
             mcp_path = _ensure_mcp_servers_config(workspace, run_obj.initiated_by_id)
             if mcp_path:
                 extra_env["MCP_CONFIG_PATH"] = mcp_path
+                mcp_config_file = mcp_path  # Для Claude CLI --mcp-config
             extra_env.setdefault("WEU_USER_ID", str(run_obj.initiated_by_id))
         
         # Передаём целевой сервер в переменные окружения для MCP-инструментов
@@ -1698,6 +2486,13 @@ def _run_steps_with_backend(
             if workflow.target_server:
                 extra_env["WEU_TARGET_SERVER_NAME"] = workflow.target_server.name
                 logger.info(f"Workflow {workflow.id}: target_server={workflow.target_server.name} (id={workflow.target_server_id})")
+        
+        # Для Claude НЕ передаём ANTHROPIC_API_KEY - используем авторизованную сессию Pro
+        # Если нужен API режим - раскомментируйте:
+        # if runtime == "claude":
+        #     import os
+        #     if os.getenv("ANTHROPIC_API_KEY"):
+        #         extra_env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
     max_retries = getattr(run_obj, "max_retries", None) or 3
     step_results_existing = list(run_obj.step_results or [])
 
@@ -1738,18 +2533,39 @@ def _run_steps_with_backend(
         step_model = step.get("model")  # step-level override (если разрешено)
         effective_model = step_model if step_model and step_model != "auto" else workflow_model
         
+        # Заменяем "auto" на default_provider из настроек
+        if effective_model == "auto":
+            from app.core.model_config import model_manager
+            effective_model = model_manager.config.default_provider or "cursor"
+
+        # "ralph" - это оркестратор, не CLI runtime. Заменяем на текущий runtime
+        if effective_model == "ralph":
+            effective_model = runtime if runtime not in ("ralph", "auto") else "cursor"
+            logger.warning(f"Replaced 'ralph' model with '{effective_model}' (ralph is orchestrator, not CLI)")
+
+        # Не передаём --model если значение равно runtime или "auto"
+        # (CLI сами выберут модель по умолчанию)
+        cli_model = None
+        if effective_model not in ("auto", runtime, "cursor", "claude", "gemini"):
+            cli_model = effective_model
+
         config = {
             "use_ralph_loop": use_ralph_loop,
             "completion_promise": completion_promise,
             "max_iterations": max_iterations,
-            "model": effective_model,
+            "model": cli_model,  # None = CLI выберет сам
         }
-        
+
+        # Для Claude CLI передаём MCP конфиг (server_execute и др.)
+        if runtime == "claude" and mcp_config_file:
+            config["mcp-config"] = mcp_config_file
+
         # Логируем используемую модель
         model_source = "step" if step_model and step_model != "auto" else "workflow"
-        run_obj.logs = (run_obj.logs or "") + f"\n[Step {idx}: {step_title}] Model: {effective_model} (from {model_source})\n"
+        model_info = cli_model if cli_model else f"{runtime} default"
+        run_obj.logs = (run_obj.logs or "") + f"\n[Step {idx}: {step_title}] Model: {model_info} (from {model_source})\n"
         run_obj.save(update_fields=["logs"])
-        
+
         if runtime != "cursor":
             config["specific_model"] = (workflow.script or {}).get("specific_model")
 
@@ -1793,14 +2609,160 @@ def _run_steps_with_backend(
                         current_prompt = f"{current_prompt}\n\nWhen complete output exactly: <promise>{completion_promise}</promise>."
                     step_label = f"{step_title}" if inner_max <= 1 else f"{step_title} (Ralph {ralph_iteration}/{inner_max})"
                     cmd = _build_cli_command(runtime, current_prompt, config, workspace)
+                    
+                    # Сохраняем команду в meta для админ-просмотра
+                    run_meta = run_obj.meta or {}
+                    run_meta[f"step_{idx}_cmd"] = _sanitize_command(cmd)
+                    run_meta[f"step_{idx}_cmd_full"] = cmd
+                    run_meta[f"step_{idx}_prompt"] = current_prompt[:8000]
+                    run_meta[f"step_{idx}_workspace"] = workspace
+                    run_meta[f"step_{idx}_runtime"] = runtime
+                    run_obj.meta = run_meta
+                    run_obj.save(update_fields=["meta"])
+                    
+                    # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ПЕРЕД ЗАПУСКОМ
+                    logger.info(f"\n{'='*70}")
+                    logger.info(f"🚀 ПОДГОТОВКА К ЗАПУСКУ АГЕНТА")
+                    logger.info(f"{'='*70}")
+                    logger.info(f"📌 Step: {step_title}")
+                    logger.info(f"📌 Label: {step_label}")
+                    logger.info(f"📌 Runtime: {runtime}")
+                    logger.info(f"📌 Model: {config.get('model', 'N/A')}")
+                    logger.info(f"📌 Workspace: {workspace}")
+                    logger.info(f"📌 Ralph iteration: {ralph_iteration}/{inner_max}")
+                    logger.info(f"📌 Retry attempt: {retry_attempt}/{max_retries}")
+                    
+                    # ПРОВЕРКА РАБОТОСПОСОБНОСТИ CLI
+                    if ralph_iteration == 1 and retry_attempt == 0:  # Только первый раз
+                        try:
+                            logger.info(f"\n🧪 ТЕСТ РАБОТОСПОСОБНОСТИ CLI")
+                            test_cmd_path = _resolve_cli_command(runtime)
+                            logger.info(f"  CLI путь: {test_cmd_path}")
+                            
+                            # Проверяем что файл существует
+                            if not Path(test_cmd_path).exists():
+                                logger.error(f"  ❌ CLI файл не существует!")
+                            else:
+                                logger.info(f"  ✅ CLI файл существует")
+                                
+                                # Проверяем что файл исполняемый
+                                if os.access(test_cmd_path, os.X_OK):
+                                    logger.info(f"  ✅ CLI файл имеет права на выполнение")
+                                else:
+                                    logger.warning(f"  ⚠️ CLI файл не имеет прав на выполнение!")
+                                
+                                # Пробуем запустить с --version
+                                try:
+                                    logger.info(f"  Пробуем запустить: {test_cmd_path} --version")
+                                    version_result = subprocess.run(
+                                        [test_cmd_path, "--version"],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=5
+                                    )
+                                    logger.info(f"  Exit code: {version_result.returncode}")
+                                    if version_result.stdout:
+                                        logger.info(f"  STDOUT: {version_result.stdout.strip()}")
+                                    if version_result.stderr:
+                                        logger.info(f"  STDERR: {version_result.stderr.strip()}")
+                                except Exception as ve:
+                                    logger.error(f"  ❌ Ошибка запуска CLI: {ve}")
+                        except Exception as test_e:
+                            logger.error(f"  ❌ Ошибка теста CLI: {test_e}")
+                    
+                    logger.info(f"\n🔧 КОНФИГУРАЦИЯ:")
+                    for key, value in config.items():
+                        if key == 'prompt':
+                            logger.info(f"  {key}: <{len(str(value))} символов>")
+                        else:
+                            logger.info(f"  {key}: {value}")
+                    
+                    logger.info(f"\n💬 ПРОМПТ (первые 500 символов):")
+                    logger.info(f"{current_prompt[:500]}...")
+                    
+                    # АНАЛИЗ ПРОМПТА
+                    logger.info(f"\n🔎 АНАЛИЗ ПРОМПТА:")
+                    logger.info(f"  Длина: {len(current_prompt)} символов")
+                    if "prod server" in current_prompt or "172.25.173.251" in current_prompt:
+                        logger.info(f"  ✅ Содержит упоминание 'prod server' или IP 172.25.173.251")
+                    else:
+                        logger.warning(f"  ⚠️ НЕ содержит упоминание 'prod server' или IP 172.25.173.251")
+                    
+                    if "server_execute" in current_prompt:
+                        logger.info(f"  ✅ Содержит инструкцию об использовании 'server_execute'")
+                    else:
+                        logger.warning(f"  ⚠️ НЕ содержит инструкцию об использовании 'server_execute'")
+                    
+                    if "СЕРВЕРНАЯ ЗАДАЧА" in current_prompt or "SERVER TASK" in current_prompt:
+                        logger.info(f"  ✅ Содержит метку серверной задачи")
+                    else:
+                        logger.warning(f"  ⚠️ НЕ содержит метку серверной задачи")
+                    
+                    logger.info(f"\n🎯 ПОЛНАЯ КОМАНДА CLI ({len(cmd)} элементов):")
+                    cmd_full = " ".join(cmd)
+                    logger.info(f"{cmd_full}")
+                    
+                    if extra_env:
+                        logger.info(f"\n🌍 ДОПОЛНИТЕЛЬНЫЕ ENV переменные:")
+                        for k, v in extra_env.items():
+                            logger.info(f"  {k}: {v}")
+                    
+                    logger.info(f"{'='*70}\n")
+                    
+                    # Старый лог для обратной совместимости
+                    cmd_preview = " ".join(cmd[:5]) + "..." if len(cmd) > 5 else " ".join(cmd)
+                    logger.info(f"Executing CLI: {cmd_preview} (runtime={runtime}, model={config.get('model', 'N/A')})")
+                    
                     result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env)
                     last_output = result.get("output", "") or ""
+                    
+                    # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ РЕЗУЛЬТАТА
+                    logger.info(f"\n{'='*70}")
+                    logger.info(f"📊 РЕЗУЛЬТАТ ВЫПОЛНЕНИЯ АГЕНТА")
+                    logger.info(f"{'='*70}")
+                    logger.info(f"✅ Success: {result.get('success', False)}")
+                    logger.info(f"🔢 Exit Code: {result.get('exit_code', 'unknown')}")
+                    logger.info(f"📏 Output Length: {len(last_output)} символов")
+                    
+                    if last_output:
+                        logger.info(f"\n📝 ВЫВОД (первые 1000 символов):")
+                        logger.info(f"{last_output[:1000]}")
+                        if len(last_output) > 1000:
+                            logger.info(f"... и еще {len(last_output) - 1000} символов")
+                        
+                        logger.info(f"\n📝 ВЫВОД (последние 500 символов):")
+                        logger.info(f"{last_output[-500:]}")
+                    else:
+                        logger.warning(f"⚠️ ВЫВОД ПУСТОЙ!")
+                    
+                    logger.info(f"{'='*70}\n")
+                    
                     if not result.get("success"):
+                        logger.error(f"\n{'❌'*35}")
+                        logger.error(f"ОШИБКА ВЫПОЛНЕНИЯ!")
+                        logger.error(f"{'❌'*35}")
+                        
                         last_error = last_output or f"exit code {result.get('exit_code', -1)}"
+                        
+                        logger.error(f"🔍 Анализ ошибки:")
+                        logger.error(f"  Exit code: {result.get('exit_code', -1)}")
+                        logger.error(f"  Длина вывода: {len(last_output)} символов")
+                        
                         if "Connection stalled" in last_error or "connection stalled" in last_error.lower():
+                            logger.error(f"  Тип ошибки: Connection stalled")
                             last_error = "Cursor API connection stalled. Проверьте сеть и подписку Cursor; повторите шаг."
+                        elif result.get('exit_code') == -9:
+                            logger.error(f"  Тип ошибки: Процесс убит (SIGKILL) - возможно нехватка памяти")
+                        elif result.get('exit_code') == 127:
+                            logger.error(f"  Тип ошибки: Команда не найдена")
+                        elif not last_output:
+                            logger.error(f"  Тип ошибки: Пустой вывод - процесс завершился без вывода")
                         else:
+                            logger.error(f"  Тип ошибки: Неизвестная ошибка")
                             last_error = last_error[:500] if len(last_error) > 500 else last_error
+                        
+                        logger.error(f"\n  Текст ошибки: {last_error}")
+                        logger.error(f"{'❌'*35}\n")
                         break
                     if completion_promise and _promise_found(last_output, completion_promise):
                         break
@@ -2170,7 +3132,12 @@ def api_assist_config(request):
 def api_assist_auto(request):
     data = _parse_json_request(request)
     task = data.get("task", "").strip()
-    runtime = data.get("runtime", "ralph")
+    
+    # Используем default_provider из настроек вместо "ralph"
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    runtime = data.get("runtime", default_runtime)
+    
     action = data.get("action", "both")
     run_workflow = bool(data.get("run_workflow", True))
     
@@ -2182,7 +3149,7 @@ def api_assist_auto(request):
     if not task:
         return JsonResponse({"error": "Task is required"}, status=400)
     if runtime not in ALLOWED_RUNTIMES:
-        runtime = "ralph"
+        runtime = default_runtime
 
     # Создаем новую папку проекта если нужно
     if create_new_project:
@@ -2213,7 +3180,7 @@ def api_assist_auto(request):
             name=cfg.get("name", "AI Profile"),
             description=cfg.get("description", ""),
             agent_type=cfg.get("agent_type", "react"),
-            runtime=cfg.get("runtime", "ralph"),
+            runtime=cfg.get("runtime", default_runtime),  # Используем default_runtime
             mode=cfg.get("mode", "simple"),
             config=cfg.get("config", {}),
         )
@@ -2538,7 +3505,12 @@ def api_workflow_create_manual(request):
     """Ручное создание workflow из списка задач"""
     data = _parse_json_request(request)
     name = data.get("name", "").strip() or "New Workflow"
-    runtime = data.get("runtime", "ralph")
+    
+    # Используем default_provider из настроек
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    runtime = data.get("runtime", default_runtime)
+    
     steps = data.get("steps", [])
     run_after_save = data.get("run_after_save", False)
     target_server_id = data.get("target_server_id")
@@ -2553,7 +3525,7 @@ def api_workflow_create_manual(request):
         return JsonResponse({"error": "At least one step is required"}, status=400)
     
     if runtime not in ALLOWED_RUNTIMES:
-        runtime = "ralph"
+        runtime = default_runtime
     
     # Валидация модели
     valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
@@ -2705,14 +3677,19 @@ def api_workflow_import(request):
             project_path = _create_project_folder(safe_name)
     name = (script.get("name") or uploaded_file.name.replace(".json", "")).strip() or "Imported Workflow"
     description = script.get("description", "") or f"Imported from {uploaded_file.name}"
-    runtime = script.get("runtime", "ralph")
+    
+    # Используем default_provider из настроек
+    from app.core.model_config import model_manager
+    default_runtime = model_manager.config.default_provider or "cursor"
+    
+    runtime = script.get("runtime", default_runtime)
     if runtime not in ALLOWED_RUNTIMES:
-        runtime = "ralph"
+        runtime = default_runtime
     script["runtime"] = runtime
     script["name"] = name
     # Если runtime ralph, но ralph_yml нет — генерируем из steps (чтобы не было «Ralph script отсутствует»)
     if runtime == "ralph" and not script.get("ralph_yml"):
-        backend = script.get("backend") or "cursor"
+        backend = script.get("backend") or default_runtime
         steps_list = script.get("steps", [])
         hats = {}
         prev_event = "task.start"
@@ -2911,3 +3888,206 @@ def api_workflow_download_project(request, workflow_id: int):
     except Exception as e:
         logger.error(f"Error creating zip for workflow {workflow_id}: {e}")
         return JsonResponse({"error": f"Ошибка создания архива: {str(e)}"}, status=500)
+
+
+# ============================================
+# Custom Agents Views
+# ============================================
+
+@login_required
+@require_feature('agents')
+def custom_agents_view(request):
+    """Страница кастомных агентов"""
+    template = get_template_name(request, 'agent_hub/custom_agents.html')
+    return render(request, template, {})
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET", "POST"])
+def api_custom_agents_list(request):
+    """
+    GET: список кастомных агентов пользователя
+    POST: создание нового кастомного агента
+    """
+    if request.method == 'GET':
+        try:
+            agents = CustomAgent.objects.filter(owner=request.user, is_active=True).order_by('-updated_at')
+            
+            agents_data = []
+            for agent in agents:
+                agents_data.append({
+                    'id': agent.id,
+                    'name': agent.name,
+                    'description': agent.description,
+                    'runtime': agent.runtime,
+                    'model': agent.model,
+                    'orchestrator_mode': agent.orchestrator_mode,
+                    'allowed_tools': agent.allowed_tools,
+                    'usage_count': agent.usage_count,
+                    'is_public': agent.is_public,
+                    'created_at': agent.created_at.isoformat(),
+                    'updated_at': agent.updated_at.isoformat(),
+                })
+            
+            return JsonResponse({'success': True, 'agents': agents_data})
+        
+        except Exception as e:
+            logger.error(f"Error listing custom agents: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    
+    elif request.method == 'POST':
+        try:
+            data = _parse_json_request(request)
+            
+            # Создание агента
+            agent = CustomAgent.objects.create(
+                owner=request.user,
+                name=data.get('name', 'New Agent'),
+                description=data.get('description', ''),
+                system_prompt=data.get('system_prompt', ''),
+                instructions=data.get('instructions', ''),
+                allowed_tools=data.get('allowed_tools', []),
+                max_iterations=data.get('max_iterations', 5),
+                temperature=data.get('temperature', 0.7),
+                completion_promise=data.get('completion_promise', 'COMPLETE'),
+                runtime=data.get('runtime', 'claude'),
+                model=data.get('model', 'claude-4.5-sonnet'),
+                orchestrator_mode=data.get('orchestrator_mode', 'ralph_internal'),
+                mcp_servers=data.get('mcp_servers', {}),
+                mcp_auto_approve=data.get('mcp_auto_approve', False),
+            )
+            
+            logger.info(f"Created custom agent: {agent.name} (id={agent.id})")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Агент создан успешно',
+                'agent_id': agent.id
+            })
+        
+        except Exception as e:
+            logger.error(f"Error creating custom agent: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_custom_agent_detail(request, agent_id: int):
+    """
+    GET: получить агента
+    PUT: обновить агента
+    DELETE: удалить агента
+    """
+    try:
+        agent = CustomAgent.objects.get(id=agent_id, owner=request.user)
+    except CustomAgent.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Agent not found'}, status=404)
+    
+    if request.method == 'GET':
+        return JsonResponse({
+            'success': True,
+            'agent': {
+                'id': agent.id,
+                'name': agent.name,
+                'description': agent.description,
+                'system_prompt': agent.system_prompt,
+                'instructions': agent.instructions,
+                'allowed_tools': agent.allowed_tools,
+                'max_iterations': agent.max_iterations,
+                'temperature': agent.temperature,
+                'completion_promise': agent.completion_promise,
+                'runtime': agent.runtime,
+                'model': agent.model,
+                'orchestrator_mode': agent.orchestrator_mode,
+                'mcp_servers': agent.mcp_servers,
+                'mcp_auto_approve': agent.mcp_auto_approve,
+                'usage_count': agent.usage_count,
+                'is_public': agent.is_public,
+                'created_at': agent.created_at.isoformat(),
+                'updated_at': agent.updated_at.isoformat(),
+            }
+        })
+    
+    elif request.method == 'PUT':
+        try:
+            data = _parse_json_request(request)
+            
+            # Обновление полей
+            if 'name' in data:
+                agent.name = data['name']
+            if 'description' in data:
+                agent.description = data['description']
+            if 'system_prompt' in data:
+                agent.system_prompt = data['system_prompt']
+            if 'instructions' in data:
+                agent.instructions = data['instructions']
+            if 'allowed_tools' in data:
+                agent.allowed_tools = data['allowed_tools']
+            if 'max_iterations' in data:
+                agent.max_iterations = data['max_iterations']
+            if 'temperature' in data:
+                agent.temperature = data['temperature']
+            if 'completion_promise' in data:
+                agent.completion_promise = data['completion_promise']
+            if 'runtime' in data:
+                agent.runtime = data['runtime']
+            if 'model' in data:
+                agent.model = data['model']
+            if 'orchestrator_mode' in data:
+                agent.orchestrator_mode = data['orchestrator_mode']
+            if 'mcp_servers' in data:
+                agent.mcp_servers = data['mcp_servers']
+            if 'mcp_auto_approve' in data:
+                agent.mcp_auto_approve = data['mcp_auto_approve']
+            
+            agent.save()
+            
+            logger.info(f"Updated custom agent: {agent.name} (id={agent.id})")
+            
+            return JsonResponse({'success': True, 'message': 'Агент обновлён'})
+        
+        except Exception as e:
+            logger.error(f"Error updating custom agent: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    
+    elif request.method == 'DELETE':
+        try:
+            agent.is_active = False
+            agent.save()
+            
+            logger.info(f"Deleted custom agent: {agent.name} (id={agent.id})")
+            
+            return JsonResponse({'success': True, 'message': 'Агент удалён'})
+        
+        except Exception as e:
+            logger.error(f"Error deleting custom agent: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["GET"])
+def api_custom_agent_export(request, agent_id: int):
+    """Экспорт агента в JSON формат (для Claude Code CLI)"""
+    try:
+        agent = CustomAgent.objects.get(id=agent_id, owner=request.user)
+        
+        config = agent.to_cli_agent_config()
+        
+        return JsonResponse({
+            'success': True,
+            'config': config,
+            'format': 'claude_code_agent',
+            'filename': f"{agent.name.replace(' ', '_')}.agent.json"
+        })
+    
+    except CustomAgent.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Agent not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error exporting custom agent: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

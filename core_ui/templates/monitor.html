@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block body_extra_class %}page-monitor{% endblock %}
+{% block title %}Monitor - WEU AI{% endblock %}
+{% block header_title %}AI Monitor{% endblock %}
+
+{% block content %}
+<div class="monitor-container" id="monitorApp">
+    <!-- Header Bar -->
+    <header class="monitor-header">
+        <div class="monitor-header-left">
+            <h1 class="monitor-title">AI Monitor</h1>
+            <div class="monitor-status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </div>
+        <div class="monitor-header-right">
+            <div class="monitor-stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="statRunning">0</span>
+                    <span class="stat-label">Running</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statTotal">0</span>
+                    <span class="stat-label">Total</span>
+                </div>
+            </div>
+            <div class="monitor-controls">
+                <button type="button" class="monitor-btn" id="btnRefresh" title="Refresh">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                </button>
+                <button type="button" class="monitor-btn active" id="btnLive" title="Live Updates">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                    </svg>
+                    <span>Live</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="monitor-layout">
+        <!-- Sidebar: Runs List -->
+        <aside class="monitor-sidebar" id="monitorSidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">Runs</h2>
+                <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 18l-6-6 6-6"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="sidebar-filters">
+                <input type="text" class="filter-search" id="filterSearch" placeholder="Search runs...">
+                <div class="filter-row">
+                    <select class="filter-select" id="filterType">
+                        <option value="all">All Types</option>
+                        <option value="workflow">Workflows</option>
+                        <option value="run">Agent Runs</option>
+                    </select>
+                    <select class="filter-select" id="filterStatus">
+                        <option value="all">All Status</option>
+                        <option value="running">Running</option>
+                        <option value="succeeded">Succeeded</option>
+                        <option value="failed">Failed</option>
+                        <option value="paused">Paused</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="runs-list" id="runsList"></div>
+            <div class="runs-empty hidden" id="runsEmpty">No runs found</div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="monitor-main">
+            <!-- Run Header -->
+            <div class="run-detail-header" id="runDetailHeader">
+                <div class="run-detail-info">
+                    <div class="run-detail-badge" id="runBadge">-</div>
+                    <div class="run-detail-meta">
+                        <h2 class="run-detail-title" id="runTitle">Select a run</h2>
+                        <p class="run-detail-subtitle" id="runSubtitle">Choose a run from the sidebar to view details</p>
+                    </div>
+                </div>
+                <div class="run-detail-actions" id="runActions">
+                    <!-- Dynamic buttons based on run status -->
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="monitor-tabs">
+                <button type="button" class="tab-btn active" data-tab="logs">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                    </svg>
+                    Logs
+                </button>
+                <button type="button" class="tab-btn" data-tab="command">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 17 10 11 4 5"/>
+                        <line x1="12" y1="19" x2="20" y2="19"/>
+                    </svg>
+                    Command
+                </button>
+                <button type="button" class="tab-btn" data-tab="config">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+                    </svg>
+                    Config
+                </button>
+                <button type="button" class="tab-btn" data-tab="raw">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    Raw
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="monitor-content">
+                <!-- Logs Tab -->
+                <div class="tab-panel active" data-tab="logs">
+                    <div class="logs-toolbar">
+                        <div class="logs-filters">
+                            <button type="button" class="log-chip active" data-filter="all">All</button>
+                            <button type="button" class="log-chip" data-filter="assistant">Messages</button>
+                            <button type="button" class="log-chip" data-filter="tool_call">Tools</button>
+                            <button type="button" class="log-chip" data-filter="cmd">Commands</button>
+                            <button type="button" class="log-chip" data-filter="error">Errors</button>
+                        </div>
+                        <div class="logs-search">
+                            <input type="text" id="logsSearch" placeholder="Search logs...">
+                        </div>
+                        <button type="button" class="toolbar-btn" id="btnCopyLogs" title="Copy all">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                            </svg>
+                        </button>
+                        <button type="button" class="toolbar-btn" id="btnAutoScroll" title="Auto-scroll">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 5v14M19 12l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="logs-container" id="logsContainer">
+                        <div class="logs-empty" id="logsEmpty">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                            </svg>
+                            <p>Select a run to view logs</p>
+                        </div>
+                        <div class="logs-timeline" id="logsTimeline"></div>
+                    </div>
+                </div>
+
+                <!-- Command Tab -->
+                <div class="tab-panel" data-tab="command">
+                    <div class="command-section">
+                        <div class="section-header">
+                            <h3>CLI Command</h3>
+                            <button type="button" class="copy-btn" data-copy="commandText">Copy</button>
+                        </div>
+                        <pre class="code-block" id="commandText">-</pre>
+                    </div>
+                    <div class="command-section">
+                        <div class="section-header">
+                            <h3>Input Prompt</h3>
+                            <button type="button" class="copy-btn" data-copy="promptText">Copy</button>
+                        </div>
+                        <pre class="code-block" id="promptText">-</pre>
+                    </div>
+                </div>
+
+                <!-- Config Tab -->
+                <div class="tab-panel" data-tab="config">
+                    <div class="config-grid">
+                        <div class="config-section">
+                            <div class="section-header">
+                                <h3>Run Configuration</h3>
+                            </div>
+                            <pre class="code-block" id="configText">{}</pre>
+                        </div>
+                        <div class="config-section">
+                            <div class="section-header">
+                                <h3>MCP Servers</h3>
+                            </div>
+                            <pre class="code-block" id="mcpText">{}</pre>
+                        </div>
+                        <div class="config-section">
+                            <div class="section-header">
+                                <h3>Environment</h3>
+                            </div>
+                            <pre class="code-block" id="envText">{}</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw Tab -->
+                <div class="tab-panel" data-tab="raw">
+                    <div class="raw-toolbar">
+                        <button type="button" class="toolbar-btn" id="btnCopyRaw">Copy Raw Output</button>
+                    </div>
+                    <pre class="raw-output" id="rawOutput">-</pre>
+                </div>
+            </div>
+
+            <!-- Workflow Steps (shown only for workflows) -->
+            <div class="workflow-steps hidden" id="workflowSteps">
+                <div class="steps-header">
+                    <h3>Workflow Progress</h3>
+                    <span class="steps-meta" id="stepsMeta">0/0</span>
+                </div>
+                <div class="steps-list" id="stepsList"></div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/monitor.js' %}"></script>
+{% endblock %}
