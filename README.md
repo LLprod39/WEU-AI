@@ -49,30 +49,13 @@
 
 ## 📸 Презентация
 
-*WEU AI Agent Platform — DevOps Edition* — основные слайды:
+**WEU AI Agent Platform — DevOps Edition** — слайды доступны по ссылкам (после добавления PNG в репозиторий откроются превью на GitHub):
 
-<p align="center">
-  <img src="docs/images/presentation-01.png" width="280" alt="Слайд 1" />
-  <img src="docs/images/presentation-02.png" width="280" alt="Слайд 2" />
-  <img src="docs/images/presentation-03.png" width="280" alt="Слайд 3" />
-</p>
-<p align="center">
-  <img src="docs/images/presentation-04.png" width="280" alt="Слайд 4" />
-  <img src="docs/images/presentation-05.png" width="280" alt="Слайд 5" />
-  <img src="docs/images/presentation-06.png" width="280" alt="Слайд 6" />
-</p>
-<p align="center">
-  <img src="docs/images/presentation-07.png" width="280" alt="Слайд 7" />
-  <img src="docs/images/presentation-08.png" width="280" alt="Слайд 8" />
-  <img src="docs/images/presentation-09.png" width="280" alt="Слайд 9" />
-</p>
-<p align="center">
-  <img src="docs/images/presentation-10.png" width="280" alt="Слайд 10" />
-  <img src="docs/images/presentation-11.png" width="280" alt="Слайд 11" />
-  <img src="docs/images/presentation-12.png" width="280" alt="Слайд 12" />
-</p>
+| Слайды 1–4 | Слайды 5–8 | Слайды 9–12 |
+|------------|------------|-------------|
+| [Слайд 1](docs/images/presentation-01.png) · [2](docs/images/presentation-02.png) · [3](docs/images/presentation-03.png) · [4](docs/images/presentation-04.png) | [Слайд 5](docs/images/presentation-05.png) · [6](docs/images/presentation-06.png) · [7](docs/images/presentation-07.png) · [8](docs/images/presentation-08.png) | [Слайд 9](docs/images/presentation-09.png) · [10](docs/images/presentation-10.png) · [11](docs/images/presentation-11.png) · [12](docs/images/presentation-12.png) |
 
-> Чтобы картинки отображались, экспортируйте страницы PDF в PNG и сохраните в [`docs/images/`](docs/images/) с именами `presentation-01.png` … `presentation-12.png`. Подробнее: [docs/images/README.md](docs/images/README.md).
+Чтобы здесь отображались превью слайдов, экспортируйте страницы PDF в PNG и положите в [`docs/images/`](docs/images/) с именами `presentation-01.png` … `presentation-12.png`. Инструкция: [docs/images/README.md](docs/images/README.md).
 
 ---
 
