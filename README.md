@@ -1,248 +1,205 @@
-# 🤖 WEU AI Agent Platform
+<p align="center">
+  <img src="https://img.shields.io/badge/WEU-AI%20Agent%20Platform-8B5CF6?style=for-the-badge&labelColor=1e1b4b" alt="WEU" />
+</p>
 
-> **🆕 Version 2.0.0 - DevOps/IT Edition** (31.01.2026)
+<h1 align="center">🤖 WEU AI Agent Platform</h1>
+<p align="center">
+  <strong>Единая веб-платформа для автоматизации DevOps и IT</strong>
+</p>
+<p align="center">
+  Чат с AI • Задачи в стиле Jira • SSH-серверы • Агенты (Cursor, Claude, Ralph) • RAG • Пароли
+</p>
 
-**Интегрированная веб-платформа для автоматизации DevOps/IT задач**
-
-Единый интерфейс для:
-- ✅ Автоматического выполнения задач из Jira
-- ✅ AI агентов (Claude Code, Cursor, Ralph)
-- ✅ Работы с серверами через SSH (с поддержкой корп сетей)
-- ✅ Умного роутинга задач на оптимальный агент
-- ✅ Создания кастомных агентов через веб
-
-**📚 Что нового:** `CHANGELOG_2026_01_31.md`  
-**🚀 Quick Start:** `docs/QUICK_START_DEVOPS.md`
-
-![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![Django](https://img.shields.io/badge/Django-5.2-green.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-
----
-
-## ✨ Основные возможности
-
-| Модуль | Описание |
-|--------|----------|
-| **Chat** | Чат с AI (Gemini/Grok), переключение моделей, загрузка файлов |
-| **Orchestrator** | ReAct-цикл с визуализацией «мысль → действие → ответ» |
-| **Agent Hub** | Профили агентов, проекты, воркфлоу, запуск CLI-агентов |
-| **RAG** | База знаний с семантическим поиском (Qdrant) |
-| **Tasks** | Задачи с AI-анализом, подзадачами, интеграцией с агентами |
-| **Passwords** | Менеджер паролей с AES-256 шифрованием |
-| **Servers** | SSH-управление серверами, выполнение команд |
+<p align="center">
+  <img src="https://img.shields.io/badge/version-2.0.0-8B5CF6?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/edition-DevOps%20%2F%20IT-6366f1?style=flat-square" alt="Edition" />
+  <img src="https://img.shields.io/badge/python-3.10+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/django-5.2-092e20?style=flat-square&logo=django&logoColor=white" alt="Django" />
+  <img src="https://img.shields.io/badge/docker-ready-2496ed?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License" />
+</p>
 
 ---
 
-## 🚀 Быстрый старт
+## ✨ О проекте
+
+**WEU** — это не просто чат с нейросетью. Это **единый центр управления**: вы общаетесь с AI (Gemini, Grok), ставите задачи с проектами и спринтами, дергаете команды на серверах по SSH, запускаете тяжёлых агентов (Cursor, Claude Code, Ralph) по воркфлоу и храните знания в RAG — всё из одного веб-интерфейса.
+
+- **Для кого:** DevOps, SRE, команды, которые хотят автоматизировать рутину и делегировать часть задач AI.
+- **Что даёт:** один портал вместо разрозненных скриптов, Jira, терминалов и чатов.
+
+---
+
+## 🚀 Ключевые возможности
+
+| | Модуль | Что умеет |
+|---|--------|-----------|
+| 💬 | **Chat** | Чат с Gemini/Grok, стриминг ответов, несколько сессий, загрузка файлов, выбор моделей |
+| 🧠 | **Orchestrator** | ReAct-цикл (мысль → действие → наблюдение), визуализация решений AI, вызов инструментов |
+| 📋 | **Tasks** | Проекты, спринты, команды, доски Kanban, ключи WEU-123, AI-анализ и делегирование задач AI, уведомления и email |
+| 🖥️ | **Servers** | Список SSH-серверов, группы, выполнение команд, **интерактивный терминал в браузере** (WebSocket), AI прямо в терминале |
+| 🤖 | **Agent Hub** | Профили агентов, воркфлоу, запуск Cursor / Claude Code / Ralph в headless, кастомные агенты, MCP |
+| 📚 | **RAG** | База знаний: загрузка документов, семантический поиск (Qdrant или InMemory) |
+| 🔐 | **Passwords** | Менеджер учётных записей с AES-256, категории и теги |
+| 👥 | **Доступ** | Пользователи, группы, роли в проектах (Owner/Admin/Member/Viewer), права на задачи и серверы |
+
+Подробный список фич — в [docs/FEATURES.md](docs/FEATURES.md).
+
+---
+
+## 🛠 Стек
+
+<table>
+<tr>
+<td width="50%">
+
+**Backend**
+- Django 5.2 + Daphne (ASGI)
+- PostgreSQL / SQLite
+- Redis (по необходимости)
+- Celery (фоновые задачи)
+
+**AI & ML**
+- Google Gemini API
+- Grok API
+- sentence-transformers (RAG, full build)
+- Qdrant или InMemory (векторный поиск)
+
+</td>
+<td width="50%">
+
+**Frontend**
+- Django Templates
+- Vanilla JS, стриминг (SSE/fetch)
+- Адаптивная вёрстка (desktop + mobile)
+
+**Инфраструктура**
+- Docker & Docker Compose
+- Nginx (reverse proxy, HTTPS)
+- GitHub Actions (CI/CD)
+
+**Интеграции**
+- Jira (импорт/синхронизация задач)
+- MCP (Model Context Protocol)
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🏗 Архитектура (упрощённо)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Web (Django + Daphne)                     │
+│   Chat • Tasks • Servers • Agents • RAG • Passwords • Admin   │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+┌─────────────────────────────▼───────────────────────────────┐
+│                  Orchestrator (ReAct / Ralph)                 │
+│   Think → Act (tools) → Observe → repeat or finish           │
+└──────────────┬────────────────────────────┬──────────────────┘
+               │                            │
+    ┌──────────▼──────────┐      ┌─────────▼─────────┐
+    │   LLM (Gemini/Grok) │      │   Tool Manager    │
+    └────────────────────┘      │ SSH • Servers •   │
+                                │ Files • Tasks •   │
+                                │ Web • MCP tools   │
+                                └───────────────────┘
+```
+
+Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## ⚡ Быстрый старт
 
 ### Docker (рекомендуется)
 
 ```bash
-# Клонировать репозиторий
 git clone https://github.com/your-repo/weu-ai-platform.git
 cd weu-ai-platform
-
-# Настроить окружение
 cp .env.example .env
-# Отредактировать .env — добавить API ключи
-
-# Запустить
+# В .env добавь: GEMINI_API_KEY, GROK_API_KEY (и при необходимости POSTGRES_*, MASTER_PASSWORD)
 docker compose up --build
 ```
 
-Приложение будет доступно по адресу: **http://localhost** (порт 80 по умолчанию; при необходимости задай `WEU_PORT=8000` в `.env`).
+Открой **http://localhost** (порт задаётся через `WEU_PORT` в `.env`).
 
-### Локальная установка
+### Локально (Python)
 
 ```bash
-# Создать виртуальное окружение
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# или
-venv\Scripts\activate     # Windows
-
-# Установить зависимости
-pip install -r requirements.txt       # Mini build
-# или
-pip install -r requirements-full.txt  # Full build с RAG
-
-# Настроить окружение
+venv\Scripts\activate          # Windows
+# source venv/bin/activate      # Linux / Mac
+pip install -r requirements.txt   # mini (без RAG)
+# pip install -r requirements-full.txt  # full + RAG
 cp .env.example .env
-# Отредактировать .env
-
-# Миграции и суперпользователь
 python manage.py migrate
 python manage.py createsuperuser
-
-# Запуск
 python manage.py runserver
 ```
+
+По умолчанию приложение на порту **9000** (или `DJANGO_PORT` из `.env`).
 
 ---
 
 ## ⚙️ Конфигурация
 
-### Переменные окружения (.env)
+**Минимум в `.env`:**
+- `GEMINI_API_KEY`, `GROK_API_KEY` — для чата и агентов
+- `MASTER_PASSWORD` — для расшифровки паролей серверов и менеджера паролей
 
-```env
-# API ключи (обязательно)
-GEMINI_API_KEY=your_gemini_api_key
-GROK_API_KEY=your_grok_api_key
+**Опционально:**
+- `POSTGRES_*` — если нужна PostgreSQL вместо SQLite
+- `WEU_BUILD=full` — полная сборка с RAG (sentence-transformers, Qdrant)
+- `JIRA_URL`, `JIRA_API_TOKEN`, `JIRA_EMAIL` — интеграция с Jira
+- `CURSOR_API_KEY` — для headless Cursor CLI
 
-# База данных (опционально — по умолчанию SQLite)
-POSTGRES_HOST=localhost
-POSTGRES_DB=weu_platform
-POSTGRES_USER=weu
-POSTGRES_PASSWORD=your_password
-POSTGRES_PORT=5432
+Модели (Gemini/Grok) настраиваются в `.model_config.json` или через веб-настройки.
 
-# Django (порт 80 — дефолтный HTTP; если порт 80 занят или нет прав — задай 8000)
-DJANGO_PORT=80
-WEU_PORT=80
-ALLOWED_HOSTS=*
-DJANGO_SUPERUSER_USERNAME=admin
-DJANGO_SUPERUSER_PASSWORD=admin
-
-# Тип сборки
-WEU_BUILD=mini  # или 'full' для RAG
-```
-
-### Домен не открывается (по IP работает, по домену — нет)
-
-Если по **http://IP** всё открывается, а по **http://weuai.site** — «The content of the page cannot be displayed»: при **только Docker** (без nginx) обнови код на сервере (`git pull`), проверь `.env` (ALLOWED_HOSTS — убери или поставь `*`), перезапусти контейнер (`docker compose restart web`). Подробно: [docs/DOMAIN_NGINX.md](docs/DOMAIN_NGINX.md).
-
-### HTTPS для weuai.site — что делать
-
-Чтобы **https://weuai.site** и **www.weuai.site** открывались без «Небезопасно» и ошибки страницы:
-
-1. На сервере: `cd ~/WEU-AI`, `mkdir -p certbot/www`.
-2. Установи certbot: `sudo apt install -y certbot`.
-3. Получи серт: `sudo certbot certonly --webroot -w "$(pwd)/certbot/www" -d weuai.site -d www.weuai.site --email твой@email.com --agree-tos --no-eff-email`.
-4. В **docker-compose.https.yml** замени в volume nginx конфиг на `./docker/nginx-https.conf` (вместо `nginx-http-first.conf`).
-5. Перезапусти nginx: `WEU_PORT=8000 docker compose -f docker-compose.yml -f docker-compose.https.yml restart nginx`.
-
-Подробно по шагам: [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md).
-
-### Конфигурация моделей (.model_config.json)
-
-```json
-{
-  "chat_model_gemini": "gemini-2.0-flash-exp",
-  "agent_model_gemini": "gemini-2.0-flash-exp",
-  "chat_model_grok": "grok-beta",
-  "default_provider": "gemini"
-}
-```
-
----
-
-## 🏗️ Архитектура
-
-```
-┌─────────────────────────────────────────┐
-│         Django Web Interface           │
-│  (core_ui, tasks, servers, passwords)  │
-└──────────────┬─────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│         Orchestrator Layer              │
-│  (ReAct Loop, Tool Execution, RAG)     │
-└──────────────┬─────────────────────────┘
-               │
-       ┌───────┴───────┐
-       ▼               ▼
-┌─────────────┐  ┌─────────────┐
-│ LLM Provider│  │ Tool Manager│
-│(Gemini/Grok)│  │ (Built-in + │
-│             │  │    MCP)     │
-└─────────────┘  └─────────────┘
-```
-
----
-
-## 📁 Структура проекта
-
-```
-web_rA/
-├── app/                    # Ядро приложения
-│   ├── core/              # Оркестратор, LLM, конфигурация
-│   ├── rag/               # RAG-движок
-│   ├── tools/             # Встроенные инструменты
-│   └── mcp/               # MCP-клиент
-├── core_ui/               # Основной веб-интерфейс
-├── agent_hub/             # Управление агентами
-├── tasks/                 # Система задач
-├── passwords/             # Менеджер паролей
-├── servers/               # Управление серверами
-├── web_ui/                # Django настройки
-├── docker-compose.yml     # Docker конфигурация
-├── Dockerfile             # Docker образ
-└── requirements.txt       # Python зависимости
-```
+Подробнее: [docs/QUICK_START_DEVOPS.md](docs/QUICK_START_DEVOPS.md), [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md).
 
 ---
 
 ## 📖 Документация
 
-- [Полное описание функциональности](DOCUMENTATION.md)
-- [Архитектура системы](docs/ARCHITECTURE.md)
-- [Руководство по интерфейсу](docs/UI_GUIDE.md)
-- [План развития](plan.md)
-
----
-
-## 🔧 Технологии
-
-**Backend:**
-- Django 5.2 + Daphne (ASGI)
-- PostgreSQL / SQLite
-- Qdrant (векторная БД)
-
-**AI/LLM:**
-- Google Gemini API
-- Grok API
-- sentence-transformers
-
-**Frontend:**
-- Django Templates
-- Vanilla JavaScript
-- Custom CSS (glass-morphism)
-
-**Infrastructure:**
-- Docker & Docker Compose
-- GitHub Actions (CI/CD)
+| Документ | Описание |
+|---------|----------|
+| [docs/FEATURES.md](docs/FEATURES.md) | Полный список возможностей и фич |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура и компоненты |
+| [docs/QUICK_START_DEVOPS.md](docs/QUICK_START_DEVOPS.md) | Быстрый старт для DevOps |
+| [docs/MODEL_SELECTION.md](docs/MODEL_SELECTION.md) | Выбор и настройка моделей |
+| [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md) | Настройка HTTPS (certbot) |
 
 ---
 
 ## 🔒 Безопасность
 
-- Django Authentication
-- AES-256 шифрование паролей
-- CSRF защита
-- Изоляция данных по пользователям
+- Аутентификация Django, разграничение доступа по пользователям и группам
+- Пароли серверов и менеджера паролей — AES-256 (ключ из `MASTER_PASSWORD`)
+- Блокировка опасных команд при выполнении по SSH (`rm -rf`, `mkfs`, `shutdown`, `systemctl stop` и т.п.)
+- CSRF-защита, изоляция данных по `user_id`
 
 ---
 
-## 🤝 Вклад в проект
+## 🤝 Участие в разработке
 
-1. Fork репозитория
-2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit изменения (`git commit -m 'Add amazing feature'`)
-4. Push в branch (`git push origin feature/amazing-feature`)
-5. Откройте Pull Request
+1. Сделай fork репозитория
+2. Создай ветку: `git checkout -b feature/название-фичи`
+3. Закоммить: `git commit -m 'Добавлена фича: название'`
+4. Запушь: `git push origin feature/название-фичи`
+5. Открой Pull Request
 
 ---
 
 ## 📄 Лицензия
 
-Распространяется под лицензией MIT. См. `LICENSE` для подробностей.
+Проект распространяется под лицензией **MIT**. Подробности — в файле [LICENSE](LICENSE).
 
 ---
 
-## 📞 Контакты
-
-- **Issues:** [GitHub Issues](https://github.com/your-repo/weu-ai-platform/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/your-repo/weu-ai-platform/discussions)
+<p align="center">
+  <sub>WEU AI Agent Platform · Version 2.0.0 · DevOps/IT Edition</sub>
+</p>
