@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Приглашение в проект{% endblock %}
+{% block header_title %}Приглашение в проект{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white">Приглашение</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="invitation-page">
+    <div class="invitation-card">
+        {% if is_expired %}
+        <div class="invitation-status expired">
+            <div class="status-icon">⏰</div>
+            <h2>Приглашение истекло</h2>
+            <p>Срок действия этого приглашения истёк. Попросите отправителя создать новое приглашение.</p>
+            <a href="{% url 'tasks:project_list' %}" class="btn btn-primary">К проектам</a>
+        </div>
+
+        {% elif not is_pending %}
+        <div class="invitation-status processed">
+            <div class="status-icon">
+                {% if invitation.status == 'accepted' %}✅{% else %}❌{% endif %}
+            </div>
+            <h2>
+                {% if invitation.status == 'accepted' %}
+                Приглашение принято
+                {% else %}
+                Приглашение отклонено
+                {% endif %}
+            </h2>
+            <p>Это приглашение уже было обработано.</p>
+            <a href="{% url 'tasks:project_list' %}" class="btn btn-primary">К проектам</a>
+        </div>
+
+        {% else %}
+        <div class="invitation-header">
+            <div class="project-icon" style="background: {{ invitation.project.color }}20; color: {{ invitation.project.color }};">
+                📁
+            </div>
+            <h1>Приглашение в проект</h1>
+        </div>
+
+        <div class="invitation-body">
+            <div class="project-info">
+                <span class="project-key">{{ invitation.project.key }}</span>
+                <h2>{{ invitation.project.name }}</h2>
+                {% if invitation.project.description %}
+                <p class="project-desc">{{ invitation.project.description|truncatewords:30 }}</p>
+                {% endif %}
+            </div>
+
+            <div class="invite-details">
+                <div class="detail-row">
+                    <span class="label">От:</span>
+                    <span class="value">{{ invitation.invited_by.username }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Роль:</span>
+                    <span class="value role-badge">{{ invitation.get_role_display }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Действительно до:</span>
+                    <span class="value">{{ invitation.expires_at|date:"d.m.Y H:i" }}</span>
+                </div>
+            </div>
+
+            {% if invitation.message %}
+            <div class="invite-message">
+                <strong>Сообщение:</strong>
+                <p>{{ invitation.message }}</p>
+            </div>
+            {% endif %}
+
+            <div class="invitation-actions">
+                <button class="btn btn-primary btn-large" onclick="acceptInvitation()">
+                    Принять приглашение
+                </button>
+                <button class="btn btn-secondary" onclick="declineInvitation()">
+                    Отклонить
+                </button>
+            </div>
+
+            {% if not user.is_authenticated %}
+            <div class="login-notice">
+                <p>Для принятия приглашения необходимо войти в систему</p>
+                <a href="{% url 'login' %}?next={{ request.path }}" class="btn btn-outline">Войти</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.invitation-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #3B82F610, #8B5CF610);
+}
+
+.invitation-card {
+    background: var(--bg-primary, white);
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    width: 100%;
+    max-width: 480px;
+    overflow: hidden;
+}
+
+.invitation-header {
+    text-align: center;
+    padding: 40px 30px 20px;
+    background: linear-gradient(135deg, #3B82F620, #8B5CF620);
+}
+
+.project-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    margin: 0 auto 20px;
+}
+
+.invitation-header h1 {
+    margin: 0;
+    font-size: 24px;
+    color: var(--text-primary, #1f2937);
+}
+
+.invitation-body {
+    padding: 30px;
+}
+
+.project-info {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.project-key {
+    display: inline-block;
+    background: var(--bg-secondary, #f3f4f6);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #6b7280);
+    margin-bottom: 8px;
+}
+
+.project-info h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+}
+
+.project-desc {
+    color: var(--text-secondary, #6b7280);
+    font-size: 14px;
+    margin: 0;
+}
+
+.invite-details {
+    background: var(--bg-secondary, #f9fafb);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.detail-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.detail-row .label {
+    color: var(--text-secondary, #6b7280);
+    font-size: 14px;
+}
+
+.detail-row .value {
+    font-weight: 500;
+}
+
+.role-badge {
+    background: #10B98120;
+    color: #059669;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+}
+
+.invite-message {
+    background: #FEF3C720;
+    border-left: 4px solid #F59E0B;
+    padding: 15px;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 20px;
+}
+
+.invite-message strong {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 13px;
+    color: var(--text-secondary, #6b7280);
+}
+
+.invite-message p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.invitation-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.btn {
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    font-size: 15px;
+    text-align: center;
+    text-decoration: none;
+}
+
+.btn-large {
+    padding: 16px 24px;
+    font-size: 16px;
+}
+
+.btn-primary {
+    background: var(--primary-color, #3B82F6);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563EB;
+}
+
+.btn-secondary {
+    background: var(--bg-secondary, #f3f4f6);
+    color: var(--text-primary, #1f2937);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--primary-color, #3B82F6);
+    color: var(--primary-color, #3B82F6);
+}
+
+.login-notice {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color, #e5e7eb);
+    text-align: center;
+}
+
+.login-notice p {
+    color: var(--text-secondary, #6b7280);
+    font-size: 14px;
+    margin: 0 0 15px;
+}
+
+/* Status pages */
+.invitation-status {
+    padding: 60px 30px;
+    text-align: center;
+}
+
+.status-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.invitation-status h2 {
+    margin: 0 0 15px;
+}
+
+.invitation-status p {
+    color: var(--text-secondary, #6b7280);
+    margin: 0 0 30px;
+}
+</style>
+
+<script>
+async function acceptInvitation() {
+    {% if not user.is_authenticated %}
+    window.location.href = "{% url 'login' %}?next={{ request.path }}";
+    return;
+    {% endif %}
+
+    try {
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify({ action: 'accept' }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.href = '/tasks/projects/' + result.project_id + '/';
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function declineInvitation() {
+    if (!confirm('Отклонить приглашение?')) return;
+
+    try {
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify({ action: 'decline' }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.href = '{% url "tasks:project_list" %}';
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

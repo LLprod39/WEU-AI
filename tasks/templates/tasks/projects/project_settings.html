@@ -1,0 +1,867 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ project.name }} - Настройки{% endblock %}
+{% block header_title %}Настройки — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'settings' %}" class="text-gray-500 hover:text-white transition-colors">Настройки</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'settings' %}#settings-projects" class="text-gray-500 hover:text-white transition-colors">Проекты</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white truncate">{{ project.key }} — {{ project.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<div class="settings-page ps-workspace">
+    <!-- Header -->
+    <div class="project-header-bar ps-header-bar">
+        <div class="breadcrumb">
+            <a href="{% url 'settings' %}">Настройки</a>
+            <span>/</span>
+            <a href="{% url 'settings' %}#settings-projects">Проекты</a>
+            <span>/</span>
+            <span class="project-key-badge" style="background: {{ project.color }}20; color: {{ project.color }};">{{ project.key }}</span>
+            <span>{{ project.name }}</span>
+        </div>
+    </div>
+
+    <div class="settings-container">
+        <div class="settings-nav">
+            <a href="#general" class="nav-item active" data-tab="general">Основные</a>
+            <a href="#members" class="nav-item" data-tab="members">Участники</a>
+            <a href="#integrations" class="nav-item" data-tab="integrations">Интеграции</a>
+            {% if can_delete %}
+            <a href="#danger" class="nav-item danger" data-tab="danger">Danger Zone</a>
+            {% endif %}
+        </div>
+
+        <div class="settings-content">
+            <!-- General Settings -->
+            <div class="tab-content active" id="tab-general">
+                <h2>Основные настройки</h2>
+                <form id="generalSettingsForm" onsubmit="saveGeneralSettings(event)">
+                    <div class="form-group">
+                        <label>Название проекта</label>
+                        <input type="text" name="name" value="{{ project.name }}" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ключ проекта</label>
+                            <input type="text" value="{{ project.key }}" disabled>
+                            <small>Ключ нельзя изменить после создания</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Цвет</label>
+                            <input type="color" name="color" value="{{ project.color }}">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Описание</label>
+                        <textarea name="description" rows="4">{{ project.description }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Исполнитель по умолчанию</label>
+                        <select name="default_assignee_id">
+                            <option value="">Не выбран</option>
+                            {% for member in members %}
+                            <option value="{{ member.user.id }}"
+                                {% if project.default_assignee_id == member.user.id %}selected{% endif %}>
+                                {{ member.user.username }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="is_public" {% if project.is_public %}checked{% endif %}>
+                            Публичный проект (виден всем пользователям)
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </form>
+            </div>
+
+            <!-- Members -->
+            <div class="tab-content" id="tab-members">
+                <div class="members-header">
+                    <h2>Участники проекта</h2>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="openInviteModal()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path>
+                                <circle cx="8.5" cy="7" r="4"></circle>
+                                <path d="M20 8v6m3-3h-6"></path>
+                            </svg>
+                            Пригласить
+                        </button>
+                        {% if user_teams %}
+                        <span class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px;">
+                            <select id="addTeamSelect" style="background: var(--ps-deep); border: 1px solid var(--ps-border); border-radius: 8px; padding: 8px 12px; color: var(--ps-text); font-size: 0.875rem;">
+                                <option value="">Добавить команду...</option>
+                                {% for t in user_teams %}
+                                <option value="{{ t.id }}">{{ t.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <select id="addTeamRole" style="background: var(--ps-deep); border: 1px solid var(--ps-border); border-radius: 8px; padding: 8px 12px; color: var(--ps-text); font-size: 0.875rem;">
+                                <option value="member">Участник</option>
+                                <option value="admin">Администратор</option>
+                                <option value="viewer">Наблюдатель</option>
+                            </select>
+                            <button type="button" class="btn btn-primary" style="padding: 8px 14px;" onclick="addTeamToProject()">В проект</button>
+                        </span>
+                        <span id="addTeamMessage" style="font-size: 0.8125rem; color: var(--ps-muted); align-self: center;"></span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="members-list">
+                    {% for member in members %}
+                    <div class="member-card">
+                        <div class="member-avatar" style="background: hsl({{ member.user.id|add:180 }}, 70%, 60%);">
+                            {{ member.user.username|slice:":1"|upper }}
+                        </div>
+                        <div class="member-info">
+                            <div class="member-name">{{ member.user.username }}</div>
+                            <div class="member-email">{{ member.user.email }}</div>
+                        </div>
+                        <div class="member-role">
+                            {% if member.role == 'owner' %}
+                            <span class="role-badge owner">Владелец</span>
+                            {% else %}
+                            <select class="role-select" onchange="changeRole({{ member.user.id }}, this.value)"
+                                    {% if member.role == 'owner' %}disabled{% endif %}>
+                                <option value="admin" {% if member.role == 'admin' %}selected{% endif %}>Администратор</option>
+                                <option value="member" {% if member.role == 'member' %}selected{% endif %}>Участник</option>
+                                <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Наблюдатель</option>
+                            </select>
+                            {% endif %}
+                        </div>
+                        {% if member.role != 'owner' %}
+                        <button class="remove-btn" onclick="removeMember({{ member.user.id }})" title="Удалить">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 6L6 18M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Pending Invitations -->
+                <div id="pendingInvitations" class="pending-section" style="display: none;">
+                    <h3>Ожидающие приглашения</h3>
+                    <div id="invitationsList"></div>
+                </div>
+            </div>
+
+            <!-- Integrations -->
+            <div class="tab-content" id="tab-integrations">
+                <h2>Интеграции</h2>
+                <p class="text-secondary">Настройка интеграций с внешними системами</p>
+
+                <div class="integration-card">
+                    <div class="integration-icon">📋</div>
+                    <div class="integration-info">
+                        <h4>Jira</h4>
+                        <p>Синхронизация задач с Jira</p>
+                    </div>
+                    <span class="integration-status">Скоро</span>
+                </div>
+
+                <div class="integration-card">
+                    <div class="integration-icon">🐙</div>
+                    <div class="integration-info">
+                        <h4>GitHub Issues</h4>
+                        <p>Импорт issues из GitHub</p>
+                    </div>
+                    <span class="integration-status">Скоро</span>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            {% if can_delete %}
+            <div class="tab-content" id="tab-danger">
+                <h2 class="text-danger">Danger Zone</h2>
+                <p class="text-secondary">Необратимые действия с проектом</p>
+
+                <div class="danger-actions">
+                    <div class="danger-card">
+                        <div class="danger-info">
+                            <h4>Архивировать проект</h4>
+                            <p>Проект будет скрыт из списка, но данные сохранятся</p>
+                        </div>
+                        <button class="btn btn-warning" onclick="archiveProject()">
+                            {% if project.archived_at %}Разархивировать{% else %}Архивировать{% endif %}
+                        </button>
+                    </div>
+
+                    <div class="danger-card">
+                        <div class="danger-info">
+                            <h4>Удалить проект</h4>
+                            <p>Все задачи, спринты и материалы будут удалены навсегда</p>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteProject()">Удалить проект</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Invite Modal (по умолчанию скрыто: глобальный .modal даёт display:flex, переопределяем) -->
+<div id="inviteModal" class="modal ps-modal-invite ps-modal-hidden" role="dialog" aria-modal="true" aria-labelledby="inviteModalTitle" aria-hidden="true">
+    <div class="modal-backdrop" id="inviteModalBackdrop" title="Закрыть (клик вне окна)"></div>
+    <div class="modal-content" role="document">
+        <div class="modal-header">
+            <h2 id="inviteModalTitle">Пригласить участника</h2>
+            <button type="button" class="close-btn" onclick="closeInviteModal()" aria-label="Закрыть">&times;</button>
+        </div>
+        <form id="inviteForm" onsubmit="sendInvite(event)" class="modal-form">
+            <div class="form-group">
+                <label for="inviteEmail">Email <span class="required">*</span></label>
+                <input type="email" name="email" id="inviteEmail" required placeholder="user@example.com" autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label for="inviteRole">Роль</label>
+                <select name="role" id="inviteRole">
+                    <option value="member">Участник</option>
+                    <option value="admin">Администратор</option>
+                    <option value="viewer">Наблюдатель</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="inviteMessage">Сообщение (необязательно)</label>
+                <textarea name="message" id="inviteMessage" rows="3" placeholder="Персональное сообщение"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeInviteModal()">Отмена</button>
+                <button type="submit" class="btn btn-primary">Отправить приглашение</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+/* Workspace-aligned dark theme (Outfit + tokens) */
+.ps-workspace {
+    --ps-void: #08080b;
+    --ps-deep: #0c0c10;
+    --ps-surface: #111116;
+    --ps-raised: #18181f;
+    --ps-hover: #1f1f28;
+    --ps-border: rgba(255,255,255,0.08);
+    --ps-border-hover: rgba(255,255,255,0.12);
+    --ps-text: #f8fafc;
+    --ps-muted: #94a3b8;
+    --ps-tertiary: #64748b;
+    --ps-accent: #6366f1;
+    --ps-accent-soft: rgba(99,102,241,0.15);
+    --ps-danger: #ef4444;
+    --ps-danger-soft: rgba(239,68,68,0.12);
+    --ps-warning: #f59e0b;
+    font-family: 'Outfit', system-ui, sans-serif;
+    min-height: 100vh;
+    background: var(--ps-void);
+}
+
+.ps-workspace .ps-header-bar {
+    padding: 16px 24px;
+    background: var(--ps-deep);
+    border-bottom: 1px solid var(--ps-border);
+}
+
+.ps-workspace .ps-header-bar .breadcrumb a,
+.ps-workspace .ps-header-bar .breadcrumb span { color: var(--ps-muted); }
+.ps-workspace .ps-header-bar .breadcrumb a:hover { color: var(--ps-accent); }
+.ps-workspace .ps-header-bar .breadcrumb span:not([class]) { color: var(--ps-text); }
+
+.ps-workspace .settings-container {
+    display: flex;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 28px 24px;
+    gap: 28px;
+}
+
+.ps-workspace .settings-nav {
+    width: 200px;
+    flex-shrink: 0;
+}
+
+.ps-workspace .settings-nav .nav-item {
+    display: block;
+    padding: 10px 14px;
+    color: var(--ps-muted);
+    text-decoration: none;
+    border-radius: 10px;
+    margin-bottom: 4px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+}
+
+.ps-workspace .settings-nav .nav-item:hover {
+    background: var(--ps-hover);
+    color: var(--ps-text);
+}
+
+.ps-workspace .settings-nav .nav-item.active {
+    background: var(--ps-accent-soft);
+    color: var(--ps-accent);
+}
+
+.ps-workspace .settings-nav .nav-item.danger {
+    color: var(--ps-danger);
+}
+.ps-workspace .settings-nav .nav-item.danger:hover { background: var(--ps-danger-soft); }
+
+.ps-workspace .settings-content {
+    flex: 1;
+    background: var(--ps-surface);
+    border-radius: 14px;
+    padding: 28px 32px;
+    border: 1px solid var(--ps-border);
+}
+
+.ps-workspace .tab-content { display: none; }
+.ps-workspace .tab-content.active { display: block; }
+
+.ps-workspace .tab-content h2 {
+    margin: 0 0 20px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--ps-text);
+    letter-spacing: -0.02em;
+}
+
+.ps-workspace .tab-content .text-secondary { color: var(--ps-muted); font-size: 0.875rem; }
+
+.ps-workspace .form-group { margin-bottom: 20px; }
+.ps-workspace .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    color: var(--ps-muted);
+}
+.ps-workspace .form-group input:not([type="checkbox"]):not([type="color"]),
+.ps-workspace .form-group select,
+.ps-workspace .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--ps-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: var(--ps-text);
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ps-workspace .form-group input:focus,
+.ps-workspace .form-group select:focus,
+.ps-workspace .form-group textarea:focus {
+    outline: none;
+    border-color: var(--ps-accent);
+    box-shadow: 0 0 0 3px var(--ps-accent-soft);
+}
+.ps-workspace .form-group input:disabled { opacity: 0.7; cursor: not-allowed; }
+.ps-workspace .form-group input[type="color"] {
+    width: 48px;
+    height: 40px;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--ps-border);
+    cursor: pointer;
+}
+.ps-workspace .form-group small {
+    display: block;
+    margin-top: 6px;
+    color: var(--ps-tertiary);
+    font-size: 0.75rem;
+}
+.ps-workspace .form-row { display: flex; gap: 20px; }
+.ps-workspace .form-row .form-group { flex: 1; }
+.ps-workspace .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    color: var(--ps-muted);
+    font-size: 0.875rem;
+}
+.ps-workspace .checkbox-label input { accent-color: var(--ps-accent); }
+
+/* Members */
+.ps-workspace .members-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.ps-workspace .members-list { display: flex; flex-direction: column; gap: 12px; }
+.ps-workspace .member-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    background: var(--ps-raised);
+    border: 1px solid var(--ps-border);
+    border-radius: 12px;
+    transition: border-color 0.15s;
+}
+.ps-workspace .member-card:hover { border-color: var(--ps-border-hover); }
+.ps-workspace .member-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9375rem;
+}
+.ps-workspace .member-name { font-weight: 500; color: var(--ps-text); }
+.ps-workspace .member-email { font-size: 0.8125rem; color: var(--ps-tertiary); }
+.ps-workspace .role-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+.ps-workspace .role-badge.owner {
+    background: rgba(139,92,246,0.2);
+    color: #a78bfa;
+}
+.ps-workspace .role-select {
+    padding: 8px 12px;
+    background: var(--ps-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    color: var(--ps-text);
+}
+.ps-workspace .remove-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ps-tertiary);
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.15s, color 0.15s;
+}
+.ps-workspace .remove-btn:hover {
+    background: var(--ps-danger-soft);
+    color: var(--ps-danger);
+}
+
+/* Integrations */
+.ps-workspace .integration-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--ps-raised);
+    border: 1px solid var(--ps-border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+}
+.ps-workspace .integration-icon { font-size: 1.75rem; }
+.ps-workspace .integration-info h4 { margin: 0 0 4px; color: var(--ps-text); font-size: 0.9375rem; }
+.ps-workspace .integration-info p { margin: 0; font-size: 0.8125rem; color: var(--ps-tertiary); }
+.ps-workspace .integration-status {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--ps-tertiary);
+    background: var(--ps-deep);
+}
+
+/* Danger Zone */
+.ps-workspace .text-danger { color: var(--ps-danger); }
+.ps-workspace .danger-actions { margin-top: 20px; }
+.ps-workspace .danger-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 22px;
+    border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--ps-danger-soft);
+}
+.ps-workspace .danger-info h4 { margin: 0 0 4px; color: var(--ps-text); font-size: 0.9375rem; }
+.ps-workspace .danger-info p { margin: 0; font-size: 0.8125rem; color: var(--ps-muted); }
+.ps-workspace .btn-warning {
+    background: var(--ps-warning);
+    color: #000;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+.ps-workspace .btn-danger {
+    background: var(--ps-danger);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+/* Modal — модалка вне .ps-workspace, поэтому задаём по id (глобальный .modal даёт display:flex) */
+#inviteModal {
+    --ps-surface: #111116;
+    --ps-border: rgba(255,255,255,0.08);
+    --ps-text: #f8fafc;
+    --ps-hover: #1f1f28;
+    --ps-tertiary: #64748b;
+}
+#inviteModal.ps-modal-hidden,
+#inviteModal:not(.ps-modal-show) {
+    display: none !important;
+}
+#inviteModal.ps-modal-show {
+    display: flex !important;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+#inviteModal .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    cursor: pointer;
+}
+#inviteModal.ps-modal-show .modal-content {
+    position: relative;
+    z-index: 10000;
+    cursor: default;
+    background: var(--ps-surface);
+    border: 1px solid var(--ps-border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.4);
+}
+#inviteModal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--ps-border);
+    flex-shrink: 0;
+}
+#inviteModal .modal-header h2 { margin: 0; font-size: 1.0625rem; font-weight: 600; color: var(--ps-text); }
+#inviteModal .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--ps-tertiary);
+    padding: 6px;
+    margin: -6px -6px -6px 0;
+    border-radius: 8px;
+    transition: color 0.15s, background 0.15s;
+}
+#inviteModal .close-btn:hover,
+#inviteModal .close-btn:focus {
+    color: var(--ps-text);
+    background: var(--ps-hover);
+    outline: none;
+}
+#inviteModal .modal-form { padding: 20px; }
+#inviteModal .modal-form .form-group { margin-bottom: 16px; }
+#inviteModal .modal-form .form-actions { margin-top: 20px; padding-top: 16px; }
+.ps-workspace .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--ps-border);
+}
+.ps-workspace .btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: background 0.15s, transform 0.05s;
+}
+.ps-workspace .btn-primary {
+    background: var(--ps-accent);
+    color: #fff;
+}
+.ps-workspace .btn-primary:hover { background: #4f46e5; }
+.ps-workspace .btn-secondary {
+    background: var(--ps-raised);
+    color: var(--ps-text);
+    border: 1px solid var(--ps-border);
+}
+.ps-workspace .btn-secondary:hover { background: var(--ps-hover); }
+.ps-workspace .required { color: var(--ps-danger); }
+</style>
+
+<script>
+// Tab navigation
+document.querySelectorAll('.settings-nav .nav-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.preventDefault();
+        const tab = this.dataset.tab;
+
+        document.querySelectorAll('.settings-nav .nav-item').forEach(i => i.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        this.classList.add('active');
+        document.getElementById('tab-' + tab).classList.add('active');
+    });
+});
+
+// Save general settings
+async function saveGeneralSettings(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    const data = {
+        name: form.name.value,
+        color: form.color.value,
+        description: form.description.value,
+        default_assignee_id: form.default_assignee_id.value || null,
+        is_public: form.is_public.checked,
+    };
+
+    try {
+        const response = await fetch('{% url "settings_project" project.id %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            alert('Настройки сохранены');
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Invite modal (используем ps-modal-show / ps-modal-hidden из-за глобального .modal { display: flex })
+function openInviteModal() {
+    var modal = document.getElementById('inviteModal');
+    if (!modal) return;
+    modal.classList.remove('ps-modal-hidden');
+    modal.classList.add('ps-modal-show');
+    modal.setAttribute('aria-hidden', 'false');
+    var firstInput = document.getElementById('inviteEmail');
+    if (firstInput) setTimeout(function() { firstInput.focus(); }, 100);
+    document.addEventListener('keydown', inviteModalEscape);
+}
+
+function closeInviteModal() {
+    var modal = document.getElementById('inviteModal');
+    if (!modal) return;
+    modal.classList.remove('ps-modal-show');
+    modal.classList.add('ps-modal-hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    var form = document.getElementById('inviteForm');
+    if (form) form.reset();
+    document.removeEventListener('keydown', inviteModalEscape);
+}
+
+function inviteModalEscape(e) {
+    if (e.key === 'Escape') closeInviteModal();
+}
+
+(function() {
+    var backdrop = document.getElementById('inviteModalBackdrop');
+    if (backdrop) backdrop.addEventListener('click', closeInviteModal);
+})();
+
+async function sendInvite(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    const data = {
+        email: form.email.value,
+        role: form.role.value,
+        message: form.message.value,
+    };
+
+    try {
+        const response = await fetch('{% url "tasks:project_invite" project.id %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            alert('Приглашение отправлено');
+            closeInviteModal();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Change member role
+async function changeRole(userId, newRole) {
+    try {
+        const response = await fetch(`{% url "tasks:project_member_role" project.id 0 %}`.replace('/0/', `/${userId}/`), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify({ role: newRole }),
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+            alert(result.error);
+            window.location.reload();
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Remove member
+async function removeMember(userId) {
+    if (!confirm('Удалить участника из проекта?')) return;
+
+    try {
+        const response = await fetch(`{% url "tasks:project_member_remove" project.id 0 %}`.replace('/0/', `/${userId}/`), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Add team to project
+async function addTeamToProject() {
+    var teamId = document.getElementById('addTeamSelect').value;
+    var msgEl = document.getElementById('addTeamMessage');
+    if (!teamId) { msgEl.textContent = 'Выберите команду'; return; }
+    msgEl.textContent = '';
+    try {
+        var role = document.getElementById('addTeamRole').value;
+        var response = await fetch('{% url "tasks:add_team_to_project" project.id 0 %}'.replace('/0/', '/' + teamId + '/'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ role: role })
+        });
+        var result = await response.json();
+        if (result.success) {
+            msgEl.textContent = 'Добавлено участников: ' + (result.added || 0);
+            document.getElementById('addTeamSelect').value = '';
+            setTimeout(function() { window.location.reload(); }, 800);
+        } else {
+            msgEl.textContent = result.error || 'Ошибка';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Ошибка: ' + err.message;
+    }
+}
+
+// Archive project
+async function archiveProject() {
+    if (!confirm('{% if project.archived_at %}Разархивировать{% else %}Архивировать{% endif %} проект?')) return;
+
+    try {
+        const response = await fetch('{% url "tasks:project_archive" project.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Delete project
+async function deleteProject() {
+    if (!confirm('Удалить проект? Все задачи будут удалены!')) return;
+    if (!confirm('Вы уверены? Это действие необратимо.')) return;
+
+    try {
+        const response = await fetch('{% url "tasks:project_delete" project.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.href = '{% url "settings" %}#settings-projects';
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

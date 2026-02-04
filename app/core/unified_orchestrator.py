@@ -7,7 +7,7 @@ from app.core.llm import LLMProvider
 from app.rag.engine import RAGEngine
 from app.tools.manager import get_tool_manager
 from app.core.model_config import model_manager
-from app.core.modes import ReActMode, RalphInternalMode
+from app.core.modes import ReActMode, RalphInternalMode, ChatMode
 
 
 # Инструкции и ограничения агента: язык и безопасность
@@ -38,6 +38,34 @@ AGENT_SYSTEM_RULES_RU = """
 - Удаление файлов и каталогов (rm -rf, rm и т.п.), перезапись критичных путей.
 - mkfs, разметка дисков, отключение/перезапуск системных сервисов.
 - Любые действия, необратимо меняющие состояние сервера.
+
+ЗАДАЧИ (РАЗДЕЛ TASKS):
+- Для списка задач используй tool: tasks_list (фильтр по статусу, поиск по тексту).
+- Для подробной карточки используй tool: task_detail (id).
+- Если пользователь просит сводку/список — ОБЯЗАТЕЛЬНО вызови tasks_list.
+
+ФОРМАТ ВЫВОДА ЗАДАЧ (строго соблюдай):
+```
+## Task Overview
+**3 total tasks** — 1 active, 2 in progress, 0 completed
+
+### TODO
+| # | Task | Priority | Assignee |
+|---|------|----------|----------|
+| #15 | Deploy Redis | MEDIUM | — |
+
+### IN PROGRESS
+| # | Task | Priority | Assignee |
+|---|------|----------|----------|
+| #12 | Setup monitoring | HIGH | @admin |
+```
+
+ПРАВИЛА ФОРМАТИРОВАНИЯ:
+- Заголовки с ## и ###
+- Таблицы для списков задач
+- Жирный текст для чисел: **3 total tasks**
+- БЕЗ emoji, только текст
+- Все данные из JSON включены
 """
 
 
@@ -53,11 +81,13 @@ class UnifiedOrchestrator:
     """
     
     MODES = {
+        "chat": ChatMode,  # простой чат без loop
         "react": ReActMode,
         "ralph_internal": RalphInternalMode,
         # "ralph_cli" removed - Ralph is not a CLI tool, use ralph_internal instead
         # For CLI agents (cursor/claude), use use_ralph_loop=True in config
         "ralph": RalphInternalMode,  # alias for backward compatibility
+        "ralph_cli": RalphInternalMode,  # legacy alias
     }
     
     def __init__(self):
@@ -120,7 +150,6 @@ class UnifiedOrchestrator:
         
         # Нормализовать model_preference: заменить "auto"/None на default_provider
         if not model_preference or model_preference == "auto":
-            from app.core.model_config import model_manager
             model_preference = model_manager.config.default_provider or "cursor"
         
         # Execute in selected mode
@@ -154,10 +183,16 @@ class UnifiedOrchestrator:
         history_text = ""
         if len(history_source) > 1:
             recent = history_source[-6:]
-            history_text = "\n".join([
-                f"{msg['role'].upper()}: {msg['content'][:200]}"
-                for msg in recent[:-1]
-            ])
+            history_lines = []
+            for msg in recent[:-1]:
+                content = msg['content']
+                # OBSERVATION (результаты инструментов) - больше лимит для полных данных
+                if msg['role'] == 'system' and content.startswith('OBSERVATION:'):
+                    truncated = content[:3000]
+                else:
+                    truncated = content[:200]
+                history_lines.append(f"{msg['role'].upper()}: {truncated}")
+            history_text = "\n".join(history_lines)
         
         ctx_block = ""
         exclude_tools = None

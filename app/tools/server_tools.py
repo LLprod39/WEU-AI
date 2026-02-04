@@ -8,6 +8,7 @@ from loguru import logger
 from app.tools.base import BaseTool, ToolMetadata, ToolParameter
 from app.tools.ssh_tools import ssh_manager
 from app.tools.safety import is_dangerous_command
+from asgiref.sync import sync_to_async
 
 
 def _get_user_id(kwargs: Dict[str, Any]) -> Optional[int]:
@@ -63,10 +64,13 @@ class ServersListTool(BaseTool):
         )
 
     async def execute(self, **kwargs) -> Any:
+        return await sync_to_async(self._execute_sync, thread_sensitive=True)(**kwargs)
+
+    def _execute_sync(self, **kwargs) -> Any:
         user_id = _get_user_id(kwargs)
         if not user_id:
             return "Требуется контекст пользователя (user_id). Используй только в чате WEU AI."
-        
+
         # Проверяем, есть ли ограничение на целевой сервер
         target_server_id, target_server_name = _get_target_server(kwargs)
         if target_server_id:
@@ -76,7 +80,7 @@ class ServersListTool(BaseTool):
                 f"НЕ вызывай servers_list — целевой сервер уже определён.\n"
                 f"Для выполнения команд используй: server_execute с server_name_or_id=\"{target_server_name}\""
             )
-        
+
         from servers.models import Server
         qs = Server.objects.filter(user_id=user_id).order_by("name").values("id", "name", "host", "port")
         rows = list(qs)
@@ -123,17 +127,11 @@ class ServerExecuteTool(BaseTool):
         if is_dangerous_command(command) and not allow_destructive:
             return "Команда выглядит опасной. Нужен явный допуск allow_destructive=true после подтверждения пользователя."
         
-        from servers.models import Server
-        
         # Проверяем, есть ли ограничение на конкретный сервер (из workflow/task или env)
         target_server_id, target_server_name = _get_target_server(kwargs)
         
         # Находим запрошенный сервер
-        try:
-            sid = int(server_name_or_id)
-            server = Server.objects.filter(user_id=user_id, id=sid).first()
-        except ValueError:
-            server = Server.objects.filter(user_id=user_id, name__iexact=server_name_or_id).first()
+        server = await sync_to_async(self._get_server, thread_sensitive=True)(user_id, server_name_or_id)
         
         if not server:
             if target_server_id:
@@ -181,31 +179,24 @@ class ServerExecuteTool(BaseTool):
             
             # Save command to history
             try:
-                from servers.models import ServerCommandHistory
-                from django.contrib.auth.models import User
-                user = User.objects.filter(id=user_id).first()
-                ServerCommandHistory.objects.create(
+                await sync_to_async(self._save_command_history, thread_sensitive=True)(
+                    user_id=user_id,
                     server=server,
-                    user=user,
                     command=command,
-                    output=out[:10000],  # Limit output size
-                    exit_code=code
+                    output=out[:10000],
+                    exit_code=code,
                 )
             except Exception as hist_err:
                 logger.debug(f"Failed to save command history: {hist_err}")
 
             # Analyze output and save AI knowledge
             try:
-                from servers.knowledge_service import ServerKnowledgeService
-                from django.contrib.auth.models import User
-                user = User.objects.filter(id=user_id).first()
-                task_id = ctx.get("task_id")
-                ServerKnowledgeService.analyze_and_save_knowledge(
+                await sync_to_async(self._save_knowledge, thread_sensitive=True)(
+                    user_id=user_id,
                     server=server,
                     command_output=out,
                     command=command,
-                    task_id=task_id,
-                    user=user
+                    task_id=ctx.get("task_id"),
                 )
             except Exception as knowledge_err:
                 logger.debug(f"Failed to analyze knowledge: {knowledge_err}")
@@ -221,3 +212,38 @@ class ServerExecuteTool(BaseTool):
         except Exception as e:
             logger.exception("server_execute failed")
             return f"Ошибка выполнения на {server.name}: {e}"
+
+    @staticmethod
+    def _get_server(user_id: int, server_name_or_id: str):
+        from servers.models import Server
+        try:
+            sid = int(server_name_or_id)
+            return Server.objects.filter(user_id=user_id, id=sid).first()
+        except ValueError:
+            return Server.objects.filter(user_id=user_id, name__iexact=server_name_or_id).first()
+
+    @staticmethod
+    def _save_command_history(user_id: int, server, command: str, output: str, exit_code: int):
+        from servers.models import ServerCommandHistory
+        from django.contrib.auth.models import User
+        user = User.objects.filter(id=user_id).first()
+        ServerCommandHistory.objects.create(
+            server=server,
+            user=user,
+            command=command,
+            output=output,
+            exit_code=exit_code
+        )
+
+    @staticmethod
+    def _save_knowledge(user_id: int, server, command_output: str, command: str, task_id=None):
+        from servers.knowledge_service import ServerKnowledgeService
+        from django.contrib.auth.models import User
+        user = User.objects.filter(id=user_id).first()
+        ServerKnowledgeService.analyze_and_save_knowledge(
+            server=server,
+            command_output=command_output,
+            command=command,
+            task_id=task_id,
+            user=user
+        )

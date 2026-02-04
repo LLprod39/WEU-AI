@@ -64,10 +64,11 @@ class ReActMode(BaseMode):
             except Exception as e:
                 logger.warning(f"RAG query failed: {e}")
         
-        # ReAct Loop
+        # ReAct Loop (Enhanced for precision)
         iteration = 0
         final_answer = ""
-        max_iterations = 5
+        max_iterations = 7  # Increased for better reasoning
+        tool_calls_made = []  # Track tool usage
         
         while iteration < max_iterations:
             iteration += 1
@@ -90,8 +91,6 @@ class ReActMode(BaseMode):
                 specific_model=specific_model
             ):
                 llm_response += chunk
-                if iteration == 1:  # Only show first iteration thinking
-                    yield chunk
             
             # Parse response for actions
             action_match = self.orchestrator._parse_action(llm_response)
@@ -100,8 +99,6 @@ class ReActMode(BaseMode):
                 # Agent wants to use a tool
                 tool_name = action_match['tool']
                 tool_args = action_match['args']
-                
-                yield f"\n\n🔧 **Using tool: {tool_name}**\n"
                 
                 try:
                     ctx = (execution_context or {}).copy()
@@ -116,9 +113,15 @@ class ReActMode(BaseMode):
                     result = await self.orchestrator.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
                     )
-                    
+
                     result_str = self.orchestrator._format_tool_result(result)
-                    yield f"✅ **Result:**\n```\n{result_str}\n```\n\n"
+
+                    # Track tool usage for verification
+                    tool_calls_made.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "iteration": iteration
+                    })
                     
                     # IDE_FILE_CHANGED event
                     if tool_name == "write_file" and ctx.get("workspace_path"):
@@ -179,7 +182,8 @@ class ReActMode(BaseMode):
                             "content": f"ERROR: {str(e)}"
                         })
                     
-                    continue
+                    # Stop early on tool failure to avoid noisy iterations
+                    return
             else:
                 # No action - final answer
                 final_answer = llm_response
@@ -188,7 +192,40 @@ class ReActMode(BaseMode):
         # If exhausted iterations without final answer
         if not final_answer:
             final_answer = "Достигнут лимит итераций. Вот что удалось выяснить:\n\n" + llm_response
-        
+
+        # VERIFICATION STEP: Review final answer for accuracy
+        if tool_calls_made and final_answer and len(final_answer) > 50:
+            verification_prompt = f"""Проверь свой ответ на точность и полноту.
+
+ИСХОДНЫЙ ЗАПРОС: {message}
+
+ИСПОЛЬЗОВАННЫЕ ИНСТРУМЕНТЫ: {', '.join([t['tool'] for t in tool_calls_made])}
+
+ТВОЙ ОТВЕТ:
+{final_answer}
+
+ВОПРОСЫ ДЛЯ ПРОВЕРКИ:
+1. Ответ полностью отвечает на запрос пользователя?
+2. Все данные из инструментов использованы?
+3. Нет ли противоречий или пропусков?
+
+Если ответ ПОЛНЫЙ и ТОЧНЫЙ - выведи: VERIFIED: OK
+Если нужны улучшения - выведи: IMPROVE: [краткое описание]
+"""
+
+            verification = ""
+            async for chunk in self.orchestrator.llm.stream_chat(
+                verification_prompt,
+                model=model_preference,
+                specific_model=specific_model
+            ):
+                verification += chunk
+
+            # If verification suggests improvements, note it
+            if "IMPROVE:" in verification:
+                logger.info(f"ReAct verification suggests improvements: {verification}")
+                # Could add another iteration here if needed
+
         # Add final answer to history
         effective_history.append({"role": "assistant", "content": final_answer})
         if not initial_history:
@@ -206,6 +243,16 @@ class ReActMode(BaseMode):
             except Exception as e:
                 logger.warning(f"Failed to add to RAG: {e}")
         
-        # Stream final answer if not already streamed
-        if iteration > 1:
-            yield f"\n\n{final_answer}"
+        # Post-processing: конвертируем #ID в кликабельные ссылки
+        if tool_calls_made:
+            # Проверяем были ли вызовы tasks_list или task_detail
+            task_tools_used = any(t['tool'] in ('tasks_list', 'task_detail') for t in tool_calls_made)
+            if task_tools_used:
+                import re
+                def make_task_link(m):
+                    task_id = m.group(1)
+                    return f"**[#{task_id}](task:{task_id})**"
+                final_answer = re.sub(r'(?<!\[)#(\d+)(?!\])', make_task_link, final_answer)
+
+        # Stream final answer
+        yield final_answer

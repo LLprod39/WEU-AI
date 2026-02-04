@@ -4,6 +4,7 @@ WEU AI Agent - URL Configuration
 from django.urls import path
 from django.contrib.auth.views import LogoutView
 from . import views
+from tasks import project_views as task_project_views
 
 urlpatterns = [
     # Public landing (no auth)
@@ -25,6 +26,7 @@ urlpatterns = [
     # Dashboard API
     path('api/dashboard/stats/', views.api_dashboard_stats, name='api_dashboard_stats'),
     path('settings/', views.settings_view, name='settings'),
+    path('settings/projects/<int:pk>/', task_project_views.project_settings, name='settings_project'),
     path('settings/access/', views.settings_access_view, name='settings_access'),
     path('settings/users/', views.settings_users_view, name='settings_users'),
     path('settings/groups/', views.settings_groups_view, name='settings_groups'),
@@ -56,6 +58,16 @@ urlpatterns = [
     path('api/settings/check/', views.api_settings_check, name='api_settings_check'),
     path('api/disk/', views.api_disk_usage, name='api_disk_usage'),
     path('api/clear-history/', views.api_clear_history, name='api_clear_history'),
+
+    # Access Management API (Users, Groups, Permissions)
+    path('api/access/users/', views.api_access_users, name='api_access_users'),
+    path('api/access/users/<int:user_id>/', views.api_access_user_detail, name='api_access_user_detail'),
+    path('api/access/users/<int:user_id>/password/', views.api_access_user_password, name='api_access_user_password'),
+    path('api/access/groups/', views.api_access_groups, name='api_access_groups'),
+    path('api/access/groups/<int:group_id>/', views.api_access_group_detail, name='api_access_group_detail'),
+    path('api/access/groups/<int:group_id>/members/', views.api_access_group_members, name='api_access_group_members'),
+    path('api/access/permissions/', views.api_access_permissions, name='api_access_permissions'),
+    path('api/access/permissions/<int:perm_id>/', views.api_access_permission_detail, name='api_access_permission_detail'),
     
     # File Upload API
     path('api/chat/upload/', views.api_upload_file, name='api_upload_file'),

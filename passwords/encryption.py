@@ -2,7 +2,7 @@
 Encryption utilities for password manager
 """
 import os
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -62,13 +62,24 @@ class PasswordEncryption:
             Decrypted password
         """
         try:
+            if not master_password:
+                raise ValueError("MASTER_PASSWORD пустой — расшифровка невозможна")
+            if not salt:
+                raise ValueError("Salt пустой — расшифровка невозможна")
             key = PasswordEncryption._get_key_from_password(master_password, salt)
             fernet = Fernet(key)
-            encrypted_bytes = base64.urlsafe_b64decode(encrypted_password.encode())
-            decrypted = fernet.decrypt(encrypted_bytes)
+            try:
+                encrypted_bytes = base64.urlsafe_b64decode((encrypted_password or "").encode())
+            except Exception as e:
+                raise ValueError("Секрет повреждён: некорректный base64") from e
+            try:
+                decrypted = fernet.decrypt(encrypted_bytes)
+            except InvalidToken as e:
+                # InvalidToken often has empty string representation
+                raise ValueError("Неверный мастер‑пароль или повреждённый секрет") from e
             return decrypted.decode()
         except Exception as e:
-            logger.error(f"Decryption failed: {e}")
+            logger.error(f"Decryption failed ({type(e).__name__}): {e!r}")
             raise
     
     @staticmethod

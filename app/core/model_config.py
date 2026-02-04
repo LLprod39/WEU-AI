@@ -157,6 +157,7 @@ class ModelManager:
         """Default Grok models list (fallback)"""
         return [
             "grok-3",
+            "grok-4-1-fast-non-reasoning",
         ]
     
     async def refresh_models(self):

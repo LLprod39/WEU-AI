@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Команды — Tasks{% endblock %}
+{% block header_title %}Команды{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white">Команды</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+.team-workspace {
+    --tw-void: #08080b;
+    --tw-surface: #111116;
+    --tw-raised: #18181f;
+    --tw-hover: #1f1f28;
+    --tw-border: rgba(255,255,255,0.08);
+    --tw-text: #f8fafc;
+    --tw-muted: #94a3b8;
+    --tw-accent: #6366f1;
+    --tw-accent-soft: rgba(99,102,241,0.15);
+    font-family: 'Outfit', system-ui, sans-serif;
+    min-height: calc(100vh - var(--header-height, 64px));
+    background: var(--tw-void);
+    padding: 24px 32px 48px;
+}
+.team-workspace h1 { margin: 0 0 28px; font-size: 1.75rem; font-weight: 600; color: var(--tw-text); }
+.team-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 28px; }
+.team-count { font-size: 0.875rem; color: var(--tw-muted); margin-left: 12px; font-weight: 400; }
+.team-btn-primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 10px; font-weight: 500; font-size: 0.875rem;
+    background: var(--tw-accent); color: #fff; border: none; cursor: pointer; font-family: inherit;
+}
+.team-btn-primary:hover { background: #4f46e5; }
+.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+.team-card {
+    background: var(--tw-surface); border: 1px solid var(--tw-border); border-radius: 14px;
+    padding: 20px; transition: border-color 0.15s; text-decoration: none; color: inherit; display: block;
+}
+.team-card:hover { border-color: var(--tw-accent); }
+.team-card-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 12px; }
+.team-card-icon {
+    width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 1rem; color: #fff; flex-shrink: 0;
+}
+.team-card-name { margin: 0; font-size: 1.0625rem; font-weight: 600; color: var(--tw-text); }
+.team-card-slug { font-size: 0.75rem; color: var(--tw-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+.team-card-meta { font-size: 0.8125rem; color: var(--tw-muted); }
+.team-empty {
+    text-align: center; padding: 48px 24px; background: var(--tw-surface); border: 1px dashed var(--tw-border); border-radius: 14px;
+}
+.team-empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.6; }
+.team-empty h3 { margin: 0 0 8px; font-size: 1.125rem; color: var(--tw-text); }
+.team-empty p { color: var(--tw-muted); margin: 0 0 20px; font-size: 0.875rem; }
+</style>
+
+<div class="team-workspace">
+    <div class="team-header">
+        <h1>Команды <span class="team-count">{{ teams|length }} команд</span></h1>
+        <a href="{% url 'tasks:team_create' %}" class="team-btn-primary">
+            <span class="material-icons-round" style="font-size: 18px;">add</span>
+            Создать команду
+        </a>
+    </div>
+
+    {% if teams %}
+    <div class="team-grid">
+        {% for team in teams %}
+        <a href="{% url 'tasks:team_detail' team.id %}" class="team-card">
+            <div class="team-card-header">
+                <div class="team-card-icon" style="background: {{ team.color }};">{{ team.name|slice:":2" }}</div>
+                <div>
+                    <h2 class="team-card-name">{{ team.name }}</h2>
+                    <div class="team-card-slug">{{ team.slug }}</div>
+                </div>
+            </div>
+            <div class="team-card-meta">
+                {{ team.member_count }} участник{{ team.member_count|pluralize:"ов" }}{% if team.task_count %} · {{ team.task_count }} задач{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="team-empty">
+        <div class="team-empty-icon">👥</div>
+        <h3>Нет команд</h3>
+        <p>Создайте команду, чтобы объединить участников и добавлять их в проекты одним действием.</p>
+        <a href="{% url 'tasks:team_create' %}" class="team-btn-primary">Создать команду</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

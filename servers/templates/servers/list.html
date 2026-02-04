@@ -1,16 +1,17 @@
 {% extends 'base.html' %}
 
-{% block title %}Server Management - WEU AI{% endblock %}
-{% block header_title %}Servers{% endblock %}
+{% block title %}Infrastructure — Servers{% endblock %}
+{% block header_title %}Infrastructure{% endblock %}
+
 {% block breadcrumbs %}
 <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
-    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+    <ol class="flex items-center gap-2 list-none" itemscope itemtype="https://schema.org/BreadcrumbList">
         <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
             <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
             <meta itemprop="position" content="1">
-            <span class="text-gray-600" aria-hidden="true">/</span>
+            <span class="text-gray-700">/</span>
         </li>
-        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center" aria-current="page">
             <span class="font-medium text-white" itemprop="name">Servers</span>
             <meta itemprop="position" content="2">
         </li>
@@ -19,235 +20,428 @@
 {% endblock %}
 
 {% block content %}
-<div class="h-full flex flex-col p-6 overflow-hidden">
-    <!-- Toolbar -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold text-white">Servers</h1>
-            <p class="text-gray-400 text-sm mt-1">Manage server groups, SSH hosts, and bulk actions.</p>
-        </div>
-        <div class="flex gap-2">
-            <button onclick="openGroupModal()"
-                class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 rounded-xl transition-all flex items-center gap-2">
-                <span class="material-icons-round text-sm">group</span>
-                New Group
-            </button>
-            <button onclick="openCreateModal()"
-                class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2">
-                <span class="material-icons-round text-sm">add</span>
-                Add Server
-            </button>
-        </div>
-    </div>
+<style>
+    /* Industrial Command Center Aesthetics */
+    .server-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 1px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 12px;
+        overflow: hidden;
+    }
 
-    <div class="flex items-center justify-between mb-4 bg-bg-surface/50 rounded-xl p-3 border border-white/5">
-        <div class="flex items-center gap-3">
-            <span class="text-xs text-gray-500">Group filter</span>
-            <select id="group-filter" class="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-gray-300" onchange="applyGroupFilter()">
-                <option value="">All</option>
-                {% for group in groups %}
-                <option value="{{ group.id }}" {% if request.GET.group == group.id|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-gray-400">
-            <span class="material-icons-round text-sm">playlist_add_check</span>
-            <span id="selected-count">0 selected</span>
-            <select id="bulk-action" class="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-300">
-                <option value="">Bulk action</option>
-                <option value="set_group">Move to group</option>
-                <option value="set_tags">Set tags</option>
-                <option value="deactivate">Deactivate</option>
-            </select>
-            <button onclick="applyBulkAction()" class="px-3 py-1.5 bg-primary/20 text-primary rounded-lg">Apply</button>
-        </div>
-    </div>
+    .server-card {
+        background: rgba(9, 9, 11, 0.8);
+        position: relative;
+        transition: all 0.2s ease;
+    }
 
-    <!-- Groups Panel -->
-    <div class="mb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {% for group in groups %}
-        <div class="bg-bg-surface/50 rounded-2xl border border-white/5 p-4">
-            <div class="flex items-start justify-between mb-2">
-                <div>
-                    <h3 class="text-white font-semibold">{{ group.name }}</h3>
-                    <p class="text-xs text-gray-400">{{ group.description|default:"No description" }}</p>
+    .server-card::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--status-color, #374151);
+        transition: all 0.3s ease;
+    }
+
+    .server-card:hover {
+        background: rgba(17, 17, 19, 0.95);
+    }
+
+    .server-card:hover::before {
+        width: 4px;
+        box-shadow: 0 0 20px var(--status-color, #374151);
+    }
+
+    .server-card.status-online { --status-color: #10b981; }
+    .server-card.status-offline { --status-color: #ef4444; }
+    .server-card.status-unknown { --status-color: #6b7280; }
+    .server-card.status-warning { --status-color: #f59e0b; }
+
+    /* Pulse animation for connected servers */
+    .server-card.is-connected::after {
+        content: '';
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 8px;
+        height: 8px;
+        background: #10b981;
+        border-radius: 50%;
+        animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+
+    /* Group sections */
+    .group-section {
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 16px;
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+
+    .group-header {
+        background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .group-header:hover {
+        background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+    }
+
+    .group-content {
+        max-height: 2000px;
+        overflow: hidden;
+        transition: max-height 0.4s ease;
+    }
+
+    .group-content.collapsed {
+        max-height: 0;
+    }
+
+    /* Quick connect button */
+    .quick-connect {
+        opacity: 0;
+        transform: translateX(8px);
+        transition: all 0.2s ease;
+    }
+
+    .server-card:hover .quick-connect {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    /* AI indicator */
+    .ai-indicator {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.1));
+        border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    /* Mono data display */
+    .mono-data {
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
+        font-size: 12px;
+        letter-spacing: -0.02em;
+    }
+
+    /* Bulk action bar */
+    .bulk-bar {
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        transform: translateY(100%);
+        opacity: 0;
+        transition: all 0.3s ease;
+    }
+
+    .bulk-bar.active {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    /* Search input */
+    .search-input {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: all 0.2s ease;
+    }
+
+    .search-input:focus {
+        background: rgba(255,255,255,0.05);
+        border-color: rgba(99, 102, 241, 0.3);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    /* Stats bar */
+    .stat-pill {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* Custom checkbox */
+    .server-checkbox {
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255,255,255,0.15);
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        position: relative;
+    }
+
+    .server-checkbox:checked {
+        background: #6366f1;
+        border-color: #6366f1;
+    }
+
+    .server-checkbox:checked::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 2px;
+        width: 4px;
+        height: 8px;
+        border: solid white;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+
+    .server-checkbox:hover {
+        border-color: rgba(255,255,255,0.3);
+    }
+</style>
+
+<div class="h-full flex flex-col overflow-hidden">
+    <!-- Command Bar -->
+    <div class="flex-shrink-0 px-6 py-4 border-b border-white/5">
+        <div class="flex items-center justify-between gap-6">
+            <!-- Left: Search & Filters -->
+            <div class="flex items-center gap-4 flex-1 max-w-2xl">
+                <div class="relative flex-1">
+                    <span class="material-icons-round absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">search</span>
+                    <input type="text" id="server-search" placeholder="Search servers, IPs, tags..."
+                           class="search-input w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none">
                 </div>
-                <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">Group</span>
+                <div class="flex items-center gap-2">
+                    <select id="group-filter" class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-primary/50">
+                        <option value="">All Groups</option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}" {% if request.GET.group == group.id|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <select id="status-filter" class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-primary/50">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
             </div>
-            <div class="flex flex-wrap gap-1 mb-3">
-                {% for tag in group.tags.all %}
-                <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{{ tag.name }}</span>
-                {% empty %}
-                <span class="text-[10px] text-gray-500">No tags</span>
-                {% endfor %}
-            </div>
-            <div class="flex gap-2">
-                <button onclick="openMemberModal({{ group.id }})"
-                    class="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300">Members</button>
-                <button onclick="subscribeGroup({{ group.id }}, 'favorite')"
-                    class="px-3 py-2 bg-primary/20 text-primary rounded-lg text-xs">Favorite</button>
+
+            <!-- Right: Stats & Actions -->
+            <div class="flex items-center gap-4">
+                <!-- Live Stats -->
+                <div class="hidden lg:flex items-center gap-3">
+                    <div class="stat-pill flex items-center gap-2 px-3 py-1.5 rounded-lg">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span class="mono-data text-gray-400"><span id="stat-online" class="text-white">{{ servers|length }}</span> online</span>
+                    </div>
+                    <div class="stat-pill flex items-center gap-2 px-3 py-1.5 rounded-lg">
+                        <span class="material-icons-round text-sm text-gray-500">dns</span>
+                        <span class="mono-data text-gray-400"><span id="stat-total" class="text-white">{{ servers|length }}</span> total</span>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-2">
+                    <a href="{% url 'servers:multi_terminal' %}" class="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl transition-all flex items-center gap-2 text-sm font-medium">
+                        <span class="material-icons-round text-lg">dashboard</span>
+                        <span class="hidden sm:inline">Terminal Hub</span>
+                    </a>
+                    <button onclick="openGroupModal()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl transition-all flex items-center gap-2 text-sm">
+                        <span class="material-icons-round text-lg">folder</span>
+                        <span class="hidden sm:inline">New Group</span>
+                    </button>
+                    <button onclick="openCreateModal()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2 text-sm font-medium">
+                        <span class="material-icons-round text-lg">add</span>
+                        Add Server
+                    </button>
+                </div>
             </div>
         </div>
-        {% empty %}
-        <div class="col-span-full text-center text-gray-500 py-4">
-            No groups yet. Create one to organize servers.
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
+        <!-- Ungrouped Servers -->
+        {% if servers %}
+        <div class="group-section">
+            <div class="group-header px-5 py-4 flex items-center justify-between" onclick="toggleGroup('ungrouped')">
+                <div class="flex items-center gap-3">
+                    <span class="material-icons-round text-gray-500 transition-transform duration-300" id="chevron-ungrouped">expand_more</span>
+                    <h2 class="text-white font-semibold">All Servers</h2>
+                    <span class="mono-data text-gray-500">({{ servers|length }})</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer" onclick="event.stopPropagation()">
+                        <input type="checkbox" class="server-checkbox" id="select-all-ungrouped" onchange="toggleSelectAll('ungrouped')">
+                        Select all
+                    </label>
+                </div>
+            </div>
+            <div class="group-content" id="content-ungrouped">
+                <div class="server-grid">
+                    {% for server in servers %}
+                    <div class="server-card p-5 {% if server.is_active %}status-online{% else %}status-offline{% endif %}" data-server-id="{{ server.id }}" data-group="ungrouped">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="flex items-start gap-4 flex-1 min-w-0">
+                                <input type="checkbox" class="server-checkbox server-select mt-1" value="{{ server.id }}" data-group="ungrouped" onchange="updateBulkBar()">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h3 class="font-semibold text-white truncate">{{ server.name }}</h3>
+                                        {% if server.corporate_context %}
+                                        <span class="ai-indicator px-2 py-0.5 rounded text-[10px] text-primary font-medium flex items-center gap-1">
+                                            <span class="material-icons-round text-xs">psychology</span>
+                                            AI Context
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mono-data text-gray-400 mb-3">{{ server.host }}:{{ server.port }}</div>
+
+                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">person</span>
+                                            {{ server.username }}
+                                        </span>
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">vpn_key</span>
+                                            {{ server.get_auth_method_display }}
+                                        </span>
+                                        {% if server.group %}
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">folder</span>
+                                            {{ server.group.name }}
+                                        </span>
+                                        {% endif %}
+                                        {% if server.tags %}
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">label</span>
+                                            {{ server.tags }}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
+                                    <span class="material-icons-round text-lg">check_circle</span>
+                                </button>
+                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
+                                    <span class="material-icons-round text-lg">terminal</span>
+                                    Connect
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
+        {% else %}
+        <!-- Empty State -->
+        <div class="flex flex-col items-center justify-center py-20 text-center">
+            <div class="w-24 h-24 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6">
+                <span class="material-icons-round text-5xl text-gray-600">dns</span>
+            </div>
+            <h2 class="text-xl font-semibold text-white mb-2">No servers configured</h2>
+            <p class="text-gray-500 mb-8 max-w-md">Add your first server to start managing your infrastructure with AI-powered assistance.</p>
+            <button onclick="openCreateModal()" class="px-6 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all flex items-center gap-2 font-medium">
+                <span class="material-icons-round">add</span>
+                Add Your First Server
+            </button>
+        </div>
+        {% endif %}
+
+        <!-- Server Groups -->
+        {% for group in groups %}
+        {% with group_servers=group.servers.all %}
+        {% if group_servers %}
+        <div class="group-section">
+            <div class="group-header px-5 py-4 flex items-center justify-between" onclick="toggleGroup('group-{{ group.id }}')">
+                <div class="flex items-center gap-3">
+                    <span class="material-icons-round text-gray-500 transition-transform duration-300" id="chevron-group-{{ group.id }}">expand_more</span>
+                    <div class="w-3 h-3 rounded" style="background: {{ group.color|default:'#6366f1' }}"></div>
+                    <h2 class="text-white font-semibold">{{ group.name }}</h2>
+                    <span class="mono-data text-gray-500">({{ group_servers|length }})</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    {% for tag in group.tags.all %}
+                    <span class="px-2 py-1 rounded bg-white/5 text-[10px] text-gray-400">{{ tag.name }}</span>
+                    {% endfor %}
+                    <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer" onclick="event.stopPropagation()">
+                        <input type="checkbox" class="server-checkbox" id="select-all-group-{{ group.id }}" onchange="toggleSelectAll('group-{{ group.id }}')">
+                        Select all
+                    </label>
+                </div>
+            </div>
+            <div class="group-content" id="content-group-{{ group.id }}">
+                <div class="server-grid">
+                    {% for server in group_servers %}
+                    <div class="server-card p-5 {% if server.is_active %}status-online{% else %}status-offline{% endif %}" data-server-id="{{ server.id }}" data-group="group-{{ group.id }}">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="flex items-start gap-4 flex-1 min-w-0">
+                                <input type="checkbox" class="server-checkbox server-select mt-1" value="{{ server.id }}" data-group="group-{{ group.id }}" onchange="updateBulkBar()">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h3 class="font-semibold text-white truncate">{{ server.name }}</h3>
+                                        {% if server.corporate_context %}
+                                        <span class="ai-indicator px-2 py-0.5 rounded text-[10px] text-primary font-medium flex items-center gap-1">
+                                            <span class="material-icons-round text-xs">psychology</span>
+                                            AI
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mono-data text-gray-400 mb-3">{{ server.host }}:{{ server.port }}</div>
+                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">person</span>
+                                            {{ server.username }}
+                                        </span>
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="material-icons-round text-sm">vpn_key</span>
+                                            {{ server.get_auth_method_display }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
+                                    <span class="material-icons-round text-lg">check_circle</span>
+                                </button>
+                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
+                                    <span class="material-icons-round text-lg">terminal</span>
+                                    Connect
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endwith %}
         {% endfor %}
     </div>
 
-    <!-- Servers List -->
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
-        <div id="servers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {% for server in servers %}
-            <div class="bg-bg-surface/50 rounded-2xl border border-white/5 p-4 hover:border-primary/30 transition-all">
-                <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                            <span class="material-icons-round text-emerald-400">dns</span>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-white">{{ server.name }}</h3>
-                            <p class="text-xs text-gray-400">{{ server.host }}:{{ server.port }}</p>
-                        </div>
-                    </div>
-                    <label class="flex items-center gap-2 text-xs text-gray-400">
-                        <input type="checkbox" class="server-select" value="{{ server.id }}" onchange="updateSelectedCount()">
-                        {% if server.is_active %}
-                        <span class="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400">Active</span>
-                        {% else %}
-                        <span class="px-2 py-1 rounded-full bg-red-500/20 text-red-400">Inactive</span>
-                        {% endif %}
-                    </label>
-                </div>
-                <div class="space-y-2 mb-4">
-                    <div class="flex items-center gap-2 text-xs text-gray-400">
-                        <span class="material-icons-round text-sm">person</span>
-                        <span>{{ server.username }}</span>
-                    </div>
-                    <div class="flex items-center gap-2 text-xs text-gray-400">
-                        <span class="material-icons-round text-sm">vpn_key</span>
-                        <span>{{ server.get_auth_method_display }}</span>
-                    </div>
-                    {% if server.group %}
-                    <div class="flex items-center gap-2 text-xs text-gray-400">
-                        <span class="material-icons-round text-sm">group</span>
-                        <span>{{ server.group.name }}</span>
-                    </div>
-                    {% endif %}
-                    {% if server.tags %}
-                    <div class="flex items-center gap-2 text-xs text-gray-400">
-                        <span class="material-icons-round text-sm">label</span>
-                        <span>{{ server.tags }}</span>
-                    </div>
-                    {% endif %}
-                    {% if server.corporate_context %}
-                    <div class="flex items-center gap-2 text-xs text-amber-400" title="{{ server.corporate_context|truncatewords:20 }}">
-                        <span class="material-icons-round text-sm">business</span>
-                        <span>Корпоративные требования</span>
-                    </div>
-                    {% endif %}
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="testConnection({{ server.id }})"
-                        class="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300 transition-colors flex items-center justify-center gap-1">
-                        <span class="material-icons-round text-sm">check_circle</span>
-                        Test
-                    </button>
-                    <button onclick="openExecuteModal({{ server.id }}, '{{ server.name|escapejs }}')"
-                        class="flex-1 px-3 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs text-primary transition-colors flex items-center justify-center gap-1">
-                        <span class="material-icons-round text-sm">terminal</span>
-                        Execute
-                    </button>
-                </div>
-            </div>
-            {% empty %}
-            <div class="col-span-full flex flex-col items-center justify-center py-16 text-center">
-                <span class="material-icons-round text-6xl text-gray-600 mb-4">dns</span>
-                <h3 class="text-xl font-semibold text-gray-400 mb-2">No servers configured</h3>
-                <p class="text-gray-500 mb-6">Add your first server to get started</p>
-                <button onclick="openCreateModal()"
-                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg">
-                    Add Server
-                </button>
-            </div>
-            {% endfor %}
+    <!-- Bulk Action Bar (Fixed Bottom) -->
+    <div id="bulk-bar" class="bulk-bar fixed bottom-0 left-0 right-0 px-6 py-4 flex items-center justify-between z-50">
+        <div class="flex items-center gap-4">
+            <span class="text-white font-medium"><span id="selected-count">0</span> servers selected</span>
+            <button onclick="clearSelection()" class="text-gray-400 hover:text-white text-sm">Clear</button>
         </div>
-    </div>
-</div>
-
-<!-- Create Group Modal -->
-<div id="groupModal" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeGroupModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4">Create Group</h2>
-        <form id="groupForm" onsubmit="saveGroup(event)">
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Name *</label>
-                    <input type="text" id="group-name" required
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Description</label>
-                    <textarea id="group-description" rows="2"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"></textarea>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Color</label>
-                    <input type="color" id="group-color" value="#3b82f6"
-                        class="w-full h-10 bg-bg-base border border-white/10 rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Tags</label>
-                    <select id="group-tags" multiple
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                        {% for tag in group_tags %}
-                        <option value="{{ tag.id }}">{{ tag.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1">Use Ctrl/Cmd to select multiple tags.</p>
-                </div>
-            </div>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" onclick="closeGroupModal()"
-                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
-                <button type="submit"
-                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
-                    Save
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Members Modal -->
-<div id="memberModal" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeMemberModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4">Manage Members</h2>
-        <input type="hidden" id="member-group-id">
-        <div class="space-y-4">
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Username or Email</label>
-                <input type="text" id="member-identifier"
-                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Role</label>
-                <select id="member-role"
-                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                    <option value="viewer">Viewer</option>
-                </select>
-            </div>
-        </div>
-        <div class="flex justify-end gap-3 mt-6">
-            <button type="button" onclick="closeMemberModal()"
-                class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
-            <button type="button" onclick="addMember()"
-                class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
-                Add Member
+        <div class="flex items-center gap-3">
+            <select id="bulk-action" class="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white focus:outline-none">
+                <option value="">Choose action...</option>
+                <option value="set_group">Move to group</option>
+                <option value="set_tags">Set tags</option>
+                <option value="deactivate">Deactivate</option>
+                <option value="delete">Delete</option>
+            </select>
+            <button onclick="applyBulkAction()" class="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg font-medium transition-colors">
+                Apply
             </button>
         </div>
     </div>
@@ -255,162 +449,227 @@
 
 <!-- Create Server Modal -->
 <div id="serverModal" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl p-6">
-        <h2 class="text-xl font-bold text-white mb-4">Add Server</h2>
-        <form id="serverForm" onsubmit="saveServer(event)">
-            <div class="space-y-4">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+            <h2 class="text-lg font-bold text-white">Add Server</h2>
+            <button onclick="closeModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <form id="serverForm" onsubmit="saveServer(event)" class="p-6">
+            <div class="space-y-5">
+                <!-- Name -->
                 <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Name *</label>
-                    <input type="text" id="server-name" required
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Server Name *</label>
+                    <input type="text" id="server-name" required placeholder="production-api-01"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Host *</label>
-                        <input type="text" id="server-host" required
-                            class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+
+                <!-- Host & Port -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Host *</label>
+                        <input type="text" id="server-host" required placeholder="192.168.1.100 or hostname"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Port</label>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Port</label>
                         <input type="number" id="server-port" value="22"
-                            class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono">
                     </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Username *</label>
-                    <input type="text" id="server-username" required
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+
+                <!-- Username & Group -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Username *</label>
+                        <input type="text" id="server-username" required placeholder="root"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Group</label>
+                        <select id="server-group" class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
+                            <option value="">No group</option>
+                            {% for group in groups %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
+
+                <!-- Auth Method -->
                 <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Group</label>
-                    <select id="server-group"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                        <option value="">No group</option>
-                        {% for group in groups %}
-                        <option value="{{ group.id }}">{{ group.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Auth Method *</label>
-                    <select id="server-auth-method" required
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
-                        onchange="toggleAuthFields()">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Authentication *</label>
+                    <select id="server-auth-method" required onchange="toggleAuthFields()"
+                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
                         <option value="password">Password</option>
                         <option value="key">SSH Key</option>
-                        <option value="key_password">SSH Key + Password</option>
+                        <option value="key_password">SSH Key + Passphrase</option>
                     </select>
                 </div>
-                <div id="password-field" class="hidden">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Password</label>
-                    <input type="password" id="server-password"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                    <p class="text-xs text-gray-500 mt-1">Master password for encryption</p>
-                    <input type="password" id="server-master-password" placeholder="Master Password"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50 mt-2">
-                </div>
-                <div id="key-field" class="hidden">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">SSH Key Path</label>
-                    <input type="text" id="server-key-path"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
-                        placeholder="/path/to/key">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Tags</label>
-                    <input type="text" id="server-tags" placeholder="prod, staging, db"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-                </div>
-                
-                <!-- Общие заметки -->
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Notes</label>
-                    <textarea id="server-notes" rows="2"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50"
-                        placeholder="Общие заметки о сервере..."></textarea>
-                </div>
-                
-                <!-- Корпоративные требования -->
-                <div class="bg-white/5 rounded-lg p-3 border border-white/10">
-                    <div class="flex items-start gap-2 mb-2">
-                        <span class="material-icons-round text-amber-400 text-sm">business</span>
-                        <div class="flex-1">
-                            <label class="block text-xs font-medium text-gray-300 mb-1">
-                                Корпоративные требования / Контекст доступа
-                            </label>
-                            <p class="text-xs text-gray-500 mb-2">
-                                Важная информация для AI агента: прокси, VPN, переменные окружения, специальные условия подключения
-                            </p>
-                        </div>
+
+                <!-- Password Fields -->
+                <div id="password-field" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Password</label>
+                        <input type="password" id="server-password" placeholder="Server password"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
                     </div>
-                    <textarea id="server-corporate-context" rows="5"
-                        class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
-                        placeholder="Примеры:
-• Для работы интернета в SSH сессии передать: export http_proxy=http://proxy.corp:8080
-• Обязательно подключиться через VPN: vpn.company.com
-• Environment variables: CORPORATE_API_KEY=xxx, REGION=eu-west
-• Bastion host: ssh -J bastion.corp:22 user@target
-• Firewall: только порты 22, 443 открыты"></textarea>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Master Password (for encryption)</label>
+                        <input type="password" id="server-master-password" placeholder="Your master password"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
+                        <p class="text-[11px] text-gray-500 mt-2">Password will be encrypted with AES-256</p>
+                    </div>
+                </div>
+
+                <!-- Key Path -->
+                <div id="key-field" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">SSH Key Path</label>
+                    <input type="text" id="server-key-path" placeholder="~/.ssh/id_rsa"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono">
+                </div>
+
+                <!-- Tags -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Tags</label>
+                    <input type="text" id="server-tags" placeholder="production, api, critical"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
+                </div>
+
+                <!-- Corporate Context (AI) -->
+                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="material-icons-round text-primary text-lg">psychology</span>
+                        <span class="text-sm font-medium text-white">AI Context</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary">Optional</span>
+                    </div>
+                    <textarea id="server-corporate-context" rows="4" placeholder="Context for AI assistant:
+• Proxy settings: export http_proxy=...
+• VPN requirements
+• Special access conditions
+• Environment variables"
+                              class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono text-xs resize-none"></textarea>
                 </div>
             </div>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" onclick="closeModal()"
-                    class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
-                <button type="submit"
-                    class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg shadow-glow-primary transition-all">
-                    Save
+
+            <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
+                <button type="button" onclick="closeModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" class="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all font-medium">
+                    Add Server
                 </button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Execute Command Modal -->
-<div id="executeModal" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeExecuteModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[90vh] flex flex-col bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-        <div class="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
-            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                <span class="material-icons-round text-primary">terminal</span>
-                <span id="execute-modal-title">Выполнить команду</span>
-            </h2>
-            <button type="button" onclick="closeExecuteModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Закрыть">
-                <span class="material-icons-round text-lg">close</span>
+<!-- Create Group Modal -->
+<div id="groupModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeGroupModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+            <h2 class="text-lg font-bold text-white">New Group</h2>
+            <button onclick="closeGroupModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
             </button>
         </div>
-        <div class="p-4 space-y-3 overflow-y-auto flex-1 min-h-0">
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Команда</label>
-                <input type="text" id="execute-command" placeholder="df -h" value="df -h"
-                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-primary/50">
+        <form id="groupForm" onsubmit="saveGroup(event)" class="p-6">
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Group Name *</label>
+                    <input type="text" id="group-name" required placeholder="Production Servers"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Description</label>
+                    <textarea id="group-description" rows="2" placeholder="Optional description..."
+                              class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors resize-none"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Color</label>
+                    <div class="flex items-center gap-3">
+                        <input type="color" id="group-color" value="#6366f1" class="w-12 h-12 rounded-lg border-0 cursor-pointer">
+                        <div class="flex gap-2">
+                            <button type="button" onclick="document.getElementById('group-color').value='#6366f1'" class="w-8 h-8 rounded-lg bg-[#6366f1] hover:ring-2 ring-white/30 transition-all"></button>
+                            <button type="button" onclick="document.getElementById('group-color').value='#10b981'" class="w-8 h-8 rounded-lg bg-[#10b981] hover:ring-2 ring-white/30 transition-all"></button>
+                            <button type="button" onclick="document.getElementById('group-color').value='#f59e0b'" class="w-8 h-8 rounded-lg bg-[#f59e0b] hover:ring-2 ring-white/30 transition-all"></button>
+                            <button type="button" onclick="document.getElementById('group-color').value='#ef4444'" class="w-8 h-8 rounded-lg bg-[#ef4444] hover:ring-2 ring-white/30 transition-all"></button>
+                            <button type="button" onclick="document.getElementById('group-color').value='#8b5cf6'" class="w-8 h-8 rounded-lg bg-[#8b5cf6] hover:ring-2 ring-white/30 transition-all"></button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1">Мастер-пароль (если ключ зашифрован)</label>
-                <input type="password" id="execute-master-password" placeholder="Оставьте пустым, если не нужен"
-                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+            <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
+                <button type="button" onclick="closeGroupModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" class="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all font-medium">
+                    Create Group
+                </button>
             </div>
-            <div id="execute-output-wrap" class="hidden">
-                <label class="block text-xs font-medium text-gray-400 mb-1">Результат</label>
-                <pre id="execute-output" class="w-full bg-bg-base border border-white/10 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto overflow-y-auto max-h-64 whitespace-pre-wrap font-mono"></pre>
-                <p id="execute-exit-code" class="text-xs text-gray-500 mt-1"></p>
-            </div>
-        </div>
-        <div class="p-4 border-t border-white/10 flex justify-end gap-2 shrink-0">
-            <button type="button" onclick="closeExecuteModal()" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Закрыть</button>
-            <button type="button" id="execute-run-btn" onclick="runExecuteCommand()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center gap-2">
-                <span class="material-icons-round text-sm">play_arrow</span>
-                Выполнить
-            </button>
-        </div>
+        </form>
     </div>
 </div>
 
 <script>
-let activeMemberGroupId = null;
-let executeModalServerId = null;
+// Utility
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Group collapse
+function toggleGroup(groupId) {
+    const content = document.getElementById('content-' + groupId);
+    const chevron = document.getElementById('chevron-' + groupId);
+    if (content && chevron) {
+        content.classList.toggle('collapsed');
+        chevron.style.transform = content.classList.contains('collapsed') ? 'rotate(-90deg)' : '';
+    }
+}
+
+// Selection
+function toggleSelectAll(groupId) {
+    const selectAll = document.getElementById('select-all-' + groupId);
+    const checkboxes = document.querySelectorAll('.server-select[data-group="' + groupId + '"]');
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const selected = document.querySelectorAll('.server-select:checked').length;
+    const bar = document.getElementById('bulk-bar');
+    const countEl = document.getElementById('selected-count');
+    if (bar && countEl) {
+        countEl.textContent = selected;
+        bar.classList.toggle('active', selected > 0);
+    }
+}
+
+function clearSelection() {
+    document.querySelectorAll('.server-select').forEach(cb => cb.checked = false);
+    document.querySelectorAll('[id^="select-all-"]').forEach(cb => cb.checked = false);
+    updateBulkBar();
+}
+
+// Modals
 function openCreateModal() {
     document.getElementById('serverModal').classList.remove('hidden');
     toggleAuthFields();
+}
+
+function closeModal() {
+    document.getElementById('serverModal').classList.add('hidden');
+    document.getElementById('serverForm').reset();
 }
 
 function openGroupModal() {
@@ -422,30 +681,14 @@ function closeGroupModal() {
     document.getElementById('groupForm').reset();
 }
 
-function openMemberModal(groupId) {
-    activeMemberGroupId = groupId;
-    document.getElementById('member-group-id').value = groupId;
-    document.getElementById('memberModal').classList.remove('hidden');
-}
-
-function closeMemberModal() {
-    document.getElementById('memberModal').classList.add('hidden');
-    document.getElementById('member-identifier').value = '';
-}
-
-function closeModal() {
-    document.getElementById('serverModal').classList.add('hidden');
-    document.getElementById('serverForm').reset();
-}
-
 function toggleAuthFields() {
     const authMethod = document.getElementById('server-auth-method').value;
     const passwordField = document.getElementById('password-field');
     const keyField = document.getElementById('key-field');
-    
+
     passwordField.classList.add('hidden');
     keyField.classList.add('hidden');
-    
+
     if (authMethod === 'password' || authMethod === 'key_password') {
         passwordField.classList.remove('hidden');
     }
@@ -454,9 +697,9 @@ function toggleAuthFields() {
     }
 }
 
+// API calls
 async function saveServer(e) {
     e.preventDefault();
-    
     const formData = {
         name: document.getElementById('server-name').value,
         host: document.getElementById('server-host').value,
@@ -467,21 +710,16 @@ async function saveServer(e) {
         password: document.getElementById('server-password').value,
         master_password: document.getElementById('server-master-password').value,
         key_path: document.getElementById('server-key-path').value,
-        notes: document.getElementById('server-notes').value,
         tags: document.getElementById('server-tags').value,
-        corporate_context: document.getElementById('server-corporate-context')?.value || ''
+        corporate_context: document.getElementById('server-corporate-context').value
     };
 
     try {
         const response = await fetch('/servers/api/create/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
             body: JSON.stringify(formData)
         });
-
         const data = await response.json();
         if (data.success) {
             closeModal();
@@ -497,22 +735,15 @@ async function saveServer(e) {
 
 async function saveGroup(e) {
     e.preventDefault();
-    const tagSelect = document.getElementById('group-tags');
-    const tagIds = Array.from(tagSelect.selectedOptions).map(opt => parseInt(opt.value, 10));
-
     const payload = {
         name: document.getElementById('group-name').value,
         description: document.getElementById('group-description').value,
-        color: document.getElementById('group-color').value,
-        tag_ids: tagIds
+        color: document.getElementById('group-color').value
     };
 
     const response = await fetch('/servers/api/groups/create/', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
         body: JSON.stringify(payload)
     });
     const data = await response.json();
@@ -524,38 +755,28 @@ async function saveGroup(e) {
     }
 }
 
-async function addMember() {
-    const groupId = document.getElementById('member-group-id').value;
-    const identifier = document.getElementById('member-identifier').value.trim();
-    if (!identifier) return;
-    const role = document.getElementById('member-role').value;
+async function testConnection(serverId) {
+    const masterPassword = prompt('Enter master password:');
+    if (!masterPassword) return;
 
-    const response = await fetch(`/servers/api/groups/${groupId}/add-member/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify({ user: identifier, role })
-    });
-    const data = await response.json();
-    if (data.success) {
-        closeMemberModal();
-        alert('Member added');
-    } else {
-        alert(data.error || 'Failed to add member');
+    try {
+        const response = await fetch('/servers/api/' + serverId + '/test/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify({ master_password: masterPassword })
+        });
+        const data = await response.json();
+        if (data.success) {
+            if (window.showToast) window.showToast('Connection successful!', 'success');
+            else alert('Connection successful!');
+        } else {
+            if (window.showToast) window.showToast('Connection failed: ' + (data.error || 'Unknown error'), 'error');
+            else alert('Connection failed: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        console.error('Error testing connection:', e);
+        alert('Error testing connection');
     }
-}
-
-function applyGroupFilter() {
-    const groupId = document.getElementById('group-filter').value;
-    const url = groupId ? `?group=${groupId}` : window.location.pathname;
-    window.location.href = url;
-}
-
-function updateSelectedCount() {
-    const selected = document.querySelectorAll('.server-select:checked').length;
-    document.getElementById('selected-count').textContent = `${selected} selected`;
 }
 
 async function applyBulkAction() {
@@ -577,14 +798,14 @@ async function applyBulkAction() {
         payload.tags = tags;
     } else if (action === 'deactivate') {
         payload.is_active = false;
+    } else if (action === 'delete') {
+        if (!confirm('Delete ' + selectedIds.length + ' servers? This cannot be undone.')) return;
+        payload.delete = true;
     }
 
     const response = await fetch('/servers/api/bulk-update/', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
         body: JSON.stringify(payload)
     });
     const data = await response.json();
@@ -595,120 +816,32 @@ async function applyBulkAction() {
     }
 }
 
-async function subscribeGroup(groupId, kind) {
-    const response = await fetch(`/servers/api/groups/${groupId}/subscribe/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify({ kind })
+// Search
+document.getElementById('server-search')?.addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    document.querySelectorAll('.server-card').forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.style.display = text.includes(query) ? '' : 'none';
     });
-    const data = await response.json();
-    if (!data.success) {
-        alert(data.error || 'Subscription failed');
+});
+
+// Filters
+document.getElementById('group-filter')?.addEventListener('change', function() {
+    const groupId = this.value;
+    const url = groupId ? '?group=' + groupId : window.location.pathname;
+    window.location.href = url;
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+        closeGroupModal();
     }
-}
-
-async function testConnection(serverId) {
-    const masterPassword = prompt('Enter master password:');
-    if (!masterPassword) return;
-
-    try {
-        const response = await fetch(`/servers/api/${serverId}/test/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify({ master_password: masterPassword })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-            alert('Connection successful!');
-        } else {
-            alert('Connection failed: ' + (data.error || 'Unknown error'));
-        }
-    } catch (e) {
-        console.error('Error testing connection:', e);
-        alert('Error testing connection');
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('server-search')?.focus();
     }
-}
-
-function openExecuteModal(serverId, serverName) {
-    executeModalServerId = serverId;
-    var titleEl = document.getElementById('execute-modal-title');
-    if (titleEl) titleEl.textContent = 'Выполнить команду на «' + (serverName || '') + '»';
-    var cmdEl = document.getElementById('execute-command');
-    if (cmdEl) { cmdEl.value = 'df -h'; cmdEl.placeholder = 'df -h'; }
-    var pwdEl = document.getElementById('execute-master-password');
-    if (pwdEl) pwdEl.value = '';
-    var outWrap = document.getElementById('execute-output-wrap');
-    if (outWrap) outWrap.classList.add('hidden');
-    document.getElementById('executeModal').classList.remove('hidden');
-}
-
-function closeExecuteModal() {
-    executeModalServerId = null;
-    document.getElementById('executeModal').classList.add('hidden');
-}
-
-async function runExecuteCommand() {
-    if (!executeModalServerId) return;
-    var cmd = (document.getElementById('execute-command') || {}).value.trim();
-    if (!cmd) {
-        alert('Введите команду');
-        return;
-    }
-    var runBtn = document.getElementById('execute-run-btn');
-    if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<span class="material-icons-round text-sm">hourglass_empty</span> Выполняю…'; }
-    var outWrap = document.getElementById('execute-output-wrap');
-    var outEl = document.getElementById('execute-output');
-    var exitEl = document.getElementById('execute-exit-code');
-    try {
-        var body = { command: cmd };
-        var pwd = (document.getElementById('execute-master-password') || {}).value;
-        if (pwd) body.master_password = pwd;
-        var r = await fetch('/servers/api/' + executeModalServerId + '/execute/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-            body: JSON.stringify(body)
-        });
-        var data = await r.json();
-        outWrap.classList.remove('hidden');
-        if (data.success && data.output) {
-            var o = data.output;
-            var text = (o.stdout || '') + (o.stderr ? '\n' + o.stderr : '');
-            outEl.textContent = text || '(пусто)';
-            exitEl.textContent = 'Код выхода: ' + (o.exit_code != null ? o.exit_code : '—');
-            exitEl.className = 'text-xs mt-1 ' + (o.exit_code === 0 ? 'text-emerald-500' : 'text-amber-500');
-        } else {
-            outEl.textContent = data.error || 'Ошибка выполнения';
-            exitEl.textContent = '';
-            exitEl.className = 'text-xs mt-1 text-red-500';
-        }
-    } catch (e) {
-        outWrap.classList.remove('hidden');
-        outEl.textContent = 'Ошибка: ' + (e.message || String(e));
-        if (exitEl) { exitEl.textContent = ''; exitEl.className = 'text-xs mt-1'; }
-    }
-    if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<span class="material-icons-round text-sm">play_arrow</span> Выполнить'; }
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
+});
 </script>
 {% endblock %}

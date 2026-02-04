@@ -24,11 +24,11 @@
 
 {% block content %}
 <div class="h-full overflow-y-auto p-6">
-    <div class="max-w-4xl mx-auto space-y-6">
+    <div class="max-w-5xl mx-auto space-y-6">
         <!-- Заголовок и описание -->
         <div>
             <h1 class="text-2xl font-bold text-white">Управление доступом</h1>
-            <p class="text-gray-400 text-sm mt-1">Пользователи, группы и права к разделам приложения — всё в одном разделе. Переключайте вкладки ниже.</p>
+            <p class="text-gray-400 text-sm mt-1">Пользователи, группы и права к разделам приложения.</p>
         </div>
 
         <!-- Вкладки -->
@@ -49,8 +49,16 @@
 
         <!-- Контент: Пользователи -->
         <section id="panel-users" class="glass-card rounded-xl p-6 {% if active_tab != 'users' %}hidden{% endif %}" aria-labelledby="tab-users-label">
-            <h2 id="tab-users-label" class="sr-only">Пользователи</h2>
-            <p class="text-gray-400 text-sm mb-4">Список пользователей системы. Staff — доступ к управлению, «Активен» — может входить в систему.</p>
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 id="tab-users-label" class="text-lg font-semibold text-white">Пользователи</h2>
+                    <p class="text-gray-400 text-sm">Список пользователей системы. Staff — доступ к настройкам.</p>
+                </div>
+                <button onclick="openUserModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white text-sm font-medium transition-colors">
+                    <span class="material-icons-round text-lg">person_add</span>
+                    Добавить
+                </button>
+            </div>
             <div class="overflow-x-auto custom-scrollbar">
                 <table class="w-full text-sm">
                     <thead>
@@ -59,25 +67,45 @@
                             <th class="pb-3 pr-4 font-medium">Email</th>
                             <th class="pb-3 pr-4 font-medium">Staff</th>
                             <th class="pb-3 pr-4 font-medium">Активен</th>
-                            <th class="pb-3 font-medium">Регистрация</th>
+                            <th class="pb-3 pr-4 font-medium">Регистрация</th>
+                            <th class="pb-3 font-medium text-right">Действия</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="users-table-body">
                         {% for u in users %}
-                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors" data-user-id="{{ u.id }}">
                             <td class="py-3 pr-4 font-medium text-white">{{ u.username }}</td>
                             <td class="py-3 pr-4 text-gray-400">{{ u.email|default:"—" }}</td>
                             <td class="py-3 pr-4">
-                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if u.is_staff %}bg-primary/20 text-primary{% else %}bg-white/10 text-gray-500{% endif %}">{{ u.is_staff|yesno:"Да,Нет" }}</span>
+                                <button onclick="toggleUserStaff({{ u.id }}, {{ u.is_staff|yesno:'false,true' }})" class="inline-flex px-2 py-0.5 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity {% if u.is_staff %}bg-primary/20 text-primary{% else %}bg-white/10 text-gray-500{% endif %}">
+                                    {{ u.is_staff|yesno:"Да,Нет" }}
+                                </button>
                             </td>
                             <td class="py-3 pr-4">
-                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if u.is_active %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">{{ u.is_active|yesno:"Да,Нет" }}</span>
+                                <button onclick="toggleUserActive({{ u.id }}, {{ u.is_active|yesno:'false,true' }})" class="inline-flex px-2 py-0.5 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity {% if u.is_active %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">
+                                    {{ u.is_active|yesno:"Да,Нет" }}
+                                </button>
                             </td>
-                            <td class="py-3 text-gray-500">{{ u.date_joined|date:"d.m.Y" }}</td>
+                            <td class="py-3 pr-4 text-gray-500">{{ u.date_joined|date:"d.m.Y" }}</td>
+                            <td class="py-3 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button onclick="openEditUserModal({{ u.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать">
+                                        <span class="material-icons-round text-lg">edit</span>
+                                    </button>
+                                    <button onclick="openPasswordModal({{ u.id }}, '{{ u.username }}')" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Сменить пароль">
+                                        <span class="material-icons-round text-lg">key</span>
+                                    </button>
+                                    {% if not u.is_superuser %}
+                                    <button onclick="deleteUser({{ u.id }}, '{{ u.username }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить">
+                                        <span class="material-icons-round text-lg">delete</span>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="5" class="py-8 text-center text-gray-500">Нет пользователей.</td>
+                            <td colspan="6" class="py-8 text-center text-gray-500">Нет пользователей.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -87,22 +115,45 @@
 
         <!-- Контент: Группы -->
         <section id="panel-groups" class="glass-card rounded-xl p-6 {% if active_tab != 'groups' %}hidden{% endif %}" aria-labelledby="tab-groups-label">
-            <h2 id="tab-groups-label" class="sr-only">Группы</h2>
-            <p class="text-gray-400 text-sm mb-4">Группы пользователей. Состав задаётся в базе или скриптами.</p>
-            <div class="space-y-4">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 id="tab-groups-label" class="text-lg font-semibold text-white">Группы</h2>
+                    <p class="text-gray-400 text-sm">Группы пользователей для совместного управления доступом.</p>
+                </div>
+                <button onclick="openGroupModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white text-sm font-medium transition-colors">
+                    <span class="material-icons-round text-lg">group_add</span>
+                    Добавить
+                </button>
+            </div>
+            <div id="groups-container" class="space-y-4">
                 {% for g in groups %}
-                <div class="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="material-icons-round text-primary text-xl" aria-hidden="true">group</span>
-                        <div>
-                            <span class="font-semibold text-white">{{ g.name }}</span>
-                            <span class="text-xs text-gray-500 ml-2">· {{ g.user_set.count }} пользователей</span>
+                <div class="rounded-xl border border-white/10 bg-white/5 p-4" data-group-id="{{ g.id }}">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-3">
+                            <span class="material-icons-round text-primary text-xl" aria-hidden="true">group</span>
+                            <div>
+                                <span class="font-semibold text-white">{{ g.name }}</span>
+                                <span class="text-xs text-gray-500 ml-2">· {{ g.user_set.count }} пользователей</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openEditGroupModal({{ g.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать">
+                                <span class="material-icons-round text-lg">edit</span>
+                            </button>
+                            <button onclick="deleteGroup({{ g.id }}, '{{ g.name }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить">
+                                <span class="material-icons-round text-lg">delete</span>
+                            </button>
                         </div>
                     </div>
                     {% if g.user_set.all %}
                     <div class="flex flex-wrap gap-2 mt-2 pl-8">
                         {% for u in g.user_set.all %}
-                        <span class="inline-flex px-2 py-1 rounded-lg bg-white/5 text-gray-400 text-xs">{{ u.username }}</span>
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 text-gray-400 text-xs group">
+                            {{ u.username }}
+                            <button onclick="removeFromGroup({{ g.id }}, {{ u.id }}, '{{ u.username }}')" class="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" title="Удалить из группы">
+                                <span class="material-icons-round text-sm">close</span>
+                            </button>
+                        </span>
                         {% endfor %}
                     </div>
                     {% else %}
@@ -117,33 +168,57 @@
 
         <!-- Контент: Права к разделам -->
         <section id="panel-permissions" class="glass-card rounded-xl p-6 {% if active_tab != 'permissions' %}hidden{% endif %}" aria-labelledby="tab-permissions-label">
-            <h2 id="tab-permissions-label" class="sr-only">Права к разделам</h2>
-            <p class="text-gray-400 text-sm mb-4">Кто какие разделы видит (Agents, Orchestrator, Servers, Tasks, Knowledge Base, Settings). Если записи нет — действует значение по умолчанию.</p>
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 id="tab-permissions-label" class="text-lg font-semibold text-white">Права к разделам</h2>
+                    <p class="text-gray-400 text-sm">Кто какие разделы видит. Если записи нет — действует значение по умолчанию.</p>
+                </div>
+                <button onclick="openPermissionModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white text-sm font-medium transition-colors">
+                    <span class="material-icons-round text-lg">add_moderator</span>
+                    Добавить
+                </button>
+            </div>
             <div class="overflow-x-auto custom-scrollbar">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-white/10 text-left text-gray-400">
                             <th class="pb-3 pr-4 font-medium">Пользователь</th>
                             <th class="pb-3 pr-4 font-medium">Раздел</th>
-                            <th class="pb-3 font-medium">Доступ</th>
+                            <th class="pb-3 pr-4 font-medium">Доступ</th>
+                            <th class="pb-3 font-medium text-right">Действия</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="permissions-table-body">
                         {% for p in permissions %}
-                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors" data-perm-id="{{ p.id }}">
                             <td class="py-3 pr-4 font-medium text-white">{{ p.user.username }}</td>
                             <td class="py-3 pr-4 text-gray-400">{{ p.get_feature_display }}</td>
-                            <td class="py-3">
-                                <span class="inline-flex px-2 py-0.5 rounded text-xs {% if p.allowed %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">{{ p.allowed|yesno:"Разрешён,Запрещён" }}</span>
+                            <td class="py-3 pr-4">
+                                <button onclick="togglePermission({{ p.id }}, {{ p.allowed|yesno:'false,true' }})" class="inline-flex px-2 py-0.5 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity {% if p.allowed %}bg-emerald-500/20 text-emerald-400{% else %}bg-red-500/20 text-red-400{% endif %}">
+                                    {{ p.allowed|yesno:"Разрешён,Запрещён" }}
+                                </button>
+                            </td>
+                            <td class="py-3 text-right">
+                                <button onclick="deletePermission({{ p.id }})" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить">
+                                    <span class="material-icons-round text-lg">delete</span>
+                                </button>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="3" class="py-8 text-center text-gray-500">Нет индивидуальных прав. Используются значения по умолчанию.</td>
+                            <td colspan="4" class="py-8 text-center text-gray-500">Нет индивидуальных прав. Используются значения по умолчанию.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+            <!-- Справка по умолчаниям -->
+            <div class="mt-4 p-4 rounded-lg bg-white/5 border border-white/10">
+                <h3 class="text-sm font-medium text-white mb-2">Права по умолчанию</h3>
+                <ul class="text-xs text-gray-400 space-y-1">
+                    <li><span class="text-emerald-400">●</span> Agents, Orchestrator, Servers, Tasks, Knowledge Base — разрешены всем</li>
+                    <li><span class="text-amber-400">●</span> Settings — только для Staff или при явном разрешении</li>
+                </ul>
             </div>
         </section>
 
@@ -156,4 +231,487 @@
         </div>
     </div>
 </div>
+
+<!-- Модальное окно: Пользователь -->
+<div id="user-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeUserModal()"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div class="glass-card rounded-2xl p-6 w-full max-w-md pointer-events-auto">
+            <h3 id="user-modal-title" class="text-lg font-semibold text-white mb-4">Новый пользователь</h3>
+            <form id="user-form" onsubmit="saveUser(event)" class="space-y-4">
+                <input type="hidden" id="user-id" value="">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Логин</label>
+                    <input type="text" id="user-username" required class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                    <input type="email" id="user-email" class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div id="user-password-field">
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Пароль</label>
+                    <input type="password" id="user-password" class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div class="flex items-center gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="user-is-staff" class="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary">
+                        <span class="text-sm text-gray-400">Staff (доступ к настройкам)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="user-is-active" checked class="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary">
+                        <span class="text-sm text-gray-400">Активен</span>
+                    </label>
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-2">
+                    <button type="button" onclick="closeUserModal()" class="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-colors">Отмена</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white font-medium transition-colors">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Смена пароля -->
+<div id="password-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closePasswordModal()"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div class="glass-card rounded-2xl p-6 w-full max-w-md pointer-events-auto">
+            <h3 class="text-lg font-semibold text-white mb-4">Смена пароля: <span id="password-username"></span></h3>
+            <form onsubmit="changePassword(event)" class="space-y-4">
+                <input type="hidden" id="password-user-id" value="">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Новый пароль</label>
+                    <input type="password" id="new-password" required minlength="4" class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Подтверждение пароля</label>
+                    <input type="password" id="confirm-password" required minlength="4" class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-2">
+                    <button type="button" onclick="closePasswordModal()" class="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-colors">Отмена</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors">Сменить пароль</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Группа -->
+<div id="group-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeGroupModal()"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div class="glass-card rounded-2xl p-6 w-full max-w-md pointer-events-auto">
+            <h3 id="group-modal-title" class="text-lg font-semibold text-white mb-4">Новая группа</h3>
+            <form id="group-form" onsubmit="saveGroup(event)" class="space-y-4">
+                <input type="hidden" id="group-id" value="">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Название группы</label>
+                    <input type="text" id="group-name" required class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-primary">
+                </div>
+                <div id="group-members-section">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Участники</label>
+                    <div id="group-members-list" class="max-h-48 overflow-y-auto space-y-1 p-2 rounded-lg bg-white/5 border border-white/10">
+                        <!-- Заполняется динамически -->
+                    </div>
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-2">
+                    <button type="button" onclick="closeGroupModal()" class="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-colors">Отмена</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white font-medium transition-colors">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Право -->
+<div id="permission-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closePermissionModal()"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div class="glass-card rounded-2xl p-6 w-full max-w-md pointer-events-auto">
+            <h3 class="text-lg font-semibold text-white mb-4">Добавить право</h3>
+            <form onsubmit="savePermission(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Пользователь</label>
+                    <select id="perm-user-id" required class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary">
+                        <option value="">Выберите пользователя</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Раздел</label>
+                    <select id="perm-feature" required class="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary">
+                        <option value="">Выберите раздел</option>
+                        <option value="agents">Agents</option>
+                        <option value="orchestrator">Orchestrator</option>
+                        <option value="servers">Servers</option>
+                        <option value="tasks">Tasks</option>
+                        <option value="knowledge_base">Knowledge Base</option>
+                        <option value="settings">Settings</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="perm-allowed" value="true" checked class="w-4 h-4 text-primary focus:ring-primary">
+                        <span class="text-sm text-emerald-400">Разрешить</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="perm-allowed" value="false" class="w-4 h-4 text-primary focus:ring-primary">
+                        <span class="text-sm text-red-400">Запретить</span>
+                    </label>
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-2">
+                    <button type="button" onclick="closePermissionModal()" class="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-colors">Отмена</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-primary hover:bg-primary/80 text-white font-medium transition-colors">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Toast уведомления -->
+<div id="toast" class="fixed bottom-4 right-4 z-50 hidden">
+    <div class="px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
+        <span class="material-icons-round text-lg" id="toast-icon"></span>
+        <span id="toast-message"></span>
+    </div>
+</div>
+
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+// =============== УТИЛИТЫ ===============
+function showToast(message, type = 'success') {
+    const toast = document.getElementById('toast');
+    const icon = document.getElementById('toast-icon');
+    const msg = document.getElementById('toast-message');
+
+    toast.className = 'fixed bottom-4 right-4 z-50';
+    if (type === 'success') {
+        toast.querySelector('div').className = 'px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 bg-emerald-500/90 text-white';
+        icon.textContent = 'check_circle';
+    } else if (type === 'error') {
+        toast.querySelector('div').className = 'px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 bg-red-500/90 text-white';
+        icon.textContent = 'error';
+    }
+    msg.textContent = message;
+
+    setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+async function apiCall(url, method = 'GET', data = null) {
+    const opts = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+    };
+    if (data) opts.body = JSON.stringify(data);
+
+    const res = await fetch(url, opts);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Request failed');
+    return json;
+}
+
+// =============== ПОЛЬЗОВАТЕЛИ ===============
+let allUsers = [];
+
+async function loadUsers() {
+    try {
+        const data = await apiCall('/api/access/users/');
+        allUsers = data.users;
+    } catch (e) {
+        console.error('Failed to load users:', e);
+    }
+}
+
+function openUserModal() {
+    document.getElementById('user-modal-title').textContent = 'Новый пользователь';
+    document.getElementById('user-id').value = '';
+    document.getElementById('user-username').value = '';
+    document.getElementById('user-email').value = '';
+    document.getElementById('user-password').value = '';
+    document.getElementById('user-password-field').classList.remove('hidden');
+    document.getElementById('user-password').required = true;
+    document.getElementById('user-is-staff').checked = false;
+    document.getElementById('user-is-active').checked = true;
+    document.getElementById('user-modal').classList.remove('hidden');
+}
+
+async function openEditUserModal(userId) {
+    try {
+        const data = await apiCall(`/api/access/users/${userId}/`);
+        const user = data.user;
+
+        document.getElementById('user-modal-title').textContent = 'Редактирование: ' + user.username;
+        document.getElementById('user-id').value = user.id;
+        document.getElementById('user-username').value = user.username;
+        document.getElementById('user-email').value = user.email;
+        document.getElementById('user-password').value = '';
+        document.getElementById('user-password-field').classList.add('hidden');
+        document.getElementById('user-password').required = false;
+        document.getElementById('user-is-staff').checked = user.is_staff;
+        document.getElementById('user-is-active').checked = user.is_active;
+        document.getElementById('user-modal').classList.remove('hidden');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function closeUserModal() {
+    document.getElementById('user-modal').classList.add('hidden');
+}
+
+async function saveUser(e) {
+    e.preventDefault();
+
+    const userId = document.getElementById('user-id').value;
+    const data = {
+        username: document.getElementById('user-username').value,
+        email: document.getElementById('user-email').value,
+        is_staff: document.getElementById('user-is-staff').checked,
+        is_active: document.getElementById('user-is-active').checked,
+    };
+
+    if (!userId) {
+        data.password = document.getElementById('user-password').value;
+    }
+
+    try {
+        if (userId) {
+            await apiCall(`/api/access/users/${userId}/`, 'PUT', data);
+            showToast('Пользователь обновлён');
+        } else {
+            await apiCall('/api/access/users/', 'POST', data);
+            showToast('Пользователь создан');
+        }
+        closeUserModal();
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function toggleUserStaff(userId, currentValue) {
+    try {
+        await apiCall(`/api/access/users/${userId}/`, 'PUT', { is_staff: currentValue });
+        showToast('Статус Staff изменён');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function toggleUserActive(userId, currentValue) {
+    try {
+        await apiCall(`/api/access/users/${userId}/`, 'PUT', { is_active: currentValue });
+        showToast('Статус Активности изменён');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deleteUser(userId, username) {
+    if (!confirm(`Удалить пользователя "${username}"?`)) return;
+
+    try {
+        await apiCall(`/api/access/users/${userId}/`, 'DELETE');
+        showToast('Пользователь удалён');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// =============== ПАРОЛЬ ===============
+function openPasswordModal(userId, username) {
+    document.getElementById('password-user-id').value = userId;
+    document.getElementById('password-username').textContent = username;
+    document.getElementById('new-password').value = '';
+    document.getElementById('confirm-password').value = '';
+    document.getElementById('password-modal').classList.remove('hidden');
+}
+
+function closePasswordModal() {
+    document.getElementById('password-modal').classList.add('hidden');
+}
+
+async function changePassword(e) {
+    e.preventDefault();
+
+    const userId = document.getElementById('password-user-id').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+
+    if (newPassword !== confirmPassword) {
+        showToast('Пароли не совпадают', 'error');
+        return;
+    }
+
+    try {
+        await apiCall(`/api/access/users/${userId}/password/`, 'POST', { password: newPassword });
+        showToast('Пароль изменён');
+        closePasswordModal();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// =============== ГРУППЫ ===============
+function openGroupModal() {
+    document.getElementById('group-modal-title').textContent = 'Новая группа';
+    document.getElementById('group-id').value = '';
+    document.getElementById('group-name').value = '';
+    loadUsersForGroup([]);
+    document.getElementById('group-modal').classList.remove('hidden');
+}
+
+async function openEditGroupModal(groupId) {
+    try {
+        const data = await apiCall(`/api/access/groups/${groupId}/`);
+        const group = data.group;
+
+        document.getElementById('group-modal-title').textContent = 'Редактирование: ' + group.name;
+        document.getElementById('group-id').value = group.id;
+        document.getElementById('group-name').value = group.name;
+
+        const memberIds = group.members.map(m => m.id);
+        loadUsersForGroup(memberIds);
+
+        document.getElementById('group-modal').classList.remove('hidden');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function loadUsersForGroup(selectedIds) {
+    if (allUsers.length === 0) await loadUsers();
+
+    const container = document.getElementById('group-members-list');
+    container.innerHTML = allUsers.map(u => `
+        <label class="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white/5">
+            <input type="checkbox" value="${u.id}" ${selectedIds.includes(u.id) ? 'checked' : ''} class="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary">
+            <span class="text-sm text-gray-300">${u.username}</span>
+        </label>
+    `).join('');
+}
+
+function closeGroupModal() {
+    document.getElementById('group-modal').classList.add('hidden');
+}
+
+async function saveGroup(e) {
+    e.preventDefault();
+
+    const groupId = document.getElementById('group-id').value;
+    const memberCheckboxes = document.querySelectorAll('#group-members-list input[type="checkbox"]:checked');
+    const memberIds = Array.from(memberCheckboxes).map(cb => parseInt(cb.value));
+
+    const data = {
+        name: document.getElementById('group-name').value,
+        members: memberIds,
+    };
+
+    try {
+        if (groupId) {
+            await apiCall(`/api/access/groups/${groupId}/`, 'PUT', data);
+            showToast('Группа обновлена');
+        } else {
+            await apiCall('/api/access/groups/', 'POST', data);
+            showToast('Группа создана');
+        }
+        closeGroupModal();
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deleteGroup(groupId, name) {
+    if (!confirm(`Удалить группу "${name}"?`)) return;
+
+    try {
+        await apiCall(`/api/access/groups/${groupId}/`, 'DELETE');
+        showToast('Группа удалена');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function removeFromGroup(groupId, userId, username) {
+    if (!confirm(`Удалить "${username}" из группы?`)) return;
+
+    try {
+        await apiCall(`/api/access/groups/${groupId}/members/`, 'DELETE', { user_id: userId });
+        showToast('Пользователь удалён из группы');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// =============== ПРАВА ===============
+async function openPermissionModal() {
+    if (allUsers.length === 0) await loadUsers();
+
+    const select = document.getElementById('perm-user-id');
+    select.innerHTML = '<option value="">Выберите пользователя</option>' +
+        allUsers.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+
+    document.getElementById('perm-feature').value = '';
+    document.querySelector('input[name="perm-allowed"][value="true"]').checked = true;
+
+    document.getElementById('permission-modal').classList.remove('hidden');
+}
+
+function closePermissionModal() {
+    document.getElementById('permission-modal').classList.add('hidden');
+}
+
+async function savePermission(e) {
+    e.preventDefault();
+
+    const data = {
+        user_id: parseInt(document.getElementById('perm-user-id').value),
+        feature: document.getElementById('perm-feature').value,
+        allowed: document.querySelector('input[name="perm-allowed"]:checked').value === 'true',
+    };
+
+    try {
+        await apiCall('/api/access/permissions/', 'POST', data);
+        showToast('Право сохранено');
+        closePermissionModal();
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function togglePermission(permId, currentValue) {
+    try {
+        await apiCall(`/api/access/permissions/${permId}/`, 'PUT', { allowed: currentValue });
+        showToast('Право изменено');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deletePermission(permId) {
+    if (!confirm('Удалить это право? Будет использоваться значение по умолчанию.')) return;
+
+    try {
+        await apiCall(`/api/access/permissions/${permId}/`, 'DELETE');
+        showToast('Право удалено');
+        location.reload();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// Загружаем пользователей при старте
+loadUsers();
+</script>
 {% endblock %}

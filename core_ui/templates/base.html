@@ -91,6 +91,8 @@
     
     <!-- Theme, density and motion are defined in style.css -->
 
+    {% block extra_head %}{% endblock %}
+
     <!-- Notification bell animation -->
     <style>
         @keyframes bell-ring {
@@ -175,8 +177,8 @@
             </a>
             {% endif %}
             {% if user_can_tasks %}
-            <a href="{% url 'tasks:task_list' %}" class="sidebar-link {% if 'tasks' in request.path %}active{% endif %}" aria-label="Tasks">
-                <span class="material-icons-round text-lg {% if 'tasks' in request.path %}text-primary{% endif %}" aria-hidden="true">task_alt</span>
+            <a href="{% url 'tasks:task_list' %}" class="sidebar-link {% if '/tasks/' in request.path %}active{% endif %}" aria-label="Tasks">
+                <span class="material-icons-round text-lg {% if '/tasks/' in request.path %}text-primary{% endif %}" aria-hidden="true">task_alt</span>
                 <span class="nav-text">Tasks</span>
             </a>
             {% endif %}

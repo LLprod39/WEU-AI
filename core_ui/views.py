@@ -17,6 +17,7 @@ from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_GET
 from django.conf import settings
+from django.db.models import OuterRef, Subquery, Count
 from asgiref.sync import sync_to_async
 from dotenv import load_dotenv
 from loguru import logger
@@ -287,7 +288,14 @@ def settings_view(request):
     if not user_can_feature(request.user, 'settings'):
         return redirect('index')
     template = get_template_name(request, 'settings.html')
-    return render(request, template, {})
+    context = {}
+    if user_can_feature(request.user, 'tasks'):
+        try:
+            from tasks.permissions import get_projects_for_user
+            context['settings_projects'] = list(get_projects_for_user(request.user).order_by('-updated_at')[:50])
+        except Exception:
+            context['settings_projects'] = []
+    return render(request, template, context)
 
 
 # ============================================
@@ -606,11 +614,36 @@ async def _try_server_command_by_name(user_id: int, message: str):
 def api_chats_list(request):
     """Список чатов текущего пользователя."""
     try:
-        sessions = ChatSession.objects.filter(user=request.user).order_by('-updated_at')[:50]
-        items = [
-            {"id": s.id, "title": s.title, "created_at": s.created_at.isoformat(), "updated_at": s.updated_at.isoformat()}
-            for s in sessions
-        ]
+        last_msg_qs = ChatMessage.objects.filter(session=OuterRef('pk')).order_by('-created_at')
+        sessions = (
+            ChatSession.objects.filter(user=request.user)
+            .annotate(
+                last_message=Subquery(last_msg_qs.values('content')[:1]),
+                last_message_role=Subquery(last_msg_qs.values('role')[:1]),
+                last_message_at=Subquery(last_msg_qs.values('created_at')[:1]),
+                message_count=Count('messages'),
+            )
+            .order_by('-updated_at')[:50]
+        )
+
+        def _preview(text):
+            if not text:
+                return ""
+            cleaned = " ".join(str(text).split())
+            return (cleaned[:140] + "...") if len(cleaned) > 140 else cleaned
+
+        items = []
+        for s in sessions:
+            items.append({
+                "id": s.id,
+                "title": s.title,
+                "created_at": s.created_at.isoformat(),
+                "updated_at": s.updated_at.isoformat(),
+                "preview": _preview(getattr(s, "last_message", "")),
+                "last_message_role": getattr(s, "last_message_role", None),
+                "last_message_at": s.last_message_at.isoformat() if getattr(s, "last_message_at", None) else None,
+                "message_count": s.message_count or 0,
+            })
         return JsonResponse({"chats": items})
     except Exception as e:
         logger.error(f"api_chats_list: {e}")
@@ -786,10 +819,14 @@ async def chat_api(request):
                 
                 # В режиме IDE не подмешиваем RAG (чтобы не тянуть чек-листы и посторонние данные)
                 use_rag_effective = use_rag if not workspace_path else False
+                execution_context["rag_enabled"] = bool(use_rag_effective)
                 
                 # Используем UnifiedOrchestrator с auto mode selection
                 orchestrator = await get_unified_orchestrator()
                 orchestrator_mode = data.get('mode')  # Опциональный параметр mode
+                # Для чата по умолчанию используем простой chat mode (без ReAct loop)
+                if not orchestrator_mode and not workspace_path:
+                    orchestrator_mode = "chat"
                 
                 # Передаем effective_model (уже заменен auto -> default_provider)
                 async for chunk in orchestrator.process_user_message(
@@ -1060,6 +1097,7 @@ def api_models_list(request):
 def api_clear_history(request):
     """Clear conversation history via UnifiedOrchestrator"""
     try:
+        ChatSession.objects.filter(user=request.user).delete()
         orchestrator = asyncio.run(get_unified_orchestrator())
         orchestrator.clear_history()
         return JsonResponse({'success': True, 'message': 'History cleared'})
@@ -1612,9 +1650,492 @@ def ide_view(request):
     """
     # Получаем проект из query параметра если есть
     project = request.GET.get('project', '').strip()
-    
+
     context = {
         'project': project,
     }
-    
+
     return render(request, 'ide.html', context)
+
+
+# ============================================
+# Access Management API (Users, Groups, Permissions)
+# ============================================
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["GET", "POST"])
+def api_access_users(request):
+    """
+    GET /api/access/users/ - список пользователей
+    POST /api/access/users/ - создание нового пользователя
+    """
+    from django.contrib.auth.models import User, Group
+
+    if request.method == 'GET':
+        users = User.objects.all().order_by('username')
+        data = [{
+            'id': u.id,
+            'username': u.username,
+            'email': u.email or '',
+            'is_staff': u.is_staff,
+            'is_active': u.is_active,
+            'is_superuser': u.is_superuser,
+            'date_joined': u.date_joined.isoformat(),
+            'groups': [{'id': g.id, 'name': g.name} for g in u.groups.all()],
+        } for u in users]
+        return JsonResponse({'users': data})
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username', '').strip()
+            email = data.get('email', '').strip()
+            password = data.get('password', '')
+            is_staff = data.get('is_staff', False)
+            is_active = data.get('is_active', True)
+
+            if not username:
+                return JsonResponse({'error': 'Username is required'}, status=400)
+            if not password:
+                return JsonResponse({'error': 'Password is required'}, status=400)
+            if User.objects.filter(username=username).exists():
+                return JsonResponse({'error': 'Username already exists'}, status=400)
+
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+            )
+            user.is_staff = is_staff
+            user.is_active = is_active
+            user.save()
+
+            # Добавляем в группы если указаны
+            group_ids = data.get('groups', [])
+            if group_ids:
+                groups = Group.objects.filter(id__in=group_ids)
+                user.groups.set(groups)
+
+            return JsonResponse({
+                'success': True,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'is_staff': user.is_staff,
+                    'is_active': user.is_active,
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_users POST error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_access_user_detail(request, user_id):
+    """
+    GET /api/access/users/<id>/ - получить пользователя
+    PUT /api/access/users/<id>/ - обновить пользователя
+    DELETE /api/access/users/<id>/ - удалить пользователя
+    """
+    from django.contrib.auth.models import User, Group
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email or '',
+                'is_staff': user.is_staff,
+                'is_active': user.is_active,
+                'is_superuser': user.is_superuser,
+                'date_joined': user.date_joined.isoformat(),
+                'groups': [{'id': g.id, 'name': g.name} for g in user.groups.all()],
+            }
+        })
+
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+
+            # Нельзя редактировать суперпользователя (кроме себя если тоже superuser)
+            if user.is_superuser and user.id != request.user.id:
+                return JsonResponse({'error': 'Cannot edit superuser'}, status=403)
+
+            # Обновляем поля
+            if 'email' in data:
+                user.email = data['email'].strip()
+            if 'is_staff' in data:
+                user.is_staff = bool(data['is_staff'])
+            if 'is_active' in data:
+                user.is_active = bool(data['is_active'])
+            if 'username' in data and data['username'].strip():
+                new_username = data['username'].strip()
+                if new_username != user.username:
+                    if User.objects.filter(username=new_username).exists():
+                        return JsonResponse({'error': 'Username already exists'}, status=400)
+                    user.username = new_username
+
+            user.save()
+
+            # Обновляем группы если указаны
+            if 'groups' in data:
+                group_ids = data['groups']
+                groups = Group.objects.filter(id__in=group_ids)
+                user.groups.set(groups)
+
+            return JsonResponse({
+                'success': True,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'is_staff': user.is_staff,
+                    'is_active': user.is_active,
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_user_detail PUT error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+    if request.method == 'DELETE':
+        # Нельзя удалить себя
+        if user.id == request.user.id:
+            return JsonResponse({'error': 'Cannot delete yourself'}, status=400)
+        # Нельзя удалить суперпользователя
+        if user.is_superuser:
+            return JsonResponse({'error': 'Cannot delete superuser'}, status=403)
+
+        user.delete()
+        return JsonResponse({'success': True, 'message': 'User deleted'})
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["POST"])
+def api_access_user_password(request, user_id):
+    """
+    POST /api/access/users/<id>/password/ - изменить пароль пользователя
+    """
+    from django.contrib.auth.models import User
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    # Нельзя менять пароль суперпользователя (кроме себя)
+    if user.is_superuser and user.id != request.user.id:
+        return JsonResponse({'error': 'Cannot change superuser password'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        new_password = data.get('password', '')
+
+        if not new_password or len(new_password) < 4:
+            return JsonResponse({'error': 'Password must be at least 4 characters'}, status=400)
+
+        user.set_password(new_password)
+        user.save()
+
+        return JsonResponse({'success': True, 'message': 'Password changed'})
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.exception('api_access_user_password error: %s', e)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["GET", "POST"])
+def api_access_groups(request):
+    """
+    GET /api/access/groups/ - список групп
+    POST /api/access/groups/ - создание новой группы
+    """
+    from django.contrib.auth.models import Group
+
+    if request.method == 'GET':
+        groups = Group.objects.all().prefetch_related('user_set').order_by('name')
+        data = [{
+            'id': g.id,
+            'name': g.name,
+            'members': [{'id': u.id, 'username': u.username} for u in g.user_set.all()],
+            'member_count': g.user_set.count(),
+        } for g in groups]
+        return JsonResponse({'groups': data})
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+
+            if not name:
+                return JsonResponse({'error': 'Group name is required'}, status=400)
+            if Group.objects.filter(name=name).exists():
+                return JsonResponse({'error': 'Group already exists'}, status=400)
+
+            group = Group.objects.create(name=name)
+
+            # Добавляем членов если указаны
+            member_ids = data.get('members', [])
+            if member_ids:
+                from django.contrib.auth.models import User
+                members = User.objects.filter(id__in=member_ids)
+                group.user_set.set(members)
+
+            return JsonResponse({
+                'success': True,
+                'group': {
+                    'id': group.id,
+                    'name': group.name,
+                    'member_count': group.user_set.count(),
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_groups POST error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["GET", "PUT", "DELETE"])
+def api_access_group_detail(request, group_id):
+    """
+    GET /api/access/groups/<id>/ - получить группу
+    PUT /api/access/groups/<id>/ - обновить группу
+    DELETE /api/access/groups/<id>/ - удалить группу
+    """
+    from django.contrib.auth.models import Group, User
+
+    try:
+        group = Group.objects.prefetch_related('user_set').get(id=group_id)
+    except Group.DoesNotExist:
+        return JsonResponse({'error': 'Group not found'}, status=404)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'group': {
+                'id': group.id,
+                'name': group.name,
+                'members': [{'id': u.id, 'username': u.username} for u in group.user_set.all()],
+            }
+        })
+
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+
+            if 'name' in data and data['name'].strip():
+                new_name = data['name'].strip()
+                if new_name != group.name:
+                    if Group.objects.filter(name=new_name).exists():
+                        return JsonResponse({'error': 'Group name already exists'}, status=400)
+                    group.name = new_name
+                    group.save()
+
+            # Обновляем членов если указаны
+            if 'members' in data:
+                member_ids = data['members']
+                members = User.objects.filter(id__in=member_ids)
+                group.user_set.set(members)
+
+            return JsonResponse({
+                'success': True,
+                'group': {
+                    'id': group.id,
+                    'name': group.name,
+                    'member_count': group.user_set.count(),
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_group_detail PUT error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+    if request.method == 'DELETE':
+        group.delete()
+        return JsonResponse({'success': True, 'message': 'Group deleted'})
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["POST", "DELETE"])
+def api_access_group_members(request, group_id):
+    """
+    POST /api/access/groups/<id>/members/ - добавить пользователя в группу
+    DELETE /api/access/groups/<id>/members/ - удалить пользователя из группы
+    """
+    from django.contrib.auth.models import Group, User
+
+    try:
+        group = Group.objects.get(id=group_id)
+    except Group.DoesNotExist:
+        return JsonResponse({'error': 'Group not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+
+        if not user_id:
+            return JsonResponse({'error': 'user_id is required'}, status=400)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+        if request.method == 'POST':
+            group.user_set.add(user)
+            return JsonResponse({'success': True, 'message': f'{user.username} added to {group.name}'})
+
+        if request.method == 'DELETE':
+            group.user_set.remove(user)
+            return JsonResponse({'success': True, 'message': f'{user.username} removed from {group.name}'})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.exception('api_access_group_members error: %s', e)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["GET", "POST"])
+def api_access_permissions(request):
+    """
+    GET /api/access/permissions/ - список прав
+    POST /api/access/permissions/ - создание/обновление права
+    """
+    from django.contrib.auth.models import User
+    from core_ui.models import UserAppPermission, FEATURE_CHOICES
+
+    if request.method == 'GET':
+        permissions = UserAppPermission.objects.select_related('user').all().order_by('user__username', 'feature')
+        data = [{
+            'id': p.id,
+            'user_id': p.user.id,
+            'username': p.user.username,
+            'feature': p.feature,
+            'feature_display': p.get_feature_display(),
+            'allowed': p.allowed,
+        } for p in permissions]
+
+        # Также возвращаем список доступных фич
+        features = [{'value': f[0], 'label': f[1]} for f in FEATURE_CHOICES]
+
+        return JsonResponse({'permissions': data, 'features': features})
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            user_id = data.get('user_id')
+            feature = data.get('feature', '').strip()
+            allowed = data.get('allowed', True)
+
+            if not user_id:
+                return JsonResponse({'error': 'user_id is required'}, status=400)
+            if not feature:
+                return JsonResponse({'error': 'feature is required'}, status=400)
+
+            # Проверяем что feature валидный
+            valid_features = [f[0] for f in FEATURE_CHOICES]
+            if feature not in valid_features:
+                return JsonResponse({'error': f'Invalid feature. Valid: {valid_features}'}, status=400)
+
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return JsonResponse({'error': 'User not found'}, status=404)
+
+            # Создаем или обновляем
+            perm, created = UserAppPermission.objects.update_or_create(
+                user=user,
+                feature=feature,
+                defaults={'allowed': bool(allowed)}
+            )
+
+            return JsonResponse({
+                'success': True,
+                'created': created,
+                'permission': {
+                    'id': perm.id,
+                    'user_id': perm.user.id,
+                    'username': perm.user.username,
+                    'feature': perm.feature,
+                    'allowed': perm.allowed,
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_permissions POST error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["PUT", "DELETE"])
+def api_access_permission_detail(request, perm_id):
+    """
+    PUT /api/access/permissions/<id>/ - обновить право
+    DELETE /api/access/permissions/<id>/ - удалить право
+    """
+    from core_ui.models import UserAppPermission
+
+    try:
+        perm = UserAppPermission.objects.select_related('user').get(id=perm_id)
+    except UserAppPermission.DoesNotExist:
+        return JsonResponse({'error': 'Permission not found'}, status=404)
+
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+            if 'allowed' in data:
+                perm.allowed = bool(data['allowed'])
+                perm.save()
+
+            return JsonResponse({
+                'success': True,
+                'permission': {
+                    'id': perm.id,
+                    'user_id': perm.user.id,
+                    'username': perm.user.username,
+                    'feature': perm.feature,
+                    'allowed': perm.allowed,
+                }
+            })
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.exception('api_access_permission_detail PUT error: %s', e)
+            return JsonResponse({'error': str(e)}, status=500)
+
+    if request.method == 'DELETE':
+        perm.delete()
+        return JsonResponse({'success': True, 'message': 'Permission deleted'})

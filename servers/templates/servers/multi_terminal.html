@@ -1,0 +1,1196 @@
+{% extends 'base.html' %}
+
+{% block title %}Terminal Hub — WEU{% endblock %}
+{% block header_title %}Terminal Hub{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'servers:server_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Servers</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-700">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Terminal Hub</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+
+<style>
+    .terminal-hub {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+        background: #09090b;
+    }
+
+    /* Tab Bar */
+    .tab-bar {
+        display: flex;
+        align-items: center;
+        background: rgba(17, 17, 19, 0.95);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        padding: 0 8px;
+        height: 42px;
+        flex-shrink: 0;
+        overflow-x: auto;
+        gap: 2px;
+    }
+
+    .tab-bar::-webkit-scrollbar {
+        height: 0;
+    }
+
+    .tab {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        height: 34px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px 8px 0 0;
+        color: #6b7280;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        max-width: 200px;
+        position: relative;
+    }
+
+    .tab:hover {
+        background: rgba(255,255,255,0.05);
+        color: #9ca3af;
+    }
+
+    .tab.active {
+        background: #09090b;
+        border-color: rgba(255,255,255,0.06);
+        border-bottom-color: #09090b;
+        color: #fff;
+        margin-bottom: -1px;
+    }
+
+    .tab-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 120px;
+    }
+
+    .tab-status {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .tab-status.disconnected { background: #4b5563; }
+    .tab-status.connecting { background: #f59e0b; animation: pulse 1.5s infinite; }
+    .tab-status.connected { background: #10b981; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    .tab-close {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .tab:hover .tab-close,
+    .tab.active .tab-close {
+        opacity: 0.6;
+    }
+
+    .tab-close:hover {
+        background: rgba(255,255,255,0.1);
+        opacity: 1 !important;
+    }
+
+    .tab-add {
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        color: #6b7280;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .tab-add:hover {
+        background: rgba(255,255,255,0.05);
+        color: #9ca3af;
+    }
+
+    /* Terminal Panels Container */
+    .terminals-container {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+    }
+
+    .terminal-panel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+    }
+
+    .terminal-panel.active {
+        display: flex;
+    }
+
+    /* Connection Bar */
+    .conn-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(17, 17, 19, 0.8);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        flex-shrink: 0;
+    }
+
+    .conn-bar-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .conn-bar-server {
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+    }
+
+    .conn-bar-host {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .conn-bar-inputs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .conn-input {
+        background: rgba(9, 9, 11, 0.8);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        padding: 8px 12px;
+        color: white;
+        font-size: 12px;
+        width: 160px;
+        transition: all 0.2s ease;
+    }
+
+    .conn-input:focus {
+        outline: none;
+        border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .conn-input::placeholder {
+        color: #4b5563;
+    }
+
+    .conn-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .conn-btn-primary {
+        background: #6366f1;
+        color: white;
+    }
+
+    .conn-btn-primary:hover:not(:disabled) {
+        background: #4f46e5;
+    }
+
+    .conn-btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .conn-btn-secondary {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #d1d5db;
+    }
+
+    .conn-btn-secondary:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    /* Terminal Area */
+    .terminal-area {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+    }
+
+    .terminal-wrapper {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+    }
+
+    .xterm-container {
+        position: absolute;
+        inset: 0;
+    }
+
+    /* AI Sidebar */
+    .ai-sidebar {
+        width: 360px;
+        display: flex;
+        flex-direction: column;
+        background: rgba(17, 17, 19, 0.6);
+        border-left: 1px solid rgba(255,255,255,0.06);
+        flex-shrink: 0;
+        transition: width 0.2s ease;
+    }
+
+    .ai-sidebar.collapsed {
+        width: 0;
+        overflow: hidden;
+        border-left: none;
+    }
+
+    .ai-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+    }
+
+    .ai-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .ai-input-area {
+        padding: 12px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        flex-shrink: 0;
+    }
+
+    .ai-textarea {
+        width: 100%;
+        background: rgba(9, 9, 11, 0.8);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: white;
+        font-size: 12px;
+        resize: none;
+        line-height: 1.4;
+    }
+
+    .ai-textarea:focus {
+        outline: none;
+        border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .ai-textarea::placeholder {
+        color: #4b5563;
+    }
+
+    /* Quick Commands */
+    .quick-cmds {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+
+    .quick-cmd {
+        padding: 4px 10px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #9ca3af;
+        font-size: 10px;
+        font-family: 'JetBrains Mono', monospace;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .quick-cmd:hover {
+        background: rgba(99, 102, 241, 0.15);
+        border-color: rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+    }
+
+    /* Messages */
+    .msg {
+        max-width: 90%;
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .msg-user {
+        align-self: flex-end;
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #e0e7ff;
+    }
+
+    .msg-assistant {
+        align-self: flex-start;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #d1d5db;
+    }
+
+    .msg-system {
+        align-self: center;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+        font-size: 11px;
+        text-align: center;
+    }
+
+    /* Command Card */
+    .cmd-card {
+        background: rgba(9, 9, 11, 0.6);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 4px 0;
+    }
+
+    .cmd-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: rgba(255,255,255,0.03);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        font-size: 10px;
+    }
+
+    .cmd-card-body {
+        padding: 10px 12px;
+    }
+
+    .cmd-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #e5e7eb;
+        background: rgba(0,0,0,0.3);
+        padding: 8px 10px;
+        border-radius: 6px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .cmd-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+
+    .cmd-status.pending { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .cmd-status.pending_confirm { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .cmd-status.running { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+    .cmd-status.done { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .cmd-status.skipped { background: rgba(107, 114, 128, 0.2); color: #6b7280; }
+    .cmd-status.error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    .cmd-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .cmd-btn {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .cmd-btn-confirm {
+        background: rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: #34d399;
+    }
+
+    .cmd-btn-skip {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #9ca3af;
+    }
+
+    /* Server Picker Modal */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(4px);
+        z-index: 100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-overlay.open {
+        display: flex;
+    }
+
+    .modal-content {
+        background: #111113;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        width: 90%;
+        max-width: 480px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+    }
+
+    .server-option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .server-option:hover {
+        background: rgba(255,255,255,0.05);
+    }
+
+    .server-option-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #34d399;
+        flex-shrink: 0;
+    }
+
+    .server-option-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .server-option-name {
+        font-weight: 600;
+        color: #fff;
+    }
+
+    .server-option-host {
+        font-size: 12px;
+        color: #6b7280;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Toggle AI button */
+    .toggle-ai {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 10;
+    }
+
+    .toggle-ai:hover {
+        background: rgba(99, 102, 241, 0.3);
+    }
+
+    /* Scrollbar */
+    .ai-messages::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .ai-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .ai-messages::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.1);
+        border-radius: 2px;
+    }
+</style>
+
+<div class="terminal-hub">
+    <!-- Tab Bar -->
+    <div class="tab-bar" id="tab-bar">
+        <button type="button" class="tab-add" onclick="openServerPicker()" title="New terminal (Ctrl+T)">
+            <span class="material-icons-round text-lg">add</span>
+        </button>
+    </div>
+
+    <!-- Terminals Container -->
+    <div class="terminals-container" id="terminals-container">
+        <!-- Terminal panels will be dynamically created here -->
+        <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center p-8">
+            <div class="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6">
+                <span class="material-icons-round text-4xl text-gray-600">terminal</span>
+            </div>
+            <h2 class="text-lg font-semibold text-white mb-2">Terminal Hub</h2>
+            <p class="text-gray-500 text-sm mb-6 max-w-sm">Open multiple SSH sessions in tabs. Click + or press Ctrl+T to add a new terminal.</p>
+            <button onclick="openServerPicker()" class="px-5 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all flex items-center gap-2 text-sm font-medium">
+                <span class="material-icons-round">add</span>
+                Add Terminal
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Server Picker Modal -->
+<div class="modal-overlay" id="server-picker">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="text-white font-semibold">Select Server</h3>
+            <button onclick="closeServerPicker()" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body" id="server-list">
+            {% for server in servers %}
+            <div class="server-option" onclick="addTerminalTab({{ server.id }}, '{{ server.name|escapejs }}', '{{ server.host }}', {{ server.port }}, '{{ server.username }}')">
+                <div class="server-option-icon">
+                    <span class="material-icons-round">dns</span>
+                </div>
+                <div class="server-option-info">
+                    <div class="server-option-name">{{ server.name }}</div>
+                    <div class="server-option-host">{{ server.username }}@{{ server.host }}:{{ server.port }}</div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-8 text-gray-500">
+                <span class="material-icons-round text-3xl mb-2 block">dns</span>
+                <p>No servers configured</p>
+                <a href="{% url 'servers:server_list' %}" class="text-primary text-sm hover:underline">Add servers first</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+<script>
+// Tab management
+const tabs = new Map(); // tabId -> { serverId, serverName, socket, terminal, fitAddon, status, aiCommandEls }
+let activeTabId = null;
+let tabCounter = 0;
+
+function generateTabId() {
+    return 'tab-' + (++tabCounter);
+}
+
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// Server Picker
+function openServerPicker() {
+    document.getElementById('server-picker').classList.add('open');
+}
+
+function closeServerPicker() {
+    document.getElementById('server-picker').classList.remove('open');
+}
+
+// Tab operations
+function addTerminalTab(serverId, serverName, host, port, username) {
+    closeServerPicker();
+
+    const tabId = generateTabId();
+    const tabData = {
+        serverId,
+        serverName,
+        host,
+        port,
+        username,
+        socket: null,
+        terminal: null,
+        fitAddon: null,
+        resizeObserver: null,
+        status: 'disconnected',
+        aiCommandEls: {}
+    };
+    tabs.set(tabId, tabData);
+
+    // Create tab button
+    const tabBar = document.getElementById('tab-bar');
+    const addBtn = tabBar.querySelector('.tab-add');
+
+    const tab = document.createElement('div');
+    tab.className = 'tab';
+    tab.id = 'tab-btn-' + tabId;
+    tab.innerHTML = `
+        <span class="tab-status disconnected" id="tab-status-${tabId}"></span>
+        <span class="tab-name">${escapeHtml(serverName)}</span>
+        <span class="tab-close" onclick="event.stopPropagation(); closeTab('${tabId}')">
+            <span class="material-icons-round" style="font-size: 14px;">close</span>
+        </span>
+    `;
+    tab.onclick = () => switchTab(tabId);
+    tabBar.insertBefore(tab, addBtn);
+
+    // Create terminal panel
+    const container = document.getElementById('terminals-container');
+    const panel = document.createElement('div');
+    panel.className = 'terminal-panel';
+    panel.id = 'panel-' + tabId;
+    panel.innerHTML = `
+        <div class="conn-bar">
+            <div class="conn-bar-info">
+                <span class="conn-bar-server">${escapeHtml(serverName)}</span>
+                <span class="conn-bar-host">${escapeHtml(username)}@${escapeHtml(host)}:${port}</span>
+            </div>
+            <div class="conn-bar-inputs">
+                <input type="password" id="master-pwd-${tabId}" placeholder="Master password" class="conn-input">
+                <input type="password" id="pwd-${tabId}" placeholder="Password" class="conn-input">
+                <button onclick="connectTab('${tabId}')" id="conn-btn-${tabId}" class="conn-btn conn-btn-primary">
+                    <span class="material-icons-round" style="font-size: 16px;">link</span>
+                    Connect
+                </button>
+                <button onclick="disconnectTab('${tabId}')" class="conn-btn conn-btn-secondary">
+                    <span class="material-icons-round" style="font-size: 16px;">link_off</span>
+                </button>
+            </div>
+        </div>
+        <div class="terminal-area">
+            <div class="terminal-wrapper">
+                <div class="xterm-container" id="xterm-${tabId}"></div>
+                <button class="toggle-ai" onclick="toggleAiSidebar('${tabId}')" title="Toggle AI">
+                    <span class="material-icons-round" style="font-size: 18px;">psychology</span>
+                </button>
+            </div>
+            <div class="ai-sidebar" id="ai-sidebar-${tabId}">
+                <div class="ai-header">
+                    <div class="flex items-center gap-2">
+                        <span class="material-icons-round text-primary" style="font-size: 18px;">smart_toy</span>
+                        <span class="text-white text-sm font-medium">AI Assistant</span>
+                    </div>
+                    <button onclick="toggleAiSidebar('${tabId}')" class="p-1 rounded hover:bg-white/10 text-gray-400">
+                        <span class="material-icons-round" style="font-size: 16px;">chevron_right</span>
+                    </button>
+                </div>
+                <div class="ai-messages" id="ai-messages-${tabId}">
+                    <div class="msg msg-system">Connect to enable AI assistance</div>
+                </div>
+                <div class="ai-input-area">
+                    <div class="quick-cmds">
+                        <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'check disk')">Disk</button>
+                        <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'check memory')">Memory</button>
+                        <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'show logs')">Logs</button>
+                        <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'list processes')">Procs</button>
+                    </div>
+                    <textarea id="ai-input-${tabId}" class="ai-textarea" rows="2" placeholder="Ask AI..." onkeydown="handleAiKey(event, '${tabId}')"></textarea>
+                    <div class="flex justify-end mt-2">
+                        <button onclick="sendAiMessage('${tabId}')" class="conn-btn conn-btn-primary">
+                            <span class="material-icons-round" style="font-size: 14px;">send</span>
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(panel);
+
+    // Hide empty state
+    document.getElementById('empty-state').style.display = 'none';
+
+    // Initialize terminal
+    initTerminal(tabId);
+
+    // Switch to new tab
+    switchTab(tabId);
+}
+
+function switchTab(tabId) {
+    if (activeTabId === tabId) return;
+
+    // Deactivate current
+    if (activeTabId) {
+        document.getElementById('tab-btn-' + activeTabId)?.classList.remove('active');
+        document.getElementById('panel-' + activeTabId)?.classList.remove('active');
+    }
+
+    // Activate new
+    activeTabId = tabId;
+    document.getElementById('tab-btn-' + tabId)?.classList.add('active');
+    document.getElementById('panel-' + tabId)?.classList.add('active');
+
+    // Focus terminal
+    const tabData = tabs.get(tabId);
+    if (tabData?.terminal) {
+        setTimeout(() => {
+            tabData.terminal.focus();
+            if (tabData.fitAddon) {
+                try { tabData.fitAddon.fit(); } catch(e) {}
+            }
+        }, 50);
+    }
+}
+
+function closeTab(tabId) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+
+    // Disconnect
+    try {
+        if (tabData.socket && tabData.socket.readyState === WebSocket.OPEN) {
+            tabData.socket.send(JSON.stringify({ type: 'disconnect' }));
+            tabData.socket.close();
+        }
+    } catch(e) {}
+
+    // Cleanup
+    try { if (tabData.resizeObserver) tabData.resizeObserver.disconnect(); } catch(e) {}
+    try { if (tabData.terminal) tabData.terminal.dispose(); } catch(e) {}
+
+    // Remove DOM
+    document.getElementById('tab-btn-' + tabId)?.remove();
+    document.getElementById('panel-' + tabId)?.remove();
+
+    tabs.delete(tabId);
+
+    // Switch to another tab or show empty
+    if (activeTabId === tabId) {
+        activeTabId = null;
+        const remaining = Array.from(tabs.keys());
+        if (remaining.length > 0) {
+            switchTab(remaining[remaining.length - 1]);
+        } else {
+            document.getElementById('empty-state').style.display = 'flex';
+        }
+    }
+}
+
+// Terminal initialization
+function initTerminal(tabId) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+
+    const el = document.getElementById('xterm-' + tabId);
+    if (!el) return;
+
+    const terminal = new Terminal({
+        cursorBlink: true,
+        scrollback: 8000,
+        fontFamily: 'JetBrains Mono, Consolas, monospace',
+        fontSize: 13,
+        lineHeight: 1.25,
+        theme: {
+            background: '#09090b',
+            foreground: '#e5e7eb',
+            cursor: '#6366f1',
+            selection: 'rgba(99, 102, 241, 0.3)',
+        }
+    });
+
+    let fitAddon = null;
+    if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+        fitAddon = new FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon);
+    }
+
+    terminal.open(el);
+    terminal.writeln('\x1b[38;5;243mWEU Terminal — ' + tabData.serverName + '\x1b[0m');
+    terminal.writeln('\x1b[38;5;243mPress Connect to establish SSH session\x1b[0m');
+    terminal.writeln('');
+
+    terminal.onData(data => {
+        if (tabData.socket && tabData.socket.readyState === WebSocket.OPEN) {
+            tabData.socket.send(JSON.stringify({ type: 'input', data }));
+        }
+    });
+
+    tabData.terminal = terminal;
+    tabData.fitAddon = fitAddon;
+
+    // Resize observer
+    if (window.ResizeObserver) {
+        tabData.resizeObserver = new ResizeObserver(() => fitAndNotify(tabId));
+        tabData.resizeObserver.observe(el);
+    }
+
+    setTimeout(() => fitAndNotify(tabId), 100);
+}
+
+function fitAndNotify(tabId) {
+    const tabData = tabs.get(tabId);
+    if (!tabData || !tabData.terminal || !tabData.fitAddon) return;
+    try { tabData.fitAddon.fit(); } catch(e) {}
+    if (tabData.socket && tabData.socket.readyState === WebSocket.OPEN) {
+        tabData.socket.send(JSON.stringify({
+            type: 'resize',
+            cols: tabData.terminal.cols,
+            rows: tabData.terminal.rows
+        }));
+    }
+}
+
+// Connection
+function setTabStatus(tabId, status) {
+    const tabData = tabs.get(tabId);
+    if (tabData) tabData.status = status;
+
+    const statusEl = document.getElementById('tab-status-' + tabId);
+    if (statusEl) {
+        statusEl.className = 'tab-status ' + status;
+    }
+
+    const connBtn = document.getElementById('conn-btn-' + tabId);
+    if (connBtn) {
+        connBtn.disabled = (status === 'connecting' || status === 'connected');
+    }
+}
+
+function connectTab(tabId) {
+    const tabData = tabs.get(tabId);
+    if (!tabData || !tabData.terminal) return;
+    if (tabData.socket && (tabData.socket.readyState === WebSocket.OPEN || tabData.socket.readyState === WebSocket.CONNECTING)) return;
+
+    const wsProto = (window.location.protocol === 'https:') ? 'wss' : 'ws';
+    const url = wsProto + '://' + window.location.host + '/ws/servers/' + tabData.serverId + '/terminal/';
+    const socket = new WebSocket(url);
+    tabData.socket = socket;
+
+    setTabStatus(tabId, 'connecting');
+
+    socket.onopen = () => {
+        fitAndNotify(tabId);
+        const masterPwd = document.getElementById('master-pwd-' + tabId)?.value || '';
+        const pwd = document.getElementById('pwd-' + tabId)?.value || '';
+        socket.send(JSON.stringify({
+            type: 'connect',
+            master_password: masterPwd,
+            password: pwd,
+            cols: tabData.terminal.cols,
+            rows: tabData.terminal.rows,
+            term_type: 'xterm-256color'
+        }));
+    };
+
+    socket.onmessage = ev => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch(e) { return; }
+        if (!msg || !msg.type) return;
+
+        switch (msg.type) {
+            case 'output':
+                if (msg.data != null) tabData.terminal.write(msg.data);
+                break;
+            case 'status':
+                setTabStatus(tabId, msg.status || 'disconnected');
+                break;
+            case 'error':
+                setTabStatus(tabId, 'disconnected');
+                tabData.terminal.writeln('\r\n\x1b[1;31m[Error]\x1b[0m ' + (msg.message || 'Unknown'));
+                break;
+            case 'exit':
+                tabData.terminal.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m');
+                break;
+            case 'ai_response':
+                handleAiResponse(tabId, msg);
+                break;
+            case 'ai_command_status':
+                updateCmdStatus(tabId, msg);
+                break;
+            case 'ai_error':
+                appendAiMsg(tabId, 'system', msg.message || 'AI Error');
+                break;
+        }
+    };
+
+    socket.onclose = () => setTabStatus(tabId, 'disconnected');
+    socket.onerror = () => {
+        setTabStatus(tabId, 'disconnected');
+        tabData.terminal.writeln('\r\n\x1b[1;31m[Connection error]\x1b[0m');
+    };
+}
+
+function disconnectTab(tabId) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    try {
+        if (tabData.socket && tabData.socket.readyState === WebSocket.OPEN) {
+            tabData.socket.send(JSON.stringify({ type: 'disconnect' }));
+            tabData.socket.close();
+        }
+    } catch(e) {}
+    tabData.socket = null;
+    setTabStatus(tabId, 'disconnected');
+}
+
+// AI Sidebar
+function toggleAiSidebar(tabId) {
+    const sidebar = document.getElementById('ai-sidebar-' + tabId);
+    sidebar?.classList.toggle('collapsed');
+    setTimeout(() => fitAndNotify(tabId), 250);
+}
+
+function appendAiMsg(tabId, role, text) {
+    const container = document.getElementById('ai-messages-' + tabId);
+    if (!container) return;
+    const div = document.createElement('div');
+    div.className = 'msg msg-' + role;
+    div.innerHTML = '<div style="white-space: pre-wrap;">' + escapeHtml(text) + '</div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function handleAiResponse(tabId, msg) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+
+    if (msg.assistant_text) {
+        appendAiMsg(tabId, 'assistant', msg.assistant_text);
+    }
+
+    if (!Array.isArray(msg.commands) || !msg.commands.length) return;
+
+    const container = document.getElementById('ai-messages-' + tabId);
+    msg.commands.forEach(c => {
+        const id = c.id;
+        if (!id) return;
+
+        const card = document.createElement('div');
+        card.className = 'cmd-card';
+        const reason = c.reason ? ' <span style="color: #fbbf24;">(' + escapeHtml(c.reason) + ')</span>' : '';
+        card.innerHTML = `
+            <div class="cmd-card-header">
+                <span style="color: #6b7280;">Command #${escapeHtml(id)}${reason}</span>
+                <span class="cmd-status ${c.requires_confirm ? 'pending_confirm' : 'pending'}" id="cmd-st-${tabId}-${id}">${c.requires_confirm ? 'Confirm?' : 'Pending'}</span>
+            </div>
+            <div class="cmd-card-body">
+                <div class="cmd-code">${escapeHtml(c.cmd || '')}</div>
+                <div class="cmd-actions" id="cmd-act-${tabId}-${id}"></div>
+            </div>
+        `;
+        container.appendChild(card);
+        container.scrollTop = container.scrollHeight;
+
+        tabData.aiCommandEls[id] = {
+            statusEl: card.querySelector('#cmd-st-' + tabId + '-' + id),
+            actionsEl: card.querySelector('#cmd-act-' + tabId + '-' + id)
+        };
+
+        if (c.requires_confirm) {
+            renderCmdButtons(tabId, id);
+        }
+    });
+}
+
+function renderCmdButtons(tabId, cmdId) {
+    const tabData = tabs.get(tabId);
+    const entry = tabData?.aiCommandEls[cmdId];
+    if (!entry?.actionsEl) return;
+
+    entry.actionsEl.innerHTML = `
+        <button class="cmd-btn cmd-btn-confirm" onclick="confirmCmd('${tabId}', '${cmdId}')">Confirm</button>
+        <button class="cmd-btn cmd-btn-skip" onclick="skipCmd('${tabId}', '${cmdId}')">Skip</button>
+    `;
+}
+
+function updateCmdStatus(tabId, msg) {
+    const tabData = tabs.get(tabId);
+    const entry = tabData?.aiCommandEls[msg.id];
+    if (!entry) return;
+
+    let statusText = msg.status;
+    let statusClass = msg.status;
+    if (msg.status === 'done' && msg.exit_code != null) {
+        statusText = 'Done (exit=' + msg.exit_code + ')';
+        statusClass = msg.exit_code === 0 ? 'done' : 'error';
+    }
+
+    if (entry.statusEl) {
+        entry.statusEl.textContent = statusText;
+        entry.statusEl.className = 'cmd-status ' + statusClass;
+    }
+
+    if (['running', 'done', 'skipped', 'confirmed'].includes(msg.status)) {
+        if (entry.actionsEl) entry.actionsEl.innerHTML = '';
+    }
+}
+
+function confirmCmd(tabId, cmdId) {
+    const tabData = tabs.get(tabId);
+    if (tabData?.socket?.readyState === WebSocket.OPEN) {
+        tabData.socket.send(JSON.stringify({ type: 'ai_confirm', id: cmdId }));
+    }
+}
+
+function skipCmd(tabId, cmdId) {
+    const tabData = tabs.get(tabId);
+    if (tabData?.socket?.readyState === WebSocket.OPEN) {
+        tabData.socket.send(JSON.stringify({ type: 'ai_cancel', id: cmdId }));
+    }
+}
+
+function sendAiMessage(tabId) {
+    const input = document.getElementById('ai-input-' + tabId);
+    const text = (input?.value || '').trim();
+    if (!text) return;
+
+    const tabData = tabs.get(tabId);
+    if (!tabData?.socket || tabData.socket.readyState !== WebSocket.OPEN) {
+        if (window.showToast) window.showToast('Connect first', 'warning');
+        return;
+    }
+
+    appendAiMsg(tabId, 'user', text);
+    input.value = '';
+    tabData.socket.send(JSON.stringify({ type: 'ai_request', message: text }));
+}
+
+function sendQuickCmd(tabId, cmd) {
+    const input = document.getElementById('ai-input-' + tabId);
+    if (input) input.value = cmd;
+    sendAiMessage(tabId);
+}
+
+function handleAiKey(e, tabId) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendAiMessage(tabId);
+    }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    // Ctrl+T - new tab
+    if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+        e.preventDefault();
+        openServerPicker();
+    }
+    // Ctrl+W - close tab
+    if ((e.ctrlKey || e.metaKey) && e.key === 'w' && activeTabId) {
+        e.preventDefault();
+        closeTab(activeTabId);
+    }
+    // Escape - close modal
+    if (e.key === 'Escape') {
+        closeServerPicker();
+    }
+    // Ctrl+Tab - next tab
+    if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        const tabIds = Array.from(tabs.keys());
+        if (tabIds.length > 1 && activeTabId) {
+            const idx = tabIds.indexOf(activeTabId);
+            const nextIdx = e.shiftKey ? (idx - 1 + tabIds.length) % tabIds.length : (idx + 1) % tabIds.length;
+            switchTab(tabIds[nextIdx]);
+        }
+    }
+});
+
+// Open initial server if passed via URL
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const serverId = params.get('server');
+    if (serverId) {
+        // Find server in list and open
+        const serverOption = document.querySelector(`[onclick*="addTerminalTab(${serverId},"]`);
+        if (serverOption) serverOption.click();
+    }
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    tabs.forEach((tabData, tabId) => {
+        try {
+            if (tabData.socket && tabData.socket.readyState === WebSocket.OPEN) {
+                tabData.socket.close();
+            }
+        } catch(e) {}
+    });
+});
+</script>
+{% endblock %}

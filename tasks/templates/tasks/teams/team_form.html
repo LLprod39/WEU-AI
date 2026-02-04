@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if team %}Редактировать команду{% else %}Новая команда{% endif %} — Tasks{% endblock %}
+{% block header_title %}{% if team %}Редактировать команду{% else %}Новая команда{% endif %}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:team_list' %}" class="text-gray-500 hover:text-white transition-colors">Команды</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white">{% if team %}{{ team.name }}{% else %}Создать{% endif %}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+.team-form-workspace {
+    --tw-void: #08080b; --tw-surface: #111116; --tw-deep: #0c0c10; --tw-border: rgba(255,255,255,0.08);
+    --tw-text: #f8fafc; --tw-muted: #94a3b8; --tw-accent: #6366f1; font-family: 'Outfit', system-ui, sans-serif;
+    max-width: 560px; margin: 0 auto; padding: 32px 24px;
+}
+.team-form-workspace h1 { margin: 0 0 24px; font-size: 1.5rem; font-weight: 600; color: var(--tw-text); }
+.team-form { background: var(--tw-surface); border: 1px solid var(--tw-border); border-radius: 14px; padding: 24px; }
+.team-form .form-group { margin-bottom: 20px; }
+.team-form label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.8125rem; color: var(--tw-muted); }
+.team-form input[type="text"], .team-form textarea {
+    width: 100%; padding: 10px 14px; background: var(--tw-deep); border: 1px solid var(--tw-border);
+    border-radius: 10px; color: var(--tw-text); font-size: 0.875rem; font-family: inherit;
+}
+.team-form input[type="color"] { width: 56px; height: 40px; padding: 4px; border-radius: 8px; cursor: pointer; }
+.team-form-actions { display: flex; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--tw-border); }
+.team-form-actions .btn-primary { padding: 10px 20px; border-radius: 10px; font-weight: 500; background: var(--tw-accent); color: #fff; border: none; cursor: pointer; }
+.team-form-actions .btn-secondary { padding: 10px 20px; border-radius: 10px; font-weight: 500; background: transparent; color: var(--tw-muted); border: 1px solid var(--tw-border); cursor: pointer; text-decoration: none; display: inline-block; }
+</style>
+
+<div class="team-form-workspace">
+    <h1>{% if team %}Редактировать команду{% else %}Новая команда{% endif %}</h1>
+    <form class="team-form" id="teamForm" method="post" action="">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="name">Название *</label>
+            <input type="text" name="name" id="name" value="{{ team.name|default:'' }}" required placeholder="Например: Frontend">
+        </div>
+        <div class="form-group">
+            <label for="slug">Код (латиница, для URL)</label>
+            <input type="text" name="slug" id="slug" value="{{ team.slug|default:'' }}" placeholder="frontend" pattern="[a-z0-9\-]+" {% if team %}readonly{% endif %}>
+        </div>
+        <div class="form-group">
+            <label for="description">Описание</label>
+            <textarea name="description" id="description" rows="3" placeholder="Краткое описание команды">{{ team.description|default:'' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="color">Цвет</label>
+            <input type="color" name="color" id="color" value="{{ team.color|default:'#6366f1' }}">
+        </div>
+        <div class="team-form-actions">
+            <button type="submit" class="btn-primary">{% if team %}Сохранить{% else %}Создать{% endif %}</button>
+            <a href="{% if team %}{% url 'tasks:team_detail' team.id %}{% else %}{% url 'tasks:team_list' %}{% endif %}" class="btn-secondary">Отмена</a>
+        </div>
+    </form>
+</div>
+
+<script>
+document.getElementById('teamForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const data = {
+        name: form.name.value.trim(),
+        slug: form.slug.value.trim().toLowerCase().replace(/\s+/g, '-'),
+        description: form.description.value.trim(),
+        color: form.color.value
+    };
+    if (!data.slug) data.slug = data.name.toLowerCase().replace(/\s+/g, '-').slice(0, 50);
+    fetch('{% if team %}{% url "tasks:team_edit" team.id %}{% else %}{% url "tasks:team_create" %}{% endif %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(res => {
+        if (res.success) window.location.href = res.url || '{% url "tasks:team_detail" 0 %}'.replace('/0/', '/' + (res.team_id || '') + '/');
+        else alert(res.error || 'Ошибка');
+    }).catch(() => alert('Ошибка сети'));
+});
+</script>
+{% endblock %}

@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% block body_extra_class %}page-chat{% endblock %}
+
 {% block header_title %}Chat{% endblock %}
 {% block breadcrumbs %}
 <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
@@ -18,238 +20,310 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex h-full corporate-chat-container">
+<div class="chat-shell">
     <!-- Кнопка открыть историю (когда панель скрыта) -->
-    <button type="button" id="chat-sidebar-expand-tab" class="chat-expand-tab hidden" aria-label="Открыть панель чатов" title="Открыть панель чатов">
+    <button type="button" id="chat-sidebar-expand-tab" class="chat-rail-expand hidden" aria-label="Открыть панель чатов" title="Открыть панель чатов">
         <span class="material-icons-round">chevron_right</span>
     </button>
 
     <!-- Sidebar: история чатов -->
-    <aside id="chat-history-sidebar" class="chat-history-sidebar w-64 md:w-72 shrink-0 border-r border-white/10 bg-bg-surface/50 flex flex-col transition-all duration-300 z-30" aria-label="История чатов">
-        <div class="p-3 border-b border-white/10 flex items-center justify-between gap-2">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Чаты</span>
-            <div class="flex items-center gap-1">
-                <button type="button" id="btn-new-chat" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 text-xs font-medium transition-colors" title="Новый чат" aria-label="Новый чат">
-                    <span class="material-icons-round text-base">add</span>
+    <aside id="chat-history-sidebar" class="chat-rail" aria-label="История чатов">
+        <div class="chat-rail-header">
+            <span class="chat-rail-title">Чаты</span>
+            <div class="chat-rail-actions">
+                <button type="button" id="btn-new-chat" class="chat-rail-btn chat-rail-btn--primary" title="Новый чат" aria-label="Новый чат">
+                    <span class="material-icons-round">add</span>
                     <span class="hidden sm:inline">Новый</span>
                 </button>
-                <button type="button" id="btn-toggle-sidebar" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center" aria-label="Свернуть панель чатов" title="Свернуть панель">
-                    <span class="material-icons-round text-lg">chevron_left</span>
+                <button type="button" id="btn-toggle-sidebar" class="chat-rail-btn" aria-label="Свернуть панель чатов" title="Свернуть панель">
+                    <span class="material-icons-round">chevron_left</span>
                 </button>
             </div>
         </div>
-        <div id="chat-history-list" class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 min-h-0" role="list"></div>
+        <div class="chat-rail-search">
+            <span class="material-icons-round" aria-hidden="true">search</span>
+            <input id="chat-search" type="text" placeholder="Поиск по чатам" aria-label="Поиск по чатам">
+        </div>
+        <div id="chat-history-list" class="chat-rail-list" role="list"></div>
+        <div id="chat-history-empty" class="chat-rail-empty hidden">
+            <span class="material-icons-round">chat_bubble_outline</span>
+            <p>История пуста</p>
+            <span>Создайте чат, чтобы он появился в списке</span>
+        </div>
     </aside>
 
     <!-- Main: область сообщений + ввод -->
-    <div class="flex flex-col flex-1 min-w-0 relative">
-        <div id="chat-container" class="flex-1 overflow-y-auto scroll-smooth px-8 md:px-16 lg:px-24 py-10 space-y-6 pb-64 corporate-chat-messages">
+    <section class="chat-stage">
+        <div id="chat-container" class="chat-stream">
             <!-- Welcome -->
-            <div id="welcome-message" class="flex flex-col items-center justify-center pt-24 pb-16 text-center animate-fade-in-up max-w-5xl mx-auto">
-                <div class="relative mb-10">
-                    <div class="w-28 h-28 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center shadow-xl shadow-primary/10">
-                        <span class="material-icons-round text-7xl text-primary">support_agent</span>
-                    </div>
-                    <div class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-emerald-500 border-2 border-bg-base flex items-center justify-center shadow-lg">
-                        <span class="material-icons-round text-xs text-white">check</span>
-                    </div>
+            <div id="welcome-message" class="chat-welcome">
+                <div class="chat-welcome-icon">
+                    <span class="material-icons-round">support_agent</span>
                 </div>
-                <h1 class="text-5xl font-bold text-white mb-5 tracking-tight">Enterprise AI Assistant</h1>
-                <p class="text-gray-400 text-sm mb-2">Ask questions, run tools, and get things done.</p>
-                <p class="text-gray-300 max-w-2xl mb-12 leading-relaxed text-lg font-light">Professional AI-powered assistant for document analysis, web research, SSH operations, and complex task execution.</p>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl w-full">
-                    <button class="corporate-action-btn group" onclick="insertPrompt('Search the web for latest AI news')">
-                        <div class="corporate-action-icon bg-blue-500/15 text-blue-400 border border-blue-500/20"><span class="material-icons-round text-2xl">language</span></div>
-                        <div class="corporate-action-content"><span class="corporate-action-title">Web Search</span><span class="corporate-action-desc">Browse internet</span></div>
+                <h2>Чат ассистента</h2>
+                <p>Сформулируйте задачу, добавьте контекст или перетащите файлы — ассистент поможет с анализом и действиями.</p>
+                <div class="chat-welcome-actions">
+                    <button type="button" class="chat-quick-card" onclick="insertPrompt('Дай краткую сводку по активным задачам')">
+                        <span class="material-icons-round">assignment</span>
+                        <span>Сводка задач</span>
                     </button>
-                    <button class="corporate-action-btn group" onclick="insertPrompt('Read and summarize a file')">
-                        <div class="corporate-action-icon bg-amber-500/15 text-amber-400 border border-amber-500/20"><span class="material-icons-round text-2xl">description</span></div>
-                        <div class="corporate-action-content"><span class="corporate-action-title">File Analysis</span><span class="corporate-action-desc">Process documents</span></div>
+                    <button type="button" class="chat-quick-card" onclick="insertPrompt('Проанализируй загруженный файл и выдели риски')">
+                        <span class="material-icons-round">description</span>
+                        <span>Анализ файла</span>
                     </button>
-                    <button class="corporate-action-btn group" onclick="insertPrompt('Connect via SSH to my server')">
-                        <div class="corporate-action-icon bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"><span class="material-icons-round text-2xl">terminal</span></div>
-                        <div class="corporate-action-content"><span class="corporate-action-title">SSH Access</span><span class="corporate-action-desc">Remote commands</span></div>
-                    </button>
-                    <button class="corporate-action-btn group" onclick="insertPrompt('What tools do you have available?')">
-                        <div class="corporate-action-icon bg-purple-500/15 text-purple-400 border border-purple-500/20"><span class="material-icons-round text-2xl">build</span></div>
-                        <div class="corporate-action-content"><span class="corporate-action-title">Tools</span><span class="corporate-action-desc">View capabilities</span></div>
+                    <button type="button" class="chat-quick-card" onclick="insertPrompt('Проверь статус инфраструктуры и дай рекомендации')">
+                        <span class="material-icons-round">dns</span>
+                        <span>Статус серверов</span>
                     </button>
                 </div>
             </div>
         </div>
 
         <!-- Input Area -->
-        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-bg-base via-bg-base/98 to-transparent pt-8 pb-8 px-8 md:px-16 lg:px-24 z-20 border-t border-white/10">
-            <div id="tour-chat-input-area" class="max-w-6xl mx-auto">
-                <div id="task-context-panel" class="mb-4 hidden rounded-xl border border-primary/30 bg-primary/5 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="material-icons-round text-lg text-primary">assignment</span>
-                                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Обсуждаемая задача</span>
-                                <span id="task-context-status" class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300" title="Статус задачи"></span>
-                            </div>
-                            <h3 id="task-context-title" class="font-medium text-white text-sm mb-1"></h3>
-                            <p id="task-context-desc" class="text-xs text-gray-400 line-clamp-2"></p>
+        <div class="chat-composer">
+            <div id="tour-chat-input-area" class="chat-composer-inner">
+                <div id="task-context-panel" class="chat-task-context hidden">
+                    <div class="chat-task-body">
+                        <div class="chat-task-header">
+                            <span class="material-icons-round" aria-hidden="true">assignment</span>
+                            <span class="chat-task-label">Обсуждаемая задача</span>
+                            <span id="task-context-status" class="chat-task-status" title="Статус задачи"></span>
                         </div>
-                        <a id="task-context-link" href="/tasks/" class="text-xs text-primary hover:underline flex items-center gap-1 shrink-0">К задачам <span class="material-icons-round text-sm">open_in_new</span></a>
+                        <h3 id="task-context-title" class="chat-task-title"></h3>
+                        <p id="task-context-desc" class="chat-task-desc"></p>
                     </div>
+                    <a id="task-context-link" href="/tasks/" class="chat-task-link">К задачам <span class="material-icons-round">open_in_new</span></a>
                 </div>
-                <div id="chat-options-bar" class="flex flex-wrap items-center justify-between gap-3 mb-4 px-1">
-                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <div id="chat-model-row" class="flex items-center gap-2 rounded-lg bg-bg-surface/80 border border-white/10 px-2.5 py-1.5">
-                            <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider shrink-0">Model</span>
-                            <select id="provider-select" class="chat-model-select corporate-select bg-transparent border-0 py-1 pr-6 pl-1 text-xs text-gray-100 font-medium focus:outline-none focus:ring-0 cursor-pointer appearance-none" title="Провайдер" aria-label="Провайдер">
-                                <option value="auto" selected>Cursor Auto</option>
-                                <option value="gemini" disabled>Gemini (в разработке)</option>
-                                <option value="grok" disabled>Grok (в разработке)</option>
+                <div id="chat-options-bar" class="chat-toolbar">
+                    <div class="chat-toolbar-left">
+                        <div id="chat-model-row" class="chat-select-group">
+                            <span class="chat-select-label">Model</span>
+                            <select id="provider-select" class="chat-model-select" title="Провайдер" aria-label="Провайдер">
+                                <option value="auto" selected>Smart Auto</option>
+                                <option value="cursor">Cursor CLI</option>
+                                <option value="gemini">Gemini</option>
+                                <option value="grok">Grok</option>
                             </select>
-                            <span id="model-sep" class="text-gray-600">·</span>
-                            <select id="model-select" class="chat-model-select corporate-select bg-transparent border-0 py-1 pr-6 pl-1 text-xs text-gray-100 font-medium focus:outline-none focus:ring-0 cursor-pointer appearance-none min-w-[120px]" title="Модель" aria-label="Модель">
+                            <span id="model-sep" class="chat-select-sep">·</span>
+                            <select id="model-select" class="chat-model-select" title="Модель" aria-label="Модель">
                                 <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
                                 <option value="gemini-1.5-pro">gemini-1.5-pro</option>
                                 <option value="gemini-1.5-flash">gemini-1.5-flash</option>
                             </select>
                         </div>
-                        <label class="flex items-center gap-2 cursor-pointer group rounded-lg bg-bg-surface/80 border border-white/10 px-2.5 py-1.5 hover:border-white/15 transition-colors" title="{% if rag_available %}Поиск по базе знаний{% else %}RAG недоступен{% endif %}" id="tour-rag-toggle">
-                            <input type="checkbox" id="use-rag" {% if rag_available %}checked{% endif %} {% if not rag_available %}disabled{% endif %} class="w-3.5 h-3.5 rounded border-white/20 text-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-0" aria-label="RAG">
-                            <span class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider group-hover:text-gray-400">RAG</span>
-                            {% if not rag_available %}<span class="text-[9px] text-amber-400/80" title="Мини-сборка: RAG отключён">(mini)</span>{% endif %}
+                        <label class="chat-rag-toggle" title="{% if rag_available %}Поиск по базе знаний{% else %}RAG недоступен{% endif %}" id="tour-rag-toggle">
+                            <input type="checkbox" id="use-rag" {% if rag_available %}checked{% endif %} {% if not rag_available %}disabled{% endif %} aria-label="RAG">
+                            <span>RAG</span>
+                            {% if not rag_available %}<span class="chat-rag-note" title="Мини-сборка: RAG отключён">mini</span>{% endif %}
                         </label>
-                        <button type="button" id="btn-clear-chat" onclick="clearChat()" class="corporate-clear-btn flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-gray-500 hover:text-gray-300 hover:bg-white/5 uppercase tracking-wider" aria-label="Очистить историю чата" title="Очистить историю">
-                            <span class="material-icons-round text-base">delete_sweep</span>
-                            <span class="hidden sm:inline">Clear</span>
+                        <div class="chat-select-group">
+                            <span class="chat-select-label">Mode</span>
+                            <select id="orchestrator-mode-select" class="chat-model-select" title="Orchestrator Mode" aria-label="Mode">
+                                <option value="chat" selected>Chat (Fast)</option>
+                                <option value="react">ReAct (Precise)</option>
+                            </select>
+                        </div>
+                        <button type="button" id="btn-clear-chat" onclick="clearChat()" class="chat-ghost-btn" aria-label="Очистить историю чата" title="Очистить историю">
+                            <span class="material-icons-round">delete_sweep</span>
+                            <span>Clear history</span>
                         </button>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button type="button" id="btn-shortcuts-help" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-gray-500 hover:text-gray-300 hover:bg-white/5 uppercase tracking-wider" onclick="showShortcutsHelp()" aria-label="Горячие клавиши" title="Горячие клавиши (Ctrl+/)">
-                            <span class="material-icons-round text-base">keyboard</span>
-                            <span class="hidden sm:inline">Shortcuts</span>
+                    <div class="chat-toolbar-right">
+                        <button type="button" id="btn-chat-info" class="chat-ghost-btn" aria-label="Инструкции чата" title="Инструкции чата">
+                            <span class="material-icons-round">info</span>
+                            <span>Инструкции</span>
+                        </button>
+                        <button type="button" id="btn-shortcuts-help" class="chat-ghost-btn" onclick="showShortcutsHelp()" aria-label="Горячие клавиши" title="Горячие клавиши (Ctrl+/)">
+                            <span class="material-icons-round">keyboard</span>
+                            <span>Клавиши</span>
                         </button>
                     </div>
+                </div>
+                <div id="chat-instructions" class="chat-instructions hidden" aria-live="polite">
+                    <p class="chat-instructions-title">Что умеет этот чат</p>
+                    <ul>
+                        <li>RAG — при включенной галочке использует базу знаний для ответов.</li>
+                        <li>Задачи — доступ к списку и карточкам задач (описание, статус, приоритет, сроки, исполнитель).</li>
+                        <li>Серверы — доступ к списку серверов и безопасным командам через инструменты (опасные — только после подтверждения).</li>
+                        <li>Файлы — можно перетаскивать документы для анализа.</li>
+                        <li>Данные ограничены вашим аккаунтом.</li>
+                    </ul>
                 </div>
                 <input type="file" id="file-input" multiple accept=".txt,.md,.pdf,.docx,.doc,.jpg,.jpeg,.png,.gif,.bmp,.webp" style="display: none;">
-                <div id="attached-files" class="mb-4 space-y-2.5 hidden"></div>
-                <div id="input-container" class="corporate-input-container glass-md rounded-xl p-3 transition-base focus-within:border-primary/50 focus-within:shadow-primary focus-within:shadow-primary-lg" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-                    <div class="flex items-end gap-3">
-                        <textarea id="chat-input" rows="1" placeholder="Type your message or drag files here to attach..." class="flex-1 bg-transparent text-gray-100 text-sm placeholder-gray-500 px-5 py-4 focus:outline-none resize-none overflow-hidden min-h-[56px] max-h-[200px] leading-relaxed font-normal" oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px'" title="Сообщение: Ctrl+Enter — отправить, Shift+Enter — новая строка" aria-label="Ввод сообщения"></textarea>
-                        <div class="flex items-center gap-2 pb-2.5 pr-2.5">
-                            <button id="attach-btn" type="button" class="corporate-icon-btn p-3 rounded-xl" title="Attach File" aria-label="Attach file" onclick="document.getElementById('file-input').click()">
-                                <span class="material-icons-round text-xl" aria-hidden="true">attach_file</span>
-                            </button>
-                            <button id="send-btn" type="button" class="corporate-send-btn w-12 h-12 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-xl shadow-primary/30 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" aria-label="Send message">
-                                <span class="material-icons-round text-xl" id="send-icon" aria-hidden="true">send</span>
-                            </button>
-                        </div>
+                <div id="attached-files" class="chat-attachments hidden"></div>
+                <div id="input-container" class="chat-input-card" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                    <textarea id="chat-input" rows="1" placeholder="Опишите задачу, перетащите файлы или попросите краткую сводку..." oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px'" title="Сообщение: Enter — отправить, Shift+Enter — новая строка" aria-label="Ввод сообщения"></textarea>
+                    <div class="chat-input-actions">
+                        <button id="attach-btn" type="button" class="chat-icon-btn" title="Attach File" aria-label="Attach file" onclick="document.getElementById('file-input').click()">
+                            <span class="material-icons-round" aria-hidden="true">attach_file</span>
+                        </button>
+                        <button id="send-btn" type="button" class="chat-send-btn" aria-label="Send message">
+                            <span class="material-icons-round" id="send-icon" aria-hidden="true">send</span>
+                        </button>
                     </div>
                 </div>
-                <p class="text-center text-xs text-gray-500 mt-4 font-medium">
-                    <kbd class="px-2 py-1 bg-bg-surface border border-white/15 rounded-md text-xs font-mono">Ctrl+Enter</kbd> — отправить • <kbd class="px-2 py-1 bg-bg-surface border border-white/15 rounded-md text-xs font-mono">Shift+Enter</kbd> — новая строка • Перетащите файлы для загрузки
+                <p class="chat-input-hint">
+                    <kbd>Enter</kbd> — отправить • <kbd>Shift+Enter</kbd> — новая строка • Перетащите файлы для загрузки
                 </p>
             </div>
         </div>
-    </div>
+    </section>
 </div>
 
 <!-- Shortcuts help overlay -->
 <div id="shortcuts-help-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden" aria-hidden="true" aria-modal="true">
-    <div id="shortcuts-help-dialog" class="bg-bg-surface border border-white/15 rounded-xl shadow-2xl max-w-md mx-4 p-6 relative" role="dialog" aria-label="Справка по горячим клавишам" tabindex="-1">
-        <button type="button" id="shortcuts-help-close" onclick="hideShortcutsHelp()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors p-1 rounded focus:outline-none focus:ring-2 focus:ring-primary/50" aria-label="Закрыть (Escape)">
+    <div id="shortcuts-help-dialog" class="chat-shortcuts-dialog" role="dialog" aria-label="Справка по горячим клавишам" tabindex="-1">
+        <button type="button" id="shortcuts-help-close" onclick="hideShortcutsHelp()" class="chat-shortcuts-close" aria-label="Закрыть (Escape)">
             <span class="material-icons-round">close</span>
         </button>
-        <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <span class="material-icons-round text-primary">keyboard</span>
+        <h3 class="chat-shortcuts-title">
+            <span class="material-icons-round">keyboard</span>
             Горячие клавиши
         </h3>
-        <ul class="space-y-3 text-sm text-gray-300">
-            <li class="flex items-center justify-between gap-4">
-                <span>Отправить сообщение</span>
-                <kbd class="px-2 py-1 bg-bg-base border border-white/15 rounded text-xs font-mono">Ctrl+Enter</kbd>
-            </li>
-            <li class="flex items-center justify-between gap-4">
-                <span>Новая строка</span>
-                <kbd class="px-2 py-1 bg-bg-base border border-white/15 rounded text-xs font-mono">Shift+Enter</kbd>
-            </li>
-            <li class="flex items-center justify-between gap-4">
-                <span>Очистить чат</span>
-                <kbd class="px-2 py-1 bg-bg-base border border-white/15 rounded text-xs font-mono">Ctrl+L</kbd>
-            </li>
-            <li class="flex items-center justify-between gap-4">
-                <span>Остановить ответ</span>
-                <span class="text-gray-500 text-xs">кнопка Stop при ответе</span>
-            </li>
-            <li class="flex items-center justify-between gap-4">
-                <span>Эта справка</span>
-                <kbd class="px-2 py-1 bg-bg-base border border-white/15 rounded text-xs font-mono">Ctrl+/</kbd>
-            </li>
+        <ul class="chat-shortcuts-list">
+            <li><span>Отправить сообщение</span><kbd>Enter</kbd></li>
+            <li><span>Новая строка</span><kbd>Shift+Enter</kbd></li>
+            <li><span>Очистить чат</span><kbd>Ctrl+L</kbd></li>
+            <li><span>Остановить ответ</span><span class="chat-shortcuts-muted">кнопка Stop при ответе</span></li>
+            <li><span>Эта справка</span><kbd>Ctrl+/</kbd></li>
         </ul>
-        <p class="text-xs text-gray-500 mt-4">На Mac используйте <kbd class="font-mono">Cmd</kbd> вместо <kbd class="font-mono">Ctrl</kbd>. Фокус по Tab: модель → RAG → Clear → поле ввода → вложение → отправить → Shortcuts.</p>
+        <p class="chat-shortcuts-footnote">На Mac используйте <kbd>Cmd</kbd> вместо <kbd>Ctrl</kbd>. Фокус по Tab: модель → RAG → Clear → поле ввода → вложение → отправить → Shortcuts.</p>
+    </div>
+</div>
+
+<!-- Task Modal Window -->
+<div id="task-modal" class="task-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+    <div class="task-modal-backdrop" onclick="closeTaskModal()"></div>
+    <div class="task-modal-panel">
+        <div class="task-modal-header">
+            <div class="task-modal-header-top">
+                <h2 id="task-modal-title" class="task-modal-title"></h2>
+                <button type="button" class="task-modal-close" onclick="closeTaskModal()" aria-label="Close">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div class="task-modal-meta">
+                <span class="task-badge task-badge-status" id="task-modal-status"></span>
+                <span class="task-badge task-badge-priority" id="task-modal-priority"></span>
+                <span class="task-meta-item" id="task-modal-assignee"></span>
+            </div>
+        </div>
+
+        <div class="task-modal-body">
+            <div class="task-modal-section">
+                <h3 class="task-modal-section-title">Description</h3>
+                <p id="task-modal-description" class="task-modal-description"></p>
+            </div>
+
+            <div class="task-modal-section task-modal-grid">
+                <div>
+                    <h3 class="task-modal-section-title">Due Date</h3>
+                    <p id="task-modal-due-date" class="task-modal-info">—</p>
+                </div>
+                <div>
+                    <h3 class="task-modal-section-title">Server</h3>
+                    <p id="task-modal-server" class="task-modal-info">—</p>
+                </div>
+            </div>
+
+            <div class="task-modal-section">
+                <h3 class="task-modal-section-title">Timeline</h3>
+                <div class="task-timeline">
+                    <div class="task-timeline-item">
+                        <span class="task-timeline-label">Created:</span>
+                        <span id="task-modal-created" class="task-timeline-value"></span>
+                    </div>
+                    <div class="task-timeline-item">
+                        <span class="task-timeline-label">Updated:</span>
+                        <span id="task-modal-updated" class="task-timeline-value"></span>
+                    </div>
+                    <div class="task-timeline-item">
+                        <span class="task-timeline-label">Completed:</span>
+                        <span id="task-modal-completed" class="task-timeline-value">—</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="task-modal-actions">
+            <button type="button" class="task-action-btn task-action-primary" onclick="discussTask()">
+                <span class="material-icons-round">chat</span>
+                Discuss in Chat
+            </button>
+            <button type="button" class="task-action-btn task-action-secondary" onclick="takeTaskInProgress()">
+                <span class="material-icons-round">play_arrow</span>
+                Start Work
+            </button>
+            <button type="button" class="task-action-btn task-action-secondary" onclick="openTaskPage()">
+                <span class="material-icons-round">open_in_new</span>
+                Open Task Page
+            </button>
+        </div>
     </div>
 </div>
 
 <!-- Message Templates -->
 <template id="user-msg-template">
-    <div class="flex justify-end animate-fade-in-up corporate-message-wrapper" data-role="user-msg">
-        <div class="max-w-[85%] md:max-w-[75%] lg:max-w-[70%] flex gap-5 flex-row-reverse group/msg">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center flex-shrink-0 text-sm font-semibold text-white shadow-lg border border-primary/30">
-                <span class="material-icons-round text-xl">person</span>
+    <div class="chat-msg chat-msg-user corporate-message-wrapper" data-role="user-msg">
+        <div class="chat-msg-shell">
+            <div class="chat-avatar chat-avatar-user">
+                <span class="material-icons-round">person</span>
             </div>
-            <div class="flex flex-col items-end gap-2.5 flex-1 min-w-0">
-                <div class="flex items-center gap-3">
-                    <span class="text-xs font-bold text-gray-200 uppercase tracking-wider">You</span>
-                    <span class="message-timestamp text-xs text-gray-500 font-mono"></span>
+            <div class="chat-msg-body">
+                <div class="chat-msg-meta">
+                    <span class="chat-msg-author">You</span>
+                    <span class="message-timestamp"></span>
                 </div>
-                <div class="corporate-message-user px-6 py-4.5 text-sm leading-relaxed user-content shadow-lg"></div>
-                <div class="msg-actions flex items-center gap-1.5 mt-1.5 opacity-70 group-hover/msg:opacity-100 transition-opacity" role="group" aria-label="Действия с сообщением"></div>
+                <div class="chat-msg-bubble chat-msg-bubble-user corporate-message-user user-content"></div>
+                <div class="msg-actions" role="group" aria-label="Действия с сообщением"></div>
             </div>
         </div>
     </div>
 </template>
 
 <template id="ai-msg-template">
-    <div class="flex justify-start animate-fade-in-up corporate-message-wrapper" data-role="ai-msg">
-        <div class="max-w-[85%] md:max-w-[75%] lg:max-w-[70%] flex gap-5 group/msg">
-            <div class="w-11 h-11 rounded-xl bg-bg-surface border border-white/15 flex items-center justify-center flex-shrink-0 shadow-lg">
-                <span class="material-icons-round text-xl text-primary">support_agent</span>
+    <div class="chat-msg chat-msg-ai corporate-message-wrapper" data-role="ai-msg">
+        <div class="chat-msg-shell">
+            <div class="chat-avatar chat-avatar-ai">
+                <span class="material-icons-round">support_agent</span>
             </div>
-            <div class="flex flex-col gap-2.5 flex-1 min-w-0">
-                <div class="flex items-center gap-3">
-                    <span class="text-xs font-bold text-gray-200 uppercase tracking-wider">AI Assistant</span>
-                    <span class="message-timestamp text-xs text-gray-500 font-mono"></span>
+            <div class="chat-msg-body">
+                <div class="chat-msg-meta">
+                    <span class="chat-msg-author">AI Assistant</span>
+                    <span class="message-timestamp"></span>
                 </div>
-                <div class="corporate-message-ai px-6 py-4.5 text-sm leading-relaxed prose prose-invert max-w-none ai-content shadow-lg"></div>
-                <div class="msg-actions flex items-center gap-1.5 mt-1.5 opacity-70 group-hover/msg:opacity-100 transition-opacity" role="group" aria-label="Действия с сообщением"></div>
+                <div class="chat-msg-bubble chat-msg-bubble-ai corporate-message-ai prose prose-invert max-w-none ai-content"></div>
+                <div class="msg-actions" role="group" aria-label="Действия с сообщением"></div>
             </div>
         </div>
     </div>
 </template>
 
 <template id="thinking-template">
-    <div class="flex justify-start animate-fade-in thinking-wrapper corporate-message-wrapper">
-        <div class="max-w-[85%] md:max-w-[75%] lg:max-w-[70%] flex gap-5 items-center">
-            <div class="w-11 h-11 rounded-xl bg-bg-surface border border-white/15 flex items-center justify-center flex-shrink-0 shadow-lg">
-                <span class="material-icons-round text-xl text-primary animate-pulse">hourglass_empty</span>
+    <div class="chat-msg chat-msg-ai thinking-wrapper corporate-message-wrapper">
+        <div class="chat-msg-shell">
+            <div class="chat-avatar chat-avatar-ai">
+                <span class="material-icons-round animate-pulse">hourglass_empty</span>
             </div>
-            <div class="flex flex-col gap-2.5 flex-1">
-                <div class="flex items-center gap-3">
-                    <span class="text-xs font-bold text-gray-200 uppercase tracking-wider">AI Assistant</span>
-                    <span class="text-xs text-gray-500 font-medium">Processing...</span>
+            <div class="chat-msg-body">
+                <div class="chat-msg-meta">
+                    <span class="chat-msg-author">AI Assistant</span>
+                    <span class="chat-msg-status">Processing...</span>
                 </div>
-                <div class="corporate-message-ai px-6 py-4.5">
+                <div class="chat-msg-bubble chat-msg-bubble-ai">
                     <div class="typing-indicator">
                         <span></span><span></span><span></span>
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn-stop-stream flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 text-xs font-medium transition-colors" aria-label="Остановить ответ" title="Остановить стриминг">
-                <span class="material-icons-round text-base">stop</span>
+            <button type="button" class="btn-stop-stream" aria-label="Остановить ответ" title="Остановить стриминг">
+                <span class="material-icons-round">stop</span>
                 <span>Stop</span>
             </button>
         </div>
     </div>
 </template>
 
-{# Chat/orporate/prose/msg styles — core_ui/static/css/style.css #}
 {% endblock %}
 
 {% block scripts %}
@@ -264,6 +338,7 @@
     const providerSelect = document.getElementById('provider-select');
     const modelSelect = document.getElementById('model-select');
     const useRagCheckbox = document.getElementById('use-rag');
+    const chatSearchInput = document.getElementById('chat-search');
 
     // Текущий чат (null = новый диалог)
     let currentChatId = null;
@@ -275,6 +350,44 @@
         const u = new URL(window.location.href);
         if (id != null) u.searchParams.set('chat_id', String(id)); else u.searchParams.delete('chat_id');
         window.history.replaceState({}, '', u.pathname + u.search);
+        updateSessionBadge(id);
+    }
+
+    function updateSessionBadge(id) {
+        const el = document.getElementById('chat-session-id');
+        if (!el) return;
+        el.textContent = id ? '#' + id : '—';
+    }
+
+    function updateRagStatus() {
+        const el = document.getElementById('rag-status');
+        const card = document.getElementById('rag-status-card');
+        if (!el || !useRagCheckbox) return;
+        const enabled = !!useRagCheckbox.checked;
+        el.textContent = enabled ? 'On' : 'Off';
+        if (card) card.classList.toggle('chat-status-card--off', !enabled);
+    }
+
+    if (useRagCheckbox) {
+        useRagCheckbox.addEventListener('change', updateRagStatus);
+        updateRagStatus();
+    }
+
+    function formatChatDate(iso) {
+        if (!iso) return '';
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        const now = new Date();
+        const sameDay = date.toDateString() === now.toDateString();
+        if (sameDay) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        const diff = now - date;
+        const day = 24 * 60 * 60 * 1000;
+        if (diff < 6 * day) {
+            return date.toLocaleDateString([], { weekday: 'short' });
+        }
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
 
     function loadChats() {
@@ -282,21 +395,75 @@
             .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to load chats')); })
             .then(function(data) {
                 const list = document.getElementById('chat-history-list');
+                const emptyState = document.getElementById('chat-history-empty');
+                const countEl = document.getElementById('chat-history-count');
                 if (!list) return;
                 list.innerHTML = '';
-                (data.chats || []).forEach(function(c) {
-                    const li = document.createElement('div');
-                    li.className = 'chat-history-item rounded-lg px-3 py-2.5 text-left text-sm truncate cursor-pointer transition-colors ' +
-                        (currentChatId === c.id ? 'bg-primary/20 text-primary border border-primary/30' : 'text-gray-300 hover:bg-white/5 border border-transparent');
-                    li.setAttribute('role', 'listitem');
-                    li.dataset.chatId = c.id;
-                    li.title = c.title || ('Чат #' + c.id);
-                    li.textContent = c.title || ('Чат #' + c.id);
-                    li.addEventListener('click', function() { loadChat(c.id); });
-                    list.appendChild(li);
+                const chats = data.chats || [];
+                if (countEl) {
+                    const countLabel = chats.length === 1 ? '1 chat' : chats.length + ' chats';
+                    countEl.textContent = countLabel;
+                }
+                if (emptyState) emptyState.classList.toggle('hidden', chats.length > 0);
+
+                chats.forEach(function(c) {
+                    const item = document.createElement('div');
+                    const isActive = currentChatId === c.id;
+                    item.className = 'chat-history-item ' + (isActive ? 'chat-history-item--active' : '');
+                    item.setAttribute('role', 'listitem');
+                    item.dataset.chatId = c.id;
+                    item.dataset.title = (c.title || '').toLowerCase();
+                    item.dataset.preview = (c.preview || '').toLowerCase();
+
+                    const title = document.createElement('div');
+                    title.className = 'chat-history-item-title';
+                    title.textContent = c.title || ('Чат #' + c.id);
+
+                    const preview = document.createElement('div');
+                    preview.className = 'chat-history-item-preview';
+                    preview.textContent = c.preview || 'Нет сообщений';
+
+                    const meta = document.createElement('div');
+                    meta.className = 'chat-history-item-meta';
+
+                    const date = document.createElement('span');
+                    date.className = 'chat-history-item-date';
+                    date.textContent = formatChatDate(c.last_message_at || c.updated_at);
+
+                    meta.appendChild(date);
+
+                    item.appendChild(title);
+                    item.appendChild(preview);
+                    item.appendChild(meta);
+
+                    item.addEventListener('click', function() { loadChat(c.id); });
+                    list.appendChild(item);
                 });
+                applyChatFilter();
             })
             .catch(function() {});
+    }
+
+    function applyChatFilter() {
+        if (!chatSearchInput) return;
+        const q = chatSearchInput.value.trim().toLowerCase();
+        const list = document.getElementById('chat-history-list');
+        if (!list) return;
+        const items = list.querySelectorAll('.chat-history-item');
+        items.forEach(function(item) {
+            if (!q) {
+                item.classList.remove('hidden');
+                return;
+            }
+            const title = item.dataset.title || '';
+            const preview = item.dataset.preview || '';
+            const match = title.includes(q) || preview.includes(q);
+            item.classList.toggle('hidden', !match);
+        });
+    }
+
+    if (chatSearchInput) {
+        chatSearchInput.addEventListener('input', applyChatFilter);
     }
 
     function loadChat(id) {
@@ -361,6 +528,8 @@
             { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' }
         ],
         grok: [
+            { value: 'grok-3', label: 'grok-3' },
+            { value: 'grok-4-1-fast-non-reasoning', label: 'grok-4-1-fast-non-reasoning' },
             { value: 'grok-beta', label: 'grok-beta' },
             { value: 'grok-2', label: 'grok-2' }
         ]
@@ -369,7 +538,7 @@
     function updateModelOptions() {
         const provider = providerSelect.value;
         const sep = document.getElementById('model-sep');
-        if (provider === 'auto') {
+        if (provider === 'auto' || provider === 'cursor') {
             if (sep) sep.style.display = 'none';
             if (modelSelect) modelSelect.style.display = 'none';
             return;
@@ -396,15 +565,19 @@
 
     function syncHeaderModel() {
         var el = document.getElementById('header-current-model');
-        if (!el) return;
+        var local = document.getElementById('chat-current-model');
+        if (!el && !local) return;
+        let label = 'Auto';
         if (providerSelect.value === 'auto') {
-            el.textContent = 'Cursor Auto';
-            return;
-        }
-        if (modelSelect && modelSelect.options.length) {
+            label = 'Smart Auto';
+        } else if (providerSelect.value === 'cursor') {
+            label = 'Cursor CLI';
+        } else if (modelSelect && modelSelect.options.length) {
             var opt = modelSelect.options[modelSelect.selectedIndex];
-            el.textContent = opt ? opt.text : modelSelect.value;
+            label = opt ? opt.text : modelSelect.value;
         }
+        if (el) el.textContent = label;
+        if (local) local.textContent = label;
     }
     syncHeaderModel();
 
@@ -440,6 +613,7 @@
 
     // Clear chat — сбрасывает текущий чат и показывает приветствие
     function clearChat() {
+        if (!confirm('Очистить всю историю чатов?')) return;
         var wrappers = chatContainer.querySelectorAll('.corporate-message-wrapper, .thinking-wrapper');
         wrappers.forEach(function(msg) { msg.remove(); });
         if (welcomeMsg) welcomeMsg.style.display = 'flex';
@@ -490,6 +664,15 @@
         }
     }
 
+    // Chat instructions toggle
+    const chatInfoBtn = document.getElementById('btn-chat-info');
+    const chatInstructions = document.getElementById('chat-instructions');
+    if (chatInfoBtn && chatInstructions) {
+        chatInfoBtn.addEventListener('click', function() {
+            chatInstructions.classList.toggle('hidden');
+        });
+    }
+
     // Global keydown: Ctrl/Cmd+Enter, Ctrl/Cmd+/, Ctrl/Cmd+L
     document.addEventListener('keydown', function(e) {
         const mod = e.ctrlKey || e.metaKey;
@@ -509,9 +692,7 @@
         }
         if (e.key === 'l' || e.key === 'L') {
             e.preventDefault();
-            if (confirm('Очистить историю чата?')) {
-                clearChat();
-            }
+            clearChat();
             return;
         }
     });
@@ -580,10 +761,11 @@
                 },
                 body: JSON.stringify({
                     message: text,
-                    model: 'auto',
-                    specific_model: modelSelect ? modelSelect.value : undefined,
-                    use_rag: useRagCheckbox.checked,
-                    chat_id: currentChatId
+                    model: providerSelect ? providerSelect.value : 'auto',
+                    specific_model: (providerSelect && (providerSelect.value === 'auto' || providerSelect.value === 'cursor')) ? undefined : (modelSelect ? modelSelect.value : undefined),
+                    use_rag: useRagCheckbox && useRagCheckbox.checked,
+                    chat_id: currentChatId,
+                    mode: document.getElementById('orchestrator-mode-select') ? document.getElementById('orchestrator-mode-select').value : 'chat'
                 }),
                 signal: currentChatAbortController.signal
             });
@@ -863,8 +1045,8 @@
     function handleDrop(e) {
         e.preventDefault();
         e.stopPropagation();
-        inputContainer.classList.remove('border-primary', 'border-2', 'bg-primary/5');
-        
+        inputContainer.classList.remove('drag-over');
+
         const files = Array.from(e.dataTransfer.files);
         handleFiles(files);
     }
@@ -872,13 +1054,13 @@
     function handleDragOver(e) {
         e.preventDefault();
         e.stopPropagation();
-        inputContainer.classList.add('border-primary', 'border-2', 'bg-primary/5');
+        inputContainer.classList.add('drag-over');
     }
 
     function handleDragLeave(e) {
         e.preventDefault();
         e.stopPropagation();
-        inputContainer.classList.remove('border-primary', 'border-2', 'bg-primary/5');
+        inputContainer.classList.remove('drag-over');
     }
 
     async function uploadFile(file) {
@@ -886,16 +1068,16 @@
         const fileId = `file-${Date.now()}-${Math.random()}`;
         const fileItem = document.createElement('div');
         fileItem.id = fileId;
-        fileItem.className = 'flex items-center gap-3 bg-bg-surface border border-white/10 rounded-lg px-4 py-3 text-sm';
+        fileItem.className = 'chat-attachment-item';
         fileItem.innerHTML = `
-            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <span class="material-icons-round text-lg text-primary">description</span>
+            <div class="chat-attachment-icon">
+                <span class="material-icons-round">description</span>
             </div>
-            <div class="flex-1 min-w-0">
-                <div class="text-gray-200 font-medium truncate">${file.name}</div>
-                <div class="text-xs text-gray-500 mt-0.5">${formatFileSize(file.size)}</div>
+            <div class="chat-attachment-body">
+                <div class="chat-attachment-title">${file.name}</div>
+                <div class="chat-attachment-meta">${formatFileSize(file.size)}</div>
             </div>
-            <span class="material-icons-round text-base text-gray-500 animate-spin">hourglass_empty</span>
+            <span class="material-icons-round chat-attachment-spin">hourglass_empty</span>
         `;
         attachedFilesDiv.appendChild(fileItem);
         attachedFilesDiv.classList.remove('hidden');
@@ -916,18 +1098,18 @@
 
             if (response.ok && data.success) {
                 fileItem.innerHTML = `
-                    <div class="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                        <span class="material-icons-round text-lg text-emerald-400">check_circle</span>
+                    <div class="chat-attachment-icon success">
+                        <span class="material-icons-round">check_circle</span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="text-gray-200 font-medium truncate">${file.name}</div>
-                        <div class="text-xs text-gray-500 mt-0.5">${formatFileSize(file.size)} • Uploaded</div>
+                    <div class="chat-attachment-body">
+                        <div class="chat-attachment-title">${file.name}</div>
+                        <div class="chat-attachment-meta">${formatFileSize(file.size)} • Uploaded</div>
                     </div>
-                    <button type="button" onclick="removeFile('${fileId}', '${file.name}')" class="corporate-icon-btn p-2 rounded-lg text-gray-500 hover:text-red-400 transition-colors" aria-label="Remove file ${String(file.name).replace(/"/g, '&quot;')}">
-                        <span class="material-icons-round text-base" aria-hidden="true">close</span>
+                    <button type="button" onclick="removeFile('${fileId}', '${file.name}')" class="chat-icon-btn" aria-label="Remove file ${String(file.name).replace(/"/g, '&quot;')}">
+                        <span class="material-icons-round" aria-hidden="true">close</span>
                     </button>
                 `;
-                
+
                 // Show success notification
                 if (typeof showToast === 'function') showToast(`Файл "${file.name}" загружен и добавлен в базу знаний`, 'success');
             } else {
@@ -936,15 +1118,15 @@
         } catch (error) {
             console.error('Upload error:', error);
             fileItem.innerHTML = `
-                <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
-                    <span class="material-icons-round text-lg text-red-400">error</span>
+                <div class="chat-attachment-icon error">
+                    <span class="material-icons-round">error</span>
                 </div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-gray-200 font-medium truncate">${file.name}</div>
-                    <div class="text-xs text-red-400 mt-0.5">Upload failed</div>
+                <div class="chat-attachment-body">
+                    <div class="chat-attachment-title">${file.name}</div>
+                    <div class="chat-attachment-meta error">Upload failed</div>
                 </div>
-                <button type="button" onclick="removeFile('${fileId}', '${file.name}')" class="corporate-icon-btn p-2 rounded-lg text-gray-500 hover:text-red-400 transition-colors" aria-label="Remove file ${String(file.name).replace(/"/g, '&quot;')}">
-                    <span class="material-icons-round text-base" aria-hidden="true">close</span>
+                <button type="button" onclick="removeFile('${fileId}', '${file.name}')" class="chat-icon-btn" aria-label="Remove file ${String(file.name).replace(/"/g, '&quot;')}">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             `;
             if (typeof showToast === 'function') showToast(`Ошибка загрузки "${file.name}": ${error.message}`, 'error');
@@ -957,7 +1139,7 @@
             fileItem.remove();
         }
         attachedFiles = attachedFiles.filter(f => f.name !== fileName);
-        
+
         if (attachedFiles.length === 0) {
             attachedFilesDiv.classList.add('hidden');
         }
@@ -1036,12 +1218,138 @@
         loadChats();
         var chatId = getChatIdFromUrl();
         if (chatId) loadChat(parseInt(chatId, 10));
+        updateSessionBadge(chatId);
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initChatHistory);
     } else {
         initChatHistory();
     }
+
+    // ==========================================
+    // Task Modal Functions
+    // ==========================================
+    let currentTaskId = null;
+
+    function openTaskModal(taskId) {
+        currentTaskId = taskId;
+        const modal = document.getElementById('task-modal');
+
+        // Fetch task details
+        fetch(`/tasks/${taskId}/`)
+            .then(res => res.json())
+            .then(data => {
+                // Populate modal
+                document.getElementById('task-modal-title').textContent = data.title;
+                document.getElementById('task-modal-status').textContent = data.status.replace('_', ' ');
+
+                const priorityBadge = document.getElementById('task-modal-priority');
+                priorityBadge.textContent = data.priority || 'MEDIUM';
+                priorityBadge.className = 'task-badge task-badge-priority';
+                if (data.priority === 'HIGH') priorityBadge.classList.add('priority-high');
+                if (data.priority === 'LOW') priorityBadge.classList.add('priority-low');
+
+                document.getElementById('task-modal-assignee').textContent =
+                    data.assignee ? `Assigned to: ${data.assignee}` : 'Unassigned';
+
+                document.getElementById('task-modal-description').textContent =
+                    data.description || 'No description provided.';
+
+                document.getElementById('task-modal-due-date').textContent =
+                    data.due_date ? new Date(data.due_date).toLocaleDateString() : '—';
+
+                document.getElementById('task-modal-server').textContent =
+                    data.target_server || '—';
+
+                document.getElementById('task-modal-created').textContent =
+                    new Date(data.created_at).toLocaleString();
+
+                document.getElementById('task-modal-updated').textContent =
+                    new Date(data.updated_at).toLocaleString();
+
+                document.getElementById('task-modal-completed').textContent =
+                    data.completed_at ? new Date(data.completed_at).toLocaleString() : '—';
+
+                // Show modal
+                modal.classList.remove('hidden');
+            })
+            .catch(err => {
+                console.error('Failed to load task:', err);
+                alert('Failed to load task details');
+            });
+    }
+
+    function closeTaskModal() {
+        document.getElementById('task-modal').classList.add('hidden');
+        currentTaskId = null;
+    }
+
+    function discussTask() {
+        if (!currentTaskId) return;
+        closeTaskModal();
+
+        // Insert prompt to discuss task
+        const taskTitle = document.getElementById('task-modal-title').textContent;
+        chatInput.value = `Let's discuss task #${currentTaskId}: ${taskTitle}`;
+        chatInput.style.height = '';
+        chatInput.style.height = chatInput.scrollHeight + 'px';
+        chatInput.focus();
+    }
+
+    function takeTaskInProgress() {
+        if (!currentTaskId) return;
+
+        if (confirm('Start working on this task?')) {
+            fetch(`/tasks/${currentTaskId}/update-status/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ status: 'IN_PROGRESS' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    closeTaskModal();
+                    // Insert confirmation message
+                    chatInput.value = `Task #${currentTaskId} moved to IN PROGRESS. What should I work on first?`;
+                    chatInput.focus();
+                } else {
+                    alert('Failed to update task status');
+                }
+            })
+            .catch(err => {
+                console.error('Failed to update task:', err);
+                alert('Failed to update task');
+            });
+        }
+    }
+
+    function openTaskPage() {
+        if (!currentTaskId) return;
+        window.open(`/tasks/${currentTaskId}/`, '_blank');
+    }
+
+    // Handle clicks on task: links in chat
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('a[href^="task:"]');
+        if (link) {
+            e.preventDefault();
+            const taskId = link.getAttribute('href').replace('task:', '');
+            openTaskModal(taskId);
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('task-modal');
+            if (!modal.classList.contains('hidden')) {
+                closeTaskModal();
+            }
+        }
+    });
 
     // Check for initial prompt
     {% if initial_prompt %}

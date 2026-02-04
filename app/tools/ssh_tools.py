@@ -89,10 +89,17 @@ class SSHConnectionManager:
                     # Будем добавлять в команды: export VAR=value && command
                     pass
             
-            if password:
-                options['password'] = password
-            elif key_path:
+            # Auth handling:
+            # - password only -> password auth
+            # - key only -> public key auth
+            # - key + password -> encrypted private key passphrase
+            if key_path:
                 options['client_keys'] = [key_path]
+            if password:
+                if key_path:
+                    options['passphrase'] = password
+                else:
+                    options['password'] = password
             
             conn = await asyncssh.connect(
                 host=host,

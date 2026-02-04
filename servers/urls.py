@@ -5,6 +5,8 @@ app_name = 'servers'
 
 urlpatterns = [
     path('', views.server_list, name='server_list'),
+    path('hub/', views.multi_terminal, name='multi_terminal'),
+    path('<int:server_id>/terminal/', views.server_terminal_page, name='server_terminal'),
     path('api/create/', views.server_create, name='server_create'),
     path('api/<int:server_id>/update/', views.server_update, name='server_update'),
     path('api/<int:server_id>/test/', views.server_test_connection, name='server_test'),

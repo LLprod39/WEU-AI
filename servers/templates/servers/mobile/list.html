@@ -139,7 +139,7 @@
     'use strict';
     
     window.connectServer = function(serverId) {
-        window.location.href = '/?prompt=Подключись к серверу ' + serverId;
+        window.location.href = '/servers/' + serverId + '/terminal/';
     };
     
     window.testServer = function(serverId) {

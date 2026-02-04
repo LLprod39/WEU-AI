@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ project.name }} - Спринты{% endblock %}
+{% block header_title %}Спринты — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:project_list' %}" class="text-gray-500 hover:text-white transition-colors">Проекты</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white truncate">{{ project.key }} / Спринты</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<div class="sprints-page sl-workspace">
+    <!-- Header -->
+    <div class="project-header-bar">
+        <div class="breadcrumb">
+            <a href="{% url 'tasks:task_list' %}">Tasks</a>
+            <span>/</span>
+            <a href="{% url 'tasks:project_list' %}">Проекты</a>
+            <span>/</span>
+            <a href="{% url 'tasks:project_detail' project.id %}">{{ project.key }}</a>
+            <span>/</span>
+            <span>Спринты</span>
+        </div>
+
+        <div class="project-nav">
+            <a href="{% url 'tasks:project_detail' project.id %}" class="nav-item">Доска</a>
+            <a href="{% url 'tasks:sprint_list' project.id %}" class="nav-item active">Спринты</a>
+            <a href="{% url 'tasks:project_materials' project.id %}" class="nav-item">Материалы</a>
+            <a href="{% url 'settings_project' project.id %}" class="nav-item">Настройки</a>
+        </div>
+    </div>
+
+    <div class="sprints-container">
+        <div class="sprints-toolbar">
+            <h2>Спринты</h2>
+            {% if can_edit %}
+            <button class="btn btn-primary" onclick="openCreateModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14m-7-7h14"></path>
+                </svg>
+                Новый спринт
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Active Sprint -->
+        {% for sprint in sprints %}
+        {% if sprint.status == 'active' %}
+        <div class="sprint-card active">
+            <div class="sprint-status-badge active">Активный</div>
+            <div class="sprint-header">
+                <h3>{{ sprint.name }}</h3>
+                <div class="sprint-dates">
+                    {% if sprint.start_date %}{{ sprint.start_date|date:"d.m" }}{% endif %}
+                    {% if sprint.end_date %} — {{ sprint.end_date|date:"d.m" }}{% endif %}
+                </div>
+            </div>
+            {% if sprint.goal %}
+            <p class="sprint-goal">{{ sprint.goal }}</p>
+            {% endif %}
+            <div class="sprint-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ sprint.progress }}%;"></div>
+                </div>
+                <span class="progress-text">{{ sprint.completed_task_count }}/{{ sprint.task_count }} задач</span>
+            </div>
+            {% if can_edit %}
+            <div class="sprint-actions">
+                <button class="btn btn-secondary" onclick="completeSprint({{ sprint.id }})">Завершить спринт</button>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <!-- Planning Sprints -->
+        <div class="sprints-section">
+            <h4>Планируемые</h4>
+            {% for sprint in sprints %}
+            {% if sprint.status == 'planning' %}
+            <div class="sprint-card">
+                <div class="sprint-status-badge planning">Планирование</div>
+                <div class="sprint-header">
+                    <h3>{{ sprint.name }}</h3>
+                    <div class="sprint-dates">
+                        {% if sprint.start_date %}{{ sprint.start_date|date:"d.m" }}{% endif %}
+                        {% if sprint.end_date %} — {{ sprint.end_date|date:"d.m" }}{% endif %}
+                    </div>
+                </div>
+                {% if sprint.goal %}
+                <p class="sprint-goal">{{ sprint.goal }}</p>
+                {% endif %}
+                <div class="sprint-stats">
+                    <span>{{ sprint.task_count }} задач</span>
+                </div>
+                {% if can_edit %}
+                <div class="sprint-actions">
+                    <button class="btn btn-primary" onclick="startSprint({{ sprint.id }})">Начать спринт</button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% empty %}
+            <p class="text-secondary">Нет планируемых спринтов</p>
+            {% endfor %}
+        </div>
+
+        <!-- Completed Sprints -->
+        <div class="sprints-section">
+            <h4>Завершённые</h4>
+            {% for sprint in sprints %}
+            {% if sprint.status == 'completed' %}
+            <div class="sprint-card completed">
+                <div class="sprint-status-badge completed">Завершён</div>
+                <div class="sprint-header">
+                    <h3>{{ sprint.name }}</h3>
+                    <div class="sprint-dates">
+                        {% if sprint.start_date %}{{ sprint.start_date|date:"d.m" }}{% endif %}
+                        {% if sprint.end_date %} — {{ sprint.end_date|date:"d.m" }}{% endif %}
+                    </div>
+                </div>
+                <div class="sprint-stats">
+                    <span>{{ sprint.completed_task_count }}/{{ sprint.task_count }} задач выполнено</span>
+                </div>
+            </div>
+            {% endif %}
+            {% empty %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Create Sprint Modal -->
+<div id="createModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Новый спринт</h2>
+            <button class="close-btn" onclick="closeCreateModal()">&times;</button>
+        </div>
+        <form id="createSprintForm" onsubmit="createSprint(event)">
+            <div class="form-group">
+                <label>Название <span class="required">*</span></label>
+                <input type="text" name="name" required placeholder="Sprint 1">
+            </div>
+            <div class="form-group">
+                <label>Цель спринта</label>
+                <textarea name="goal" rows="3" placeholder="Что мы хотим достичь?"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Начало</label>
+                    <input type="date" name="start_date">
+                </div>
+                <div class="form-group">
+                    <label>Окончание</label>
+                    <input type="date" name="end_date">
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">Отмена</button>
+                <button type="submit" class="btn btn-primary">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.sl-workspace {
+    --sl-void: #08080b;
+    --sl-deep: #0c0c10;
+    --sl-surface: #111116;
+    --sl-raised: #18181f;
+    --sl-border: rgba(255,255,255,0.08);
+    --sl-text: #f8fafc;
+    --sl-muted: #94a3b8;
+    --sl-tertiary: #64748b;
+    --sl-accent: #6366f1;
+    font-family: 'Outfit', system-ui, sans-serif;
+}
+.sprints-page { min-height: 100vh; }
+.sl-workspace.sprints-page { background: var(--sl-void); }
+.sl-workspace .project-header-bar {
+    padding: 14px 24px;
+    background: var(--sl-deep);
+    border-bottom: 1px solid var(--sl-border);
+}
+.sl-workspace .project-header-bar .breadcrumb a,
+.sl-workspace .project-header-bar .breadcrumb span { color: var(--sl-muted); }
+.sl-workspace .project-header-bar .breadcrumb a:hover { color: var(--sl-accent); }
+.sl-workspace .project-nav .nav-item { color: var(--sl-muted); }
+.sl-workspace .project-nav .nav-item:hover { background: var(--sl-raised); color: var(--sl-text); }
+.sl-workspace .project-nav .nav-item.active { background: rgba(99,102,241,0.15); color: var(--sl-accent); }
+.sl-workspace .sprints-container { max-width: 900px; margin: 0 auto; padding: 28px 24px; }
+.sl-workspace .sprints-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.sl-workspace .sprints-toolbar h2 { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--sl-text); letter-spacing: -0.02em; }
+.sl-workspace .btn-primary { background: var(--sl-accent); color: #fff; border: none; padding: 10px 18px; border-radius: 10px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.875rem; }
+.sl-workspace .btn-primary:hover { background: #4f46e5; }
+.sl-workspace .sprints-section { margin-top: 36px; }
+.sl-workspace .sprints-section h4 { margin: 0 0 16px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sl-tertiary); }
+.sl-workspace .sprints-section .text-secondary { color: var(--sl-muted); }
+.sl-workspace .sprint-card {
+    background: var(--sl-surface);
+    border: 1px solid var(--sl-border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 14px;
+    position: relative;
+    transition: border-color 0.15s;
+}
+.sl-workspace .sprint-card:hover { border-color: rgba(255,255,255,0.12); }
+.sl-workspace .sprint-card.active {
+    border-color: rgba(16,185,129,0.4);
+    box-shadow: 0 0 0 1px rgba(16,185,129,0.15);
+}
+.sl-workspace .sprint-card.completed { opacity: 0.75; }
+.sl-workspace .sprint-status-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.sl-workspace .sprint-status-badge.active { background: rgba(16,185,129,0.2); color: #34d399; }
+.sl-workspace .sprint-status-badge.planning { background: rgba(245,158,11,0.2); color: #fbbf24; }
+.sl-workspace .sprint-status-badge.completed { background: var(--sl-raised); color: var(--sl-tertiary); }
+.sl-workspace .sprint-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.sl-workspace .sprint-header h3 { margin: 0; font-size: 1.0625rem; font-weight: 600; color: var(--sl-text); }
+.sl-workspace .sprint-dates { font-size: 0.8125rem; color: var(--sl-tertiary); }
+.sl-workspace .sprint-goal { color: var(--sl-muted); font-size: 0.875rem; margin: 0 0 14px; line-height: 1.5; }
+.sl-workspace .sprint-progress { display: flex; align-items: center; gap: 14px; }
+.sl-workspace .progress-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--sl-raised);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.sl-workspace .progress-fill {
+    height: 100%;
+    background: #10b981;
+    border-radius: 6px;
+    transition: width 0.3s ease;
+}
+.sl-workspace .progress-text { font-size: 0.8125rem; color: var(--sl-muted); white-space: nowrap; }
+.sl-workspace .sprint-stats { font-size: 0.8125rem; color: var(--sl-tertiary); }
+.sl-workspace .sprint-actions { margin-top: 16px; display: flex; gap: 10px; }
+.sl-workspace .btn-secondary {
+    background: var(--sl-raised);
+    color: var(--sl-text);
+    border: 1px solid var(--sl-border);
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.sl-workspace .btn-secondary:hover { background: var(--sl-deep); }
+.sl-workspace .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.sl-workspace .modal.show { display: flex; }
+.sl-workspace .modal-content {
+    background: var(--sl-surface);
+    border: 1px solid var(--sl-border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 440px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.sl-workspace .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--sl-border);
+}
+.sl-workspace .modal-header h2 { margin: 0; font-size: 1.125rem; font-weight: 600; color: var(--sl-text); }
+.sl-workspace .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--sl-tertiary); padding: 4px; border-radius: 8px; }
+.sl-workspace .close-btn:hover { color: var(--sl-text); background: var(--sl-raised); }
+#createSprintForm { padding: 24px; }
+.sl-workspace .form-group { margin-bottom: 18px; }
+.sl-workspace .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.8125rem; color: var(--sl-muted); }
+.sl-workspace .form-group input,
+.sl-workspace .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--sl-deep);
+    border: 1px solid var(--sl-border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: var(--sl-text);
+}
+.sl-workspace .form-row { display: flex; gap: 16px; }
+.sl-workspace .form-row .form-group { flex: 1; }
+.sl-workspace .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--sl-border); }
+.sl-workspace .required { color: #ef4444; }
+</style>
+
+<script>
+function openCreateModal() {
+    document.getElementById('createModal').classList.add('show');
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').classList.remove('show');
+    document.getElementById('createSprintForm').reset();
+}
+
+async function createSprint(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    const data = {
+        name: form.name.value,
+        goal: form.goal.value,
+        start_date: form.start_date.value || null,
+        end_date: form.end_date.value || null,
+    };
+
+    try {
+        const response = await fetch('{% url "tasks:sprint_create" project.id %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function startSprint(id) {
+    if (!confirm('Начать спринт?')) return;
+
+    try {
+        const response = await fetch(`/tasks/sprints/${id}/start/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function completeSprint(id) {
+    if (!confirm('Завершить спринт?')) return;
+
+    try {
+        const response = await fetch(`/tasks/sprints/${id}/complete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

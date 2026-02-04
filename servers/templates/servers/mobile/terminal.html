@@ -1,0 +1,358 @@
+{% extends 'mobile/base.html' %}
+
+{% block title %}SSH — {{ server.name }}{% endblock %}
+{% block header_title %}SSH{% endblock %}
+
+{% block header_left %}
+<button type="button" class="mobile-header-btn" onclick="window.location.href='{% url 'servers:server_list' %}'">
+    <span class="material-icons-round">arrow_back</span>
+</button>
+{% endblock %}
+
+{% block header_right %}
+<button type="button" class="mobile-header-btn" onclick="openAiDrawer()" title="AI">
+    <span class="material-icons-round">smart_toy</span>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+<style>
+  /* Fullscreen terminal: hide bottom nav on this page */
+  #mobile-bottom-nav { display: none !important; }
+  #mobile-main { padding-bottom: 0 !important; }
+  .term-wrap { height: calc(100vh - 56px); } /* header ~56px */
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="term-wrap flex flex-col">
+    <div class="p-3 border-b border-white/10 bg-bg-surface/40">
+        <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+                <div class="text-[11px] text-gray-500">Сервер</div>
+                <div class="text-sm font-semibold text-white truncate">{{ server.name }}</div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="terminal-status-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                <span id="terminal-status-text" class="text-[11px] text-gray-400">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-1 gap-2">
+            <input type="password" id="terminal-master-password" placeholder="Мастер‑пароль (если нужен)"
+                   class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+            <input type="password" id="terminal-password" placeholder="Пароль / пасфраза (альтернатива)"
+                   class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
+            <div class="flex gap-2">
+                <button type="button" id="terminal-connect-btn" onclick="connectTerminal()"
+                        class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center justify-center gap-2">
+                    <span class="material-icons-round text-sm">link</span>
+                    Connect
+                </button>
+                <button type="button" onclick="disconnectTerminal()"
+                        class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 text-sm rounded-lg flex items-center justify-center gap-2">
+                    <span class="material-icons-round text-sm">link_off</span>
+                </button>
+                <button type="button" onclick="clearTerminal()"
+                        class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 text-sm rounded-lg flex items-center justify-center"
+                        title="Очистить">
+                    <span class="material-icons-round text-sm">delete_sweep</span>
+                </button>
+            </div>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-2">AI чат откроется кнопкой вверху справа.</p>
+    </div>
+
+    <div class="flex-1 min-h-0 bg-bg-base">
+        <div id="ssh-terminal" class="w-full h-full"></div>
+    </div>
+</div>
+
+<!-- AI Drawer -->
+<div id="aiDrawer" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAiDrawer()"></div>
+    <div class="absolute bottom-0 left-0 right-0 h-[70vh] bg-bg-surface border-t border-white/10 rounded-t-2xl overflow-hidden flex flex-col">
+        <div class="p-3 border-b border-white/10 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="material-icons-round text-sm text-accent">smart_toy</span>
+                <span class="text-sm font-semibold text-white">AI помощник</span>
+            </div>
+            <button type="button" class="p-2 rounded-lg hover:bg-white/10 text-gray-300" onclick="closeAiDrawer()">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div id="terminal-ai-messages" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3"></div>
+        <div class="p-3 border-t border-white/10">
+            <textarea id="terminal-ai-input" rows="3" placeholder="Например: «проверь диск и память»"
+                      class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50 resize-none"></textarea>
+            <div class="flex justify-end gap-2 mt-2">
+                <button type="button" onclick="sendAiToTerminal()"
+                        class="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-200 text-sm rounded-lg flex items-center gap-2">
+                    <span class="material-icons-round text-sm">send</span>
+                    Send
+                </button>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-2">Опасные команды требуют подтверждения.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+<script>
+let serverId = {{ server.id }};
+
+let terminalSocket = null;
+let terminal = null;
+let terminalFit = null;
+let terminalResizeObserver = null;
+let terminalConnected = false;
+let aiStatus = 'idle';
+let aiCommandEls = {};
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function openAiDrawer() {
+  document.getElementById('aiDrawer').classList.remove('hidden');
+}
+function closeAiDrawer() {
+  document.getElementById('aiDrawer').classList.add('hidden');
+}
+
+function setTerminalStatus(status) {
+  var dot = document.getElementById('terminal-status-dot');
+  var text = document.getElementById('terminal-status-text');
+  var connectBtn = document.getElementById('terminal-connect-btn');
+  if (text) text.textContent = status ? String(status) : 'disconnected';
+  if (dot) {
+    dot.className = 'w-2 h-2 rounded-full ' + (
+      status === 'connected' ? 'bg-emerald-500 shadow-glow-success' :
+      status === 'connecting' ? 'bg-amber-500' :
+      'bg-gray-500'
+    );
+  }
+  if (connectBtn) {
+    connectBtn.disabled = (status === 'connecting' || status === 'connected');
+    connectBtn.classList.toggle('opacity-60', connectBtn.disabled);
+    connectBtn.classList.toggle('cursor-not-allowed', connectBtn.disabled);
+  }
+}
+
+function initTerminal() {
+  var el = document.getElementById('ssh-terminal');
+  if (!el) return;
+  try { if (terminalResizeObserver) terminalResizeObserver.disconnect(); } catch (e) {}
+  terminalResizeObserver = null;
+  try { if (terminal) terminal.dispose(); } catch (e) {}
+  terminal = null;
+  terminalFit = null;
+  el.innerHTML = '';
+
+  terminal = new Terminal({
+    cursorBlink: true,
+    scrollback: 5000,
+    fontFamily: 'monospace',
+    fontSize: 13,
+    theme: { background: '#09090b', foreground: '#d1d5db', cursor: '#6366f1', selection: 'rgba(99, 102, 241, 0.25)' }
+  });
+  if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+    terminalFit = new FitAddon.FitAddon();
+    terminal.loadAddon(terminalFit);
+  }
+  terminal.open(el);
+  terminal.focus();
+  terminal.writeln('WEU SSH Terminal');
+  terminal.writeln('Нажмите Connect для подключения...');
+  terminal.writeln('');
+  terminal.onData(function (data) {
+    if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+      terminalSocket.send(JSON.stringify({ type: 'input', data: data }));
+    }
+  });
+
+  if (window.ResizeObserver) {
+    terminalResizeObserver = new ResizeObserver(function () { fitTerminalAndNotify(); });
+    terminalResizeObserver.observe(el);
+  } else {
+    window.addEventListener('resize', fitTerminalAndNotify);
+  }
+}
+
+function fitTerminalAndNotify() {
+  if (!terminal || !terminalFit) return;
+  try { terminalFit.fit(); } catch (e) {}
+  if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+    try { terminalSocket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows })); } catch (e) {}
+  }
+}
+
+function connectTerminal() {
+  if (!terminal) initTerminal();
+  if (!terminal) return;
+  if (terminalSocket && (terminalSocket.readyState === WebSocket.OPEN || terminalSocket.readyState === WebSocket.CONNECTING)) return;
+
+  var wsProto = (window.location.protocol === 'https:') ? 'wss' : 'ws';
+  var url = wsProto + '://' + window.location.host + '/ws/servers/' + serverId + '/terminal/';
+  terminalSocket = new WebSocket(url);
+  setTerminalStatus('connecting');
+
+  terminalSocket.onopen = function () {
+    terminalConnected = true;
+    setTerminalStatus('connecting');
+    fitTerminalAndNotify();
+    var masterPassword = (document.getElementById('terminal-master-password') || {}).value || '';
+    var password = (document.getElementById('terminal-password') || {}).value || '';
+    terminalSocket.send(JSON.stringify({
+      type: 'connect',
+      master_password: masterPassword,
+      password: password,
+      cols: terminal.cols,
+      rows: terminal.rows,
+      term_type: 'xterm-256color'
+    }));
+  };
+
+  terminalSocket.onmessage = function (ev) {
+    var msg = null;
+    try { msg = JSON.parse(ev.data); } catch (e) {}
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'output' && msg.data != null) { terminal.write(msg.data); return; }
+    if (msg.type === 'ai_status') { aiStatus = msg.status || 'idle'; return; }
+    if (msg.type === 'ai_response') { handleAiResponse(msg); return; }
+    if (msg.type === 'ai_command_status') { updateAiCommandStatus(msg); return; }
+    if (msg.type === 'ai_error') { appendAiMessage('system', '[AI] ' + (msg.message || 'Ошибка')); return; }
+    if (msg.type === 'status') { setTerminalStatus(msg.status || 'disconnected'); return; }
+    if (msg.type === 'error') { setTerminalStatus('disconnected'); terminal.writeln('\n[Ошибка] ' + (msg.message || 'Unknown error')); return; }
+    if (msg.type === 'exit') { terminal.writeln('\n[Сессия завершена] exit_status=' + (msg.exit_status != null ? msg.exit_status : '—')); return; }
+  };
+
+  terminalSocket.onclose = function () { terminalConnected = false; setTerminalStatus('disconnected'); };
+  terminalSocket.onerror = function () { terminalConnected = false; setTerminalStatus('disconnected'); try { terminal.writeln('\n[WebSocket error]'); } catch (e) {} };
+}
+
+function disconnectTerminal() {
+  terminalConnected = false;
+  try { if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: 'disconnect' })); } catch (e) {}
+  try { if (terminalSocket) terminalSocket.close(); } catch (e) {}
+  terminalSocket = null;
+  setTerminalStatus('disconnected');
+}
+
+function clearTerminal() { if (terminal) try { terminal.clear(); } catch (e) {} }
+
+function appendAiMessage(role, text) {
+  var wrap = document.getElementById('terminal-ai-messages');
+  if (!wrap) return;
+  var isUser = (role === 'user');
+  var row = document.createElement('div');
+  row.className = 'flex ' + (isUser ? 'justify-end' : 'justify-start');
+  var bubble = document.createElement('div');
+  bubble.className = 'max-w-[90%] rounded-xl px-3 py-2 text-sm border ' + (isUser ? 'bg-primary/20 border-primary/30 text-white' : 'bg-white/5 border-white/10 text-gray-100');
+  bubble.innerHTML = '<div class="whitespace-pre-wrap text-sm leading-snug">' + escapeHtml(text) + '</div>';
+  row.appendChild(bubble);
+  wrap.appendChild(row);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function setAiStatusText(id, status, extra) {
+  var entry = aiCommandEls[id];
+  if (!entry || !entry.statusEl) return;
+  var txt = status;
+  if (status === 'done' && extra && extra.exit_code != null) txt = 'done (exit=' + extra.exit_code + ')';
+  entry.statusEl.textContent = txt;
+}
+
+function renderAiConfirmButtons(id) {
+  var entry = aiCommandEls[id];
+  if (!entry || !entry.actionsEl) return;
+  entry.actionsEl.innerHTML = '';
+  var ok = document.createElement('button');
+  ok.type = 'button';
+  ok.className = 'px-2 py-1 text-[11px] rounded-lg bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30';
+  ok.textContent = 'Confirm';
+  ok.onclick = function () { confirmAiCommand(id); };
+  var skip = document.createElement('button');
+  skip.type = 'button';
+  skip.className = 'px-2 py-1 text-[11px] rounded-lg bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10';
+  skip.textContent = 'Skip';
+  skip.onclick = function () { cancelAiCommand(id); };
+  entry.actionsEl.appendChild(ok);
+  entry.actionsEl.appendChild(skip);
+}
+
+function disableAiActions(id) {
+  var entry = aiCommandEls[id];
+  if (!entry || !entry.actionsEl) return;
+  var btns = entry.actionsEl.querySelectorAll('button');
+  btns.forEach(function (b) { b.disabled = true; b.classList.add('opacity-60', 'cursor-not-allowed'); });
+}
+
+function handleAiResponse(msg) {
+  if (msg.assistant_text) appendAiMessage('assistant', msg.assistant_text);
+  if (!Array.isArray(msg.commands) || !msg.commands.length) return;
+  var wrap = document.getElementById('terminal-ai-messages');
+  if (!wrap) return;
+  msg.commands.forEach(function (c) {
+    var id = c.id;
+    if (!id) return;
+    var card = document.createElement('div');
+    card.className = 'rounded-xl border border-white/10 bg-bg-base/50 p-3';
+    var why = c.why ? ('<div class="text-[11px] text-gray-500 mt-1">' + escapeHtml(c.why) + '</div>') : '';
+    var reason = c.reason ? ('<span class="ml-2 text-[11px] text-amber-400">(' + escapeHtml(c.reason) + ')</span>') : '';
+    card.innerHTML =
+      '<div class="flex items-center justify-between gap-2">' +
+        '<div class="text-[11px] text-gray-400">Команда #' + escapeHtml(id) + reason + '</div>' +
+        '<div id="ai-actions-' + id + '" class="flex items-center gap-2"></div>' +
+      '</div>' +
+      '<pre class="mt-2 text-xs text-gray-200 whitespace-pre-wrap font-mono bg-white/5 border border-white/10 rounded-lg p-2">' + escapeHtml(c.cmd || '') + '</pre>' +
+      why +
+      '<div class="mt-2 text-[11px] text-gray-500">Статус: <span id="ai-status-' + id + '">pending</span></div>';
+    wrap.appendChild(card);
+    wrap.scrollTop = wrap.scrollHeight;
+    aiCommandEls[id] = { statusEl: card.querySelector('#ai-status-' + id), actionsEl: card.querySelector('#ai-actions-' + id) };
+    if (c.requires_confirm) { renderAiConfirmButtons(id); setAiStatusText(id, 'pending_confirm'); } else { setAiStatusText(id, 'pending'); }
+  });
+}
+
+function updateAiCommandStatus(msg) {
+  var id = msg.id;
+  if (!id || !aiCommandEls[id]) return;
+  var status = msg.status || '';
+  if (status === 'running') { setAiStatusText(id, 'running'); disableAiActions(id); return; }
+  if (status === 'done') { setAiStatusText(id, 'done', { exit_code: msg.exit_code }); disableAiActions(id); return; }
+  if (status === 'skipped') { setAiStatusText(id, 'skipped'); disableAiActions(id); return; }
+  if (status === 'confirmed') { setAiStatusText(id, 'confirmed'); disableAiActions(id); return; }
+}
+
+function confirmAiCommand(id) { if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: 'ai_confirm', id: id })); }
+function cancelAiCommand(id) { if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: 'ai_cancel', id: id })); }
+
+function sendAiToTerminal() {
+  var input = document.getElementById('terminal-ai-input');
+  var text = (input || {}).value ? input.value.trim() : '';
+  if (!text) return;
+  if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) { alert('Сначала подключитесь (Connect).'); return; }
+  appendAiMessage('user', text);
+  if (input) input.value = '';
+  terminalSocket.send(JSON.stringify({ type: 'ai_request', message: text }));
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  initTerminal();
+  setTerminalStatus('disconnected');
+});
+</script>
+{% endblock %}
+

@@ -12,6 +12,7 @@ from app.tools.filesystem_tools import (
     CreateDirectoryTool, DeleteFileTool
 )
 from app.tools.web_tools import WebSearchTool, FetchWebpageTool
+from app.tools.tasks_tools import TasksListTool, TaskDetailTool
 from app.mcp.client import MCPClient
 from app.mcp.config import load_mcp_config
 from django.conf import settings
@@ -50,6 +51,9 @@ class ToolManager:
             # Web Tools
             WebSearchTool(),
             FetchWebpageTool(),
+            # Tasks Tools
+            TasksListTool(),
+            TaskDetailTool(),
         ]
         
         for tool in builtin_tools:

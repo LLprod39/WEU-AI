@@ -26,12 +26,83 @@
 {% endblock %}
 
 {% block content %}
-<div class="h-full overflow-y-auto p-6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+.exec-settings-page {
+    --ws-void: #08080b;
+    --ws-surface: #111116;
+    --ws-raised: #18181f;
+    --ws-border: rgba(255,255,255,0.08);
+    --ws-text: #f8fafc;
+    --ws-muted: #94a3b8;
+    --ws-accent: #6366f1;
+    --ws-accent-soft: rgba(99,102,241,0.15);
+    font-family: 'Outfit', system-ui, sans-serif;
+    min-height: calc(100vh - var(--header-height, 64px));
+    background: var(--ws-void);
+    padding: 28px 32px 48px;
+}
+.exec-settings-page .exec-card {
+    background: var(--ws-surface);
+    border: 1px solid var(--ws-border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease;
+}
+.exec-settings-page .exec-card:hover {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.exec-settings-page .exec-card > div {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--ws-border);
+}
+.exec-settings-page .exec-card > div:last-child { border-bottom: none; }
+.exec-settings-page .exec-card h3 { color: var(--ws-text); font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+.exec-settings-page .exec-card p { color: var(--ws-muted); font-size: 0.8125rem; line-height: 1.5; }
+.exec-settings-page select {
+    background: var(--ws-raised);
+    border: 1px solid var(--ws-border);
+    color: var(--ws-text);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    max-width: 100%;
+}
+.exec-settings-page select:focus {
+    outline: none;
+    border-color: var(--ws-accent);
+    box-shadow: 0 0 0 3px var(--ws-accent-soft);
+}
+.exec-settings-page .peer-checked\:bg-primary { background: var(--ws-accent) !important; }
+.exec-settings-page .btn-back {
+    color: var(--ws-muted);
+    background: var(--ws-surface);
+    border: 1px solid var(--ws-border);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+}
+.exec-settings-page .btn-back:hover { color: var(--ws-text); background: var(--ws-raised); border-color: rgba(255,255,255,0.12); }
+.exec-settings-page #save-settings-btn {
+    background: var(--ws-accent);
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-weight: 500;
+    transition: background 0.15s;
+}
+.exec-settings-page #save-settings-btn:hover { background: #4f46e5; }
+.exec-settings-page #settings-message { border-radius: 10px; }
+</style>
+<div class="exec-settings-page h-full overflow-y-auto">
     <div class="max-w-2xl mx-auto space-y-6">
         <!-- Header -->
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-white flex items-center gap-3" style="font-family: 'Outfit', sans-serif; letter-spacing: -0.02em;">
                     <span class="material-icons-round text-primary">settings</span>
                     Настройки выполнения задач
                 </h1>
@@ -40,9 +111,9 @@
         </div>
 
         <!-- Settings Card -->
-        <div class="glass-card rounded-xl border border-white/10 overflow-hidden">
+        <div class="exec-card">
             <!-- Server Confirmation -->
-            <div class="p-6 border-b border-white/10">
+            <div>
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
@@ -66,7 +137,7 @@
             </div>
 
             <!-- Auto Execute Simple Tasks -->
-            <div class="p-6 border-b border-white/10">
+            <div>
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
@@ -94,7 +165,7 @@
             </div>
 
             <!-- Ask Questions Before Execution -->
-            <div class="p-6 border-b border-white/10">
+            <div>
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
@@ -118,7 +189,7 @@
             </div>
 
             <!-- Default Server -->
-            <div class="p-6">
+            <div>
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
@@ -129,9 +200,7 @@
                             Если в задаче не указан сервер, будет использоваться этот сервер. 
                             Оставьте пустым, чтобы ИИ всегда спрашивал какой сервер использовать.
                         </p>
-                        <select id="default_server" class="w-full max-w-md px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 
-                                                          text-white text-sm focus:border-primary focus:outline-none 
-                                                          focus:ring-2 focus:ring-primary/20 transition-all">
+                        <select id="default_server" class="w-full max-w-md">
                             <option value="">Не выбран (всегда спрашивать)</option>
                             {% for server in servers %}
                             <option value="{{ server.id }}" {% if settings.default_server_id == server.id %}selected{% endif %}>
@@ -145,12 +214,12 @@
         </div>
 
         <!-- Save Button -->
-        <div class="flex items-center justify-between">
-            <a href="{% url 'tasks:task_list' %}" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl transition-all flex items-center gap-2">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+            <a href="{% url 'tasks:task_list' %}" class="btn-back inline-flex items-center gap-2">
                 <span class="material-icons-round text-lg">arrow_back</span>
                 К задачам
             </a>
-            <button type="button" id="save-settings-btn" class="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all flex items-center gap-2 font-medium">
+            <button type="button" id="save-settings-btn" class="inline-flex items-center gap-2">
                 <span class="material-icons-round text-lg">save</span>
                 Сохранить настройки
             </button>

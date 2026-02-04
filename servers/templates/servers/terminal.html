@@ -1,0 +1,1096 @@
+{% extends 'base.html' %}
+
+{% block title %}Terminal — {{ server.name }}{% endblock %}
+{% block header_title %}Terminal{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'servers:server_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Servers</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-700">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center" aria-current="page">
+            <span class="font-medium text-white truncate max-w-[200px]" itemprop="name">{{ server.name }}</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+
+<style>
+    /* Terminal Command Center */
+    .terminal-container {
+        display: flex;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    /* Terminal Panel */
+    .terminal-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        background: #09090b;
+    }
+
+    .terminal-header {
+        background: linear-gradient(180deg, rgba(17, 17, 19, 0.95) 0%, rgba(9, 9, 11, 0.98) 100%);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        flex-shrink: 0;
+    }
+
+    .terminal-body {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+    }
+
+    #ssh-terminal {
+        height: 100%;
+        width: 100%;
+    }
+
+    /* Connection status indicator */
+    .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        transition: all 0.3s ease;
+    }
+
+    .status-indicator.disconnected {
+        background: rgba(107, 114, 128, 0.15);
+        border: 1px solid rgba(107, 114, 128, 0.2);
+        color: #9ca3af;
+    }
+
+    .status-indicator.connecting {
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+    }
+
+    .status-indicator.connected {
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        color: #34d399;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .status-indicator.connected .status-dot {
+        animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Latency indicator */
+    .latency-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.05);
+        color: #6b7280;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .latency-badge.good { color: #34d399; }
+    .latency-badge.medium { color: #fbbf24; }
+    .latency-badge.poor { color: #f87171; }
+
+    /* Recording indicator */
+    .recording-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        font-size: 11px;
+        color: #f87171;
+    }
+
+    .recording-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+
+    /* AI Panel */
+    .ai-panel {
+        width: 420px;
+        display: flex;
+        flex-direction: column;
+        background: rgba(17, 17, 19, 0.6);
+        border-left: 1px solid rgba(255,255,255,0.06);
+        transition: width 0.3s ease, transform 0.3s ease;
+        flex-shrink: 0;
+    }
+
+    .ai-panel.collapsed {
+        width: 0;
+        transform: translateX(100%);
+        border-left: none;
+    }
+
+    .ai-panel-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        background: rgba(255,255,255,0.02);
+        flex-shrink: 0;
+    }
+
+    .ai-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .ai-input-area {
+        padding: 16px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        background: rgba(255,255,255,0.02);
+        flex-shrink: 0;
+    }
+
+    /* Quick Commands */
+    .quick-commands {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+
+    .quick-cmd {
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #9ca3af;
+        font-size: 11px;
+        font-family: 'JetBrains Mono', monospace;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .quick-cmd:hover {
+        background: rgba(99, 102, 241, 0.15);
+        border-color: rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+    }
+
+    /* Message bubbles */
+    .msg-user {
+        align-self: flex-end;
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: 16px 16px 4px 16px;
+        padding: 10px 14px;
+        max-width: 85%;
+        color: #e0e7ff;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .msg-assistant {
+        align-self: flex-start;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px 16px 16px 4px;
+        padding: 10px 14px;
+        max-width: 85%;
+        color: #d1d5db;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .msg-system {
+        align-self: center;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 11px;
+        color: #fbbf24;
+        text-align: center;
+    }
+
+    /* Command Card */
+    .cmd-card {
+        background: rgba(9, 9, 11, 0.6);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        overflow: hidden;
+        margin: 8px 0;
+    }
+
+    .cmd-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.03);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .cmd-card-body {
+        padding: 12px 14px;
+    }
+
+    .cmd-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #e5e7eb;
+        background: rgba(0,0,0,0.3);
+        padding: 10px 12px;
+        border-radius: 8px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .cmd-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .cmd-status.pending {
+        background: rgba(107, 114, 128, 0.2);
+        color: #9ca3af;
+    }
+
+    .cmd-status.pending_confirm {
+        background: rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+    }
+
+    .cmd-status.running {
+        background: rgba(99, 102, 241, 0.2);
+        color: #a5b4fc;
+    }
+
+    .cmd-status.done {
+        background: rgba(16, 185, 129, 0.2);
+        color: #34d399;
+    }
+
+    .cmd-status.skipped {
+        background: rgba(107, 114, 128, 0.2);
+        color: #6b7280;
+    }
+
+    .cmd-status.error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #f87171;
+    }
+
+    .cmd-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+    }
+
+    .cmd-btn {
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .cmd-btn-confirm {
+        background: rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: #34d399;
+    }
+
+    .cmd-btn-confirm:hover {
+        background: rgba(16, 185, 129, 0.3);
+    }
+
+    .cmd-btn-skip {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #9ca3af;
+    }
+
+    .cmd-btn-skip:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    .cmd-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Input styling */
+    .ai-textarea {
+        width: 100%;
+        background: rgba(9, 9, 11, 0.8);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 12px 14px;
+        color: white;
+        font-size: 13px;
+        resize: none;
+        transition: all 0.2s ease;
+        line-height: 1.5;
+    }
+
+    .ai-textarea:focus {
+        outline: none;
+        border-color: rgba(99, 102, 241, 0.4);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .ai-textarea::placeholder {
+        color: #4b5563;
+    }
+
+    /* Connection controls */
+    .conn-input {
+        background: rgba(9, 9, 11, 0.8);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: white;
+        font-size: 13px;
+        transition: all 0.2s ease;
+        width: 100%;
+    }
+
+    .conn-input:focus {
+        outline: none;
+        border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .conn-input::placeholder {
+        color: #4b5563;
+    }
+
+    .conn-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .conn-btn-primary {
+        background: #6366f1;
+        color: white;
+    }
+
+    .conn-btn-primary:hover:not(:disabled) {
+        background: #4f46e5;
+    }
+
+    .conn-btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .conn-btn-secondary {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #d1d5db;
+    }
+
+    .conn-btn-secondary:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    /* Toggle AI panel button */
+    .toggle-ai-btn {
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 10;
+    }
+
+    .toggle-ai-btn:hover {
+        background: rgba(99, 102, 241, 0.3);
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .terminal-container {
+            flex-direction: column;
+        }
+
+        .ai-panel {
+            width: 100%;
+            height: 50%;
+            border-left: none;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .ai-panel.collapsed {
+            height: 0;
+            transform: translateY(100%);
+        }
+
+        .terminal-panel {
+            height: 50%;
+        }
+    }
+
+    /* Scrollbar styling */
+    .ai-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .ai-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .ai-messages::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.1);
+        border-radius: 3px;
+    }
+
+    .ai-messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,0.2);
+    }
+</style>
+
+<div class="terminal-container">
+    <!-- Terminal Panel -->
+    <div class="terminal-panel">
+        <!-- Terminal Header -->
+        <div class="terminal-header">
+            <div class="px-5 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <a href="{% url 'servers:server_list' %}" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                        <span class="material-icons-round text-lg">arrow_back</span>
+                    </a>
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <h1 class="text-white font-semibold">{{ server.name }}</h1>
+                            {% if server.corporate_context %}
+                            <span class="px-2 py-0.5 rounded text-[10px] bg-primary/20 text-primary border border-primary/30 flex items-center gap-1">
+                                <span class="material-icons-round text-xs">psychology</span>
+                                AI Context
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-gray-500 font-mono mt-0.5">{{ server.host }}:{{ server.port }} • {{ server.username }}</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <!-- Recording indicator (hidden by default) -->
+                    <div id="recording-indicator" class="recording-indicator hidden">
+                        <span class="recording-dot"></span>
+                        <span>Recording</span>
+                    </div>
+
+                    <!-- Latency -->
+                    <div id="latency-badge" class="latency-badge hidden">-- ms</div>
+
+                    <!-- Status -->
+                    <div id="status-indicator" class="status-indicator disconnected">
+                        <span class="status-dot"></span>
+                        <span id="status-text">Disconnected</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection Controls -->
+            <div class="px-5 pb-4">
+                <div class="flex items-end gap-4">
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Master Password</label>
+                            <input type="password" id="terminal-master-password" placeholder="For encrypted credentials"
+                                   class="conn-input font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Password / Passphrase</label>
+                            <input type="password" id="terminal-password" placeholder="Direct password (optional)"
+                                   class="conn-input font-mono">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button type="button" id="connect-btn" onclick="connectTerminal()" class="conn-btn conn-btn-primary">
+                            <span class="material-icons-round text-lg">link</span>
+                            Connect
+                        </button>
+                        <button type="button" onclick="disconnectTerminal()" class="conn-btn conn-btn-secondary">
+                            <span class="material-icons-round text-lg">link_off</span>
+                        </button>
+                        <button type="button" onclick="clearTerminal()" class="conn-btn conn-btn-secondary" title="Clear terminal">
+                            <span class="material-icons-round text-lg">delete_sweep</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Body -->
+        <div class="terminal-body relative">
+            <div id="ssh-terminal"></div>
+            <button type="button" id="toggle-ai-btn" class="toggle-ai-btn" onclick="toggleAiPanel()" title="Toggle AI Assistant">
+                <span class="material-icons-round text-lg">psychology</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- AI Panel -->
+    <div id="ai-panel" class="ai-panel">
+        <div class="ai-panel-header">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
+                        <span class="material-icons-round text-primary text-lg">smart_toy</span>
+                    </div>
+                    <div>
+                        <h2 class="text-white font-semibold text-sm">AI Assistant</h2>
+                        <p class="text-[11px] text-gray-500">Dangerous commands require confirmation</p>
+                    </div>
+                </div>
+                <button type="button" onclick="toggleAiPanel()" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors md:hidden">
+                    <span class="material-icons-round text-lg">close</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="ai-messages" class="ai-messages">
+            <div class="msg-system">
+                <span class="material-icons-round text-sm align-middle mr-1">info</span>
+                Connect to server to start AI assistance
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="ai-input-area">
+            <!-- Quick Commands -->
+            <div class="quick-commands">
+                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check disk space')">
+                    <span class="material-icons-round text-xs mr-1 align-middle">storage</span>Disk
+                </button>
+                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check memory usage')">
+                    <span class="material-icons-round text-xs mr-1 align-middle">memory</span>Memory
+                </button>
+                <button type="button" class="quick-cmd" onclick="sendQuickCommand('show system logs')">
+                    <span class="material-icons-round text-xs mr-1 align-middle">article</span>Logs
+                </button>
+                <button type="button" class="quick-cmd" onclick="sendQuickCommand('list running processes')">
+                    <span class="material-icons-round text-xs mr-1 align-middle">list</span>Processes
+                </button>
+                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check network connections')">
+                    <span class="material-icons-round text-xs mr-1 align-middle">lan</span>Network
+                </button>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <textarea id="ai-input" rows="3" placeholder="Describe what you need... (e.g., 'check disk space and clean up temp files')"
+                          class="ai-textarea" onkeydown="handleAiKeydown(event)"></textarea>
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] text-gray-500">Press Ctrl+Enter to send</span>
+                    <button type="button" onclick="sendAiMessage()" class="conn-btn conn-btn-primary">
+                        <span class="material-icons-round text-lg">send</span>
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+<script>
+const serverId = {{ server.id }};
+const serverName = '{{ server.name|escapejs }}';
+
+let socket = null;
+let terminal = null;
+let fitAddon = null;
+let resizeObserver = null;
+let connected = false;
+let aiCommandEls = {};
+let pingInterval = null;
+let lastPingTime = null;
+
+// Escape HTML
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// Status management
+function setStatus(status) {
+    const indicator = document.getElementById('status-indicator');
+    const text = document.getElementById('status-text');
+    const btn = document.getElementById('connect-btn');
+
+    indicator.className = 'status-indicator ' + status;
+    text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+    if (btn) {
+        btn.disabled = (status === 'connecting' || status === 'connected');
+    }
+
+    // Update latency visibility
+    const latencyBadge = document.getElementById('latency-badge');
+    if (latencyBadge) {
+        latencyBadge.classList.toggle('hidden', status !== 'connected');
+    }
+}
+
+// Latency measurement
+function updateLatency(ms) {
+    const badge = document.getElementById('latency-badge');
+    if (!badge) return;
+
+    badge.textContent = ms + ' ms';
+    badge.className = 'latency-badge';
+
+    if (ms < 100) badge.classList.add('good');
+    else if (ms < 300) badge.classList.add('medium');
+    else badge.classList.add('poor');
+}
+
+// Terminal initialization
+function initTerminal() {
+    const el = document.getElementById('ssh-terminal');
+    if (!el) return;
+
+    // Cleanup
+    try { if (resizeObserver) resizeObserver.disconnect(); } catch (e) {}
+    try { if (terminal) terminal.dispose(); } catch (e) {}
+    terminal = null;
+    fitAddon = null;
+    el.innerHTML = '';
+
+    if (typeof Terminal === 'undefined') {
+        el.innerHTML = '<div class="p-6 text-red-400">Failed to load xterm.js</div>';
+        return;
+    }
+
+    terminal = new Terminal({
+        cursorBlink: true,
+        scrollback: 10000,
+        fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
+        fontSize: 14,
+        lineHeight: 1.3,
+        letterSpacing: 0,
+        theme: {
+            background: '#09090b',
+            foreground: '#e5e7eb',
+            cursor: '#6366f1',
+            cursorAccent: '#09090b',
+            selection: 'rgba(99, 102, 241, 0.3)',
+            black: '#09090b',
+            red: '#f87171',
+            green: '#34d399',
+            yellow: '#fbbf24',
+            blue: '#60a5fa',
+            magenta: '#c084fc',
+            cyan: '#22d3ee',
+            white: '#e5e7eb',
+            brightBlack: '#4b5563',
+            brightRed: '#fca5a5',
+            brightGreen: '#6ee7b7',
+            brightYellow: '#fde047',
+            brightBlue: '#93c5fd',
+            brightMagenta: '#d8b4fe',
+            brightCyan: '#67e8f9',
+            brightWhite: '#f9fafb'
+        }
+    });
+
+    if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+        fitAddon = new FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon);
+    }
+
+    terminal.open(el);
+    terminal.focus();
+
+    terminal.writeln('\x1b[38;5;243m╔══════════════════════════════════════════════════════════════╗');
+    terminal.writeln('\x1b[38;5;243m║\x1b[0m  \x1b[1;38;5;99mWEU\x1b[0m SSH Terminal                                            \x1b[38;5;243m║');
+    terminal.writeln('\x1b[38;5;243m║\x1b[0m  Server: \x1b[1m' + serverName.substring(0, 50).padEnd(50) + '\x1b[0m \x1b[38;5;243m║');
+    terminal.writeln('\x1b[38;5;243m╚══════════════════════════════════════════════════════════════╝\x1b[0m');
+    terminal.writeln('');
+    terminal.writeln('\x1b[38;5;243mPress Connect to establish SSH session...\x1b[0m');
+    terminal.writeln('');
+
+    terminal.onData(function(data) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'input', data: data }));
+        }
+    });
+
+    // Resize observer
+    if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(fitAndNotify);
+        resizeObserver.observe(el);
+    } else {
+        window.addEventListener('resize', fitAndNotify);
+    }
+
+    setTimeout(fitAndNotify, 100);
+}
+
+function fitAndNotify() {
+    if (!terminal || !fitAddon) return;
+    try { fitAddon.fit(); } catch (e) {}
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
+    }
+}
+
+// WebSocket connection
+function connectTerminal() {
+    if (!terminal) initTerminal();
+    if (!terminal) return;
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+
+    const wsProto = (window.location.protocol === 'https:') ? 'wss' : 'ws';
+    const url = wsProto + '://' + window.location.host + '/ws/servers/' + serverId + '/terminal/';
+    socket = new WebSocket(url);
+
+    setStatus('connecting');
+
+    socket.onopen = function() {
+        connected = true;
+        fitAndNotify();
+
+        const masterPassword = document.getElementById('terminal-master-password').value || '';
+        const password = document.getElementById('terminal-password').value || '';
+
+        socket.send(JSON.stringify({
+            type: 'connect',
+            master_password: masterPassword,
+            password: password,
+            cols: terminal.cols,
+            rows: terminal.rows,
+            term_type: 'xterm-256color'
+        }));
+
+        // Start ping for latency
+        lastPingTime = Date.now();
+        pingInterval = setInterval(function() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                lastPingTime = Date.now();
+                socket.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 5000);
+    };
+
+    socket.onmessage = function(ev) {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (!msg || !msg.type) return;
+
+        switch (msg.type) {
+            case 'output':
+                if (msg.data != null) terminal.write(msg.data);
+                break;
+            case 'pong':
+                if (lastPingTime) updateLatency(Date.now() - lastPingTime);
+                break;
+            case 'status':
+                setStatus(msg.status || 'disconnected');
+                break;
+            case 'error':
+                setStatus('disconnected');
+                terminal.writeln('\r\n\x1b[1;31m[Error]\x1b[0m ' + (msg.message || 'Unknown error'));
+                break;
+            case 'exit':
+                terminal.writeln('\r\n\x1b[38;5;243m[Session ended] exit=' + (msg.exit_status != null ? msg.exit_status : '—') + '\x1b[0m');
+                break;
+            case 'ai_status':
+                // Handle AI status
+                break;
+            case 'ai_response':
+                handleAiResponse(msg);
+                break;
+            case 'ai_command_status':
+                updateCommandStatus(msg);
+                break;
+            case 'ai_error':
+                appendMessage('system', msg.message || 'AI Error');
+                break;
+        }
+    };
+
+    socket.onclose = function() {
+        connected = false;
+        setStatus('disconnected');
+        clearInterval(pingInterval);
+    };
+
+    socket.onerror = function() {
+        connected = false;
+        setStatus('disconnected');
+        terminal.writeln('\r\n\x1b[1;31m[WebSocket Error]\x1b[0m');
+        clearInterval(pingInterval);
+    };
+}
+
+function disconnectTerminal() {
+    connected = false;
+    clearInterval(pingInterval);
+    try {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'disconnect' }));
+        }
+    } catch (e) {}
+    try { if (socket) socket.close(); } catch (e) {}
+    socket = null;
+    setStatus('disconnected');
+}
+
+function clearTerminal() {
+    if (terminal) terminal.clear();
+}
+
+// AI Panel
+function toggleAiPanel() {
+    const panel = document.getElementById('ai-panel');
+    const btn = document.getElementById('toggle-ai-btn');
+    panel.classList.toggle('collapsed');
+    btn.style.display = panel.classList.contains('collapsed') ? 'flex' : 'none';
+}
+
+function appendMessage(role, text) {
+    const container = document.getElementById('ai-messages');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = 'msg-' + role;
+    div.innerHTML = '<div style="white-space: pre-wrap;">' + escapeHtml(text) + '</div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function handleAiResponse(msg) {
+    if (msg.assistant_text) {
+        appendMessage('assistant', msg.assistant_text);
+    }
+
+    if (!Array.isArray(msg.commands) || !msg.commands.length) return;
+
+    const container = document.getElementById('ai-messages');
+
+    msg.commands.forEach(function(c) {
+        const id = c.id;
+        if (!id) return;
+
+        const card = document.createElement('div');
+        card.className = 'cmd-card';
+        card.id = 'cmd-card-' + id;
+
+        const reason = c.reason ? ' <span class="text-amber-400">(' + escapeHtml(c.reason) + ')</span>' : '';
+        const why = c.why ? '<div class="text-xs text-gray-500 mt-2">' + escapeHtml(c.why) + '</div>' : '';
+
+        card.innerHTML = `
+            <div class="cmd-card-header">
+                <div class="flex items-center gap-2">
+                    <span class="material-icons-round text-sm text-gray-500">terminal</span>
+                    <span class="text-xs text-gray-400">Command #${escapeHtml(id)}${reason}</span>
+                </div>
+                <span id="cmd-status-${id}" class="cmd-status ${c.requires_confirm ? 'pending_confirm' : 'pending'}">${c.requires_confirm ? 'Needs Confirm' : 'Pending'}</span>
+            </div>
+            <div class="cmd-card-body">
+                <div class="cmd-code">${escapeHtml(c.cmd || '')}</div>
+                ${why}
+                <div id="cmd-actions-${id}" class="cmd-actions"></div>
+            </div>
+        `;
+
+        container.appendChild(card);
+        container.scrollTop = container.scrollHeight;
+
+        aiCommandEls[id] = {
+            card: card,
+            statusEl: card.querySelector('#cmd-status-' + id),
+            actionsEl: card.querySelector('#cmd-actions-' + id)
+        };
+
+        if (c.requires_confirm) {
+            renderConfirmButtons(id);
+        }
+    });
+}
+
+function renderConfirmButtons(id) {
+    const entry = aiCommandEls[id];
+    if (!entry || !entry.actionsEl) return;
+
+    entry.actionsEl.innerHTML = '';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'cmd-btn cmd-btn-confirm';
+    confirmBtn.innerHTML = '<span class="material-icons-round text-sm mr-1">check</span>Confirm';
+    confirmBtn.onclick = function() { confirmCommand(id); };
+
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'cmd-btn cmd-btn-skip';
+    skipBtn.innerHTML = '<span class="material-icons-round text-sm mr-1">skip_next</span>Skip';
+    skipBtn.onclick = function() { cancelCommand(id); };
+
+    entry.actionsEl.appendChild(confirmBtn);
+    entry.actionsEl.appendChild(skipBtn);
+}
+
+function updateCommandStatus(msg) {
+    const id = msg.id;
+    const entry = aiCommandEls[id];
+    if (!entry) return;
+
+    const statusEl = entry.statusEl;
+    if (statusEl) {
+        let statusText = msg.status;
+        let statusClass = msg.status;
+
+        if (msg.status === 'done' && msg.exit_code != null) {
+            statusText = 'Done (exit=' + msg.exit_code + ')';
+            statusClass = msg.exit_code === 0 ? 'done' : 'error';
+        }
+
+        statusEl.textContent = statusText;
+        statusEl.className = 'cmd-status ' + statusClass;
+    }
+
+    if (['running', 'done', 'skipped', 'confirmed'].includes(msg.status)) {
+        const buttons = entry.actionsEl?.querySelectorAll('button');
+        buttons?.forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+        });
+    }
+}
+
+function confirmCommand(id) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ai_confirm', id: id }));
+    }
+}
+
+function cancelCommand(id) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ai_cancel', id: id }));
+    }
+}
+
+function sendAiMessage() {
+    const input = document.getElementById('ai-input');
+    const text = (input.value || '').trim();
+    if (!text) return;
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        if (window.showToast) window.showToast('Connect to server first', 'warning');
+        else alert('Connect to server first');
+        return;
+    }
+
+    appendMessage('user', text);
+    input.value = '';
+    socket.send(JSON.stringify({ type: 'ai_request', message: text }));
+}
+
+function sendQuickCommand(cmd) {
+    const input = document.getElementById('ai-input');
+    input.value = cmd;
+    sendAiMessage();
+}
+
+function handleAiKeydown(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendAiMessage();
+    }
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    initTerminal();
+
+    // Focus terminal on click
+    document.getElementById('ssh-terminal')?.addEventListener('click', function() {
+        if (terminal) terminal.focus();
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            if (!document.getElementById('ai-panel').classList.contains('collapsed')) {
+                // Don't close AI panel on escape, just blur input
+                document.activeElement?.blur();
+            }
+        }
+    });
+});
+
+// Cleanup on page leave
+window.addEventListener('beforeunload', function() {
+    disconnectTerminal();
+});
+</script>
+{% endblock %}

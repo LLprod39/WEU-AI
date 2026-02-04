@@ -13,6 +13,17 @@
 {% block content %}
 <div class="mobile-page" id="mobile-tasks-page">
     
+    <!-- Project filter -->
+    {% if projects %}
+    <div class="mobile-project-bar">
+        <a href="{% url 'tasks:task_list' %}" class="mobile-project-chip {% if not current_project %}active{% endif %}">Все</a>
+        {% for p in projects %}
+        <a href="{% url 'tasks:task_list' %}?project={{ p.id }}" class="mobile-project-chip {% if current_project and current_project.id == p.id %}active{% endif %}" style="--project-color: {{ p.color }}">{{ p.key }}</a>
+        {% endfor %}
+        <a href="{% url 'tasks:project_list' %}" class="mobile-project-chip link" title="Проекты"><span class="material-icons-round">folder</span></a>
+    </div>
+    {% endif %}
+    
     <!-- Filter Tabs -->
     <div class="mobile-tasks-tabs" id="mobile-tasks-tabs">
         <button type="button" class="mobile-tab active" data-tab="todo">
@@ -435,6 +446,44 @@
         background: var(--mobile-primary-glow);
         border-color: var(--mobile-primary);
         color: var(--mobile-primary);
+    }
+    
+    .mobile-project-bar {
+        display: flex;
+        gap: 8px;
+        padding: 10px var(--mobile-spacing-md);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        background: var(--mobile-bg-surface);
+        border-bottom: 1px solid var(--mobile-border-color);
+    }
+    .mobile-project-chip {
+        flex-shrink: 0;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+        text-decoration: none;
+        color: var(--mobile-text-secondary);
+        background: var(--mobile-bg-elevated);
+        border: 1px solid var(--mobile-border-color);
+        transition: var(--mobile-transition-fast);
+    }
+    .mobile-project-chip:hover,
+    .mobile-project-chip.active {
+        color: var(--mobile-primary);
+        border-color: var(--mobile-primary);
+        background: var(--mobile-primary-glow);
+    }
+    .mobile-project-chip[style*="--project-color"]:not(.active) {
+        border-color: var(--project-color, var(--mobile-border-color));
+        color: var(--project-color, var(--mobile-text-secondary));
+    }
+    .mobile-project-chip.link {
+        padding: 6px 10px;
+    }
+    .mobile-project-chip.link .material-icons-round {
+        font-size: 18px;
     }
 </style>
 {% endblock %}

@@ -1,0 +1,765 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Проекты — Tasks{% endblock %}
+{% block header_title %}Проекты{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Home</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Tasks</span></a>
+            <meta itemprop="position" content="2">
+            <span class="text-gray-600">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Проекты</span>
+            <meta itemprop="position" content="3">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* Workspace-aligned design tokens (same as task_list) */
+.tasks-workspace-page {
+    --workspace-void: #08080b;
+    --workspace-deep: #0c0c10;
+    --workspace-surface: #111116;
+    --workspace-raised: #18181f;
+    --workspace-hover: #1f1f28;
+    --accent-primary: #6366f1;
+    --accent-primary-soft: rgba(99, 102, 241, 0.15);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-tertiary: #64748b;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.12);
+    --font-display: 'Outfit', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.tasks-workspace-page {
+    min-height: calc(100vh - var(--header-height, 64px));
+    background: var(--workspace-void);
+    font-family: var(--font-display);
+    padding: 24px 32px 48px;
+}
+
+.projects-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.projects-page-header h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.projects-count {
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
+    margin-left: 12px;
+}
+
+.projects-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.projects-search-wrap {
+    position: relative;
+}
+
+.projects-search-wrap input {
+    width: 260px;
+    padding: 10px 14px 10px 40px;
+    background: var(--workspace-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: var(--font-display);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.projects-search-wrap input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.projects-search-wrap input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-soft);
+}
+
+.projects-search-wrap .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+}
+
+.projects-archived-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.projects-archived-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-primary);
+}
+
+.projects-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: var(--accent-primary);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: var(--font-display);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+}
+
+.projects-btn-primary:hover {
+    background: #4f46e5;
+}
+
+.projects-btn-primary:active {
+    transform: scale(0.98);
+}
+
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.project-card {
+    background: var(--workspace-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 20px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+}
+
+.project-card:hover {
+    border-color: var(--border-hover);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.project-card.archived {
+    opacity: 0.7;
+}
+
+.project-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.project-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+}
+
+.project-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.project-card-name {
+    display: block;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.project-card-name:hover {
+    color: var(--accent-primary);
+}
+
+.project-card-key {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--workspace-deep);
+}
+
+.project-card-menu {
+    position: relative;
+}
+
+.project-card-menu-btn {
+    background: none;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    font-size: 1.25rem;
+    color: var(--text-tertiary);
+    border-radius: 8px;
+    line-height: 1;
+}
+
+.project-card-menu-btn:hover {
+    background: var(--workspace-hover);
+    color: var(--text-primary);
+}
+
+.project-card-menu-dropdown {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--workspace-raised);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    min-width: 160px;
+    z-index: 50;
+    overflow: hidden;
+}
+
+.project-card-menu-dropdown.show {
+    display: block;
+}
+
+.project-card-menu-dropdown a {
+    display: block;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.8125rem;
+    transition: background 0.1s;
+}
+
+.project-card-menu-dropdown a:hover {
+    background: var(--workspace-hover);
+}
+
+.project-card-menu-dropdown a.text-warning {
+    color: #f59e0b;
+}
+
+.project-card-menu-dropdown a.text-danger {
+    color: #ef4444;
+}
+
+.project-card-desc {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    margin: 0 0 16px;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.project-card-stats {
+    display: flex;
+    gap: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.project-card-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+}
+
+.project-card-stat svg {
+    flex-shrink: 0;
+    stroke: var(--text-tertiary);
+}
+
+.project-archived-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #f59e0b;
+    color: #000;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+}
+
+/* Empty state */
+.projects-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 64px 24px;
+    background: var(--workspace-surface);
+    border: 1px dashed var(--border-default);
+    border-radius: 14px;
+}
+
+.projects-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.6;
+}
+
+.projects-empty h3 {
+    margin: 0 0 8px;
+    font-size: 1.125rem;
+    color: var(--text-primary);
+}
+
+.projects-empty p {
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+    font-size: 0.875rem;
+}
+
+/* Modal */
+.projects-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.projects-modal.show {
+    display: flex;
+}
+
+.projects-modal-content {
+    background: var(--workspace-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.projects-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.projects-modal-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.projects-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    padding: 4px;
+    line-height: 1;
+    border-radius: 8px;
+}
+
+.projects-modal-close:hover {
+    color: var(--text-primary);
+    background: var(--workspace-hover);
+}
+
+.projects-form {
+    padding: 24px;
+}
+
+.projects-form-group {
+    margin-bottom: 20px;
+}
+
+.projects-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.projects-form-group input[type="text"],
+.projects-form-group input[type="email"],
+.projects-form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--workspace-deep);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: var(--font-display);
+}
+
+.projects-form-group input[type="color"] {
+    width: 56px;
+    height: 40px;
+    padding: 4px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    cursor: pointer;
+    background: var(--workspace-deep);
+}
+
+.projects-form-group small {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+}
+
+.projects-form-row {
+    display: flex;
+    gap: 16px;
+}
+
+.projects-form-row .projects-form-group {
+    flex: 1;
+}
+
+.projects-form-required {
+    color: #ef4444;
+}
+
+.projects-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 20px;
+    margin-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.projects-btn-secondary {
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+    border: 1px solid var(--border-default);
+    background: var(--workspace-raised);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+}
+
+.projects-btn-secondary:hover {
+    background: var(--workspace-hover);
+}
+</style>
+
+<div class="tasks-workspace-page">
+    <div class="projects-page-header">
+        <div>
+            <h1>Проекты <span class="projects-count">{{ projects|length }} проектов</span></h1>
+        </div>
+        <div class="projects-toolbar">
+            <div class="projects-search-wrap">
+                <span class="material-icons-round search-icon">search</span>
+                <input type="text" id="projectSearch" placeholder="Поиск проектов..." value="{{ search }}" aria-label="Поиск проектов">
+            </div>
+            <label class="projects-archived-toggle">
+                <input type="checkbox" id="showArchived" {% if show_archived %}checked{% endif %}>
+                Показать архивные
+            </label>
+            <button type="button" class="projects-btn-primary" onclick="openCreateModal()">
+                <span class="material-icons-round" style="font-size: 18px;">add</span>
+                Новый проект
+            </button>
+        </div>
+    </div>
+
+    <div class="projects-grid">
+        {% for project in projects %}
+        <div class="project-card {% if project.archived_at %}archived{% endif %}" data-project-id="{{ project.id }}">
+            <div class="project-card-header">
+                <div class="project-card-icon" style="background: {{ project.color }};">{{ project.key|slice:":2" }}</div>
+                <div class="project-card-info">
+                    <a href="{% url 'tasks:project_detail' project.id %}" class="project-card-name">{{ project.name }}</a>
+                    <span class="project-card-key">{{ project.key }}</span>
+                </div>
+                <div class="project-card-menu">
+                    <button type="button" class="project-card-menu-btn" onclick="toggleMenu(this)" aria-label="Меню проекта">⋮</button>
+                    <div class="project-card-menu-dropdown">
+                        <a href="{% url 'tasks:project_detail' project.id %}">Открыть</a>
+                        <a href="{% url 'settings_project' project.id %}">Настройки</a>
+                        {% if project.owner == request.user %}
+                        <a href="#" onclick="archiveProject({{ project.id }}); return false;" class="text-warning">
+                            {% if project.archived_at %}Разархивировать{% else %}Архивировать{% endif %}
+                        </a>
+                        <a href="#" onclick="deleteProject({{ project.id }}); return false;" class="text-danger">Удалить</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <p class="project-card-desc">{{ project.description|default:"Без описания"|truncatewords:20 }}</p>
+
+            <div class="project-card-stats">
+                <div class="project-card-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 11l3 3L22 4"></path>
+                        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+                    </svg>
+                    <span>{{ project.task_count }} задач</span>
+                </div>
+                <div class="project-card-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75"></path>
+                    </svg>
+                    <span>{{ project.member_count }} участников</span>
+                </div>
+            </div>
+
+            {% if project.archived_at %}
+            <div class="project-archived-badge">Архив</div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="projects-empty">
+            <div class="project-card-icon" style="background: var(--accent-primary); margin: 0 auto;">📁</div>
+            <h3>Нет проектов</h3>
+            <p>Создайте первый проект для организации задач</p>
+            <button type="button" class="projects-btn-primary" onclick="openCreateModal()">Создать проект</button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Create Project Modal -->
+<div id="createModal" class="projects-modal" role="dialog" aria-labelledby="createModalTitle" aria-modal="true">
+    <div class="projects-modal-content">
+        <div class="projects-modal-header">
+            <h2 id="createModalTitle">Новый проект</h2>
+            <button type="button" class="projects-modal-close" onclick="closeCreateModal()" aria-label="Закрыть">&times;</button>
+        </div>
+        <form id="createProjectForm" class="projects-form" onsubmit="createProject(event)">
+            <div class="projects-form-group">
+                <label>Название <span class="projects-form-required">*</span></label>
+                <input type="text" name="name" id="projectName" required placeholder="Название проекта">
+            </div>
+            <div class="projects-form-row">
+                <div class="projects-form-group">
+                    <label>Ключ <span class="projects-form-required">*</span></label>
+                    <input type="text" name="key" id="projectKey" required placeholder="KEY" maxlength="10"
+                           style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()">
+                    <small>Короткий идентификатор (например: WEU, DEV)</small>
+                </div>
+                <div class="projects-form-group">
+                    <label>Цвет</label>
+                    <input type="color" name="color" id="projectColor" value="#6366f1">
+                </div>
+            </div>
+            <div class="projects-form-group">
+                <label>Описание</label>
+                <textarea name="description" id="projectDescription" rows="3" placeholder="Описание проекта"></textarea>
+            </div>
+            <div class="projects-form-group">
+                <label class="projects-archived-toggle">
+                    <input type="checkbox" name="is_public" id="projectPublic">
+                    Публичный проект (виден всем пользователям)
+                </label>
+            </div>
+            <div class="projects-form-actions">
+                <button type="button" class="projects-btn-secondary" onclick="closeCreateModal()">Отмена</button>
+                <button type="submit" class="projects-btn-primary">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    var searchEl = document.getElementById('projectSearch');
+    if (searchEl) {
+        searchEl.addEventListener('input', function(e) {
+            var value = e.target.value.toLowerCase();
+            document.querySelectorAll('.project-card[data-project-id]').forEach(function(card) {
+                var name = (card.querySelector('.project-card-name') || {}).textContent || '';
+                var key = (card.querySelector('.project-card-key') || {}).textContent || '';
+                card.style.display = (name.toLowerCase().indexOf(value) !== -1 || key.toLowerCase().indexOf(value) !== -1) ? '' : 'none';
+            });
+        });
+    }
+
+    var showArchived = document.getElementById('showArchived');
+    if (showArchived) {
+        showArchived.addEventListener('change', function() {
+            var url = new URL(window.location);
+            if (this.checked) url.searchParams.set('archived', '1');
+            else url.searchParams.delete('archived');
+            window.location = url;
+        });
+    }
+
+    function toggleMenu(btn) {
+        var dropdown = btn.nextElementSibling;
+        document.querySelectorAll('.project-card-menu-dropdown.show').forEach(function(d) {
+            if (d !== dropdown) d.classList.remove('show');
+        });
+        dropdown.classList.toggle('show');
+    }
+    window.toggleMenu = toggleMenu;
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.project-card-menu')) {
+            document.querySelectorAll('.project-card-menu-dropdown.show').forEach(function(d) { d.classList.remove('show'); });
+        }
+    });
+
+    window.openCreateModal = function() {
+        document.getElementById('createModal').classList.add('show');
+        var nameEl = document.getElementById('projectName');
+        if (nameEl) nameEl.focus();
+    };
+
+    window.closeCreateModal = function() {
+        document.getElementById('createModal').classList.remove('show');
+        var form = document.getElementById('createProjectForm');
+        if (form) form.reset();
+    };
+
+    var nameEl = document.getElementById('projectName');
+    var keyEl = document.getElementById('projectKey');
+    if (nameEl && keyEl) {
+        nameEl.addEventListener('input', function() {
+            if (!keyEl.value) {
+                var words = this.value.split(/\s+/).filter(function(w) { return w; });
+                keyEl.value = words.slice(0, 3).map(function(w) { return w[0]; }).join('').toUpperCase();
+            }
+        });
+    }
+
+    window.createProject = function(e) {
+        e.preventDefault();
+        var form = e.target;
+        var data = {
+            name: form.name.value,
+            key: form.key.value.toUpperCase(),
+            description: form.description.value,
+            color: form.color.value,
+            is_public: form.is_public.checked,
+        };
+
+        fetch('{% url "tasks:project_create" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify(data),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            if (result.success) {
+                window.location.href = '/tasks/projects/' + result.project.id + '/';
+            } else {
+                alert(result.error || 'Ошибка создания проекта');
+            }
+        })
+        .catch(function(err) {
+            alert('Ошибка: ' + err.message);
+        });
+    };
+
+    window.archiveProject = function(id) {
+        if (!confirm('Архивировать проект?')) return;
+        fetch('/tasks/projects/' + id + '/archive/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            if (result.success) window.location.reload();
+            else alert(result.error);
+        })
+        .catch(function(err) { alert('Ошибка: ' + err.message); });
+    };
+
+    window.deleteProject = function(id) {
+        if (!confirm('Удалить проект? Все задачи будут удалены!')) return;
+        if (!confirm('Вы уверены? Это действие необратимо.')) return;
+        fetch('/tasks/projects/' + id + '/delete/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            if (result.success) window.location.reload();
+            else alert(result.error);
+        })
+        .catch(function(err) { alert('Ошибка: ' + err.message); });
+    };
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeCreateModal();
+    });
+})();
+</script>
+{% endblock %}

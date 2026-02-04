@@ -287,10 +287,16 @@ class Orchestrator:
         history_text = ""
         if len(history_source) > 1:
             recent = history_source[-6:]
-            history_text = "\n".join([
-                f"{msg['role'].upper()}: {msg['content'][:200]}"
-                for msg in recent[:-1]
-            ])
+            history_lines = []
+            for msg in recent[:-1]:
+                content = msg['content']
+                # OBSERVATION (результаты инструментов) - больше лимит для полных данных
+                if msg['role'] == 'system' and content.startswith('OBSERVATION:'):
+                    truncated = content[:3000]
+                else:
+                    truncated = content[:200]
+                history_lines.append(f"{msg['role'].upper()}: {truncated}")
+            history_text = "\n".join(history_lines)
 
         ctx_block = ""
         exclude_tools = None
@@ -354,11 +360,25 @@ class Orchestrator:
                 # В режиме IDE не показываем блок серверов
                 servers_block = ""
 
+        # Chat capabilities summary (what data is available in this UI)
+        rag_flag = None
+        if execution_context and "rag_enabled" in execution_context:
+            rag_flag = "ВКЛ" if execution_context.get("rag_enabled") else "ВЫКЛ"
+        rag_line = f"- RAG: сейчас {rag_flag} (если ВКЛ — используй базу знаний)." if rag_flag else "- RAG: используется, если включено в чате (галочка) и база знаний доступна."
+        chat_caps = f"""
+КОНТЕКСТ ЧАТА (ДОСТУПНЫЕ ДАННЫЕ):
+{rag_line}
+- Задачи: доступны через инструменты tasks_list и task_detail (статус, описание, сроки, исполнитель).
+- Серверы: доступны через servers_list / server_execute (безопасные команды; опасные — только после подтверждения).
+- Файлы: пользователь может прикрепить файлы; при необходимости запроси файл.
+"""
+
         tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
 {AGENT_SYSTEM_RULES_RU}
 {ctx_block}
 {servers_block}
+{chat_caps}
 
 ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 {tools_description}
@@ -369,16 +389,22 @@ class Orchestrator:
 ИСТОРИЯ ДИАЛОГА:
 {history_text if history_text else "Нет предыдущего контекста."}
 
-ИНСТРУКЦИИ:
-1. Рассуждай по шагам на русском и кратко фиксируй, что проверяешь.
-2. Если не хватает данных — задай 1-2 вопроса и остановись, не вызывай инструменты.
-3. Если нужен инструмент, в ответе строго в формате:
-THOUGHT: [твоё рассуждение]
-ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
-4. После OBSERVATION продолжай рассуждение или дай итоговый ответ на русском.
-5. Итоговый ответ пиши без строки ACTION.
+ИНСТРУКЦИИ ReAct (Точность и Полнота):
+1. Внимательно анализируй запрос пользователя.
+2. Если нужны данные — вызывай инструмент в формате:
+   ACTION: tool_name {{"param": "value"}}
+3. После OBSERVATION анализируй результат:
+   - ВСЕ ли данные получены?
+   - Достаточно ли для полного ответа?
+   - Нужны ли дополнительные инструменты?
+4. Перед финальным ответом ПРОВЕРЬ:
+   - Ответ полностью отвечает на вопрос?
+   - Использованы все полученные данные?
+   - Нет пропусков или противоречий?
+5. Финальный ответ БЕЗ строки ACTION, на русском.
 
-ВАЖНО: ответы пользователю — только на русском. Параметры ACTION — валидный JSON. Используй только перечисленные инструменты. Опасные операции выполнять только после явного подтверждения пользователя.
+КАЧЕСТВО > СКОРОСТЬ. Лучше сделать дополнительную итерацию, чем дать неполный ответ.
+Параметры ACTION — валидный JSON. Используй только перечисленные инструменты.
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message}
 

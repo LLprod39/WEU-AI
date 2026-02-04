@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ project.name }} - Материалы{% endblock %}
+{% block header_title %}Материалы — {{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:project_list' %}" class="text-gray-500 hover:text-white transition-colors">Проекты</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white truncate">{{ project.key }} / Материалы</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<div class="materials-page pm-workspace">
+    <!-- Header -->
+    <div class="project-header-bar">
+        <div class="breadcrumb">
+            <a href="{% url 'tasks:task_list' %}">Tasks</a>
+            <span>/</span>
+            <a href="{% url 'tasks:project_list' %}">Проекты</a>
+            <span>/</span>
+            <a href="{% url 'tasks:project_detail' project.id %}">{{ project.key }}</a>
+            <span>/</span>
+            <span>Материалы</span>
+        </div>
+
+        <div class="project-nav">
+            <a href="{% url 'tasks:project_detail' project.id %}" class="nav-item">Доска</a>
+            <a href="{% url 'tasks:sprint_list' project.id %}" class="nav-item">Спринты</a>
+            <a href="{% url 'tasks:project_materials' project.id %}" class="nav-item active">Материалы</a>
+            <a href="{% url 'settings_project' project.id %}" class="nav-item">Настройки</a>
+        </div>
+    </div>
+
+    <div class="materials-container">
+        <div class="materials-toolbar">
+            <div class="toolbar-left">
+                <div class="filter-group">
+                    <select id="typeFilter" onchange="filterMaterials()">
+                        <option value="">Все типы</option>
+                        <option value="document">Документы</option>
+                        <option value="link">Ссылки</option>
+                        <option value="file">Файлы</option>
+                        <option value="wiki">Wiki</option>
+                    </select>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="materialSearch" placeholder="Поиск...">
+                </div>
+            </div>
+            {% if can_add %}
+            <button class="btn btn-primary" onclick="openAddModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14m-7-7h14"></path>
+                </svg>
+                Добавить
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Folders -->
+        {% if folders %}
+        <div class="folders-section">
+            <h3>Папки</h3>
+            <div class="folders-grid">
+                {% for folder in folders %}
+                <a href="?folder={{ folder }}" class="folder-card">
+                    <span class="folder-icon">📁</span>
+                    <span class="folder-name">{{ folder }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Materials Grid -->
+        <div class="materials-grid">
+            {% for material in materials %}
+            <div class="material-card" data-type="{{ material.material_type }}">
+                <div class="material-icon">
+                    {% if material.material_type == 'document' %}📄
+                    {% elif material.material_type == 'link' %}🔗
+                    {% elif material.material_type == 'file' %}📎
+                    {% elif material.material_type == 'wiki' %}📖
+                    {% endif %}
+                </div>
+                <div class="material-info">
+                    <h4>{{ material.title }}</h4>
+                    {% if material.description %}
+                    <p>{{ material.description|truncatewords:15 }}</p>
+                    {% endif %}
+                    <div class="material-meta">
+                        <span>{{ material.created_by.username }}</span>
+                        <span>{{ material.created_at|date:"d.m.Y" }}</span>
+                    </div>
+                </div>
+                <div class="material-actions">
+                    {% if material.material_type == 'link' %}
+                    <a href="{{ material.url }}" target="_blank" class="btn-icon" title="Открыть ссылку">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                    {% elif material.material_type == 'file' %}
+                    <a href="{{ material.file.url }}" download class="btn-icon" title="Скачать">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                    </a>
+                    {% elif material.material_type == 'wiki' %}
+                    <button class="btn-icon" onclick="openWiki({{ material.id }})" title="Читать">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+                    {% endif %}
+                    {% if can_add %}
+                    <button class="btn-icon text-danger" onclick="deleteMaterial({{ material.id }})" title="Удалить">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+                        </svg>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="empty-state">
+                <div class="empty-icon">📚</div>
+                <h3>Нет материалов</h3>
+                <p>Добавьте документы, ссылки или wiki-страницы</p>
+                {% if can_add %}
+                <button class="btn btn-primary" onclick="openAddModal()">Добавить материал</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Material Modal -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Добавить материал</h2>
+            <button class="close-btn" onclick="closeAddModal()">&times;</button>
+        </div>
+        <form id="addMaterialForm" onsubmit="addMaterial(event)" enctype="multipart/form-data">
+            <div class="form-group">
+                <label>Тип</label>
+                <select name="material_type" id="materialType" onchange="updateFormFields()">
+                    <option value="link">Ссылка</option>
+                    <option value="file">Файл</option>
+                    <option value="wiki">Wiki-страница</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Название <span class="required">*</span></label>
+                <input type="text" name="title" required>
+            </div>
+            <div class="form-group">
+                <label>Описание</label>
+                <textarea name="description" rows="2"></textarea>
+            </div>
+
+            <!-- Link fields -->
+            <div class="form-group field-link">
+                <label>URL <span class="required">*</span></label>
+                <input type="url" name="url" placeholder="https://...">
+            </div>
+
+            <!-- File fields -->
+            <div class="form-group field-file" style="display:none;">
+                <label>Файл <span class="required">*</span></label>
+                <input type="file" name="file">
+            </div>
+
+            <!-- Wiki fields -->
+            <div class="form-group field-wiki" style="display:none;">
+                <label>Содержимое (Markdown)</label>
+                <textarea name="content" rows="10" placeholder="# Заголовок&#10;&#10;Текст..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Папка</label>
+                <input type="text" name="folder" placeholder="Название папки">
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAddModal()">Отмена</button>
+                <button type="submit" class="btn btn-primary">Добавить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.pm-workspace {
+    --pm-void: #08080b;
+    --pm-deep: #0c0c10;
+    --pm-surface: #111116;
+    --pm-raised: #18181f;
+    --pm-border: rgba(255,255,255,0.08);
+    --pm-text: #f8fafc;
+    --pm-muted: #94a3b8;
+    --pm-tertiary: #64748b;
+    --pm-accent: #6366f1;
+    font-family: 'Outfit', system-ui, sans-serif;
+}
+.materials-page { min-height: 100vh; }
+.pm-workspace.materials-page { background: var(--pm-void); }
+.pm-workspace .project-header-bar {
+    padding: 14px 24px;
+    background: var(--pm-deep);
+    border-bottom: 1px solid var(--pm-border);
+}
+.pm-workspace .project-header-bar .breadcrumb a,
+.pm-workspace .project-header-bar .breadcrumb span { color: var(--pm-muted); }
+.pm-workspace .project-header-bar .breadcrumb a:hover { color: var(--pm-accent); }
+.pm-workspace .project-nav .nav-item { color: var(--pm-muted); }
+.pm-workspace .project-nav .nav-item:hover { background: var(--pm-raised); color: var(--pm-text); }
+.pm-workspace .project-nav .nav-item.active { background: rgba(99,102,241,0.15); color: var(--pm-accent); }
+.pm-workspace .materials-container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.pm-workspace .materials-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.pm-workspace .toolbar-left { display: flex; gap: 14px; }
+.pm-workspace .filter-group select {
+    padding: 8px 14px;
+    background: var(--pm-raised);
+    border: 1px solid var(--pm-border);
+    border-radius: 10px;
+    color: var(--pm-text);
+    font-size: 0.875rem;
+}
+.pm-workspace .search-box input {
+    padding: 8px 14px;
+    background: var(--pm-raised);
+    border: 1px solid var(--pm-border);
+    border-radius: 10px;
+    color: var(--pm-text);
+    font-size: 0.875rem;
+}
+.pm-workspace .search-box input::placeholder { color: var(--pm-tertiary); }
+.pm-workspace .btn-primary { background: var(--pm-accent); color: #fff; border-radius: 10px; padding: 10px 18px; }
+.pm-workspace .folders-section { margin-bottom: 28px; }
+.pm-workspace .folders-section h3 { margin: 0 0 12px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pm-tertiary); }
+.pm-workspace .folders-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.pm-workspace .folder-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--pm-surface);
+    border: 1px solid var(--pm-border);
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--pm-text);
+    font-size: 0.875rem;
+    transition: border-color 0.15s;
+}
+.pm-workspace .folder-card:hover { border-color: var(--pm-accent); }
+.pm-workspace .materials-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.pm-workspace .material-card {
+    display: flex;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--pm-surface);
+    border: 1px solid var(--pm-border);
+    border-radius: 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pm-workspace .material-card:hover {
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+}
+
+.material-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.material-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.pm-workspace .material-info h4 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; color: var(--pm-text); }
+.pm-workspace .material-info p { margin: 0 0 8px; font-size: 0.8125rem; color: var(--pm-muted); }
+.pm-workspace .material-meta { display: flex; gap: 14px; font-size: 0.75rem; color: var(--pm-tertiary); }
+
+.material-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pm-workspace .btn-icon {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pm-raised);
+    border: 1px solid var(--pm-border);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--pm-muted);
+    transition: background 0.15s, color 0.15s;
+}
+.pm-workspace .btn-icon:hover { background: rgba(99,102,241,0.15); color: var(--pm-accent); }
+.pm-workspace .btn-icon.text-danger:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+.pm-workspace .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 64px 24px;
+    background: var(--pm-surface);
+    border: 1px dashed var(--pm-border);
+    border-radius: 14px;
+}
+.pm-workspace .empty-state h3 { color: var(--pm-text); }
+.pm-workspace .empty-state p { color: var(--pm-muted); }
+
+.pm-workspace .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.7; }
+
+/* Modal */
+.pm-workspace .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.pm-workspace .modal.show { display: flex; }
+.pm-workspace .modal-content {
+    background: var(--pm-surface);
+    border: 1px solid var(--pm-border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.pm-workspace .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--pm-border);
+}
+.pm-workspace .modal-header h2 { margin: 0; font-size: 1.125rem; font-weight: 600; color: var(--pm-text); }
+.pm-workspace .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--pm-tertiary); padding: 4px; border-radius: 8px; }
+.pm-workspace .close-btn:hover { color: var(--pm-text); background: var(--pm-raised); }
+#addMaterialForm { padding: 24px; }
+.pm-workspace .form-group { margin-bottom: 18px; }
+.pm-workspace .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.8125rem; color: var(--pm-muted); }
+.pm-workspace .form-group input:not([type="file"]),
+.pm-workspace .form-group select,
+.pm-workspace .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--pm-deep);
+    border: 1px solid var(--pm-border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: var(--pm-text);
+}
+.pm-workspace .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--pm-border); }
+.pm-workspace .btn { padding: 10px 20px; border-radius: 10px; font-weight: 500; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 8px; font-size: 0.875rem; }
+.pm-workspace .btn-primary { background: var(--pm-accent); color: #fff; }
+.pm-workspace .btn-secondary { background: var(--pm-raised); color: var(--pm-text); border: 1px solid var(--pm-border); }
+.pm-workspace .btn-secondary:hover { background: var(--pm-deep); }
+.pm-workspace .required { color: #ef4444; }
+
+</style>
+
+<script>
+function openAddModal() {
+    document.getElementById('addModal').classList.add('show');
+}
+
+function closeAddModal() {
+    document.getElementById('addModal').classList.remove('show');
+    document.getElementById('addMaterialForm').reset();
+}
+
+function updateFormFields() {
+    const type = document.getElementById('materialType').value;
+    document.querySelectorAll('.field-link, .field-file, .field-wiki').forEach(el => el.style.display = 'none');
+    document.querySelector('.field-' + type).style.display = 'block';
+}
+
+async function addMaterial(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch('{% url "tasks:material_add" project.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: formData,
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function deleteMaterial(id) {
+    if (!confirm('Удалить материал?')) return;
+
+    try {
+        const response = await fetch(`/tasks/materials/${id}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.error);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+function filterMaterials() {
+    const type = document.getElementById('typeFilter').value;
+    document.querySelectorAll('.material-card').forEach(card => {
+        if (!type || card.dataset.type === type) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+document.getElementById('materialSearch').addEventListener('input', function(e) {
+    const value = e.target.value.toLowerCase();
+    document.querySelectorAll('.material-card').forEach(card => {
+        const title = card.querySelector('h4').textContent.toLowerCase();
+        card.style.display = title.includes(value) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

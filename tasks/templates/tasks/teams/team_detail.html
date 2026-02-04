@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ team.name }} — Команды{% endblock %}
+{% block header_title %}{{ team.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:team_list' %}" class="text-gray-500 hover:text-white transition-colors">Команды</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white truncate">{{ team.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+.team-detail-workspace {
+    --tw-void: #08080b; --tw-surface: #111116; --tw-raised: #18181f; --tw-border: rgba(255,255,255,0.08);
+    --tw-text: #f8fafc; --tw-muted: #94a3b8; --tw-accent: #6366f1; --tw-danger: #ef4444;
+    font-family: 'Outfit', system-ui, sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 24px 32px 48px;
+}
+.team-detail-header {
+    display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;
+    margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--tw-border);
+}
+.team-detail-title { display: flex; align-items: center; gap: 14px; }
+.team-detail-icon {
+    width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 1.25rem; color: #fff;
+}
+.team-detail-name { margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--tw-text); }
+.team-detail-slug { font-size: 0.8125rem; color: var(--tw-muted); font-family: 'JetBrains Mono', monospace); margin-top: 4px; }
+.team-detail-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.team-detail-actions a, .team-detail-actions button {
+    padding: 8px 16px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; font-family: inherit;
+    text-decoration: none; cursor: pointer; border: 1px solid var(--tw-border); background: var(--tw-raised); color: var(--tw-text);
+}
+.team-detail-actions a:hover, .team-detail-actions button:hover { background: #1f1f28; }
+.team-detail-actions .btn-danger { border-color: rgba(239,68,68,0.4); color: var(--tw-danger); }
+.team-detail-actions .btn-danger:hover { background: rgba(239,68,68,0.1); }
+.team-detail-desc { color: var(--tw-muted); font-size: 0.9375rem; margin-bottom: 24px; }
+.team-section-title { margin: 0 0 14px; font-size: 1rem; font-weight: 600; color: var(--tw-text); }
+.team-members-list { display: flex; flex-direction: column; gap: 10px; }
+.team-member-card {
+    display: flex; align-items: center; justify-content: space-between; padding: 14px 18px;
+    background: var(--tw-surface); border: 1px solid var(--tw-border); border-radius: 12px;
+}
+.team-member-card .member-info { display: flex; align-items: center; gap: 14px; }
+.team-member-avatar {
+    width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; font-size: 0.9375rem;
+}
+.team-member-name { font-weight: 500; color: var(--tw-text); }
+.team-member-email { font-size: 0.8125rem; color: var(--tw-muted); }
+.team-member-role {
+    padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 500;
+}
+.team-member-role.owner { background: rgba(139,92,246,0.2); color: #a78bfa; }
+.team-member-role.admin { background: rgba(99,102,241,0.2); color: #818cf8; }
+.team-member-role.member { background: rgba(255,255,255,0.08); color: var(--tw-muted); }
+.team-member-actions { display: flex; align-items: center; gap: 8px; }
+.team-member-actions select {
+    padding: 6px 10px; border-radius: 8px; font-size: 0.8125rem; background: #0c0c10; border: 1px solid var(--tw-border); color: var(--tw-text);
+}
+.team-member-actions button {
+    background: none; border: none; cursor: pointer; color: var(--tw-muted); padding: 6px; border-radius: 8px;
+}
+.team-member-actions button:hover { color: var(--tw-danger); background: rgba(239,68,68,0.1); }
+.team-add-member { margin-top: 16px; }
+.team-add-member input, .team-add-member select { margin-right: 8px; margin-bottom: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--tw-border); background: #0c0c10; color: var(--tw-text); font-size: 0.875rem; }
+.team-add-member button { padding: 8px 16px; border-radius: 8px; font-weight: 500; background: var(--tw-accent); color: #fff; border: none; cursor: pointer; font-size: 0.875rem; }
+</style>
+
+<div class="team-detail-workspace">
+    <div class="team-detail-header">
+        <div class="team-detail-title">
+            <div class="team-detail-icon" style="background: {{ team.color }};">{{ team.name|slice:":2" }}</div>
+            <div>
+                <h1 class="team-detail-name">{{ team.name }}</h1>
+                <div class="team-detail-slug">{{ team.slug }}</div>
+            </div>
+        </div>
+        <div class="team-detail-actions">
+            {% if can_manage %}
+            <a href="{% url 'tasks:team_edit' team.id %}">Редактировать</a>
+            <button type="button" class="btn-danger" onclick="if(confirm('Удалить команду?')) { fetch('{% url 'tasks:team_delete' team.id %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json' } }).then(() => location.href='{% url 'tasks:team_list' %}'); }">Удалить</button>
+            {% endif %}
+            <a href="{% url 'tasks:team_list' %}">← К списку</a>
+        </div>
+    </div>
+
+    {% if team.description %}
+    <p class="team-detail-desc">{{ team.description }}</p>
+    {% endif %}
+
+    <h2 class="team-section-title">Участники ({{ members|length }})</h2>
+    <div class="team-members-list">
+        {% for m in members %}
+        <div class="team-member-card" data-user-id="{{ m.user.id }}">
+            <div class="member-info">
+                <div class="team-member-avatar" style="background: hsl({{ m.user.id|add:180 }}, 60%, 45%);">{{ m.user.username|slice:":1"|upper }}</div>
+                <div>
+                    <div class="team-member-name">{{ m.user.username }}</div>
+                    <div class="team-member-email">{{ m.user.email|default:"" }}</div>
+                </div>
+                <span class="team-member-role {{ m.role }}">{{ m.get_role_display }}</span>
+            </div>
+            {% if can_manage and m.role != 'owner' %}
+            <div class="team-member-actions">
+                <select onchange="changeRole({{ m.user.id }}, this.value)">
+                    <option value="admin" {% if m.role == 'admin' %}selected{% endif %}>Администратор</option>
+                    <option value="member" {% if m.role == 'member' %}selected{% endif %}>Участник</option>
+                </select>
+                <button type="button" onclick="removeMember({{ m.user.id }})" title="Удалить">&times;</button>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if can_manage %}
+    <div class="team-add-member" style="margin-top: 20px;">
+        <input type="text" id="addMemberEmail" placeholder="Email пользователя" style="min-width: 200px;">
+        <select id="addMemberRole">
+            <option value="member">Участник</option>
+            <option value="admin">Администратор</option>
+        </select>
+        <button type="button" onclick="addMember()">Добавить</button>
+        <span id="addMemberError" style="color: #ef4444; font-size: 0.875rem; margin-left: 8px;"></span>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+const teamId = {{ team.id }};
+const csrfToken = '{{ csrf_token }}';
+
+function addMember() {
+    const email = document.getElementById('addMemberEmail').value.trim();
+    const role = document.getElementById('addMemberRole').value;
+    const errEl = document.getElementById('addMemberError');
+    errEl.textContent = '';
+    if (!email) { errEl.textContent = 'Введите email'; return; }
+    fetch('/tasks/teams/' + teamId + '/members/add/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ email: email, role: role })
+    }).then(r => r.json()).then(res => {
+        if (res.success) { document.getElementById('addMemberEmail').value = ''; location.reload(); }
+        else errEl.textContent = res.error || 'Ошибка';
+    }).catch(() => errEl.textContent = 'Ошибка сети');
+}
+
+function changeRole(userId, role) {
+    fetch('/tasks/teams/' + teamId + '/members/' + userId + '/role/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ role: role })
+    }).then(r => r.json()).then(res => { if (!res.success) alert(res.error); else location.reload(); });
+}
+
+function removeMember(userId) {
+    if (!confirm('Удалить участника из команды?')) return;
+    fetch('/tasks/teams/' + teamId + '/members/' + userId + '/remove/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+    }).then(() => location.reload());
+}
+</script>
+{% endblock %}

@@ -64,6 +64,28 @@ def server_list(request):
     })
 
 
+@login_required
+@require_feature('servers', redirect_on_forbidden=True)
+def server_terminal_page(request, server_id: int):
+    """
+    Full-page SSH terminal (mobile-first). Desktop also supported as a page fallback.
+    WebSocket endpoint is handled by Channels consumer.
+    """
+    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+    template = 'servers/mobile/terminal.html' if getattr(request, 'is_mobile', False) else 'servers/terminal.html'
+    return render(request, template, {'server': server})
+
+
+@login_required
+@require_feature('servers', redirect_on_forbidden=True)
+def multi_terminal(request):
+    """
+    Multi-terminal hub - multiple SSH sessions in tabs.
+    """
+    servers = Server.objects.filter(user=request.user, is_active=True)
+    return render(request, 'servers/multi_terminal.html', {'servers': servers})
+
+
 def _get_group_role(group: ServerGroup, user: User) -> str:
     if group.user_id == user.id:
         return "owner"

@@ -1,0 +1,913 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ project.name }} - Доска{% endblock %}
+{% block header_title %}{{ project.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none">
+        <li><a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors">Home</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:task_list' %}" class="text-gray-500 hover:text-white transition-colors">Tasks</a><span class="text-gray-600 mx-1">/</span></li>
+        <li><a href="{% url 'tasks:project_list' %}" class="text-gray-500 hover:text-white transition-colors">Проекты</a><span class="text-gray-600 mx-1">/</span></li>
+        <li class="font-medium text-white truncate">{{ project.key }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<div class="project-board-page pd-workspace">
+    <!-- Project Header -->
+    <div class="project-header-bar">
+        <div class="breadcrumb">
+            <a href="{% url 'tasks:task_list' %}">Tasks</a>
+            <span>/</span>
+            <a href="{% url 'tasks:project_list' %}">Проекты</a>
+            <span>/</span>
+            <span class="project-key-badge" style="background: {{ project.color }}20; color: {{ project.color }};">{{ project.key }}</span>
+            <span class="project-title">{{ project.name }}</span>
+        </div>
+
+        <div class="project-nav">
+            <a href="{% url 'tasks:project_detail' project.id %}" class="nav-item{% if not sprint_filter %} active{% endif %}">Доска</a>
+            <a href="{% url 'tasks:project_backlog' project.id %}" class="nav-item{% if sprint_filter == 'backlog' %} active{% endif %}">Бэклог</a>
+            <a href="{% url 'tasks:sprint_list' project.id %}" class="nav-item">Спринты</a>
+            <a href="{% url 'tasks:project_materials' project.id %}" class="nav-item">Материалы</a>
+            {% if can_edit %}
+            <a href="{% url 'settings_project' project.id %}" class="nav-item">Настройки</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="board-toolbar">
+        <div class="toolbar-left">
+            {% if active_sprint %}
+            <div class="active-sprint-badge">
+                <span class="sprint-icon">🏃</span>
+                <span>{{ active_sprint.name }}</span>
+                <span class="sprint-progress">{{ active_sprint.get_progress_percentage }}%</span>
+            </div>
+            {% endif %}
+
+            <div class="filter-group">
+                <select id="sprintFilter" onchange="applyFilters()">
+                    <option value="">Все задачи</option>
+                    <option value="backlog">Бэклог</option>
+                    {% for sprint in sprints %}
+                    <option value="{{ sprint.id }}">{{ sprint.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="taskSearch" placeholder="Поиск задач...">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+            </div>
+        </div>
+
+        <div class="toolbar-right">
+            <div class="members-avatars">
+                {% for member in members|slice:":5" %}
+                <div class="avatar" title="{{ member.user.username }}"
+                     style="background: hsl({{ forloop.counter0|add:180 }}, 70%, 60%);">
+                    {{ member.user.username|slice:":1"|upper }}
+                </div>
+                {% endfor %}
+                {% if members|length > 5 %}
+                <div class="avatar more">+{{ members|length|add:"-5" }}</div>
+                {% endif %}
+            </div>
+
+            {% if can_create_task %}
+            <button class="btn btn-primary" onclick="openCreateTaskModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14m-7-7h14"></path>
+                </svg>
+                Задача
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board">
+        {% for status, tasks in tasks_by_status.items %}
+        <div class="kanban-column" data-status="{{ status }}">
+            <div class="column-header">
+                <span class="column-title">
+                    {% if status == 'TODO' %}📋 К выполнению
+                    {% elif status == 'IN_PROGRESS' %}🔄 В работе
+                    {% elif status == 'BLOCKED' %}🚫 Заблокировано
+                    {% elif status == 'DONE' %}✅ Готово
+                    {% endif %}
+                </span>
+                <span class="column-count">{{ tasks|length }}</span>
+            </div>
+            <div class="column-tasks" data-status="{{ status }}"
+                 ondragover="allowDrop(event)" ondrop="drop(event, '{{ status }}')">
+                {% for task in tasks %}
+                <div class="task-card" draggable="true" data-task-id="{{ task.id }}"
+                     ondragstart="drag(event)">
+                    <div class="task-key">{{ task.task_key|default:task.id }}</div>
+                    <div class="task-title">{{ task.title }}</div>
+
+                    {% if task.label_relations.all %}
+                    <div class="task-labels">
+                        {% for rel in task.label_relations.all|slice:":3" %}
+                        <span class="label" style="background: {{ rel.label.color }}20; color: {{ rel.label.color }};">
+                            {{ rel.label.name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <div class="task-meta">
+                        <span class="priority priority-{{ task.priority|lower }}">
+                            {% if task.priority == 'HIGH' %}🔴{% elif task.priority == 'MEDIUM' %}🟡{% else %}🟢{% endif %}
+                        </span>
+
+                        {% if task.due_date %}
+                        <span class="due-date {% if task.is_overdue %}overdue{% endif %}">
+                            📅 {{ task.due_date|date:"d.m" }}
+                        </span>
+                        {% endif %}
+
+                        {% if task.subtasks.count > 0 %}
+                        <span class="subtask-progress">
+                            ☑️ {{ task.subtasks.filter.is_completed|length }}/{{ task.subtasks.count }}
+                        </span>
+                        {% endif %}
+
+                        {% if task.assignee %}
+                        <div class="assignee-avatar" title="{{ task.assignee.username }}"
+                             style="background: hsl({{ task.assignee.id|add:180 }}, 70%, 60%);">
+                            {{ task.assignee.username|slice:":1"|upper }}
+                        </div>
+                        {% endif %}
+
+                        {% if task.assigned_to_ai %}
+                        <span class="ai-badge">🤖</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if can_create_task %}
+                <button class="add-task-btn" onclick="openCreateTaskModal('{{ status }}')">
+                    + Добавить задачу
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Create Task Modal -->
+<div id="createTaskModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Новая задача</h2>
+            <button class="close-btn" onclick="closeCreateTaskModal()">&times;</button>
+        </div>
+        <form id="createTaskForm" onsubmit="createTask(event)">
+            <input type="hidden" name="project_id" value="{{ project.id }}">
+            <input type="hidden" name="status" id="taskStatus" value="TODO">
+
+            <div class="form-group">
+                <label>Название <span class="required">*</span></label>
+                <input type="text" name="title" id="taskTitle" required placeholder="Что нужно сделать?">
+            </div>
+
+            <div class="form-group">
+                <label>Описание</label>
+                <textarea name="description" id="taskDescription" rows="3"
+                          placeholder="Подробное описание задачи"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Приоритет</label>
+                    <select name="priority" id="taskPriority">
+                        <option value="MEDIUM">Средний</option>
+                        <option value="HIGH">Высокий</option>
+                        <option value="LOW">Низкий</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Исполнитель</label>
+                    <select name="assignee_id" id="taskAssignee">
+                        <option value="">Не назначен</option>
+                        {% for member in members %}
+                        <option value="{{ member.user.id }}">{{ member.user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Срок</label>
+                    <input type="date" name="due_date" id="taskDueDate">
+                </div>
+                <div class="form-group">
+                    <label>Спринт</label>
+                    <select name="sprint_id" id="taskSprint">
+                        <option value="">Бэклог</option>
+                        {% for sprint in sprints %}
+                        {% if sprint.status != 'completed' %}
+                        <option value="{{ sprint.id }}">{{ sprint.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeCreateTaskModal()">Отмена</button>
+                <button type="submit" class="btn btn-primary">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Task Detail Modal -->
+<div id="taskDetailModal" class="modal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <div class="task-detail-header">
+                <span id="detailTaskKey" class="task-key-large"></span>
+                <h2 id="detailTaskTitle"></h2>
+            </div>
+            <button class="close-btn" onclick="closeTaskDetailModal()">&times;</button>
+        </div>
+        <div id="taskDetailContent" class="task-detail-body">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+</div>
+
+<style>
+/* Dark workspace theme for project board */
+.pd-workspace {
+    --pd-void: #08080b;
+    --pd-deep: #0c0c10;
+    --pd-surface: #111116;
+    --pd-raised: #18181f;
+    --pd-hover: #1f1f28;
+    --pd-border: rgba(255,255,255,0.08);
+    --pd-border-hover: rgba(255,255,255,0.12);
+    --pd-text: #f8fafc;
+    --pd-muted: #94a3b8;
+    --pd-tertiary: #64748b;
+    --pd-accent: #6366f1;
+    --pd-accent-soft: rgba(99,102,241,0.15);
+    font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.project-board-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+}
+
+.pd-workspace .project-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    background: var(--pd-deep);
+    border-bottom: 1px solid var(--pd-border);
+}
+
+.pd-workspace .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.875rem;
+}
+
+.pd-workspace .breadcrumb a {
+    color: var(--pd-muted);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.pd-workspace .breadcrumb a:hover { color: var(--pd-accent); }
+
+.pd-workspace .project-key-badge {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.pd-workspace .project-title { font-weight: 600; color: var(--pd-text); }
+
+.pd-workspace .project-nav { display: flex; gap: 6px; }
+
+.pd-workspace .nav-item {
+    padding: 8px 14px;
+    color: var(--pd-muted);
+    text-decoration: none;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+}
+
+.pd-workspace .nav-item:hover {
+    background: var(--pd-hover);
+    color: var(--pd-text);
+}
+
+.pd-workspace .nav-item.active {
+    background: var(--pd-accent-soft);
+    color: var(--pd-accent);
+}
+
+.pd-workspace .board-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: var(--pd-surface);
+    border-bottom: 1px solid var(--pd-border);
+}
+
+.pd-workspace .toolbar-left,
+.pd-workspace .toolbar-right { display: flex; align-items: center; gap: 14px; }
+
+.pd-workspace .active-sprint-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(16,185,129,0.2);
+    color: #34d399;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.pd-workspace .sprint-progress {
+    background: #10b981;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+}
+
+.pd-workspace .filter-group select {
+    padding: 8px 12px;
+    background: var(--pd-raised);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+    color: var(--pd-text);
+    font-size: 0.8125rem;
+    font-family: inherit;
+}
+
+.pd-workspace .filter-group select:focus {
+    outline: none;
+    border-color: var(--pd-accent);
+}
+
+.pd-workspace .search-box { position: relative; }
+
+.pd-workspace .search-box input {
+    padding: 8px 12px 8px 36px;
+    background: var(--pd-raised);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+    width: 220px;
+    font-size: 0.8125rem;
+    color: var(--pd-text);
+    transition: border-color 0.15s;
+}
+
+.pd-workspace .search-box input::placeholder { color: var(--pd-tertiary); }
+.pd-workspace .search-box input:focus {
+    outline: none;
+    border-color: var(--pd-accent);
+}
+
+.pd-workspace .search-box svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--pd-tertiary);
+}
+
+.pd-workspace .members-avatars { display: flex; margin-left: -6px; }
+
+.pd-workspace .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 2px solid var(--pd-surface);
+    margin-left: -6px;
+}
+
+.pd-workspace .avatar.more { background: var(--pd-tertiary); }
+
+.pd-workspace .btn-primary {
+    background: var(--pd-accent);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+}
+
+.pd-workspace .btn-primary:hover { background: #4f46e5; }
+
+/* Kanban */
+.pd-workspace .kanban-board {
+    display: flex;
+    gap: 16px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    flex: 1;
+    background: var(--pd-void);
+}
+
+.pd-workspace .kanban-column {
+    min-width: 300px;
+    max-width: 340px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--pd-surface);
+    border: 1px solid var(--pd-border);
+    border-radius: 14px;
+    transition: border-color 0.15s;
+}
+
+.pd-workspace .kanban-column:hover { border-color: var(--pd-border-hover); }
+
+.pd-workspace .column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--pd-text);
+    border-bottom: 1px solid var(--pd-border);
+}
+
+.pd-workspace .column-count {
+    background: var(--pd-raised);
+    padding: 3px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--pd-muted);
+}
+
+.pd-workspace .column-tasks {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    min-height: 120px;
+}
+
+.pd-workspace .task-card {
+    background: var(--pd-raised);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pd-workspace .task-card:hover {
+    border-color: var(--pd-accent);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.pd-workspace .task-card.dragging { opacity: 0.5; }
+
+.pd-workspace .task-card .task-key {
+    font-size: 0.6875rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: var(--pd-accent);
+    margin-bottom: 4px;
+}
+
+.pd-workspace .task-card .task-title {
+    font-size: 0.875rem;
+    color: var(--pd-text);
+    line-height: 1.4;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.pd-workspace .task-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+
+.pd-workspace .task-labels .label {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+}
+
+.pd-workspace .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--pd-muted);
+}
+
+.pd-workspace .task-meta .due-date.overdue { color: #ef4444; }
+
+.pd-workspace .assignee-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.625rem;
+    font-weight: 600;
+    margin-left: auto;
+}
+
+.pd-workspace .add-task-btn {
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed var(--pd-border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--pd-tertiary);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.pd-workspace .add-task-btn:hover {
+    border-color: var(--pd-accent);
+    color: var(--pd-accent);
+    background: var(--pd-accent-soft);
+}
+
+/* Modals */
+.pd-workspace .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.pd-workspace .modal.show { display: flex; }
+
+.pd-workspace .modal-content {
+    background: var(--pd-surface);
+    border: 1px solid var(--pd-border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.pd-workspace .modal-content.modal-large { max-width: 800px; }
+
+.pd-workspace .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--pd-border);
+}
+
+.pd-workspace .modal-header h2 { margin: 0; font-size: 1.125rem; font-weight: 600; color: var(--pd-text); }
+
+.pd-workspace .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--pd-tertiary);
+    padding: 4px;
+    border-radius: 8px;
+}
+
+.pd-workspace .close-btn:hover { color: var(--pd-text); background: var(--pd-hover); }
+
+.pd-workspace .task-detail-header { display: flex; align-items: center; gap: 12px; }
+
+.pd-workspace .task-key-large {
+    background: var(--pd-accent-soft);
+    color: var(--pd-accent);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    font-size: 0.875rem;
+}
+
+#createTaskForm { padding: 24px; }
+
+.pd-workspace .form-group { margin-bottom: 16px; }
+.pd-workspace .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    color: var(--pd-muted);
+}
+.pd-workspace .form-group input:not([type="hidden"]),
+.pd-workspace .form-group select,
+.pd-workspace .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--pd-deep);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: var(--pd-text);
+    font-family: inherit;
+}
+.pd-workspace .form-row { display: flex; gap: 16px; }
+.pd-workspace .form-row .form-group { flex: 1; }
+.pd-workspace .required { color: #ef4444; }
+.pd-workspace .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 20px;
+    margin-top: 8px;
+    border-top: 1px solid var(--pd-border);
+}
+.pd-workspace .btn-secondary {
+    background: var(--pd-raised);
+    color: var(--pd-text);
+    border: 1px solid var(--pd-border);
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.pd-workspace .btn-secondary:hover { background: var(--pd-hover); }
+.pd-workspace .task-detail-body { padding: 24px; color: var(--pd-text); }
+.pd-workspace .task-detail-body h4 { color: var(--pd-muted); font-size: 0.75rem; margin-bottom: 6px; }
+.pd-workspace .task-detail-body .detail-field label { color: var(--pd-tertiary); }
+</style>
+
+<script>
+// Drag and Drop
+function drag(event) {
+    event.dataTransfer.setData('taskId', event.target.dataset.taskId);
+    event.target.classList.add('dragging');
+}
+
+function allowDrop(event) {
+    event.preventDefault();
+}
+
+async function drop(event, newStatus) {
+    event.preventDefault();
+    const taskId = event.dataTransfer.getData('taskId');
+    const card = document.querySelector(`[data-task-id="${taskId}"]`);
+
+    if (card) {
+        card.classList.remove('dragging');
+        const column = event.target.closest('.column-tasks');
+        if (column) {
+            column.appendChild(card);
+
+            // Update on server
+            try {
+                await fetch(`/tasks/${taskId}/update-status/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}',
+                    },
+                    body: JSON.stringify({ status: newStatus }),
+                });
+                updateColumnCounts();
+            } catch (err) {
+                console.error('Error updating status:', err);
+            }
+        }
+    }
+}
+
+function updateColumnCounts() {
+    document.querySelectorAll('.kanban-column').forEach(col => {
+        const count = col.querySelectorAll('.task-card').length;
+        col.querySelector('.column-count').textContent = count;
+    });
+}
+
+// Search
+document.getElementById('taskSearch').addEventListener('input', function(e) {
+    const value = e.target.value.toLowerCase();
+    document.querySelectorAll('.task-card').forEach(card => {
+        const title = card.querySelector('.task-title').textContent.toLowerCase();
+        const key = card.querySelector('.task-key').textContent.toLowerCase();
+        card.style.display = (title.includes(value) || key.includes(value)) ? '' : 'none';
+    });
+});
+
+// Filter by sprint
+function applyFilters() {
+    const sprint = document.getElementById('sprintFilter').value;
+    const url = new URL(window.location);
+    if (sprint) {
+        url.searchParams.set('sprint', sprint);
+    } else {
+        url.searchParams.delete('sprint');
+    }
+    window.location = url;
+}
+
+// Create Task Modal
+function openCreateTaskModal(status = 'TODO') {
+    document.getElementById('taskStatus').value = status;
+    document.getElementById('createTaskModal').classList.add('show');
+    document.getElementById('taskTitle').focus();
+}
+
+function closeCreateTaskModal() {
+    document.getElementById('createTaskModal').classList.remove('show');
+    document.getElementById('createTaskForm').reset();
+}
+
+// Create Task
+async function createTask(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    const data = {
+        title: form.title.value,
+        description: form.description.value,
+        status: form.status.value,
+        priority: form.priority.value,
+        assignee_id: form.assignee_id.value || null,
+        due_date: form.due_date.value || null,
+        sprint_id: form.sprint_id.value || null,
+        project_id: {{ project.id }},
+    };
+
+    try {
+        const response = await fetch('/tasks/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+        if (result.success || result.task_id) {
+            window.location.reload();
+        } else {
+            alert(result.error || 'Ошибка создания задачи');
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+// Task Detail Modal
+document.querySelectorAll('.task-card').forEach(card => {
+    card.addEventListener('click', async function(e) {
+        if (e.target.closest('button')) return;
+
+        const taskId = this.dataset.taskId;
+        openTaskDetail(taskId);
+    });
+});
+
+async function openTaskDetail(taskId) {
+    try {
+        const response = await fetch(`/tasks/${taskId}/`);
+        const task = await response.json();
+
+        document.getElementById('detailTaskKey').textContent = task.task_key || `#${task.id}`;
+        document.getElementById('detailTaskTitle').textContent = task.title;
+
+        let html = `
+            <div class="task-detail-grid">
+                <div class="detail-main">
+                    <div class="detail-section">
+                        <h4>Описание</h4>
+                        <p>${task.description || '<em>Нет описания</em>'}</p>
+                    </div>
+
+                    ${task.subtasks && task.subtasks.length > 0 ? `
+                    <div class="detail-section">
+                        <h4>Подзадачи (${task.subtasks.filter(s => s.is_completed).length}/${task.subtasks.length})</h4>
+                        <div class="subtasks-list">
+                            ${task.subtasks.map(s => `
+                                <div class="subtask-item ${s.is_completed ? 'completed' : ''}">
+                                    <input type="checkbox" ${s.is_completed ? 'checked' : ''}
+                                           onchange="toggleSubtask(${s.id})">
+                                    <span>${s.title}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                <div class="detail-sidebar">
+                    <div class="detail-field">
+                        <label>Статус</label>
+                        <span class="status-badge status-${task.status.toLowerCase()}">${task.status_display}</span>
+                    </div>
+                    <div class="detail-field">
+                        <label>Приоритет</label>
+                        <span class="priority-${task.priority.toLowerCase()}">${task.priority_display}</span>
+                    </div>
+                    <div class="detail-field">
+                        <label>Исполнитель</label>
+                        <span>${task.assignee ? task.assignee.username : 'Не назначен'}</span>
+                    </div>
+                    ${task.due_date ? `
+                    <div class="detail-field">
+                        <label>Срок</label>
+                        <span>${new Date(task.due_date).toLocaleDateString()}</span>
+                    </div>
+                    ` : ''}
+                    ${task.sprint ? `
+                    <div class="detail-field">
+                        <label>Спринт</label>
+                        <span>${task.sprint.name}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        document.getElementById('taskDetailContent').innerHTML = html;
+        document.getElementById('taskDetailModal').classList.add('show');
+    } catch (err) {
+        console.error('Error loading task:', err);
+    }
+}
+
+function closeTaskDetailModal() {
+    document.getElementById('taskDetailModal').classList.remove('show');
+}
+
+async function toggleSubtask(subtaskId) {
+    try {
+        await fetch(`/tasks/subtask/${subtaskId}/toggle/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+        });
+    } catch (err) {
+        console.error('Error toggling subtask:', err);
+    }
+}
+
+// Close modals on escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeCreateTaskModal();
+        closeTaskDetailModal();
+    }
+});
+</script>
+{% endblock %}

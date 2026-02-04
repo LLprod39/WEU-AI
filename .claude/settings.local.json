@@ -32,7 +32,10 @@
       "Bash(python:*)",
       "Bash(.venvScriptspython.exe manage.py check)",
       "Bash(pip show:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(dir \"C:\\\\work_ai\\\\agent_projects\\\\web_rA\\\\core_ui\\\\templates\")",
+      "Bash(findstr:*)",
+      "Bash(pip3 install:*)"
     ]
   }
 }
