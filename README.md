@@ -47,6 +47,35 @@
 
 ---
 
+## 📸 Презентация
+
+*WEU AI Agent Platform — DevOps Edition* — основные слайды:
+
+<p align="center">
+  <img src="docs/images/presentation-01.png" width="280" alt="Слайд 1" />
+  <img src="docs/images/presentation-02.png" width="280" alt="Слайд 2" />
+  <img src="docs/images/presentation-03.png" width="280" alt="Слайд 3" />
+</p>
+<p align="center">
+  <img src="docs/images/presentation-04.png" width="280" alt="Слайд 4" />
+  <img src="docs/images/presentation-05.png" width="280" alt="Слайд 5" />
+  <img src="docs/images/presentation-06.png" width="280" alt="Слайд 6" />
+</p>
+<p align="center">
+  <img src="docs/images/presentation-07.png" width="280" alt="Слайд 7" />
+  <img src="docs/images/presentation-08.png" width="280" alt="Слайд 8" />
+  <img src="docs/images/presentation-09.png" width="280" alt="Слайд 9" />
+</p>
+<p align="center">
+  <img src="docs/images/presentation-10.png" width="280" alt="Слайд 10" />
+  <img src="docs/images/presentation-11.png" width="280" alt="Слайд 11" />
+  <img src="docs/images/presentation-12.png" width="280" alt="Слайд 12" />
+</p>
+
+> Чтобы картинки отображались, экспортируйте страницы PDF в PNG и сохраните в [`docs/images/`](docs/images/) с именами `presentation-01.png` … `presentation-12.png`. Подробнее: [docs/images/README.md](docs/images/README.md).
+
+---
+
 ## 🛠 Стек
 
 <table>
