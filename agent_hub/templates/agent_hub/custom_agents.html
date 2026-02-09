@@ -259,6 +259,10 @@
                     <label>Дополнительные инструкции</label>
                     <textarea id="agent-instructions" name="instructions" rows="4"></textarea>
                 </div>
+                <div class="form-group">
+                    <label>Skills (policy/context)</label>
+                    <select id="agent-skills" name="skill_ids" multiple style="min-height: 120px;"></select>
+                </div>
             </div>
             
             <!-- Capabilities -->
@@ -276,6 +280,7 @@
                     <label>Runtime</label>
                     <select id="agent-runtime" name="runtime">
                         <option value="claude">Claude Code CLI</option>
+                        <option value="codex">Codex CLI</option>
                         <option value="cursor">Cursor CLI</option>
                         <option value="ralph">Ralph Orchestrator</option>
                         <option value="internal">Internal (Python)</option>
@@ -376,6 +381,7 @@ const DEFAULT_MCP_SERVERS = {
         description: 'PostgreSQL operations'
     }
 };
+let SKILL_OPTIONS = [];
 
 function showBuilder(agentId = null) {
     document.getElementById('builder-form').classList.add('active');
@@ -389,6 +395,7 @@ function showBuilder(agentId = null) {
     
     renderTools();
     renderMCPServers();
+    renderSkillOptions();
 }
 
 function hideBuilder() {
@@ -447,9 +454,35 @@ function renderMCPServers() {
     });
 }
 
+function renderSkillOptions(selected = []) {
+    const select = document.getElementById('agent-skills');
+    if (!select) return;
+    select.innerHTML = '';
+    SKILL_OPTIONS.forEach(skill => {
+        const option = document.createElement('option');
+        option.value = String(skill.id);
+        option.textContent = `${skill.name} (v${skill.version})`;
+        option.selected = selected.map(String).includes(String(skill.id));
+        select.appendChild(option);
+    });
+}
+
+async function loadSkillOptions() {
+    try {
+        const response = await fetch('/skills/api/options/');
+        const data = await response.json();
+        if (data.success) {
+            SKILL_OPTIONS = data.skills || [];
+            renderSkillOptions();
+        }
+    } catch (error) {
+        console.warn('Failed to load skill options:', error);
+    }
+}
+
 async function loadAgents() {
     try {
-        const response = await fetch('/agent-hub/api/custom-agents/');
+        const response = await fetch('/agents/api/custom-agents/');
         const data = await response.json();
         
         const list = document.getElementById('agents-list');
@@ -514,13 +547,18 @@ async function saveAgent(event) {
         completion_promise: formData.get('completion_promise'),
         mcp_auto_approve: formData.get('mcp_auto_approve') === 'on',
         allowed_tools: [],
-        mcp_servers: {}
+        mcp_servers: {},
+        skill_ids: []
     };
     
     // Tools
     formData.getAll('tools').forEach(tool => {
         data.allowed_tools.push(tool);
     });
+    const skillSelect = document.getElementById('agent-skills');
+    if (skillSelect) {
+        data.skill_ids = Array.from(skillSelect.selectedOptions).map(o => parseInt(o.value, 10)).filter(Boolean);
+    }
     
     // MCP servers
     Object.keys(DEFAULT_MCP_SERVERS).forEach(name => {
@@ -535,7 +573,7 @@ async function saveAgent(event) {
     });
     
     try {
-        const url = agentId ? `/agent-hub/api/custom-agents/${agentId}/` : '/agent-hub/api/custom-agents/';
+        const url = agentId ? `/agents/api/custom-agents/${agentId}/` : '/agents/api/custom-agents/';
         const method = agentId ? 'PUT' : 'POST';
         
         const response = await fetch(url, {
@@ -564,7 +602,7 @@ async function editAgent(agentId) {
 
 async function loadAgent(agentId) {
     try {
-        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/`);
+        const response = await fetch(`/agents/api/custom-agents/${agentId}/`);
         const data = await response.json();
         
         if (data.success) {
@@ -587,6 +625,7 @@ async function loadAgent(agentId) {
                 const checkbox = document.querySelector(`input[name="tools"][value="${tool}"]`);
                 if (checkbox) checkbox.checked = true;
             });
+            renderSkillOptions(agent.skill_ids || []);
             
             // MCP servers
             Object.entries(agent.mcp_servers || {}).forEach(([name, config]) => {
@@ -605,7 +644,7 @@ async function deleteAgent(agentId) {
     if (!confirm('Удалить этого агента?')) return;
     
     try {
-        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/`, {
+        const response = await fetch(`/agents/api/custom-agents/${agentId}/`, {
             method: 'DELETE'
         });
         
@@ -629,12 +668,12 @@ async function testAgent(agentId) {
     showMessage('Тестируем агента...', 'info');
     
     // TODO: Открыть чат с агентом или показать результат
-    window.location.href = `/agent-hub/agents/${agentId}/test?task=${encodeURIComponent(task)}`;
+    window.location.href = `/agents/?test_agent_id=${agentId}&task=${encodeURIComponent(task)}`;
 }
 
 async function exportAgent(agentId) {
     try {
-        const response = await fetch(`/agent-hub/api/custom-agents/${agentId}/export/`);
+        const response = await fetch(`/agents/api/custom-agents/${agentId}/export/`);
         const data = await response.json();
         
         if (data.success) {
@@ -664,6 +703,7 @@ function showMessage(text, type = 'info') {
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
+    loadSkillOptions();
     loadAgents();
     document.getElementById('agent-form').addEventListener('submit', saveAgent);
 });

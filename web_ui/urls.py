@@ -31,6 +31,7 @@ urlpatterns = [
     path('passwords/', include('passwords.urls')),
     path('servers/', include('servers.urls')),
     path('agents/', include('agent_hub.urls')),
+    path('skills/', include('skills.urls')),
     
     # Jira Integration API
     path('api/jira/sync/', jira_views.api_jira_sync, name='api_jira_sync'),

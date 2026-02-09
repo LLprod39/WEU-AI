@@ -6,10 +6,17 @@
 (function () {
     'use strict';
 
+    window.__AGENT_HUB_VERSION__ = 'hub-v6';
+
     var presetData = [];
     var workflowsData = [];
     var projectsData = [];
     var serversData = [];
+    var webhooksData = [];
+    var webhookEditingId = null;
+    var webhookAgents = [];
+    var customAgents = [];
+    var selectedAgentId = null;
     var editingProfileId = null;
     var workflowLogsInterval = null;
     var agentLogsInterval = null;
@@ -1795,12 +1802,1046 @@
         openAiAnalysisModal();
     };
 
+    function showToastSafe(text, type) {
+        if (window.showToast) {
+            window.showToast(text, type || 'info');
+        } else {
+            alert(text);
+        }
+    }
+
+    function activateHubTab(name) {
+        var tabs = document.querySelectorAll('[data-hub-tab]');
+        var panels = document.querySelectorAll('[data-hub-panel]');
+        if (!tabs.length) return;
+        tabs.forEach(function (btn) {
+            var isActive = btn.getAttribute('data-hub-tab') === name;
+            if (isActive) btn.classList.add('active'); else btn.classList.remove('active');
+        });
+        panels.forEach(function (panel) {
+            var isActive = panel.getAttribute('data-hub-panel') === name;
+            if (isActive) panel.classList.add('active'); else panel.classList.remove('active');
+        });
+        localStorage.setItem('agentHubTab', name);
+    }
+    window.activateHubTab = activateHubTab;
+
+    function initHubTabs() {
+        var tabs = document.querySelectorAll('[data-hub-tab]');
+        if (!tabs.length) return;
+        var active = localStorage.getItem('agentHubTab') || tabs[0].getAttribute('data-hub-tab');
+        tabs.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                activateHubTab(btn.getAttribute('data-hub-tab'));
+            });
+        });
+        activateHubTab(active);
+    }
+
+    function updateHubStats() {
+        var agentsStat = document.getElementById('stat-agents');
+        var webhooksStat = document.getElementById('stat-webhooks');
+        var workflowsStat = document.getElementById('stat-workflows');
+        var runsStat = document.getElementById('stat-runs');
+        if (agentsStat) agentsStat.textContent = String(customAgents.length || 0);
+        if (webhooksStat) webhooksStat.textContent = String(webhooksData.length || 0);
+        if (workflowsStat && workflowsData) workflowsStat.textContent = String(workflowsData.length || 0);
+        if (runsStat) {
+            var wfRuns = document.querySelectorAll('.workflow-run-card').length || 0;
+            var agentRuns = document.querySelectorAll('.agent-run-row').length || 0;
+            runsStat.textContent = String(wfRuns + agentRuns);
+        }
+    }
+
+    var AGENT_TOOLS = [
+        {id: 'ssh_execute', name: 'SSH Execute'},
+        {id: 'ssh_connect', name: 'SSH Connect'},
+        {id: 'ssh_disconnect', name: 'SSH Disconnect'},
+        {id: 'servers_list', name: 'Servers List'},
+        {id: 'server_execute', name: 'Server Execute'},
+        {id: 'read_file', name: 'Read File'},
+        {id: 'write_file', name: 'Write File'},
+        {id: 'list_directory', name: 'List Directory'},
+        {id: 'create_directory', name: 'Create Directory'},
+        {id: 'delete_file', name: 'Delete File'},
+        {id: 'web_search', name: 'Web Search'},
+        {id: 'fetch_webpage', name: 'Fetch Webpage'}
+    ];
+
+    function renderAgentTools(selected) {
+        var container = document.getElementById('agent-editor-tools');
+        if (!container) return;
+        var selectedSet = new Set((selected || []).map(String));
+        container.innerHTML = AGENT_TOOLS.map(function (tool) {
+            var checked = selectedSet.has(String(tool.id)) ? 'checked' : '';
+            return (
+                '<label class="hub-tool">' +
+                '<input type="checkbox" value="' + tool.id + '" ' + checked + ' />' +
+                '<span>' + tool.name + '</span>' +
+                '</label>'
+            );
+        }).join('');
+    }
+
+    function populateAgentServers(selected) {
+        var select = document.getElementById('agent-editor-allowed-servers');
+        if (!select) return;
+        var selectedSet = new Set((selected || []).map(String));
+        select.innerHTML = serversData.map(function (srv) {
+            var isSelected = selectedSet.has(String(srv.id)) ? 'selected' : '';
+            return '<option value="' + srv.id + '" ' + isSelected + '>' + srv.name + ' (' + srv.host + ')</option>';
+        }).join('');
+        renderAgentServerPicker();
+    }
+
+    function getServerGroups() {
+        var groups = {};
+        serversData.forEach(function (srv) {
+            var gid = srv.group_id || 'ungrouped';
+            if (!groups[gid]) {
+                groups[gid] = {
+                    id: srv.group_id,
+                    name: srv.group_name || 'Без группы',
+                    color: srv.group_color || ''
+                };
+            }
+        });
+        return Object.values(groups);
+    }
+
+    function getSelectedServerIds() {
+        var select = document.getElementById('agent-editor-allowed-servers');
+        if (!select) return [];
+        return Array.from(select.selectedOptions || []).map(function (o) { return parseInt(o.value, 10); });
+    }
+
+    function setServerSelection(ids) {
+        var select = document.getElementById('agent-editor-allowed-servers');
+        if (!select) return;
+        var idSet = new Set((ids || []).map(String));
+        Array.from(select.options).forEach(function (opt) {
+            opt.selected = idSet.has(String(opt.value));
+        });
+    }
+
+    function renderAgentServerPicker() {
+        var list = document.getElementById('agent-server-list');
+        var chips = document.getElementById('agent-server-groups');
+        var search = document.getElementById('agent-server-search');
+        if (!list || !chips) return;
+
+        var query = (search && search.value || '').trim().toLowerCase();
+        var selectedIds = new Set(getSelectedServerIds().map(String));
+        var grouped = {};
+
+        serversData.forEach(function (srv) {
+            var gid = srv.group_id || 'ungrouped';
+            if (!grouped[gid]) grouped[gid] = [];
+            grouped[gid].push(srv);
+        });
+
+        var groupList = getServerGroups();
+        chips.innerHTML = groupList.map(function (g) {
+            var gid = g.id || 'ungrouped';
+            var servers = grouped[gid] || [];
+            var allSelected = servers.length > 0 && servers.every(function (s) { return selectedIds.has(String(s.id)); });
+            var cls = allSelected ? 'server-group-chip active' : 'server-group-chip';
+            return '<button type="button" class="' + cls + '" data-group-id="' + gid + '">' + (g.name || 'Без группы') + '</button>';
+        }).join('');
+
+        chips.querySelectorAll('.server-group-chip').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var gid = btn.getAttribute('data-group-id');
+                var servers = grouped[gid] || [];
+                var allSelected = servers.length > 0 && servers.every(function (s) { return selectedIds.has(String(s.id)); });
+                servers.forEach(function (srv) {
+                    if (allSelected) {
+                        selectedIds.delete(String(srv.id));
+                    } else {
+                        selectedIds.add(String(srv.id));
+                    }
+                });
+                setServerSelection(Array.from(selectedIds).map(function (v) { return parseInt(v, 10); }));
+                renderAgentServerPicker();
+            });
+        });
+
+        list.innerHTML = serversData
+            .filter(function (srv) {
+                if (!query) return true;
+                var hay = (srv.name + ' ' + srv.host + ' ' + (srv.group_name || '')).toLowerCase();
+                return hay.indexOf(query) !== -1;
+            })
+            .map(function (srv) {
+                var checked = selectedIds.has(String(srv.id)) ? 'checked' : '';
+                var groupLabel = srv.group_name ? ('<div class="server-group-label">' + srv.group_name + '</div>') : '';
+                return (
+                    '<label class="server-item" data-id="' + srv.id + '">' +
+                        '<span class="server-check"><input type="checkbox" ' + checked + '></span>' +
+                        '<span class="server-meta">' +
+                            '<span class="server-name">' + srv.name + '</span>' +
+                            '<span class="server-host">' + srv.host + '</span>' +
+                            groupLabel +
+                        '</span>' +
+                    '</label>'
+                );
+            }).join('');
+
+        list.querySelectorAll('.server-item input[type=\"checkbox\"]').forEach(function (cb) {
+            cb.addEventListener('change', function (e) {
+                var id = cb.closest('.server-item').getAttribute('data-id');
+                if (cb.checked) selectedIds.add(String(id)); else selectedIds.delete(String(id));
+                setServerSelection(Array.from(selectedIds).map(function (v) { return parseInt(v, 10); }));
+                renderAgentServerPicker();
+            });
+        });
+    }
+
+    function populateAgentSkills(selected) {
+        var select = document.getElementById('agent-editor-skills');
+        if (!select) return;
+        var selectedSet = new Set((selected || []).map(String));
+        select.innerHTML = (window._skillOptions || []).map(function (skill) {
+            var isSelected = selectedSet.has(String(skill.id)) ? 'selected' : '';
+            return '<option value="' + skill.id + '" ' + isSelected + '>' + skill.name + ' (v' + skill.version + ')</option>';
+        }).join('');
+    }
+
+    function loadSkillOptions() {
+        return fetch('/skills/api/options/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                window._skillOptions = data.skills || [];
+                populateAgentSkills();
+                populateWebhookSkills();
+            })
+            .catch(function () { window._skillOptions = []; });
+    }
+
+    function loadCustomAgents() {
+        var list = document.getElementById('custom-agents-list');
+        if (list) list.innerHTML = '<div class="hub-empty">Загрузка агентов...</div>';
+        fetch('/agents/api/custom-agents/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                customAgents = data.agents || [];
+                renderCustomAgents();
+                if (!selectedAgentId && customAgents.length) {
+                    selectAgent(customAgents[0].id);
+                }
+                updateHubStats();
+            })
+            .catch(function () {
+                if (list) list.innerHTML = '<div class="hub-empty">Ошибка загрузки агентов</div>';
+            });
+    }
+
+    function renderCustomAgents() {
+        var list = document.getElementById('custom-agents-list');
+        if (!list) return;
+        if (!customAgents.length) {
+            list.innerHTML = '<div class="hub-empty">Нет агентов. Создай первого.</div>';
+            return;
+        }
+
+        var search = (document.getElementById('agent-search') || {}).value || '';
+        var searchLower = search.trim().toLowerCase();
+        var rows = customAgents.filter(function (agent) {
+            if (!searchLower) return true;
+            return (agent.name || '').toLowerCase().includes(searchLower) || (agent.description || '').toLowerCase().includes(searchLower);
+        });
+
+        if (!rows.length) {
+            list.innerHTML = '<div class="hub-empty">Ничего не найдено.</div>';
+            return;
+        }
+
+        list.innerHTML = rows.map(function (agent) {
+            return (
+                '<div class="hub-row">' +
+                '<div>' +
+                '<div class="hub-row__title">' + agent.name + '</div>' +
+                '<div class="hub-row__meta">' + (agent.description || 'Нет описания') + '</div>' +
+                '<div class="hub-row__meta">model: ' + agent.model + ' • runtime: ' + agent.runtime + '</div>' +
+                '</div>' +
+                '<div class="hub-row__actions">' +
+                '<button class="hub-btn hub-btn-ghost" onclick="selectAgent(' + agent.id + ')">Select</button>' +
+                '<button class="hub-btn hub-btn-ghost" onclick="openAgentRun(' + agent.id + ')">Run</button>' +
+                '<button class="hub-btn hub-btn-ghost" onclick="openAgentEditor(' + agent.id + ')">Edit</button>' +
+                '<button class="hub-btn hub-btn-ghost" onclick="exportAgent(' + agent.id + ')">Export</button>' +
+                '<button class="hub-btn hub-btn-ghost" onclick="deleteAgent(' + agent.id + ')">Disable</button>' +
+                '</div>' +
+                '</div>'
+            );
+        }).join('');
+    }
+
+    function selectAgent(agentId) {
+        selectedAgentId = agentId;
+        var agent = customAgents.find(function (a) { return a.id === agentId; });
+        var preview = document.getElementById('selected-agent-preview');
+        if (!preview) return;
+        if (!agent) {
+            preview.innerHTML = '<div class="hub-empty">Агент не найден.</div>';
+            return;
+        }
+        preview.innerHTML = (
+            '<div class="hub-row">' +
+            '<div>' +
+            '<div class="hub-row__title">' + agent.name + '</div>' +
+            '<div class="hub-row__meta">' + (agent.description || 'Нет описания') + '</div>' +
+            '<div class="hub-row__meta">Skills: ' + (agent.skill_names || []).join(', ') + '</div>' +
+            '</div>' +
+            '<div class="hub-row__actions">' +
+            '<button class="hub-btn hub-btn-ghost" onclick="openAgentRun(' + agent.id + ')">Run</button>' +
+            '</div>' +
+            '</div>'
+        );
+    }
+    window.selectAgent = selectAgent;
+
+    function openAgentEditor(agentId) {
+        var modal = document.getElementById('agentEditorModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.getElementById('agent-editor-form').reset();
+        renderAgentTools([]);
+        populateAgentServers([]);
+        populateAgentSkills([]);
+        document.getElementById('agent-editor-id').value = '';
+        document.getElementById('agent-editor-title').textContent = agentId ? 'Редактировать агента' : 'Новый агент';
+        document.getElementById('agent-editor-all-servers').checked = true;
+        document.getElementById('agent-editor-allowed-servers').disabled = true;
+
+        if (agentId) {
+            fetch('/agents/api/custom-agents/' + agentId + '/')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) return;
+                    var agent = data.agent || {};
+                    document.getElementById('agent-editor-id').value = agent.id || '';
+                    document.getElementById('agent-editor-name').value = agent.name || '';
+                    document.getElementById('agent-editor-description').value = agent.description || '';
+                    document.getElementById('agent-editor-system-prompt').value = agent.system_prompt || '';
+                    document.getElementById('agent-editor-instructions').value = agent.instructions || '';
+                    document.getElementById('agent-editor-knowledge-base').value = agent.knowledge_base || '';
+                    document.getElementById('agent-editor-runtime').value = agent.runtime || 'claude';
+                    document.getElementById('agent-editor-model').value = agent.model || 'claude-4.5-sonnet';
+                    document.getElementById('agent-editor-orchestrator').value = agent.orchestrator_mode || 'ralph_internal';
+                    document.getElementById('agent-editor-max-iterations').value = agent.max_iterations || 10;
+                    document.getElementById('agent-editor-temperature').value = agent.temperature || 0.7;
+                    document.getElementById('agent-editor-completion-promise').value = agent.completion_promise || 'COMPLETE';
+                    document.getElementById('agent-editor-mcp-auto').checked = !!agent.mcp_auto_approve;
+
+                    renderAgentTools(agent.allowed_tools || []);
+                    populateAgentSkills(agent.skill_ids || []);
+                    var allowedServers = agent.allowed_servers;
+                    if (allowedServers === null || allowedServers === 'all' || typeof allowedServers === 'undefined') {
+                        document.getElementById('agent-editor-all-servers').checked = true;
+                        document.getElementById('agent-editor-allowed-servers').disabled = true;
+                    } else {
+                        document.getElementById('agent-editor-all-servers').checked = false;
+                        document.getElementById('agent-editor-allowed-servers').disabled = false;
+                        populateAgentServers(allowedServers || []);
+                    }
+                });
+        }
+    }
+    window.openAgentEditor = openAgentEditor;
+
+    window.applyAssistConfig = function () {
+        var taskEl = document.getElementById('agent-assist-task');
+        var task = (taskEl && taskEl.value) ? taskEl.value.trim() : '';
+        if (!task) {
+            if (window.showToast) window.showToast('Опишите задачу для AI', 'info');
+            return;
+        }
+        var btn = document.getElementById('btn-agent-assist');
+        if (btn) { btn.disabled = true; btn.textContent = 'Генерация...'; }
+        fetch('/agents/api/assist-config/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': (window.getCookie && window.getCookie('csrftoken')) || '' },
+            body: JSON.stringify({ task: task })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    if (window.showToast) window.showToast(data.error || 'Ошибка генерации', 'error');
+                    return;
+                }
+                var cfg = data.config || {};
+                var questions = data.questions || [];
+                var assumptions = data.assumptions || [];
+                var nameEl = document.getElementById('agent-editor-name');
+                var descEl = document.getElementById('agent-editor-description');
+                var kbEl = document.getElementById('agent-editor-knowledge-base');
+                var runtimeEl = document.getElementById('agent-editor-runtime');
+                var maxIterEl = document.getElementById('agent-editor-max-iterations');
+                if (nameEl) nameEl.value = cfg.name || '';
+                if (descEl) descEl.value = cfg.description || '';
+                var runtime = (cfg.runtime || '').toLowerCase();
+                if (runtimeEl) {
+                    if (runtime === 'ralph') runtimeEl.value = 'internal';
+                    else if (runtime === 'cursor') runtimeEl.value = 'cursor';
+                    else if (runtime === 'claude') runtimeEl.value = 'claude';
+                    else runtimeEl.value = runtime || 'cursor';
+                }
+                var config = cfg.config || {};
+                if (maxIterEl && config.max_iterations != null) maxIterEl.value = config.max_iterations;
+                var parts = [];
+                if (questions.length) parts.push('Уточняющие вопросы: ' + questions.join('; '));
+                if (assumptions.length) parts.push('Предположения: ' + assumptions.join('; '));
+                if (kbEl && parts.length) kbEl.value = parts.join('\n\n');
+                if (window.showToast) window.showToast('Настройки подставлены. Проверьте и сохраните.', 'success');
+            })
+            .catch(function (e) {
+                if (window.showToast) window.showToast('Ошибка: ' + (e.message || e), 'error');
+            })
+            .finally(function () {
+                if (btn) { btn.disabled = false; btn.textContent = 'Предложить настройки'; }
+            });
+    };
+
+    function closeAgentEditor() {
+        var modal = document.getElementById('agentEditorModal');
+        if (modal) modal.classList.add('hidden');
+    }
+    window.closeAgentEditor = closeAgentEditor;
+
+    function saveAgent() {
+        var agentId = document.getElementById('agent-editor-id').value;
+        var allServers = document.getElementById('agent-editor-all-servers').checked;
+        var allowedServers = allServers ? 'all' : Array.from(document.getElementById('agent-editor-allowed-servers').selectedOptions).map(function (o) { return parseInt(o.value, 10); });
+        var tools = Array.from(document.querySelectorAll('#agent-editor-tools input[type=\"checkbox\"]:checked')).map(function (el) { return el.value; });
+        var skills = Array.from(document.getElementById('agent-editor-skills').selectedOptions).map(function (o) { return parseInt(o.value, 10); });
+
+        var payload = {
+            name: document.getElementById('agent-editor-name').value,
+            description: document.getElementById('agent-editor-description').value,
+            system_prompt: document.getElementById('agent-editor-system-prompt').value,
+            instructions: document.getElementById('agent-editor-instructions').value,
+            knowledge_base: document.getElementById('agent-editor-knowledge-base').value,
+            runtime: document.getElementById('agent-editor-runtime').value,
+            model: document.getElementById('agent-editor-model').value,
+            orchestrator_mode: document.getElementById('agent-editor-orchestrator').value,
+            max_iterations: parseInt(document.getElementById('agent-editor-max-iterations').value || '10', 10),
+            temperature: parseFloat(document.getElementById('agent-editor-temperature').value || '0.7'),
+            completion_promise: document.getElementById('agent-editor-completion-promise').value || 'COMPLETE',
+            mcp_auto_approve: document.getElementById('agent-editor-mcp-auto').checked,
+            allowed_tools: tools,
+            allowed_servers: allowedServers,
+            skill_ids: skills
+        };
+
+        var url = agentId ? '/agents/api/custom-agents/' + agentId + '/' : '/agents/api/custom-agents/';
+        var method = agentId ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToastSafe('Agent saved', 'success');
+                    closeAgentEditor();
+                    loadCustomAgents();
+                } else {
+                    showToastSafe(data.error || 'Failed to save agent', 'error');
+                }
+            })
+            .catch(function (e) { showToastSafe('Error: ' + (e && e.message || e), 'error'); });
+    }
+    window.saveAgent = saveAgent;
+
+    function deleteAgent(agentId) {
+        if (!confirm('Disable this agent?')) return;
+        fetch('/agents/api/custom-agents/' + agentId + '/', { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToastSafe('Agent disabled', 'success');
+                    loadCustomAgents();
+                } else {
+                    showToastSafe(data.error || 'Failed to disable agent', 'error');
+                }
+            })
+            .catch(function (e) { showToastSafe('Error: ' + (e && e.message || e), 'error'); });
+    }
+    window.deleteAgent = deleteAgent;
+
+    function exportAgent(agentId) {
+        fetch('/agents/api/custom-agents/' + agentId + '/export/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) return;
+                var blob = new Blob([JSON.stringify(data.config, null, 2)], {type: 'application/json'});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = (data.config.name || 'agent').replace(/\\s+/g, '_') + '.agent.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+    }
+    window.exportAgent = exportAgent;
+
+    function openAgentRun(agentId) {
+        var modal = document.getElementById('agentRunModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        var resolvedId = agentId || selectedAgentId;
+        if (resolvedId) selectedAgentId = resolvedId;
+        var agent = customAgents.find(function (a) { return a.id === resolvedId; });
+        document.getElementById('agent-run-id').value = resolvedId || '';
+        document.getElementById('agent-run-name').textContent = agent ? ('Agent: ' + agent.name) : 'Agent';
+        document.getElementById('agent-run-task').value = '';
+        document.getElementById('agent-run-auto').checked = true;
+    }
+    window.openAgentRun = openAgentRun;
+
+    function closeAgentRun() {
+        var modal = document.getElementById('agentRunModal');
+        if (modal) modal.classList.add('hidden');
+    }
+    window.closeAgentRun = closeAgentRun;
+
+    function submitAgentRun() {
+        var agentId = document.getElementById('agent-run-id').value;
+        var task = document.getElementById('agent-run-task').value;
+        if (!agentId || !task.trim()) {
+            showToastSafe('Agent and task are required', 'error');
+            return;
+        }
+        var payload = {
+            agent_id: parseInt(agentId, 10),
+            task: task,
+            server_id: document.getElementById('agent-run-server').value || null,
+            project_path: document.getElementById('agent-run-project').value || '',
+            runtime: document.getElementById('agent-run-runtime').value || '',
+            auto_execute: document.getElementById('agent-run-auto').checked
+        };
+        fetch('/agents/api/custom-agents/run/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToastSafe('Agent run started', 'success');
+                    closeAgentRun();
+                } else {
+                    showToastSafe(data.error || 'Failed to start run', 'error');
+                }
+            })
+            .catch(function (e) { showToastSafe('Error: ' + (e && e.message || e), 'error'); });
+    }
+    window.submitAgentRun = submitAgentRun;
+
+    function buildWebhookUrl(secret) {
+        return window.location.origin.replace(/\/$/, '') + '/agents/api/webhooks/receive/' + secret + '/';
+    }
+
+    var WEBHOOK_PRESETS = {
+        generic: {
+            source: 'generic',
+            server_field: '',
+            event_id_field: 'event_id',
+            event_name_field: '',
+            event_name: 'Webhook Event',
+            title_template: '{{webhook_name}}: {{event_name}}',
+            description_template: '{{payload_json}}'
+        },
+        zabbix: {
+            source: 'zabbix',
+            server_field: 'host.name',
+            event_id_field: 'event.id',
+            event_name_field: 'trigger.name',
+            event_name: 'Zabbix Event',
+            title_template: 'Zabbix: {{trigger.name}} on {{host.name}}',
+            description_template: 'Severity: {{trigger.severity}}\\nHost: {{host.name}}\\n\\n{{payload_json}}'
+        },
+        email: {
+            source: 'email',
+            server_field: '',
+            event_id_field: 'message_id',
+            event_name_field: 'subject',
+            event_name: 'Email',
+            title_template: 'Email: {{subject}}',
+            description_template: 'From: {{from}}\\nTo: {{to}}\\n\\n{{text}}'
+        },
+        slack: {
+            source: 'slack',
+            server_field: '',
+            event_id_field: 'event_id',
+            event_name_field: 'event.type',
+            event_name: 'Slack Event',
+            title_template: 'Slack: {{event.type}}',
+            description_template: '{{event.text}}\\n\\n{{payload_json}}'
+        },
+        jira: {
+            source: 'jira',
+            server_field: '',
+            event_id_field: 'issue.id',
+            event_name_field: 'webhookEvent',
+            event_name: 'Jira Event',
+            title_template: 'Jira: {{webhookEvent}}',
+            description_template: '{{issue.key}} — {{issue.fields.summary}}\\n\\n{{payload_json}}'
+        },
+        github: {
+            source: 'github',
+            server_field: '',
+            event_id_field: 'id',
+            event_name_field: 'action',
+            event_name: 'GitHub Event',
+            title_template: 'GitHub: {{repository.full_name}} / {{event_name}}',
+            description_template: '{{sender.login}}\\n\\n{{payload_json}}'
+        },
+        pagerduty: {
+            source: 'pagerduty',
+            server_field: '',
+            event_id_field: 'event.id',
+            event_name_field: 'event.event_type',
+            event_name: 'PagerDuty Event',
+            title_template: 'PagerDuty: {{event.event_type}}',
+            description_template: '{{payload_json}}'
+        }
+    };
+
+    function applyWebhookPreset(preset, options) {
+        var def = WEBHOOK_PRESETS[preset];
+        if (!def) return;
+        var presetEl = document.getElementById('webhook-source-preset');
+        var sourceEl = document.getElementById('webhook-source');
+        var serverFieldEl = document.getElementById('webhook-server-field');
+        var eventIdFieldEl = document.getElementById('webhook-event-id-field');
+        var eventNameFieldEl = document.getElementById('webhook-event-name-field');
+        var eventNameEl = document.getElementById('webhook-event-name');
+        var titleTplEl = document.getElementById('webhook-title-template');
+        var descTplEl = document.getElementById('webhook-description-template');
+
+        if (options && options.setPreset && presetEl) presetEl.value = preset;
+        if (sourceEl && def.source !== undefined) sourceEl.value = def.source;
+        if (serverFieldEl && def.server_field !== undefined) serverFieldEl.value = def.server_field;
+        if (eventIdFieldEl && def.event_id_field !== undefined) eventIdFieldEl.value = def.event_id_field;
+        if (eventNameFieldEl && def.event_name_field !== undefined) eventNameFieldEl.value = def.event_name_field;
+        if (eventNameEl && def.event_name !== undefined) eventNameEl.value = def.event_name;
+        if (titleTplEl && def.title_template !== undefined) titleTplEl.value = def.title_template;
+        if (descTplEl && def.description_template !== undefined) descTplEl.value = def.description_template;
+    }
+
+    function resetWebhookForm() {
+        webhookEditingId = null;
+        var nameEl = document.getElementById('webhook-name');
+        var presetEl = document.getElementById('webhook-source-preset');
+        var sourceEl = document.getElementById('webhook-source');
+        var customAgentEl = document.getElementById('webhook-custom-agent');
+        var agentTypeEl = document.getElementById('webhook-agent-type');
+        var execModeEl = document.getElementById('webhook-execution-mode');
+        var templateEl = document.getElementById('webhook-workflow-template');
+        var targetServerEl = document.getElementById('webhook-target-server');
+        var runtimeEl = document.getElementById('webhook-runtime');
+        var serverFieldEl = document.getElementById('webhook-server-field');
+        var eventIdFieldEl = document.getElementById('webhook-event-id-field');
+        var eventNameFieldEl = document.getElementById('webhook-event-name-field');
+        var eventNameEl = document.getElementById('webhook-event-name');
+        var titleTplEl = document.getElementById('webhook-title-template');
+        var descTplEl = document.getElementById('webhook-description-template');
+        var verifyTplEl = document.getElementById('webhook-verify-prompt');
+        var skillIdsEl = document.getElementById('webhook-skill-ids');
+        var autoExecEl = document.getElementById('webhook-auto-execute');
+
+        if (nameEl) nameEl.value = '';
+        if (sourceEl) sourceEl.value = '';
+        if (customAgentEl) customAgentEl.value = '';
+        if (agentTypeEl) agentTypeEl.value = 'react';
+        if (execModeEl) execModeEl.value = 'task';
+        if (templateEl) templateEl.value = '';
+        if (targetServerEl) targetServerEl.value = '';
+        if (runtimeEl) runtimeEl.value = '';
+        if (serverFieldEl) serverFieldEl.value = '';
+        if (eventIdFieldEl) eventIdFieldEl.value = '';
+        if (eventNameFieldEl) eventNameFieldEl.value = '';
+        if (eventNameEl) eventNameEl.value = '';
+        if (titleTplEl) titleTplEl.value = '';
+        if (descTplEl) descTplEl.value = '';
+        if (verifyTplEl) verifyTplEl.value = '';
+        if (skillIdsEl) skillIdsEl.selectedIndex = -1;
+        if (autoExecEl) autoExecEl.checked = true;
+        applyWebhookPreset('generic', { setPreset: true });
+        updateWebhookWorkflowFields();
+    }
+
+    function populateWebhookAgents() {
+        var select = document.getElementById('webhook-custom-agent');
+        if (!select) return;
+        var current = select.value || '';
+        var options = '<option value="">— not set —</option>';
+        webhookAgents.forEach(function (agent) {
+            options += '<option value="' + agent.id + '">' + agent.name + '</option>';
+        });
+        select.innerHTML = options;
+        if (current) select.value = current;
+    }
+
+    function populateWebhookServers() {
+        var select = document.getElementById('webhook-target-server');
+        if (!select) return;
+        var current = select.value || '';
+        var options = '<option value="">auto by payload</option>';
+        serversData.forEach(function (srv) {
+            options += '<option value="' + srv.id + '">' + srv.name + ' (' + srv.host + ')</option>';
+        });
+        select.innerHTML = options;
+        if (current) select.value = current;
+    }
+
+    function populateWebhookSkills() {
+        var select = document.getElementById('webhook-skill-ids');
+        if (!select) return;
+        var current = Array.from(select.selectedOptions || []).map(function (o) { return String(o.value); });
+        select.innerHTML = (window._skillOptions || []).map(function (skill) {
+            var selected = current.includes(String(skill.id)) ? 'selected' : '';
+            return '<option value="' + skill.id + '" ' + selected + '>' + skill.name + ' (v' + skill.version + ')</option>';
+        }).join('');
+    }
+
+    function toggleWebhookForm(forceShow) {
+        var form = document.getElementById('webhook-form');
+        if (!form) return;
+        var shouldShow = typeof forceShow === 'boolean' ? forceShow : form.classList.contains('hidden');
+        if (shouldShow) {
+            form.classList.remove('hidden');
+            if (!webhookEditingId) resetWebhookForm();
+        } else {
+            form.classList.add('hidden');
+        }
+    }
+    window.toggleWebhookForm = toggleWebhookForm;
+
+    function openWebhookForm() {
+        if (typeof activateHubTab === 'function') activateHubTab('automation');
+        toggleWebhookForm(true);
+        var form = document.getElementById('webhook-form');
+        if (form && form.scrollIntoView) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    window.openWebhookForm = openWebhookForm;
+
+    function updateWebhookWorkflowFields() {
+        var modeEl = document.getElementById('webhook-execution-mode');
+        var extra = document.getElementById('webhook-workflow-extra');
+        if (!modeEl || !extra) return;
+        var isWorkflow = modeEl.value === 'workflow';
+        if (isWorkflow) {
+            extra.classList.remove('hidden');
+        } else {
+            extra.classList.add('hidden');
+        }
+    }
+
+    function cancelWebhookForm() {
+        toggleWebhookForm(false);
+        resetWebhookForm();
+    }
+    window.cancelWebhookForm = cancelWebhookForm;
+
+    function loadWebhookAgents() {
+        fetch('/agents/api/custom-agents/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                webhookAgents = data.agents || [];
+                populateWebhookAgents();
+            })
+            .catch(function () { webhookAgents = []; populateWebhookAgents(); });
+    }
+
+    function renderWebhooks(list) {
+        var container = document.getElementById('webhooks-list');
+        if (!container) return;
+        if (!list || list.length === 0) {
+            container.innerHTML = '<div class="text-gray-500 text-sm">No webhooks yet</div>';
+            return;
+        }
+        container.innerHTML = list.map(function (hook) {
+            var url = buildWebhookUrl(hook.secret);
+            var statusClass = hook.is_active ? 'text-green-400' : 'text-gray-500';
+            var statusText = hook.is_active ? 'active' : 'disabled';
+            var autoText = hook.auto_execute ? 'auto' : 'manual';
+            var modeText = hook.execution_mode || 'task';
+            var templateText = (hook.config && hook.config.workflow_template) || '';
+            var serverField = (hook.config && hook.config.server_field) || '';
+            var titleTemplate = (hook.config && hook.config.title_template) || '';
+            return (
+                '<div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">' +
+                    '<div class="flex items-center justify-between gap-2">' +
+                        '<div>' +
+                            '<div class="text-sm text-white">' + hook.name + '</div>' +
+                            '<div class="text-[10px] text-gray-400">' + (hook.description || '') + '</div>' +
+                        '</div>' +
+                        '<div class="text-[10px] ' + statusClass + '">' + statusText + '</div>' +
+                    '</div>' +
+                    '<div class="text-[10px] text-gray-400 mt-2">source: ' + (hook.source || 'generic') + ' • ' + modeText + ' • ' + autoText + (templateText ? ' • ' + templateText : '') + '</div>' +
+                    (serverField ? '<div class="text-[10px] text-gray-500 mt-1">server_field: ' + serverField + '</div>' : '') +
+                    (titleTemplate ? '<div class="text-[10px] text-gray-500 mt-1">title: ' + titleTemplate + '</div>' : '') +
+                    '<div class="mt-2 flex items-center gap-2 flex-wrap">' +
+                        '<input class="w-full bg-bg-base border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300" readonly value="' + url + '">' +
+                        '<button type="button" class="px-2 py-1 text-[10px] bg-white/10 text-gray-200 rounded webhook-copy" data-secret="' + hook.secret + '">Copy</button>' +
+                        '<button type="button" onclick="editWebhook(' + hook.id + ')" class="px-2 py-1 text-[10px] bg-primary/20 text-primary rounded">Edit</button>' +
+                        '<button type="button" onclick="deleteWebhook(' + hook.id + ')" class="px-2 py-1 text-[10px] bg-red-500/20 text-red-400 rounded">Disable</button>' +
+                    '</div>' +
+                '</div>'
+            );
+        }).join('');
+        attachWebhookCopyButtons();
+    }
+
+    function attachWebhookCopyButtons() {
+        document.querySelectorAll('.webhook-copy').forEach(function (btn) {
+            btn.onclick = function () {
+                var secret = btn.getAttribute('data-secret') || '';
+                if (secret) copyWebhookUrl(secret);
+            };
+        });
+    }
+
+    function loadWebhooks() {
+        var container = document.getElementById('webhooks-list');
+        if (container) container.innerHTML = '<div class="text-gray-500 text-sm">Загрузка...</div>';
+        fetch('/agents/api/webhooks/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                webhooksData = data.webhooks || [];
+                renderWebhooks(webhooksData);
+                updateHubStats();
+            })
+            .catch(function (e) {
+                console.error('Failed to load webhooks', e);
+                if (container) container.innerHTML = '<div class="text-red-400 text-sm">Ошибка загрузки</div>';
+            });
+    }
+    window.loadWebhooks = loadWebhooks;
+
+    function copyWebhookUrl(secret) {
+        var url = buildWebhookUrl(secret);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () {
+                showToastSafe('Webhook URL copied', 'success');
+            }).catch(function () {
+                prompt('Webhook URL', url);
+            });
+        } else {
+            prompt('Webhook URL', url);
+        }
+    }
+    window.copyWebhookUrl = copyWebhookUrl;
+
+    function getWebhookFormData() {
+        var payload = {
+            name: (document.getElementById('webhook-name') || {}).value || '',
+            description: '',
+            source: (document.getElementById('webhook-source') || {}).value || 'generic',
+            custom_agent_id: (document.getElementById('webhook-custom-agent') || {}).value || '',
+            agent_type: (document.getElementById('webhook-agent-type') || {}).value || 'react',
+            execution_mode: (document.getElementById('webhook-execution-mode') || {}).value || 'task',
+            auto_execute: !!((document.getElementById('webhook-auto-execute') || {}).checked),
+            config: {}
+        };
+
+        var targetServer = (document.getElementById('webhook-target-server') || {}).value || '';
+        var workflowTemplate = (document.getElementById('webhook-workflow-template') || {}).value || '';
+        var runtime = (document.getElementById('webhook-runtime') || {}).value || '';
+        var serverField = (document.getElementById('webhook-server-field') || {}).value || '';
+        var eventIdField = (document.getElementById('webhook-event-id-field') || {}).value || '';
+        var eventNameField = (document.getElementById('webhook-event-name-field') || {}).value || '';
+        var eventName = (document.getElementById('webhook-event-name') || {}).value || '';
+        var titleTpl = (document.getElementById('webhook-title-template') || {}).value || '';
+        var descTpl = (document.getElementById('webhook-description-template') || {}).value || '';
+        var verifyTpl = (document.getElementById('webhook-verify-prompt') || {}).value || '';
+        var skillIds = Array.from((document.getElementById('webhook-skill-ids') || {}).selectedOptions || []).map(function (o) { return parseInt(o.value, 10); }).filter(Boolean);
+
+        if (targetServer) payload.config.target_server_id = parseInt(targetServer, 10);
+        if (workflowTemplate) payload.config.workflow_template = workflowTemplate;
+        if (runtime) payload.config.runtime = runtime;
+        if (serverField) payload.config.server_field = serverField;
+        if (eventIdField) payload.config.event_id_field = eventIdField;
+        if (eventNameField) payload.config.event_name_field = eventNameField;
+        if (eventName) payload.config.event_name = eventName;
+        if (titleTpl) payload.config.title_template = titleTpl;
+        if (descTpl) payload.config.description_template = descTpl;
+        if (verifyTpl) payload.config.verify_prompt = verifyTpl;
+        if (skillIds.length) payload.config.skill_ids = skillIds;
+        if (payload.custom_agent_id === '') payload.custom_agent_id = null;
+
+        return payload;
+    }
+
+    function saveWebhook() {
+        var payload = getWebhookFormData();
+        if (!payload.name) {
+            showToastSafe('Name is required', 'error');
+            return;
+        }
+
+        var url = webhookEditingId ? '/agents/api/webhooks/' + webhookEditingId + '/' : '/agents/api/webhooks/';
+        var method = webhookEditingId ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToastSafe('Webhook saved', 'success');
+                    cancelWebhookForm();
+                    loadWebhooks();
+                } else {
+                    showToastSafe(data.error || 'Failed to save webhook', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToastSafe('Error: ' + (e && e.message || e), 'error');
+            });
+    }
+    window.saveWebhook = saveWebhook;
+
+    function editWebhook(id) {
+        var hook = (webhooksData || []).filter(function (h) { return h.id === id; })[0];
+        if (!hook) return;
+        webhookEditingId = id;
+        toggleWebhookForm(true);
+        populateWebhookAgents();
+        populateWebhookServers();
+
+        var nameEl = document.getElementById('webhook-name');
+        var presetEl = document.getElementById('webhook-source-preset');
+        var sourceEl = document.getElementById('webhook-source');
+        var customAgentEl = document.getElementById('webhook-custom-agent');
+        var agentTypeEl = document.getElementById('webhook-agent-type');
+        var execModeEl = document.getElementById('webhook-execution-mode');
+        var templateEl = document.getElementById('webhook-workflow-template');
+        var targetServerEl = document.getElementById('webhook-target-server');
+        var runtimeEl = document.getElementById('webhook-runtime');
+        var serverFieldEl = document.getElementById('webhook-server-field');
+        var eventIdFieldEl = document.getElementById('webhook-event-id-field');
+        var eventNameFieldEl = document.getElementById('webhook-event-name-field');
+        var eventNameEl = document.getElementById('webhook-event-name');
+        var titleTplEl = document.getElementById('webhook-title-template');
+        var descTplEl = document.getElementById('webhook-description-template');
+        var verifyTplEl = document.getElementById('webhook-verify-prompt');
+        var skillIdsEl = document.getElementById('webhook-skill-ids');
+        var autoExecEl = document.getElementById('webhook-auto-execute');
+
+        if (nameEl) nameEl.value = hook.name || '';
+        if (sourceEl) sourceEl.value = hook.source || '';
+        if (presetEl) {
+            var srcKey = (hook.source || '').toLowerCase();
+            presetEl.value = WEBHOOK_PRESETS[srcKey] ? (srcKey || 'generic') : 'custom';
+        }
+        if (customAgentEl) customAgentEl.value = hook.custom_agent_id || '';
+        if (agentTypeEl) agentTypeEl.value = hook.agent_type || 'react';
+        if (execModeEl) execModeEl.value = hook.execution_mode || 'task';
+        if (autoExecEl) autoExecEl.checked = !!hook.auto_execute;
+
+        var cfg = hook.config || {};
+        if (targetServerEl) targetServerEl.value = cfg.target_server_id || '';
+        if (templateEl) templateEl.value = cfg.workflow_template || '';
+        if (runtimeEl) runtimeEl.value = cfg.runtime || '';
+        if (serverFieldEl) serverFieldEl.value = cfg.server_field || '';
+        if (eventIdFieldEl) eventIdFieldEl.value = cfg.event_id_field || '';
+        if (eventNameFieldEl) eventNameFieldEl.value = cfg.event_name_field || '';
+        if (eventNameEl) eventNameEl.value = cfg.event_name || '';
+        if (titleTplEl) titleTplEl.value = cfg.title_template || '';
+        if (descTplEl) descTplEl.value = cfg.description_template || '';
+        if (verifyTplEl) verifyTplEl.value = cfg.verify_prompt || '';
+        if (skillIdsEl && cfg.skill_ids && Array.isArray(cfg.skill_ids)) {
+            Array.from(skillIdsEl.options).forEach(function (opt) {
+                opt.selected = cfg.skill_ids.includes(parseInt(opt.value, 10));
+            });
+        }
+        updateWebhookWorkflowFields();
+    }
+    window.editWebhook = editWebhook;
+
+    function deleteWebhook(id) {
+        if (!confirm('Disable this webhook?')) return;
+        fetch('/agents/api/webhooks/' + id + '/', { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    showToastSafe('Webhook disabled', 'success');
+                    loadWebhooks();
+                } else {
+                    showToastSafe(data.error || 'Failed to disable', 'error');
+                }
+            })
+            .catch(function (e) { showToastSafe('Error: ' + (e && e.message || e), 'error'); });
+    }
+    window.deleteWebhook = deleteWebhook;
+
     document.addEventListener('DOMContentLoaded', function () {
         setupProjectSelectors();
         toggleModelFields();
         startStatusUpdates();
         moveModalsToBody();
         refreshMcpServers();
+        initHubTabs();
+        loadSkillOptions();
+        loadCustomAgents();
+        loadWebhookAgents();
+        populateWebhookServers();
+        loadWebhooks();
+        updateHubStats();
+        renderAgentServerPicker();
+
+        var agentSearch = document.getElementById('agent-search');
+        if (agentSearch) {
+            agentSearch.addEventListener('input', function () { renderCustomAgents(); });
+        }
+        var serverSearch = document.getElementById('agent-server-search');
+        if (serverSearch) {
+            serverSearch.addEventListener('input', function () {
+                renderAgentServerPicker();
+            });
+        }
+        var allServersToggle = document.getElementById('agent-editor-all-servers');
+        if (allServersToggle) {
+            allServersToggle.addEventListener('change', function () {
+                var select = document.getElementById('agent-editor-allowed-servers');
+                if (select) {
+                    select.disabled = allServersToggle.checked;
+                    if (!allServersToggle.checked && !select.options.length) {
+                        populateAgentServers([]);
+                    }
+                }
+                var picker = document.getElementById('agent-server-list');
+                if (picker) {
+                    if (allServersToggle.checked) picker.classList.add('disabled');
+                    else picker.classList.remove('disabled');
+                }
+            });
+            var pickerInit = document.getElementById('agent-server-list');
+            if (pickerInit) {
+                if (allServersToggle.checked) pickerInit.classList.add('disabled');
+                else pickerInit.classList.remove('disabled');
+            }
+        }
+        var webhookMode = document.getElementById('webhook-execution-mode');
+        if (webhookMode) {
+            webhookMode.addEventListener('change', updateWebhookWorkflowFields);
+            updateWebhookWorkflowFields();
+        }
+        var webhookPreset = document.getElementById('webhook-source-preset');
+        if (webhookPreset) {
+            webhookPreset.addEventListener('change', function () {
+                var val = webhookPreset.value || 'generic';
+                if (val === 'custom') return;
+                applyWebhookPreset(val, { setPreset: true });
+            });
+        }
         
         // Загружаем список моделей при старте
         loadAvailableModels();

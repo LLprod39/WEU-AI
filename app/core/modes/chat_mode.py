@@ -10,17 +10,20 @@ import re
 from typing import AsyncGenerator, List, Dict, Any
 from loguru import logger
 from app.core.modes.base import BaseMode
+from app.core.task_board import build_task_board_payload
 
 
 # Системные правила для чата (профессиональный стиль)
 CHAT_SYSTEM_RULES = """
 ПРАВИЛА:
 1. Профессиональный тон - без emoji, чётко и по делу.
-2. Используй инструменты когда нужны данные (tasks_list, task_detail, servers_list).
+2. Для задач используй инструменты: tasks_list, task_detail, task_create, task_update, task_delete.
 3. Форматируй ответы в markdown - таблицы, списки, badges.
 4. Один вызов инструмента на запрос - эффективность важна.
 5. Ссылки на задачи: [#ID](task:ID) для модального окна.
 6. Используй badges: [STATUS] [PRIORITY] для визуальной структуры.
+7. Если вопрос про срочность/сроки — вызывай tasks_list с sort_by="urgency", include_completed=false.
+8. Удаляй задачу через task_delete только при явном запросе пользователя и с confirm=true.
 """
 
 
@@ -61,6 +64,46 @@ class ChatMode(BaseMode):
             effective_history = effective_history[-10:]
         if not initial_history and len(self.orchestrator.history) > 10:
             self.orchestrator.history = self.orchestrator.history[-10:]
+
+        # Follow-up "покажи ещё задачи" — детерминированная пагинация из последнего task payload
+        followup_payload = self._extract_last_task_payload(effective_history[:-1])
+        if self._is_more_tasks_request(message) and followup_payload:
+            summary = followup_payload.get("summary") or {}
+            source_tool = followup_payload.get("source_tool")
+            if source_tool == "tasks_list" and summary.get("has_more"):
+                query_params = (followup_payload.get("query_params") or {}).copy()
+                try:
+                    prev_offset = int(summary.get("offset") or 0)
+                except (TypeError, ValueError):
+                    prev_offset = 0
+                try:
+                    prev_returned = int(summary.get("returned") or 0)
+                except (TypeError, ValueError):
+                    prev_returned = 0
+                query_params["offset"] = prev_offset + prev_returned
+                try:
+                    query_params["limit"] = int(summary.get("limit") or 20)
+                except (TypeError, ValueError):
+                    query_params["limit"] = 20
+                ctx = (execution_context or {}).copy()
+                tool_context = {"user_id": ctx.get("user_id")} if ctx.get("user_id") else None
+                if tool_context:
+                    result = await self.orchestrator.tool_manager.execute_tool(
+                        "tasks_list", _context=tool_context, **query_params
+                    )
+                    result_str = self.orchestrator._format_tool_result(result)
+                    task_payload = build_task_board_payload("tasks_list", result_str, query=message)
+                    if task_payload:
+                        final_response = "WEU_TASKS_JSON:" + json.dumps(
+                            task_payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        yield final_response
+                        effective_history.append({"role": "assistant", "content": final_response})
+                        if not initial_history:
+                            self.orchestrator.history.append({"role": "assistant", "content": final_response})
+                        return
 
         # RAG context (опционально)
         rag_context = ""
@@ -113,6 +156,21 @@ class ChatMode(BaseMode):
 
                 result_str = self.orchestrator._format_tool_result(result)
 
+                # Для запросов-списков отдаём детерминированный JSON payload (для UI-парсинга карточек)
+                if tool_name == "tasks_list" and self._is_task_list_request(message):
+                    task_payload = build_task_board_payload(tool_name, result_str, query=message)
+                    if task_payload:
+                        final_response = "WEU_TASKS_JSON:" + json.dumps(
+                            task_payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        yield final_response
+                        effective_history.append({"role": "assistant", "content": final_response})
+                        if not initial_history:
+                            self.orchestrator.history.append({"role": "assistant", "content": final_response})
+                        return
+
                 # Формируем финальный ответ с данными инструмента
                 final_prompt = self._build_final_prompt(
                     user_message=message,
@@ -128,15 +186,6 @@ class ChatMode(BaseMode):
                     specific_model=specific_model
                 ):
                     final_response += chunk
-
-                # Post-process: конвертируем #ID в кликабельные ссылки
-                if tool_name in ("tasks_list", "task_detail"):
-                    import re
-                    # Паттерн: #число (не внутри ссылки)
-                    def make_link(m):
-                        task_id = m.group(1)
-                        return f"**[#{task_id}](task:{task_id})**"
-                    final_response = re.sub(r'(?<!\[)#(\d+)(?!\])', make_link, final_response)
 
                 yield final_response
 
@@ -154,6 +203,57 @@ class ChatMode(BaseMode):
         effective_history.append({"role": "assistant", "content": final_response})
         if not initial_history:
             self.orchestrator.history.append({"role": "assistant", "content": final_response})
+
+    @staticmethod
+    def _is_more_tasks_request(message: str) -> bool:
+        text = (message or "").strip().lower()
+        if not text:
+            return False
+        return bool(
+            re.search(r"\b(еще|ещё|дальше|следующ|another|more)\b", text)
+        )
+
+    @staticmethod
+    def _is_task_list_request(message: str) -> bool:
+        text = (message or "").strip().lower()
+        if not text:
+            return False
+        patterns = [
+            r"сводк",
+            r"\bкакие\b",
+            r"покажи",
+            r"список",
+            r"активн(ые|ых)?",
+            r"просроч",
+            r"срок(и|ах)?",
+            r"дедлайн",
+            r"есть задачи",
+            r"что по задачам",
+        ]
+        return any(re.search(p, text) for p in patterns)
+
+    @staticmethod
+    def _extract_last_task_payload(history: List[Dict[str, str]]) -> Dict[str, Any]:
+        for msg in reversed(history or []):
+            if msg.get("role") != "assistant":
+                continue
+            content = msg.get("content") or ""
+            if "WEU_TASKS_JSON:" not in content:
+                continue
+            for line in reversed(content.splitlines()):
+                line = line.strip()
+                if not line.startswith("WEU_TASKS_JSON:"):
+                    continue
+                raw = line[len("WEU_TASKS_JSON:"):].strip()
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(payload, dict) and payload.get("type") == "task_board":
+                    return payload
+        return {}
 
     def _build_chat_prompt(
         self,
@@ -178,10 +278,23 @@ class ChatMode(BaseMode):
 
         # Контекст пользователя
         user_ctx = ""
+        task_ctx = ""
+        skill_ctx = ""
         if execution_context:
             user_id = execution_context.get("user_id")
             if user_id:
                 user_ctx = f"User ID: {user_id}"
+            if execution_context.get("skill_context"):
+                skill_ctx = str(execution_context.get("skill_context")).strip()
+            tc = execution_context.get("task_context")
+            if isinstance(tc, dict) and tc.get("id"):
+                task_ctx = (
+                    f"Текущая задача в контексте: {tc.get('title') or ''} "
+                    f"(status={tc.get('status') or ''}, due_date={tc.get('due_date') or '—'}).\n"
+                    f"Описание: {tc.get('description') or '—'}\n"
+                    "Если пользователь спрашивает «эту/ту задачу», отвечай про эту задачу. "
+                    "Не делай сводку всех задач, если не просили список."
+                )
 
         prompt = f"""Ты WEU Assistant — умный помощник в чате.
 {CHAT_SYSTEM_RULES}
@@ -190,6 +303,8 @@ class ChatMode(BaseMode):
 {tools_description}
 
 {f"КОНТЕКСТ: {user_ctx}" if user_ctx else ""}
+{f"КОНТЕКСТ ЗАДАЧИ: {task_ctx}" if task_ctx else ""}
+{f"SKILLS КОНТЕКСТ: {skill_ctx}" if skill_ctx else ""}
 {f"ИСТОРИЯ: {history_text}" if history_text else ""}
 {f"БАЗА ЗНАНИЙ: {rag_context}" if rag_context else ""}
 
@@ -212,69 +327,50 @@ ACTION: tool_name {{"param": "value"}}
     ) -> str:
         """Построить финальный промпт с данными инструмента"""
 
-        # Форматирование для задач
-        format_instructions = ""
-        if tool_name in ("tasks_list", "task_detail"):
-            # Подсчитаем количество задач в JSON для верификации
-            tasks_count_info = ""
-            try:
-                import json
-                result_data = json.loads(tool_result)
-                tasks_count = len(result_data.get('tasks', []))
-                tasks_count_info = f"ВНИМАНИЕ: JSON содержит {tasks_count} задач(и). ВЫВЕДИ ВСЕ {tasks_count} задач(и)!\n\n"
-            except:
-                pass
-
-            format_instructions = f"""{tasks_count_info}ШАБЛОН ВЫВОДА (СТРОГО КОПИРУЙ):
-
-КАЖДАЯ строка задачи ОБЯЗАТЕЛЬНО в формате:
-- **[#ID](task:ID)** Title — [STATUS] [PRIORITY] assignee
-
-ПРИМЕР ПРАВИЛЬНОГО ВЫВОДА:
----
-Overview: 3 total tasks (3 active, 0 completed)
-
-### [TODO] (2 tasks)
-- **[#15](task:15)** Deploy Redis cluster — [TODO] [MEDIUM] (unassigned)
-- **[#12](task:12)** Setup monitoring — [TODO] [HIGH] @admin
-
-### [IN_PROGRESS] (1 task)
-- **[#8](task:8)** Fix authentication bug — [IN PROGRESS] [HIGH] @developer
----
-
-ЗАПРЕЩЕНО писать так:
-❌ #15 Deploy Redis — [TODO] [MEDIUM]
-❌ 15. Deploy Redis — [TODO] [MEDIUM]
-
-ОБЯЗАТЕЛЬНО писать так:
-✅ **[#15](task:15)** Deploy Redis — [TODO] [MEDIUM] (unassigned)
-
-НЕ пропускай ни одну задачу из JSON!
-"""
-
-        prompt = f"""Ты получил данные от инструмента {tool_name}. Отформатируй их для пользователя.
+        if tool_name == "tasks_list":
+            if self._is_task_list_request(user_message):
+                return f"""Ты получил данные от инструмента tasks_list.
 
 ЗАПРОС: {user_message}
-
-JSON ДАННЫЕ:
+JSON:
 {tool_result}
 
-{format_instructions}
+Сделай краткую сводку:
+1. Первая строка: «Сводка: всего N задач (активных: X, завершённых: Y)».
+2. Затем блоки по статусам (TODO, IN_PROGRESS, BLOCKED, DONE, CANCELLED) только если там есть задачи.
+3. В каждой строке задачи: название, приоритет, исполнитель, срок.
+4. Русский язык, без emoji, без выдумок.
+"""
+            return f"""Ты получил данные от инструмента tasks_list.
 
-ИНСТРУКЦИЯ - ДЕЛАЙ ТОЧНО ТАК:
-1. Прочитай JSON - там список задач в массиве "tasks"
-2. ДЛЯ КАЖДОЙ задачи напиши строку В ТОЧНОСТИ так:
-   - **[#ID](task:ID)** Title — [STATUS] [PRIORITY] assignee
+ЗАПРОС: {user_message}
+JSON:
+{tool_result}
 
-3. Пример ПРАВИЛЬНОЙ строки (копируй этот формат):
-   - **[#15](task:15)** Deploy Redis — [TODO] [MEDIUM] (unassigned)
+Ответь по сути вопроса пользователя, используя данные задач.
+Если задач несколько и запрос про одну задачу неочевиден — выбери самую релевантную (обычно IN_PROGRESS, иначе ближайший срок) и явно укажи, какую выбрал.
+Дай практический ответ, а не сводку списком.
+Русский язык, без emoji.
+"""
 
-4. НЕ пиши просто "#15" - это НЕПРАВИЛЬНО
-5. ОБЯЗАТЕЛЬНО используй формат **[#ID](task:ID)**
+        if tool_name == "task_detail":
+            return f"""Ты получил данные от инструмента task_detail.
 
-Начинай ответ с "Overview: X total tasks..."
-Группируй по статусам: ### [TODO], ### [IN_PROGRESS]
-Отвечай на русском, без emoji.
+ЗАПРОС: {user_message}
+JSON:
+{tool_result}
 
-НАЧИНАЙ ОТВЕТ:"""
-        return prompt
+Дай конкретный ответ по этой задаче:
+1. Если пользователь спрашивает «как выполнить» — дай пошаговый план.
+2. Учитывай статус, приоритет, срок и описание.
+3. Если данных мало — сформулируй короткие уточняющие вопросы.
+4. Не делай общую сводку всех задач.
+Русский язык, без emoji.
+"""
+
+        return f"""Ты получил данные от инструмента {tool_name}. Отформатируй их для пользователя на русском.
+
+ЗАПРОС: {user_message}
+ДАННЫЕ:
+{tool_result}
+"""

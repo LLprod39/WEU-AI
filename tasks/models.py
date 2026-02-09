@@ -280,6 +280,11 @@ class Task(models.Model):
         completed = subtasks.filter(is_completed=True).count()
         return int((completed / subtasks.count()) * 100)
 
+    @property
+    def completed_subtasks_count(self):
+        """Количество завершенных подзадач"""
+        return self.subtasks.filter(is_completed=True).count()
+
 
 class TaskShare(models.Model):
     """Share a task with another user. Visibility + optional edit right."""

@@ -32,7 +32,7 @@
       "env": {
         "WEU_USER_ID": "1"
       },
-      "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers, например WEU SERVER). Запускать из корня проекта, WEU_USER_ID — id пользователя."
+      "description": "WEU AI MCP: servers_list/server_execute + tasks_list/task_detail/task_create/task_update/task_delete. Запускать из корня проекта, WEU_USER_ID — id пользователя."
     }
   }
 }

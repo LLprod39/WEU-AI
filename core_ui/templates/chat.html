@@ -20,6 +20,29 @@
 {% endblock %}
 
 {% block content %}
+<style>
+    .chat-msg-bubble--task-board .chat-task-board-counters,
+    .chat-msg-bubble--task-board .chat-task-card-meta {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .chat-msg-bubble--task-board .chat-task-card-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .4rem;
+    }
+    .chat-msg-bubble--task-board .chat-task-btn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        gap: .3rem;
+    }
+    @media (max-width: 640px) {
+        .chat-msg-bubble--task-board .chat-task-card-actions { grid-template-columns: 1fr; }
+    }
+</style>
 <div class="chat-shell">
     <!-- Кнопка открыть историю (когда панель скрыта) -->
     <button type="button" id="chat-sidebar-expand-tab" class="chat-rail-expand hidden" aria-label="Открыть панель чатов" title="Открыть панель чатов">
@@ -143,7 +166,7 @@
                     <p class="chat-instructions-title">Что умеет этот чат</p>
                     <ul>
                         <li>RAG — при включенной галочке использует базу знаний для ответов.</li>
-                        <li>Задачи — доступ к списку и карточкам задач (описание, статус, приоритет, сроки, исполнитель).</li>
+                        <li>Задачи — просмотр, создание, обновление и удаление задач (статус, приоритет, сроки, исполнитель).</li>
                         <li>Серверы — доступ к списку серверов и безопасным командам через инструменты (опасные — только после подтверждения).</li>
                         <li>Файлы — можно перетаскивать документы для анализа.</li>
                         <li>Данные ограничены вашим аккаунтом.</li>
@@ -211,34 +234,34 @@
 
         <div class="task-modal-body">
             <div class="task-modal-section">
-                <h3 class="task-modal-section-title">Description</h3>
+                <h3 class="task-modal-section-title">Описание</h3>
                 <p id="task-modal-description" class="task-modal-description"></p>
             </div>
 
             <div class="task-modal-section task-modal-grid">
                 <div>
-                    <h3 class="task-modal-section-title">Due Date</h3>
+                    <h3 class="task-modal-section-title">Срок</h3>
                     <p id="task-modal-due-date" class="task-modal-info">—</p>
                 </div>
                 <div>
-                    <h3 class="task-modal-section-title">Server</h3>
+                    <h3 class="task-modal-section-title">Сервер</h3>
                     <p id="task-modal-server" class="task-modal-info">—</p>
                 </div>
             </div>
 
             <div class="task-modal-section">
-                <h3 class="task-modal-section-title">Timeline</h3>
+                <h3 class="task-modal-section-title">История</h3>
                 <div class="task-timeline">
                     <div class="task-timeline-item">
-                        <span class="task-timeline-label">Created:</span>
+                        <span class="task-timeline-label">Создана:</span>
                         <span id="task-modal-created" class="task-timeline-value"></span>
                     </div>
                     <div class="task-timeline-item">
-                        <span class="task-timeline-label">Updated:</span>
+                        <span class="task-timeline-label">Обновлена:</span>
                         <span id="task-modal-updated" class="task-timeline-value"></span>
                     </div>
                     <div class="task-timeline-item">
-                        <span class="task-timeline-label">Completed:</span>
+                        <span class="task-timeline-label">Завершена:</span>
                         <span id="task-modal-completed" class="task-timeline-value">—</span>
                     </div>
                 </div>
@@ -248,15 +271,19 @@
         <div class="task-modal-actions">
             <button type="button" class="task-action-btn task-action-primary" onclick="discussTask()">
                 <span class="material-icons-round">chat</span>
-                Discuss in Chat
+                Обсудить в чате
             </button>
             <button type="button" class="task-action-btn task-action-secondary" onclick="takeTaskInProgress()">
                 <span class="material-icons-round">play_arrow</span>
-                Start Work
+                Взять в работу
             </button>
             <button type="button" class="task-action-btn task-action-secondary" onclick="openTaskPage()">
                 <span class="material-icons-round">open_in_new</span>
-                Open Task Page
+                Открыть задачу
+            </button>
+            <button id="task-modal-delete-btn" type="button" class="task-action-btn task-action-danger" onclick="deleteCurrentTask()">
+                <span class="material-icons-round">delete</span>
+                Удалить
             </button>
         </div>
     </div>
@@ -342,6 +369,7 @@
 
     // Текущий чат (null = новый диалог)
     let currentChatId = null;
+    let activeTaskContextId = null;
 
     function getChatIdFromUrl() {
         try { return new URL(window.location.href).searchParams.get('chat_id') || null; } catch (e) { return null; }
@@ -478,9 +506,7 @@
                 (data.messages || []).forEach(function(m) {
                     var content = appendMessage(m.role === 'user' ? m.content : '', m.role === 'user' ? 'user' : 'ai');
                     if (m.role === 'assistant' && m.content) {
-                        content.innerHTML = (typeof marked !== 'undefined' ? marked.parse(m.content) : m.content);
-                        if (typeof hljs !== 'undefined') content.querySelectorAll('pre code').forEach(function(block) { hljs.highlightElement(block); });
-                        attachCopyButtons(content);
+                        renderAssistantContent(content, m.content);
                     }
                     var wrapper = content && content.closest('.corporate-message-wrapper');
                     if (wrapper) attachMessageActions(wrapper, m.role === 'user' ? 'user' : 'ai', content);
@@ -494,6 +520,7 @@
 
     function startNewChat() {
         currentChatId = null;
+        activeTaskContextId = null;
         setChatIdInUrl(null);
         clearChat();
         loadChats();
@@ -593,6 +620,198 @@
         gfm: true
     });
 
+    const TASK_PAYLOAD_PREFIX = 'WEU_TASKS_JSON:';
+    const TASK_STATUS_ORDER = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED'];
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function parseTaskPayloadLine(line) {
+        var trimmed = (line || '').trim();
+        if (!trimmed || trimmed.indexOf(TASK_PAYLOAD_PREFIX) !== 0) return null;
+        var rawJson = trimmed.slice(TASK_PAYLOAD_PREFIX.length).trim();
+        if (!rawJson) return null;
+        try {
+            var payload = JSON.parse(rawJson);
+            if (payload && payload.type === 'task_board' && Array.isArray(payload.tasks)) {
+                return payload;
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    function extractTaskPayload(rawText, forcedPayload) {
+        var payload = forcedPayload || null;
+        var plainLines = [];
+        String(rawText || '').split('\n').forEach(function(line) {
+            var parsed = parseTaskPayloadLine(line);
+            if (parsed) {
+                payload = parsed;
+                return;
+            }
+            plainLines.push(line);
+        });
+        return {
+            text: plainLines.join('\n').trim(),
+            payload: payload
+        };
+    }
+
+    function taskStatusLabel(status) {
+        var map = {
+            TODO: 'К выполнению',
+            IN_PROGRESS: 'В работе',
+            BLOCKED: 'Блокер',
+            DONE: 'Завершена',
+            CANCELLED: 'Отменена'
+        };
+        return map[status] || status || '—';
+    }
+
+    function formatTaskDate(value) {
+        if (!value) return '—';
+        var dt = new Date(value);
+        if (Number.isNaN(dt.getTime())) return String(value);
+        return dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    function buildTaskBoardHtml(payload, plainText) {
+        var summary = payload.summary || {};
+        var tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+        var statusOrder = Array.isArray(payload.status_order) && payload.status_order.length ? payload.status_order : TASK_STATUS_ORDER;
+        var grouped = {};
+        tasks.forEach(function(task) {
+            var status = String((task && task.status) || 'TODO').toUpperCase();
+            if (!grouped[status]) grouped[status] = [];
+            grouped[status].push(task || {});
+        });
+        var orderedStatuses = statusOrder.slice();
+        Object.keys(grouped).forEach(function(status) {
+            if (orderedStatuses.indexOf(status) === -1) orderedStatuses.push(status);
+        });
+
+        var html = '<section class="chat-task-board">';
+        html += '<header class="chat-task-board-summary">';
+        html += '<h3 class="chat-task-board-title">Сводка задач</h3>';
+        html += '<div class="chat-task-board-counters">';
+        html += '<span class="chat-task-counter" data-counter="total">Всего: <strong>' + escapeHtml(summary.total != null ? summary.total : tasks.length) + '</strong></span>';
+        html += '<span class="chat-task-counter" data-counter="active">Активных: <strong>' + escapeHtml(summary.active != null ? summary.active : 0) + '</strong></span>';
+        html += '<span class="chat-task-counter" data-counter="completed">Завершённых: <strong>' + escapeHtml(summary.completed != null ? summary.completed : 0) + '</strong></span>';
+        if (summary.returned != null && summary.total != null && Number(summary.total) > Number(summary.returned || 0)) {
+            html += '<span class="chat-task-counter" data-counter="returned">Показано: <strong>' + escapeHtml(summary.returned) + '</strong></span>';
+        }
+        html += '</div>';
+        html += '</header>';
+
+        orderedStatuses.forEach(function(status) {
+            var list = grouped[status] || [];
+            if (!list.length) return;
+            html += '<section class="chat-task-group">';
+            html += '<h4 class="chat-task-group-title">' + escapeHtml(taskStatusLabel(status)) + ' <span>(' + list.length + ')</span></h4>';
+            html += '<div class="chat-task-cards">';
+            list.forEach(function(task) {
+                var taskId = task.id;
+                var title = task.title || 'Без названия';
+                var assignee = task.assignee ? '@' + task.assignee : 'не назначен';
+                var canTake = !!(task.actions && task.actions.can_take_in_progress);
+                var canDelete = !!(task.actions && task.actions.can_delete);
+                html += '<article class="chat-task-card" data-task-id="' + escapeHtml(taskId) + '" data-task-status="' + escapeHtml(task.status || "TODO") + '">';
+                html += '<div class="chat-task-card-head">';
+                html += '<span class="chat-task-card-status">' + escapeHtml(taskStatusLabel(task.status)) + '</span>';
+                html += '<div class="chat-task-card-head-right">';
+                html += '<span class="chat-task-card-priority">' + escapeHtml(task.priority || 'MEDIUM') + '</span>';
+                if (canDelete) {
+                    html += '<button type="button" class="chat-task-delete-icon" data-task-action="delete" data-task-id="' + escapeHtml(taskId) + '" data-task-title="' + escapeHtml(title) + '" aria-label="Удалить задачу"><span class="material-icons-round" aria-hidden="true">close</span></button>';
+                }
+                html += '</div>';
+                html += '</div>';
+                html += '<h5 class="chat-task-card-title"><button type="button" class="chat-task-title-btn" data-task-action="view" data-task-id="' + escapeHtml(taskId) + '">' + escapeHtml(title) + '</button></h5>';
+                if (task.description) html += '<p class="chat-task-card-desc">' + escapeHtml(task.description) + '</p>';
+                html += '<div class="chat-task-card-meta">';
+                html += '<span>' + escapeHtml(assignee) + '</span>';
+                html += '<span class="chat-task-card-meta-dot">•</span>';
+                html += '<span>Срок: ' + escapeHtml(formatTaskDate(task.due_date)) + '</span>';
+                html += '</div>';
+                html += '<div class="chat-task-card-actions">';
+                html += '<button type="button" class="chat-task-btn" data-task-action="view" data-task-id="' + escapeHtml(taskId) + '"><span class="material-icons-round" aria-hidden="true">visibility</span>Просмотреть</button>';
+                html += '<button type="button" class="chat-task-btn" data-task-action="discuss" data-task-id="' + escapeHtml(taskId) + '" data-task-title="' + escapeHtml(title) + '"><span class="material-icons-round" aria-hidden="true">forum</span>Обсудить</button>';
+                html += '<button type="button" class="chat-task-btn chat-task-btn-primary" data-task-action="take" data-task-id="' + escapeHtml(taskId) + '" data-task-title="' + escapeHtml(title) + '"' + (canTake ? '' : ' disabled') + '><span class="material-icons-round" aria-hidden="true">play_arrow</span>В работу</button>';
+                html += '</div>';
+                html += '</article>';
+            });
+            html += '</div></section>';
+        });
+
+        if (!tasks.length) {
+            html += '<p class="chat-task-empty">Задачи не найдены.</p>';
+        }
+        if (summary.has_more) {
+            html += '<p class="chat-task-empty">Есть ещё задачи. Напишите: "Покажи ещё задачи".</p>';
+        }
+        if (plainText) {
+            html += '<div class="chat-task-note">' + (typeof marked !== 'undefined' ? marked.parse(plainText) : escapeHtml(plainText)) + '</div>';
+        }
+        html += '</section>';
+        return html;
+    }
+
+    function attachTaskBoardActions(container) {
+        if (!container || container.dataset.taskActionsBound === '1') return;
+        container.addEventListener('click', function(e) {
+            var target = e.target.closest('[data-task-action]');
+            if (!target || !container.contains(target)) return;
+            var action = target.getAttribute('data-task-action');
+            var taskId = parseInt(target.getAttribute('data-task-id'), 10);
+            var taskTitle = target.getAttribute('data-task-title') || 'Без названия';
+            if (!taskId) return;
+            if (action === 'view') {
+                openTaskModal(taskId);
+                return;
+            }
+            if (action === 'discuss') {
+                discussTaskById(taskId, taskTitle);
+                return;
+            }
+            if (action === 'take') {
+                takeTaskInProgressById(taskId, taskTitle, false).then(function(success) {
+                    if (success) {
+                        target.disabled = true;
+                        target.textContent = 'В работе';
+                    }
+                });
+                return;
+            }
+            if (action === 'delete') {
+                deleteTaskById(taskId, taskTitle, target);
+            }
+        });
+        container.dataset.taskActionsBound = '1';
+    }
+
+    function renderAssistantContent(contentDiv, rawText, forcedPayload) {
+        if (!contentDiv) return;
+        var parsed = extractTaskPayload(rawText, forcedPayload);
+        if (parsed.payload) {
+            contentDiv.classList.add('chat-msg-bubble--task-board');
+            contentDiv.innerHTML = buildTaskBoardHtml(parsed.payload, parsed.text);
+            attachTaskBoardActions(contentDiv);
+            return;
+        }
+
+        contentDiv.classList.remove('chat-msg-bubble--task-board');
+        contentDiv.innerHTML = (typeof marked !== 'undefined' ? marked.parse(parsed.text || '') : (parsed.text || ''));
+        if (typeof hljs !== 'undefined') {
+            contentDiv.querySelectorAll('pre code').forEach(function(block) { hljs.highlightElement(block); });
+        }
+        attachCopyButtons(contentDiv);
+    }
+
     // Event Listeners
     chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -618,6 +837,7 @@
         wrappers.forEach(function(msg) { msg.remove(); });
         if (welcomeMsg) welcomeMsg.style.display = 'flex';
         currentChatId = null;
+        activeTaskContextId = null;
         setChatIdInUrl(null);
         loadChats();
         fetch('/api/clear-history/', {
@@ -765,6 +985,7 @@
                     specific_model: (providerSelect && (providerSelect.value === 'auto' || providerSelect.value === 'cursor')) ? undefined : (modelSelect ? modelSelect.value : undefined),
                     use_rag: useRagCheckbox && useRagCheckbox.checked,
                     chat_id: currentChatId,
+                    task_context_id: activeTaskContextId,
                     mode: document.getElementById('orchestrator-mode-select') ? document.getElementById('orchestrator-mode-select').value : 'chat'
                 }),
                 signal: currentChatAbortController.signal
@@ -782,10 +1003,16 @@
             let rawBuffer = '';
             let displayText = '';
             let aiContentDiv = null;
+            let taskBoardPayload = null;
 
             function processLine(line) {
                 var trimmed = (line || '').trim();
                 if (!trimmed) return;
+                var taskPayload = parseTaskPayloadLine(trimmed);
+                if (taskPayload) {
+                    taskBoardPayload = taskPayload;
+                    return;
+                }
                 if (/^CHAT_ID:(\d+)$/.test(trimmed)) {
                     var m = /^CHAT_ID:(\d+)$/.exec(trimmed);
                     if (m) {
@@ -842,14 +1069,12 @@
                     thinkingEl.remove();
                     aiContentDiv = appendMessage('', 'ai');
                 }
+                if (!aiContentDiv && taskBoardPayload) {
+                    thinkingEl.remove();
+                    aiContentDiv = appendMessage('', 'ai');
+                }
                 if (aiContentDiv) {
-                    aiContentDiv.innerHTML = marked.parse(displayText);
-                    if (typeof hljs !== 'undefined') {
-                        aiContentDiv.querySelectorAll('pre code').forEach((block) => {
-                            hljs.highlightElement(block);
-                        });
-                    }
-                    attachCopyButtons(aiContentDiv);
+                    renderAssistantContent(aiContentDiv, displayText, taskBoardPayload);
                     chatContainer.scrollTop = chatContainer.scrollHeight;
                 }
             }
@@ -858,10 +1083,11 @@
 
             if (!aiContentDiv) {
                 thinkingEl.remove();
-                aiContentDiv = appendMessage(displayText || 'No response received.', 'ai');
-                if (displayText) aiContentDiv.innerHTML = marked.parse(displayText);
-                if (typeof hljs !== 'undefined') aiContentDiv.querySelectorAll('pre code').forEach(function(b){ hljs.highlightElement(b); });
-                attachCopyButtons(aiContentDiv);
+                var fallbackText = taskBoardPayload ? displayText : (displayText || 'No response received.');
+                aiContentDiv = appendMessage(fallbackText, 'ai');
+                if (taskBoardPayload || displayText) {
+                    renderAssistantContent(aiContentDiv, displayText, taskBoardPayload);
+                }
             }
             var aiWrapper = aiContentDiv && aiContentDiv.closest('.corporate-message-wrapper');
             if (aiWrapper) attachMessageActions(aiWrapper, 'ai', aiContentDiv);
@@ -1184,6 +1410,7 @@
     function loadTaskContextIfPresent() {
         var taskId = getTaskIdFromUrl();
         if (!taskId) return;
+        activeTaskContextId = parseInt(taskId, 10) || null;
         fetch('/tasks/' + taskId + '/', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
             .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Task not found')); })
             .then(showTaskContext)
@@ -1237,11 +1464,11 @@
 
         // Fetch task details
         fetch(`/tasks/${taskId}/`)
-            .then(res => res.json())
+            .then(res => res.ok ? res.json() : Promise.reject(new Error('task_not_found')))
             .then(data => {
                 // Populate modal
                 document.getElementById('task-modal-title').textContent = data.title;
-                document.getElementById('task-modal-status').textContent = data.status.replace('_', ' ');
+                document.getElementById('task-modal-status').textContent = taskStatusLabel(data.status);
 
                 const priorityBadge = document.getElementById('task-modal-priority');
                 priorityBadge.textContent = data.priority || 'MEDIUM';
@@ -1250,32 +1477,38 @@
                 if (data.priority === 'LOW') priorityBadge.classList.add('priority-low');
 
                 document.getElementById('task-modal-assignee').textContent =
-                    data.assignee ? `Assigned to: ${data.assignee}` : 'Unassigned';
+                    data.assignee_username ? `Исполнитель: @${data.assignee_username}` : 'Исполнитель: не назначен';
 
                 document.getElementById('task-modal-description').textContent =
-                    data.description || 'No description provided.';
+                    data.description || 'Описание отсутствует.';
 
                 document.getElementById('task-modal-due-date').textContent =
-                    data.due_date ? new Date(data.due_date).toLocaleDateString() : '—';
+                    formatTaskDate(data.due_date);
 
                 document.getElementById('task-modal-server').textContent =
-                    data.target_server || '—';
+                    data.target_server_name || '—';
 
                 document.getElementById('task-modal-created').textContent =
-                    new Date(data.created_at).toLocaleString();
+                    data.created_at ? new Date(data.created_at).toLocaleString('ru-RU') : '—';
 
                 document.getElementById('task-modal-updated').textContent =
-                    new Date(data.updated_at).toLocaleString();
+                    data.updated_at ? new Date(data.updated_at).toLocaleString('ru-RU') : '—';
 
                 document.getElementById('task-modal-completed').textContent =
-                    data.completed_at ? new Date(data.completed_at).toLocaleString() : '—';
+                    data.completed_at ? new Date(data.completed_at).toLocaleString('ru-RU') : '—';
+                var deleteBtn = document.getElementById('task-modal-delete-btn');
+                if (deleteBtn) {
+                    var canDelete = data.can_delete !== false;
+                    deleteBtn.disabled = !canDelete;
+                    deleteBtn.style.display = canDelete ? '' : 'none';
+                }
 
                 // Show modal
                 modal.classList.remove('hidden');
             })
             .catch(err => {
                 console.error('Failed to load task:', err);
-                alert('Failed to load task details');
+                alert('Не удалось загрузить детали задачи');
             });
     }
 
@@ -1284,51 +1517,159 @@
         currentTaskId = null;
     }
 
-    function discussTask() {
-        if (!currentTaskId) return;
-        closeTaskModal();
-
-        // Insert prompt to discuss task
-        const taskTitle = document.getElementById('task-modal-title').textContent;
-        chatInput.value = `Let's discuss task #${currentTaskId}: ${taskTitle}`;
+    function discussTaskById(taskId, taskTitle) {
+        if (!taskId) return;
+        activeTaskContextId = parseInt(taskId, 10) || null;
+        fetch('/tasks/' + taskId + '/', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+            .then(showTaskContext)
+            .catch(function() {});
+        chatInput.value = `Обсудим задачу: ${taskTitle || 'Без названия'}`;
         chatInput.style.height = '';
         chatInput.style.height = chatInput.scrollHeight + 'px';
         chatInput.focus();
     }
 
-    function takeTaskInProgress() {
+    function discussTask() {
         if (!currentTaskId) return;
+        const taskId = currentTaskId;
+        const taskTitle = document.getElementById('task-modal-title').textContent;
+        closeTaskModal();
+        discussTaskById(taskId, taskTitle);
+    }
 
-        if (confirm('Start working on this task?')) {
-            fetch(`/tasks/${currentTaskId}/update-status/`, {
+    async function takeTaskInProgressById(taskId, taskTitle, closeModalOnSuccess) {
+        if (!taskId) return false;
+        if (!confirm('Перевести задачу в статус "В работе"?')) return false;
+
+        try {
+            const res = await fetch(`/tasks/${taskId}/update-status/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': getCookie('csrftoken')
                 },
                 body: JSON.stringify({ status: 'IN_PROGRESS' })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    closeTaskModal();
-                    // Insert confirmation message
-                    chatInput.value = `Task #${currentTaskId} moved to IN PROGRESS. What should I work on first?`;
-                    chatInput.focus();
-                } else {
-                    alert('Failed to update task status');
-                }
-            })
-            .catch(err => {
-                console.error('Failed to update task:', err);
-                alert('Failed to update task');
             });
+            const data = await res.json();
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'update_failed');
+            }
+            if (closeModalOnSuccess) closeTaskModal();
+            if (typeof showToast === 'function') showToast('Задача переведена в работу', 'success', 2500);
+            discussTaskById(taskId, taskTitle || 'Без названия');
+            return true;
+        } catch (err) {
+            console.error('Failed to update task:', err);
+            if (typeof showToast === 'function') showToast('Не удалось обновить статус задачи', 'error', 3000);
+            return false;
+        }
+    }
+
+    function takeTaskInProgress() {
+        if (!currentTaskId) return;
+        const taskTitle = document.getElementById('task-modal-title').textContent;
+        takeTaskInProgressById(currentTaskId, taskTitle, true);
+    }
+
+    async function deleteTaskById(taskId, taskTitle, sourceEl) {
+        if (!taskId) return false;
+        if (!confirm(`Удалить задачу "${taskTitle || 'Без названия'}"? Это действие нельзя отменить.`)) return false;
+        try {
+            const res = await fetch(`/tasks/${taskId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'delete_failed');
+
+            if (activeTaskContextId === taskId) {
+                activeTaskContextId = null;
+                const panel = document.getElementById('task-context-panel');
+                if (panel) panel.classList.add('hidden');
+            }
+
+            const cards = Array.from(document.querySelectorAll(`.chat-task-card[data-task-id="${taskId}"]`));
+            const boardStats = new Map();
+            cards.forEach(function(card) {
+                const board = card.closest('.chat-task-board');
+                if (!board) return;
+                const stat = boardStats.get(board) || { total: 0, active: 0, completed: 0 };
+                stat.total += 1;
+                const status = String(card.getAttribute('data-task-status') || '').toUpperCase();
+                if (status === 'DONE') stat.completed += 1;
+                if (status === 'TODO' || status === 'IN_PROGRESS' || status === 'BLOCKED') stat.active += 1;
+                boardStats.set(board, stat);
+                card.style.transition = 'opacity .2s ease, transform .2s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(.98)';
+            });
+            setTimeout(function() {
+                cards.forEach(function(card) { card.remove(); });
+                boardStats.forEach(function(stat, board) {
+                    refreshTaskBoardAfterDelete(board, stat);
+                });
+            }, 210);
+            if (sourceEl) sourceEl.disabled = true;
+            if (typeof showToast === 'function') showToast('Задача удалена', 'success', 2200);
+            return true;
+        } catch (err) {
+            console.error('Failed to delete task:', err);
+            if (typeof showToast === 'function') showToast('Не удалось удалить задачу', 'error', 3000);
+            return false;
+        }
+    }
+
+    function deleteCurrentTask() {
+        if (!currentTaskId) return;
+        const taskId = currentTaskId;
+        const title = document.getElementById('task-modal-title').textContent || 'Без названия';
+        deleteTaskById(taskId, title).then(function(success) {
+            if (success) closeTaskModal();
+        });
+    }
+
+    function decrementCounter(board, counterName, byValue) {
+        if (!board || !counterName || !byValue) return;
+        var strong = board.querySelector('.chat-task-counter[data-counter="' + counterName + '"] strong');
+        if (!strong) return;
+        var current = parseInt((strong.textContent || '').replace(/[^\d-]/g, ''), 10);
+        if (Number.isNaN(current)) return;
+        strong.textContent = String(Math.max(0, current - byValue));
+    }
+
+    function refreshTaskBoardAfterDelete(board, stat) {
+        if (!board) return;
+        var groups = board.querySelectorAll('.chat-task-group');
+        groups.forEach(function(group) {
+            var cards = group.querySelectorAll('.chat-task-card');
+            var titleSpan = group.querySelector('.chat-task-group-title span');
+            if (titleSpan) titleSpan.textContent = '(' + cards.length + ')';
+            if (!cards.length) group.remove();
+        });
+
+        decrementCounter(board, 'total', stat.total || 0);
+        decrementCounter(board, 'returned', stat.total || 0);
+        decrementCounter(board, 'active', stat.active || 0);
+        decrementCounter(board, 'completed', stat.completed || 0);
+
+        var hasCards = board.querySelector('.chat-task-card');
+        var emptyEl = board.querySelector('.chat-task-empty');
+        if (!hasCards && !emptyEl) {
+            var p = document.createElement('p');
+            p.className = 'chat-task-empty';
+            p.textContent = 'Задачи не найдены.';
+            board.appendChild(p);
         }
     }
 
     function openTaskPage() {
         if (!currentTaskId) return;
-        window.open(`/tasks/${currentTaskId}/`, '_blank');
+        window.open('/tasks/', '_blank');
     }
 
     // Handle clicks on task: links in chat

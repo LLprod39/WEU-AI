@@ -1,0 +1,1099 @@
+{% extends 'base.html' %}
+
+{% block title %}Skills - WEU AI{% endblock %}
+{% block header_title %}Skills{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Skills</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <div class="glass-card rounded-xl p-6 border border-primary/20">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 rounded-xl bg-primary/20 flex items-center justify-center ring-2 ring-primary/30 shrink-0">
+                        <span class="material-icons-round text-primary text-xl" aria-hidden="true">rule_folder</span>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-semibold text-white">Skills</h1>
+                        <p class="text-sm text-gray-400 mt-0.5">Личные и shared skills для CLI-агентов и workflow. Чат не нагружается.</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button id="btn-new" class="btn-primary inline-flex items-center gap-2">
+                        <span class="material-icons-round text-lg" aria-hidden="true">add</span>
+                        Новый skill
+                    </button>
+                    <button id="btn-refresh" class="btn-ghost inline-flex items-center gap-2">
+                        <span class="material-icons-round text-lg" aria-hidden="true">refresh</span>
+                        Обновить
+                    </button>
+                </div>
+            </div>
+            <div id="msg" class="hidden mt-4 px-4 py-3 rounded-xl text-sm"></div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <section class="glass-card rounded-xl p-5 xl:col-span-4">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-white">Список Skills</h2>
+                    <span id="skills-count" class="text-xs px-2.5 py-1 rounded-lg bg-white/10 text-gray-300">0</span>
+                </div>
+                <div class="relative mb-4">
+                    <span class="material-icons-round text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 text-lg">search</span>
+                    <input id="skills-search" class="input-field w-full pl-10" placeholder="Поиск по name / slug">
+                </div>
+                <div id="skills-list" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1"></div>
+            </section>
+
+            <section class="glass-card rounded-xl p-5 xl:col-span-8">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-white">Редактор</h2>
+                    <span id="current-skill-badge" class="hidden text-xs px-2.5 py-1 rounded-lg bg-primary/20 text-primary">editing</span>
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+                    <div class="inline-flex items-center bg-white/5 border border-white/10 rounded-xl p-1">
+                        <button id="mode-advanced" type="button" class="px-3 py-1.5 text-xs rounded-lg text-white bg-primary/20 border border-primary/30">Продвинутый</button>
+                        <button id="mode-wizard" type="button" class="px-3 py-1.5 text-xs rounded-lg text-gray-300 hover:text-white">Пошаговый</button>
+                    </div>
+                    <div id="wizard-progress" class="hidden text-xs text-gray-400">Шаг 1 из 4</div>
+                </div>
+
+                <div id="ai-panel" class="mb-5 border border-white/10 rounded-xl p-4 bg-white/5">
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                            <div class="text-sm font-semibold text-white">AI помощник для заполнения Skills</div>
+                            <div class="text-xs text-gray-400 mt-1">Можно описать задачу или вставить данные по серверам. ИИ задаст вопросы и соберёт черновик.</div>
+                        </div>
+                        <span class="text-xs px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30">OpenAI</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Цель / описание</label>
+                            <textarea id="ai-goal" rows="4" class="input-field w-full" placeholder="Например: Политики DevOps для прод-серверов, безопасные команды, порядок действий"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Данные / контекст</label>
+                            <textarea id="ai-data" rows="4" class="input-field w-full" placeholder="Список серверов, доступы, типы задач, ограничения и т.д."></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Ответы на вопросы (если были)</label>
+                            <textarea id="ai-answers" rows="3" class="input-field w-full" placeholder="Ответы на вопросы, которые задал ассистент"></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Серверы (опционально)</label>
+                            <input id="ai-servers" class="input-field w-full" placeholder="ID или имена серверов через запятую (например: 12, prod-app, db-1)">
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3 mt-3">
+                        <button id="btn-ai-questions" type="button" class="btn-ghost inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">help_outline</span>
+                            Спросить вопросы
+                        </button>
+                        <button id="btn-ai-draft" type="button" class="btn-primary inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">auto_awesome</span>
+                            Сгенерировать черновик
+                        </button>
+                        <button id="btn-ai-apply" type="button" class="btn-ghost inline-flex items-center gap-2" disabled>
+                            <span class="material-icons-round text-lg">done_all</span>
+                            Применить черновик
+                        </button>
+                        <button id="btn-ai-fill-answers" type="button" class="btn-ghost inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">notes</span>
+                            Заполнить ответы
+                        </button>
+                        <label class="inline-flex items-center gap-2 text-xs text-gray-300">
+                            <input id="ai-overwrite" type="checkbox">
+                            Перезаписать заполненные поля
+                        </label>
+                        <span id="ai-status" class="text-xs text-gray-400"></span>
+                    </div>
+                    <div id="ai-questions" class="mt-3 space-y-2 text-sm"></div>
+                    <div class="mt-3 border border-white/10 rounded-xl overflow-hidden">
+                        <div class="px-3 py-2 bg-white/5 text-xs text-gray-300">Черновик</div>
+                        <pre id="ai-preview" class="p-3 bg-slate-950/70 text-xs whitespace-pre-wrap max-h-44 overflow-auto"></pre>
+                    </div>
+                </div>
+
+                <form id="skill-form" class="space-y-4">
+                    <input type="hidden" id="skill-id">
+
+                    <div class="skill-step border border-white/10 rounded-xl p-4 bg-white/5 space-y-3" data-step="1">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] uppercase tracking-wider text-primary bg-primary/15 border border-primary/30 rounded-lg px-2 py-1">Шаг 1</span>
+                            <h3 class="text-sm font-semibold text-white">Базовая информация</h3>
+                        </div>
+                        <p class="text-xs text-gray-400">Название и назначение skill. От этого зависит как агенты будут понимать контекст.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Name</label>
+                                <input id="name" class="input-field w-full" placeholder="Например: DevOps Policy" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Slug</label>
+                                <input id="slug" class="input-field w-full" placeholder="devops-policy" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Status</label>
+                                <select id="status" class="input-field w-full">
+                                    <option value="draft">draft</option>
+                                    <option value="staging">staging</option>
+                                    <option value="prod">prod</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Описание</label>
+                            <input id="description" class="input-field w-full" placeholder="Кратко: что делает этот skill">
+                        </div>
+                    </div>
+
+                    <div class="skill-step border border-white/10 rounded-xl p-4 bg-white/5 space-y-3" data-step="2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] uppercase tracking-wider text-primary bg-primary/15 border border-primary/30 rounded-lg px-2 py-1">Шаг 2</span>
+                            <h3 class="text-sm font-semibold text-white">Серверный охват</h3>
+                        </div>
+                        <p class="text-xs text-gray-400">Выберите, к каким серверам относится этот skill. Если skill общий — оставьте все сервера.</p>
+                        <div class="flex flex-wrap items-center gap-4 text-sm">
+                            <label class="inline-flex items-center gap-2">
+                                <input type="radio" name="server_scope" id="server-scope-all" value="all" checked>
+                                Все сервера
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="radio" name="server_scope" id="server-scope-selected" value="selected">
+                                Выбрать серверы
+                            </label>
+                            <span class="text-xs text-gray-400">Выбрано: <span id="servers-selected-count">0</span></span>
+                        </div>
+                        <div id="servers-select" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 max-h-52 overflow-auto pr-1"></div>
+                        <div id="servers-empty" class="mt-2 text-xs text-gray-500 hidden">Нет доступных серверов</div>
+                        <div id="wizard-ai-box" class="hidden mt-4 border border-white/10 rounded-xl p-3 bg-slate-950/50">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="text-xs font-semibold text-white">AI предложения</div>
+                                    <div id="wizard-ai-status" class="text-[11px] text-gray-400 mt-1">После шага 1 ИИ автоматически заполнит черновик.</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button id="wizard-ai-questions" type="button" class="btn-ghost inline-flex items-center gap-2 text-xs">
+                                        <span class="material-icons-round text-base">help_outline</span>
+                                        Вопросы
+                                    </button>
+                                    <button id="wizard-ai-improve" type="button" class="btn-primary inline-flex items-center gap-2 text-xs">
+                                        <span class="material-icons-round text-base">auto_awesome</span>
+                                        Улучшить
+                                    </button>
+                                    <button id="wizard-ai-fill-answers" type="button" class="btn-ghost inline-flex items-center gap-2 text-xs">
+                                        <span class="material-icons-round text-base">notes</span>
+                                        Ответить
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="wizard-ai-questions-list" class="mt-3 space-y-2 text-xs text-gray-200"></div>
+                        </div>
+                    </div>
+
+                    <div class="skill-step border border-white/10 rounded-xl p-4 bg-white/5 space-y-3" data-step="3">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] uppercase tracking-wider text-primary bg-primary/15 border border-primary/30 rounded-lg px-2 py-1">Шаг 3</span>
+                            <h3 class="text-sm font-semibold text-white">Инструкции и правила</h3>
+                        </div>
+                        <p class="text-xs text-gray-400">Опишите ограничения, стиль работы и требования. Это основной контент, который увидят агенты.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">System prompt</label>
+                                <textarea id="system_prompt" rows="5" class="input-field w-full"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Rules</label>
+                                <textarea id="rules" rows="5" class="input-field w-full"></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Instructions</label>
+                            <textarea id="instructions" rows="8" class="input-field w-full"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="skill-step border border-white/10 rounded-xl p-4 bg-white/5 space-y-4" data-step="4">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[11px] uppercase tracking-wider text-primary bg-primary/15 border border-primary/30 rounded-lg px-2 py-1">Шаг 4</span>
+                            <h3 class="text-sm font-semibold text-white">Дополнительно</h3>
+                        </div>
+                        <p class="text-xs text-gray-400">Теги, runtime‑ограничения и источники синхронизации.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Tags</label>
+                                <input id="tags" class="input-field w-full" placeholder="devops, security, infra">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Allowed runtimes</label>
+                                <input id="allowed_runtimes" class="input-field w-full" placeholder="cursor, claude, cursor_server">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Git source URL</label>
+                                <input id="source_url" class="input-field w-full" placeholder="https://...">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Ref</label>
+                                    <input id="source_ref" class="input-field w-full" placeholder="main" value="main">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Path</label>
+                                    <input id="source_path" class="input-field w-full" placeholder="SKILL.md" value="SKILL.md">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-4 text-sm border border-white/10 rounded-xl p-3 bg-white/5">
+                            <label class="inline-flex items-center gap-2"><input id="auto_apply_chat" type="checkbox"> auto chat</label>
+                            <label class="inline-flex items-center gap-2"><input id="auto_apply_agents" type="checkbox"> auto agent</label>
+                            <label class="inline-flex items-center gap-2"><input id="auto_apply_workflows" type="checkbox"> auto workflow</label>
+                            <label class="inline-flex items-center gap-2"><input id="auto_sync_enabled" type="checkbox"> auto sync</label>
+                        </div>
+                        <div id="skill-action-bar" class="flex flex-wrap gap-2 pt-1">
+                            <button type="submit" class="btn-primary inline-flex items-center gap-2">
+                                <span class="material-icons-round text-lg">save</span>
+                                Сохранить
+                            </button>
+                            <button type="button" id="btn-sync" class="btn-ghost inline-flex items-center gap-2">
+                                <span class="material-icons-round text-lg">sync</span>
+                                Sync
+                            </button>
+                            <button type="button" id="btn-preview" class="btn-ghost inline-flex items-center gap-2">
+                                <span class="material-icons-round text-lg">preview</span>
+                                Preview Context
+                            </button>
+                            <button type="button" id="btn-delete" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors">
+                                <span class="material-icons-round text-lg">delete</span>
+                                Удалить
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <div id="wizard-controls" class="hidden mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs text-gray-400" id="wizard-progress-label">Шаг 1 из 4</div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="wizard-prev" type="button" class="btn-ghost inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">arrow_back</span>
+                            Назад
+                        </button>
+                        <button id="wizard-next" type="button" class="btn-primary inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">arrow_forward</span>
+                            Далее
+                        </button>
+                        <button id="wizard-save" type="button" class="btn-primary inline-flex items-center gap-2">
+                            <span class="material-icons-round text-lg">save</span>
+                            Сохранить
+                        </button>
+                    </div>
+                </div>
+
+                <div id="preview-block" class="mt-5 border border-white/10 rounded-xl overflow-hidden">
+                    <div class="px-4 py-2.5 bg-white/5 text-sm text-gray-300">Preview</div>
+                    <pre id="preview" class="p-4 bg-slate-950/70 text-xs whitespace-pre-wrap max-h-52 overflow-auto"></pre>
+                </div>
+
+                <div id="share-box" class="mt-5 border border-white/10 rounded-xl p-4 bg-white/5">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h3 class="text-sm font-semibold text-white">Доступ (Share)</h3>
+                        <span class="text-xs text-gray-400">owner / can_edit / can_manage</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
+                        <input id="share-username" class="input-field w-full" placeholder="username">
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-300"><input id="share-can-edit" type="checkbox"> can_edit</label>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-300"><input id="share-can-manage" type="checkbox"> can_manage</label>
+                        <button id="btn-share-add" type="button" class="btn-primary inline-flex items-center justify-center gap-2">
+                            <span class="material-icons-round text-base">person_add</span>
+                            Выдать доступ
+                        </button>
+                    </div>
+                    <div id="share-list" class="mt-3 space-y-2 text-sm"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+let state = { skills: [], currentId: null, search: '', servers: [], pendingServerIds: [] };
+let aiState = { draft: null, questions: [] };
+let wizardState = { mode: 'advanced', step: 1, total: 4, aiAutoRunDone: false };
+const wizardStepTitles = ['Базовая информация', 'Серверный охват', 'Инструкции и правила', 'Дополнительно'];
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function parseCsv(value) {
+    return String(value || '')
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean);
+}
+
+function slugifyValue(value) {
+    return String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function getServerScopeMode() {
+    const selected = document.querySelector('input[name="server_scope"]:checked');
+    return selected ? selected.value : 'all';
+}
+
+function updateServerScopeUI() {
+    const mode = getServerScopeMode();
+    const list = document.getElementById('servers-select');
+    const empty = document.getElementById('servers-empty');
+    const shouldShow = mode === 'selected';
+    if (list) list.classList.toggle('hidden', !shouldShow);
+    if (empty) empty.classList.toggle('hidden', !shouldShow || state.servers.length > 0);
+    updateSelectedCount();
+}
+
+function getSelectedServerIds() {
+    const inputs = document.querySelectorAll('input[data-server-id]');
+    const out = [];
+    inputs.forEach((el) => {
+        if (el.checked) {
+            out.push(Number(el.getAttribute('data-server-id')));
+        }
+    });
+    return out;
+}
+
+function setSelectedServerIds(ids) {
+    const set = new Set((ids || []).map((v) => Number(v)));
+    const inputs = document.querySelectorAll('input[data-server-id]');
+    inputs.forEach((el) => {
+        const sid = Number(el.getAttribute('data-server-id'));
+        el.checked = set.has(sid);
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const el = document.getElementById('servers-selected-count');
+    if (!el) return;
+    if (getServerScopeMode() === 'all') {
+        el.textContent = String(state.servers.length);
+        return;
+    }
+    el.textContent = String(getSelectedServerIds().length);
+}
+
+function renderServersList() {
+    const wrap = document.getElementById('servers-select');
+    const empty = document.getElementById('servers-empty');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (!state.servers || state.servers.length === 0) {
+        if (empty) empty.classList.remove('hidden');
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+    state.servers.forEach((srv) => {
+        const row = document.createElement('label');
+        row.className = 'flex items-start gap-2 p-2 rounded-xl border border-white/10 bg-slate-900/70 text-sm text-gray-200';
+        row.innerHTML = `
+            <input type="checkbox" data-server-id="${srv.id}">
+            <span>
+                <span class="font-medium">${escapeHtml(srv.name)}</span>
+                <span class="text-xs text-gray-400">(${escapeHtml(srv.host || '-')})</span>
+                ${srv.group ? `<span class="text-[11px] ml-2 px-2 py-0.5 rounded-lg bg-white/10 text-gray-300">${escapeHtml(srv.group)}</span>` : ''}
+            </span>
+        `;
+        row.querySelector('input')?.addEventListener('change', updateSelectedCount);
+        wrap.appendChild(row);
+    });
+    updateSelectedCount();
+}
+
+async function loadServers() {
+    const res = await fetch('/skills/api/servers/');
+    const data = await res.json();
+    state.servers = data.servers || [];
+    renderServersList();
+    if (state.pendingServerIds && state.pendingServerIds.length) {
+        setSelectedServerIds(state.pendingServerIds);
+    }
+    updateServerScopeUI();
+}
+
+function setWizardMode(mode) {
+    wizardState.mode = mode;
+    localStorage.setItem('skills-mode', mode);
+    document.getElementById('mode-advanced').className = mode === 'advanced'
+        ? 'px-3 py-1.5 text-xs rounded-lg text-white bg-primary/20 border border-primary/30'
+        : 'px-3 py-1.5 text-xs rounded-lg text-gray-300 hover:text-white';
+    document.getElementById('mode-wizard').className = mode === 'wizard'
+        ? 'px-3 py-1.5 text-xs rounded-lg text-white bg-primary/20 border border-primary/30'
+        : 'px-3 py-1.5 text-xs rounded-lg text-gray-300 hover:text-white';
+    updateWizardUI();
+}
+
+function setWizardStep(step) {
+    wizardState.step = Math.max(1, Math.min(wizardState.total, step));
+    updateWizardUI();
+}
+
+function updateWizardUI() {
+    const isWizard = wizardState.mode === 'wizard';
+    const steps = document.querySelectorAll('.skill-step');
+    steps.forEach((el) => {
+        const step = Number(el.getAttribute('data-step'));
+        if (!isWizard) {
+            el.classList.remove('hidden');
+        } else {
+            el.classList.toggle('hidden', step !== wizardState.step);
+        }
+    });
+    document.getElementById('wizard-controls').classList.toggle('hidden', !isWizard);
+    document.getElementById('wizard-progress').classList.toggle('hidden', !isWizard);
+    const progressLabel = document.getElementById('wizard-progress-label');
+    const progressTop = document.getElementById('wizard-progress');
+    const label = `Шаг ${wizardState.step} из ${wizardState.total}: ${wizardStepTitles[wizardState.step - 1]}`;
+    if (progressLabel) progressLabel.textContent = label;
+    if (progressTop) progressTop.textContent = label;
+
+    const prev = document.getElementById('wizard-prev');
+    const next = document.getElementById('wizard-next');
+    const save = document.getElementById('wizard-save');
+    if (prev) prev.disabled = wizardState.step === 1;
+    if (next) next.disabled = wizardState.step === wizardState.total;
+    if (save) save.classList.toggle('hidden', wizardState.step !== wizardState.total);
+
+    const actionBar = document.getElementById('skill-action-bar');
+    if (actionBar) {
+        actionBar.classList.toggle('hidden', isWizard && wizardState.step !== wizardState.total);
+    }
+
+    const aiPanel = document.getElementById('ai-panel');
+    if (aiPanel) {
+        aiPanel.classList.toggle('hidden', isWizard);
+    }
+    const shareBox = document.getElementById('share-box');
+    if (shareBox) {
+        shareBox.classList.toggle('hidden', isWizard);
+    }
+    const previewBlock = document.getElementById('preview-block');
+    if (previewBlock) {
+        previewBlock.classList.toggle('hidden', isWizard);
+    }
+    const wizardAiBox = document.getElementById('wizard-ai-box');
+    if (wizardAiBox) {
+        wizardAiBox.classList.toggle('hidden', !isWizard);
+    }
+}
+
+function canAdvanceWizard() {
+    if (wizardState.step === 1) {
+        const name = document.getElementById('name').value.trim();
+        if (!name) {
+            showMsg('Укажите имя skill перед продолжением', false);
+            return false;
+        }
+        const slugEl = document.getElementById('slug');
+        if (!slugEl.value.trim()) {
+            slugEl.value = slugifyValue(name);
+        }
+    }
+    return true;
+}
+
+function showMsg(text, ok = true) {
+    const el = document.getElementById('msg');
+    el.className = `mt-4 px-4 py-3 rounded-xl text-sm ${ok ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'}`;
+    el.textContent = text;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+function csrfToken() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+}
+
+function toPayload() {
+    const serverScopeMode = getServerScopeMode();
+    return {
+        name: document.getElementById('name').value.trim(),
+        slug: document.getElementById('slug').value.trim(),
+        status: document.getElementById('status').value,
+        description: document.getElementById('description').value,
+        tags: parseCsv(document.getElementById('tags').value),
+        allowed_runtimes: parseCsv(document.getElementById('allowed_runtimes').value),
+        server_scope_all: serverScopeMode === 'all',
+        server_scope_ids: serverScopeMode === 'selected' ? getSelectedServerIds() : [],
+        system_prompt: document.getElementById('system_prompt').value,
+        rules: document.getElementById('rules').value,
+        instructions: document.getElementById('instructions').value,
+        source_type: document.getElementById('source_url').value.trim() ? 'git' : 'manual',
+        source_url: document.getElementById('source_url').value.trim(),
+        source_ref: document.getElementById('source_ref').value.trim(),
+        source_path: document.getElementById('source_path').value.trim(),
+        auto_apply_chat: document.getElementById('auto_apply_chat').checked,
+        auto_apply_agents: document.getElementById('auto_apply_agents').checked,
+        auto_apply_workflows: document.getElementById('auto_apply_workflows').checked,
+        auto_sync_enabled: document.getElementById('auto_sync_enabled').checked,
+    };
+}
+
+function updateCurrentBadge(skill) {
+    const badge = document.getElementById('current-skill-badge');
+    if (!skill || !skill.name) {
+        badge.classList.add('hidden');
+        badge.textContent = 'editing';
+        return;
+    }
+    badge.textContent = `${skill.name} · v${skill.version || ''}`;
+    badge.classList.remove('hidden');
+}
+
+function fillForm(skill) {
+    state.currentId = skill?.id || null;
+    document.getElementById('skill-id').value = state.currentId || '';
+    document.getElementById('name').value = skill?.name || '';
+    document.getElementById('slug').value = skill?.slug || '';
+    document.getElementById('status').value = skill?.status || 'draft';
+    document.getElementById('description').value = skill?.description || '';
+    document.getElementById('tags').value = (skill?.tags || []).join(', ');
+    document.getElementById('allowed_runtimes').value = (skill?.allowed_runtimes || []).join(', ');
+    const scopeAll = skill?.server_scope_all !== false;
+    document.getElementById('server-scope-all').checked = scopeAll;
+    document.getElementById('server-scope-selected').checked = !scopeAll;
+    state.pendingServerIds = skill?.server_scope_ids || [];
+    setSelectedServerIds(state.pendingServerIds);
+    updateServerScopeUI();
+    document.getElementById('system_prompt').value = skill?.system_prompt || '';
+    document.getElementById('rules').value = skill?.rules || '';
+    document.getElementById('instructions').value = skill?.instructions || '';
+    document.getElementById('source_url').value = skill?.source_url || '';
+    document.getElementById('source_ref').value = skill?.source_ref || 'main';
+    document.getElementById('source_path').value = skill?.source_path || 'SKILL.md';
+    document.getElementById('auto_apply_chat').checked = !!skill?.auto_apply_chat;
+    document.getElementById('auto_apply_agents').checked = !!skill?.auto_apply_agents;
+    document.getElementById('auto_apply_workflows').checked = !!skill?.auto_apply_workflows;
+    document.getElementById('auto_sync_enabled').checked = !!skill?.auto_sync_enabled;
+    updateCurrentBadge(skill);
+    renderSkillsList();
+    wizardState.aiAutoRunDone = false;
+}
+
+function renderAiQuestions(list, targetId = 'ai-questions') {
+    const wrap = document.getElementById(targetId);
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (!list || list.length === 0) {
+        wrap.innerHTML = '<div class="text-xs text-gray-500">Вопросов нет</div>';
+        return;
+    }
+    list.forEach((q, idx) => {
+        const row = document.createElement('div');
+        row.className = 'p-2.5 rounded-xl bg-slate-900/80 border border-white/10 text-gray-200';
+        row.innerHTML = `
+            <div class="flex items-center justify-between gap-2 cursor-pointer question-line">
+                <div class="text-xs font-medium">${idx + 1}. ${escapeHtml(q)}</div>
+                <span class="text-[11px] text-gray-400">Ответить</span>
+            </div>
+            <textarea class="mt-2 input-field w-full text-xs hidden" rows="2" data-answer-for="${idx}" placeholder="Ответ на вопрос..."></textarea>
+        `;
+        const qline = row.querySelector('.question-line');
+        const textarea = row.querySelector('textarea');
+        if (qline && textarea) {
+            qline.addEventListener('click', () => {
+                textarea.classList.toggle('hidden');
+                textarea.focus();
+            });
+        }
+        wrap.appendChild(row);
+    });
+}
+
+function renderAiPreview(draft, notes) {
+    const preview = document.getElementById('ai-preview');
+    if (!draft) {
+        preview.textContent = '';
+        return;
+    }
+    const block = {
+        name: draft.name || '',
+        slug: draft.slug || '',
+        description: draft.description || '',
+        system_prompt: draft.system_prompt || '',
+        rules: draft.rules || '',
+        instructions: draft.instructions || '',
+        tags: draft.tags || [],
+        allowed_runtimes: draft.allowed_runtimes || [],
+        notes: notes || '',
+    };
+    preview.textContent = JSON.stringify(block, null, 2);
+}
+
+function setAiStatus(text, ok = true, targetId = 'ai-status', loading = false) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    el.className = `text-xs ${ok ? 'text-emerald-300' : 'text-rose-300'}`;
+    if (loading) {
+        el.innerHTML = `<span class="inline-flex items-center gap-2"><span class="w-3 h-3 border-2 border-sky-400/40 border-t-sky-400 rounded-full animate-spin"></span>${escapeHtml(text || '')}</span>`;
+    } else {
+        el.textContent = text || '';
+    }
+}
+
+function aiExistingPayload() {
+    return {
+        name: document.getElementById('name').value.trim(),
+        slug: document.getElementById('slug').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        system_prompt: document.getElementById('system_prompt').value.trim(),
+        rules: document.getElementById('rules').value.trim(),
+        instructions: document.getElementById('instructions').value.trim(),
+        tags: parseCsv(document.getElementById('tags').value),
+        allowed_runtimes: parseCsv(document.getElementById('allowed_runtimes').value),
+        server_scope_all: getServerScopeMode() === 'all',
+        server_scope_ids: getSelectedServerIds(),
+    };
+}
+
+function applyAnswersFrom(containerId) {
+    const wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    const textareas = wrap.querySelectorAll('textarea[data-answer-for]');
+    if (!textareas.length) {
+        showMsg('Нет вопросов для ответа', false);
+        return;
+    }
+    const lines = [];
+    textareas.forEach((ta, idx) => {
+        const questionLine = ta.closest('div')?.querySelector('.question-line div');
+        const questionText = questionLine ? questionLine.textContent.replace(/^\d+\\.\\s*/, '').trim() : `Вопрос ${idx + 1}`;
+        const answer = ta.value.trim();
+        if (!answer) return;
+        lines.push(`Q: ${questionText}`);
+        lines.push(`A: ${answer}`);
+    });
+    if (!lines.length) {
+        showMsg('Добавьте ответы в поля', false);
+        return;
+    }
+    const answersEl = document.getElementById('ai-answers');
+    const prefix = answersEl.value.trim();
+    answersEl.value = (prefix ? prefix + "\\n\\n" : "") + lines.join("\\n");
+    showMsg('Ответы добавлены в поле');
+}
+
+async function runAiAssistant(mode, opts = {}) {
+    const autoApply = !!opts.autoApply;
+    const quiet = !!opts.quiet;
+    const statusTarget = opts.statusTarget || 'ai-status';
+    const questionsTarget = opts.questionsTarget || 'ai-questions';
+    const btnQuestions = document.getElementById('btn-ai-questions');
+    const btnDraft = document.getElementById('btn-ai-draft');
+    const btnApply = document.getElementById('btn-ai-apply');
+    if (!quiet) {
+        btnQuestions.disabled = true;
+        btnDraft.disabled = true;
+        btnApply.disabled = true;
+    }
+    setAiStatus('AI думает...', true, statusTarget, true);
+
+    const payload = {
+        mode,
+        goal: document.getElementById('ai-goal').value.trim(),
+        data: document.getElementById('ai-data').value.trim(),
+        answers: document.getElementById('ai-answers').value.trim(),
+        servers: document.getElementById('ai-servers').value.trim(),
+        existing_skill: aiExistingPayload(),
+    };
+
+    const res = await fetch('/skills/api/assistant/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        setAiStatus(data.error || 'AI error', false, statusTarget, false);
+        if (!quiet) {
+            btnQuestions.disabled = false;
+            btnDraft.disabled = false;
+        }
+        return;
+    }
+
+    aiState.questions = data.questions || [];
+    const draft = data.draft || null;
+    const hasDraft = draft && (
+        (draft.name || '').trim() ||
+        (draft.slug || '').trim() ||
+        (draft.description || '').trim() ||
+        (draft.system_prompt || '').trim() ||
+        (draft.rules || '').trim() ||
+        (draft.instructions || '').trim() ||
+        (draft.tags || []).length ||
+        (draft.allowed_runtimes || []).length
+    );
+    aiState.draft = hasDraft ? draft : null;
+    renderAiQuestions(aiState.questions, questionsTarget);
+    renderAiPreview(aiState.draft, data.notes || '');
+    setAiStatus('Готово', true, statusTarget, false);
+    if (questionsTarget === 'wizard-ai-questions-list' && aiState.questions.length === 0) {
+        const qwrap = document.getElementById(questionsTarget);
+        if (qwrap) {
+            qwrap.innerHTML = '<div class="text-xs text-gray-500">Вопросов нет</div>';
+        }
+    }
+    if (!quiet) {
+        btnQuestions.disabled = false;
+        btnDraft.disabled = false;
+        btnApply.disabled = !aiState.draft;
+    }
+
+    if (autoApply && aiState.draft) {
+        applyAiDraft({ silent: true });
+    }
+}
+
+function applyAiDraft(opts = {}) {
+    const silent = !!opts.silent;
+    if (!aiState.draft) return;
+    const overwrite = document.getElementById('ai-overwrite').checked;
+    const applyText = (id, value) => {
+        if (!value) return;
+        const el = document.getElementById(id);
+        if (overwrite || !el.value.trim()) {
+            el.value = value;
+        }
+    };
+
+    applyText('name', aiState.draft.name || '');
+    applyText('slug', aiState.draft.slug || '');
+    applyText('description', aiState.draft.description || '');
+    applyText('system_prompt', aiState.draft.system_prompt || '');
+    applyText('rules', aiState.draft.rules || '');
+    applyText('instructions', aiState.draft.instructions || '');
+
+    const tagValue = (aiState.draft.tags || []).join(', ');
+    if (tagValue) applyText('tags', tagValue);
+
+    const runtimesValue = (aiState.draft.allowed_runtimes || []).join(', ');
+    if (runtimesValue) applyText('allowed_runtimes', runtimesValue);
+
+    const slugEl = document.getElementById('slug');
+    if (!slugEl.value.trim() && document.getElementById('name').value.trim()) {
+        slugEl.value = slugifyValue(document.getElementById('name').value.trim());
+    }
+
+    if (!silent) {
+        showMsg('Черновик применён');
+    }
+}
+
+function renderSkillsList() {
+    const wrap = document.getElementById('skills-list');
+    const q = (state.search || '').toLowerCase().trim();
+    const rows = state.skills.filter(skill => {
+        if (!q) return true;
+        return (skill.name || '').toLowerCase().includes(q) || (skill.slug || '').toLowerCase().includes(q);
+    });
+
+    document.getElementById('skills-count').textContent = String(rows.length);
+    wrap.innerHTML = '';
+
+    if (rows.length === 0) {
+        wrap.innerHTML = '<div class="text-sm text-gray-500 p-3 bg-white/5 rounded-xl border border-white/5">Ничего не найдено</div>';
+        return;
+    }
+
+    rows.forEach(skill => {
+        const role = skill.is_owner ? 'owner' : `shared by ${skill.owner_username || 'user'}`;
+        const selected = state.currentId && Number(state.currentId) === Number(skill.id);
+        const statusClass = skill.status === 'prod'
+            ? 'bg-emerald-500/20 text-emerald-300'
+            : skill.status === 'staging'
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'bg-slate-500/20 text-slate-300';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `w-full text-left p-3 rounded-xl border transition-all ${selected ? 'border-primary bg-primary/10' : 'border-white/10 bg-white/5 hover:border-primary/50 hover:bg-white/10'}`;
+        btn.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="font-medium text-white">${escapeHtml(skill.name)}</div>
+                    <div class="text-xs text-gray-400 mt-1">${escapeHtml(skill.slug)} · v${escapeHtml(skill.version)} · ${escapeHtml(role)}</div>
+                </div>
+                <span class="text-[11px] px-2 py-0.5 rounded-lg ${statusClass}">${escapeHtml(skill.status)}</span>
+            </div>
+        `;
+        btn.onclick = async () => {
+            const r = await fetch(`/skills/api/skills/${skill.id}/`);
+            const d = await r.json();
+            fillForm(d.skill);
+            await loadShares();
+        };
+        wrap.appendChild(btn);
+    });
+}
+
+async function loadSkills() {
+    const res = await fetch('/skills/api/skills/');
+    const data = await res.json();
+    state.skills = data.skills || [];
+    renderSkillsList();
+}
+
+async function saveSkill(ev) {
+    ev.preventDefault();
+    const payload = toPayload();
+    const id = state.currentId;
+    const url = id ? `/skills/api/skills/${id}/` : '/skills/api/skills/';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        showMsg(data.error || 'Save failed', false);
+        return;
+    }
+    showMsg('Сохранено');
+    if (!id && data.skill_id) state.currentId = data.skill_id;
+    await loadSkills();
+    await loadShares();
+}
+
+async function syncSkill() {
+    if (!state.currentId) {
+        showMsg('Сначала выберите skill', false);
+        return;
+    }
+    const res = await fetch(`/skills/api/skills/${state.currentId}/sync/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken() }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        showMsg(data.error || 'Sync failed', false);
+        return;
+    }
+    showMsg(data.message || 'Sync completed');
+    await loadSkills();
+}
+
+async function deleteSkill() {
+    if (!state.currentId) {
+        showMsg('Сначала выберите skill', false);
+        return;
+    }
+    const res = await fetch(`/skills/api/skills/${state.currentId}/`, {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': csrfToken() }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        showMsg(data.error || 'Delete failed', false);
+        return;
+    }
+    showMsg('Удалено');
+    fillForm(null);
+    document.getElementById('preview').textContent = '';
+    document.getElementById('share-list').innerHTML = '';
+    await loadSkills();
+}
+
+async function previewContext() {
+    const skillId = state.currentId;
+    const payload = { channel: 'chat', skill_ids: skillId ? [skillId] : [] };
+    const res = await fetch('/skills/api/context/preview/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        showMsg(data.error || 'Preview failed', false);
+        return;
+    }
+    document.getElementById('preview').textContent = data.text || '';
+}
+
+function newSkill() {
+    fillForm({ status: 'draft', source_ref: 'main', source_path: 'SKILL.md', server_scope_all: true, server_scope_ids: [] });
+    state.pendingServerIds = [];
+    document.getElementById('preview').textContent = '';
+    document.getElementById('share-list').innerHTML = '<div class="text-slate-400">Сохраните skill, чтобы настроить sharing</div>';
+    wizardState.aiAutoRunDone = false;
+}
+
+async function loadShares() {
+    const el = document.getElementById('share-list');
+    if (!state.currentId) {
+        el.innerHTML = '<div class="text-slate-400">Сохраните skill, чтобы настроить sharing</div>';
+        return;
+    }
+
+    const res = await fetch(`/skills/api/skills/${state.currentId}/shares/`);
+    const data = await res.json();
+    el.innerHTML = '';
+
+    if (!res.ok || !data.success) {
+        el.innerHTML = '<div class="text-slate-400">Нет доступа к управлению sharing</div>';
+        return;
+    }
+
+    (data.shares || []).forEach(share => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900/80 border border-white/10';
+        row.innerHTML = `<div class="text-sm text-gray-200">${escapeHtml(share.username)} <span class="text-gray-400">edit=${share.can_edit ? 'yes' : 'no'}, manage=${share.can_manage ? 'yes' : 'no'}</span></div>`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'px-2.5 py-1.5 text-xs rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 transition-colors';
+        del.textContent = 'Remove';
+        del.onclick = async () => {
+            const dr = await fetch(`/skills/api/skills/${state.currentId}/shares/${share.id}/`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': csrfToken() },
+            });
+            const dd = await dr.json();
+            if (!dr.ok || !dd.success) {
+                showMsg(dd.error || 'Remove failed', false);
+                return;
+            }
+            await loadShares();
+        };
+        row.appendChild(del);
+        el.appendChild(row);
+    });
+
+    if ((data.shares || []).length === 0) {
+        el.innerHTML = '<div class="text-slate-400">Пока никому не выдан доступ</div>';
+    }
+}
+
+async function addShare() {
+    if (!state.currentId) {
+        showMsg('Сначала выберите skill', false);
+        return;
+    }
+
+    const username = document.getElementById('share-username').value.trim();
+    if (!username) {
+        showMsg('Укажите username', false);
+        return;
+    }
+
+    const payload = {
+        username,
+        can_edit: document.getElementById('share-can-edit').checked,
+        can_manage: document.getElementById('share-can-manage').checked,
+    };
+
+    const res = await fetch(`/skills/api/skills/${state.currentId}/shares/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+        showMsg(data.error || 'Share failed', false);
+        return;
+    }
+
+    document.getElementById('share-username').value = '';
+    showMsg('Доступ выдан');
+    await loadShares();
+}
+
+document.getElementById('skill-form').addEventListener('submit', saveSkill);
+document.getElementById('btn-sync').addEventListener('click', syncSkill);
+document.getElementById('btn-delete').addEventListener('click', deleteSkill);
+document.getElementById('btn-preview').addEventListener('click', previewContext);
+document.getElementById('btn-new').addEventListener('click', newSkill);
+document.getElementById('btn-refresh').addEventListener('click', loadSkills);
+document.getElementById('btn-share-add').addEventListener('click', addShare);
+document.getElementById('btn-ai-questions').addEventListener('click', () => runAiAssistant('questions'));
+document.getElementById('btn-ai-draft').addEventListener('click', () => runAiAssistant('draft'));
+document.getElementById('btn-ai-apply').addEventListener('click', applyAiDraft);
+document.getElementById('server-scope-all').addEventListener('change', updateServerScopeUI);
+document.getElementById('server-scope-selected').addEventListener('change', updateServerScopeUI);
+document.getElementById('mode-advanced').addEventListener('click', () => setWizardMode('advanced'));
+document.getElementById('mode-wizard').addEventListener('click', () => setWizardMode('wizard'));
+document.getElementById('wizard-prev').addEventListener('click', () => setWizardStep(wizardState.step - 1));
+document.getElementById('wizard-next').addEventListener('click', async () => {
+    if (!canAdvanceWizard()) return;
+    if (wizardState.mode === 'wizard' && wizardState.step === 1 && !wizardState.aiAutoRunDone) {
+        const nextBtn = document.getElementById('wizard-next');
+        if (nextBtn) nextBtn.disabled = true;
+        await runAiAssistant('draft', {
+            autoApply: true,
+            quiet: true,
+            statusTarget: 'wizard-ai-status',
+            questionsTarget: 'wizard-ai-questions-list',
+        });
+        wizardState.aiAutoRunDone = true;
+        if (nextBtn) nextBtn.disabled = false;
+    }
+    setWizardStep(wizardState.step + 1);
+});
+document.getElementById('wizard-save').addEventListener('click', () => {
+    document.getElementById('skill-form').requestSubmit();
+});
+document.getElementById('wizard-ai-improve').addEventListener('click', async () => {
+    await runAiAssistant('draft', {
+        autoApply: true,
+        quiet: true,
+        statusTarget: 'wizard-ai-status',
+        questionsTarget: 'wizard-ai-questions-list',
+    });
+    wizardState.aiAutoRunDone = true;
+});
+document.getElementById('wizard-ai-questions').addEventListener('click', async () => {
+    await runAiAssistant('questions', {
+        autoApply: false,
+        quiet: true,
+        statusTarget: 'wizard-ai-status',
+        questionsTarget: 'wizard-ai-questions-list',
+    });
+});
+document.getElementById('btn-ai-fill-answers').addEventListener('click', () => applyAnswersFrom('ai-questions'));
+document.getElementById('wizard-ai-fill-answers').addEventListener('click', () => applyAnswersFrom('wizard-ai-questions-list'));
+document.getElementById('skills-search').addEventListener('input', (e) => {
+    state.search = e.target.value || '';
+    renderSkillsList();
+});
+
+newSkill();
+loadSkills();
+loadServers();
+setWizardMode(localStorage.getItem('skills-mode') || 'advanced');
+</script>
+{% endblock %}

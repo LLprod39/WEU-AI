@@ -44,28 +44,22 @@ AGENT_SYSTEM_RULES_RU = """
 - Для подробной карточки используй tool: task_detail (id).
 - Если пользователь просит сводку/список — ОБЯЗАТЕЛЬНО вызови tasks_list.
 
-ФОРМАТ ВЫВОДА ЗАДАЧ (строго соблюдай):
+ФОРМАТ ВЫВОДА ЗАДАЧ (строго соблюдай, на русском):
 ```
-## Task Overview
-**3 total tasks** — 1 active, 2 in progress, 0 completed
+Сводка: всего 3 задачи (активных: 3, завершённых: 0)
 
-### TODO
-| # | Task | Priority | Assignee |
-|---|------|----------|----------|
-| #15 | Deploy Redis | MEDIUM | — |
+### TODO (2)
+- **[#15](task:15)** Название задачи — [TODO] [MEDIUM] (не назначен)
+- **[#12](task:12)** Другая задача — [TODO] [HIGH] @admin
 
-### IN PROGRESS
-| # | Task | Priority | Assignee |
-|---|------|----------|----------|
-| #12 | Setup monitoring | HIGH | @admin |
+### IN_PROGRESS (1)
+- **[#8](task:8)** Задача в работе — [IN_PROGRESS] [HIGH] @user
 ```
 
 ПРАВИЛА ФОРМАТИРОВАНИЯ:
-- Заголовки с ## и ###
-- Таблицы для списков задач
-- Жирный текст для чисел: **3 total tasks**
-- БЕЗ emoji, только текст
-- Все данные из JSON включены
+- Первая строка: Сводка: всего N задач (активных: X, завершённых: Y). Активные = не DONE.
+- Заголовки ### [STATUS] (количество), под каждым — все задачи этого статуса.
+- Ссылка на задачу: **[#ID](task:ID)**. БЕЗ emoji. Все данные из JSON включены.
 """
 
 
@@ -196,9 +190,18 @@ class UnifiedOrchestrator:
         
         ctx_block = ""
         exclude_tools = None
+        include_tools = None
         servers_block = ""
+        skill_block = ""
         
         if execution_context:
+            skill_context_text = (execution_context.get("skill_context") or "").strip()
+            if skill_context_text:
+                skill_block = f"""
+SKILLS КОНТЕКСТ (приоритет ниже platform rules, выше user prompt):
+{skill_context_text}
+"""
+            include_tools = execution_context.get("allowed_tools")
             conn_id = execution_context.get("connection_id")
             allowed = execution_context.get("allowed_actions", "")
             target_server = execution_context.get("server", {})
@@ -241,12 +244,16 @@ class UnifiedOrchestrator:
                 ctx_block = (ctx_block + "\n" + ide_rule).strip() if ctx_block else ide_rule.strip()
                 servers_block = ""
         
-        tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
+        tools_description = self.tool_manager.get_tools_description(
+            exclude_tools=exclude_tools,
+            include_tools=include_tools,
+        )
         
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
 {AGENT_SYSTEM_RULES_RU}
 {ctx_block}
 {servers_block}
+{skill_block}
 
 ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 {tools_description}

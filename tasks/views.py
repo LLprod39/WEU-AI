@@ -78,6 +78,8 @@ def task_list(request):
     if project_id:
         current_project = user_projects.filter(id=project_id).first()
 
+    project_members = []
+
     if current_project:
         # Tasks for selected project
         base_qs = Task.objects.filter(
@@ -95,6 +97,11 @@ def task_list(request):
 
         # Materials for the project
         materials = ProjectMaterial.objects.filter(project=current_project).order_by('-pinned', '-updated_at')[:20]
+
+        # Project members for assignee selection
+        project_members = ProjectMember.objects.filter(
+            project=current_project
+        ).select_related('user').order_by('user__username')
     else:
         # All user's tasks (no project filter)
         base_qs = _tasks_queryset_for_user(request.user).prefetch_related('label_relations__label', 'subtasks')
@@ -132,6 +139,7 @@ def task_list(request):
         'sprints': sprints,
         'materials': materials,
         'view_mode': view_mode,
+        'project_members': project_members,
     })
 
 
@@ -199,6 +207,7 @@ def task_detail_api(request, task_id):
         'description': task.description or '',
         'status': task.status,
         'priority': getattr(task, 'priority', 'MEDIUM'),
+        'task_key': task.task_key,
         'subtasks': subtasks,
         'executions': executions,
         'comments': comments,
@@ -212,6 +221,15 @@ def task_detail_api(request, task_id):
         'ai_execution_status': task.ai_execution_status,
         'created_at': task.created_at.isoformat() if task.created_at else None,
         'progress': task.get_progress_percentage(),
+        # New fields
+        'assignee_id': task.assignee_id,
+        'assignee_username': task.assignee.username if task.assignee else None,
+        'project_id': task.project_id,
+        'project_name': task.project.name if task.project else None,
+        'project_key': task.project.key if task.project else None,
+        'sprint_id': task.sprint_id,
+        'sprint_name': task.sprint.name if task.sprint else None,
+        'can_delete': PermissionService.can_delete_task(request.user, task),
     })
 
 def _background_analyze_task(task_id: int, user_id: int):
@@ -468,13 +486,22 @@ def task_update_server(request, task_id):
 
 @login_required
 @require_feature('tasks')
+@require_http_methods(["POST", "DELETE"])
 def task_delete(request, task_id):
     task = get_object_or_404(Task, id=task_id)
     if not _user_can_see_task(request.user, task):
         return JsonResponse({'error': 'Not found'}, status=404)
-    if not _user_can_edit_task(request.user, task):
+    if not PermissionService.can_delete_task(request.user, task):
         return JsonResponse({'error': 'Forbidden'}, status=403)
+    deleted = {
+        'id': task.id,
+        'title': task.title,
+    }
     task.delete()
+    accepts_json = 'application/json' in (request.headers.get('Accept') or '').lower()
+    is_xhr = (request.headers.get('X-Requested-With') or '').lower() == 'xmlhttprequest'
+    if request.method == 'DELETE' or accepts_json or is_xhr:
+        return JsonResponse({'success': True, 'deleted_task': deleted})
     return redirect('tasks:task_list')
 
 

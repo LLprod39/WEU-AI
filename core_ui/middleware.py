@@ -2,6 +2,32 @@
 Middleware: русский язык для админки Django + определение мобильных устройств.
 """
 from django.utils import translation
+from django.conf import settings
+
+
+class CsrfTrustNgrokMiddleware:
+    """
+    Динамически добавляет ngrok-домены в CSRF_TRUSTED_ORIGINS.
+    При каждом рестарте ngrok меняет URL (8e81-..., 8c56-..., и т.д.),
+    поэтому фиксированный список не работает. Этот middleware доверяет
+    любой Origin с *.ngrok-free.app или *.ngrok.io.
+    """
+    NGROK_PATTERNS = (".ngrok-free.app", ".ngrok.io")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        origin = request.META.get("HTTP_ORIGIN")
+        if origin and any(p in origin for p in self.NGROK_PATTERNS):
+            trusted = getattr(settings, "CSRF_TRUSTED_ORIGINS", [])
+            if origin not in trusted:
+                settings.CSRF_TRUSTED_ORIGINS = list(trusted) + [origin]
+                # http-версия для смешанного контента
+                http_origin = origin.replace("https://", "http://")
+                if http_origin not in settings.CSRF_TRUSTED_ORIGINS:
+                    settings.CSRF_TRUSTED_ORIGINS = list(settings.CSRF_TRUSTED_ORIGINS) + [http_origin]
+        return self.get_response(request)
 
 
 class AdminRussianMiddleware:

@@ -20,322 +20,1791 @@
 </nav>
 {% endblock %}
 
+{% block extra_head %}
+<style>
+.agent-hub {
+    --hub-bg: var(--bg-base);
+    --hub-card: var(--bg-surface);
+    --hub-card-2: var(--bg-elevated);
+    --hub-border: var(--border-subtle);
+    --hub-text: var(--text-primary);
+    --hub-muted: var(--text-secondary);
+    --hub-accent: var(--primary);
+    --hub-accent-2: var(--accent);
+    --hub-danger: var(--error);
+    --hub-shadow: var(--shadow-md);
+    --hub-modal-surface: #111116;
+    --hub-modal-surface-2: #18181f;
+    --hub-modal-border: rgba(255, 255, 255, 0.08);
+    --hub-modal-glow: var(--primary-glow);
+    color: var(--hub-text);
+    font-family: var(--font-sans);
+    min-height: 100%;
+    padding: var(--spacing-xl);
+}
+
+.hub-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.hub-hero {
+    display: grid;
+    gap: var(--spacing-lg);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: center;
+    background: var(--hub-card);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-xl);
+    box-shadow: var(--hub-shadow);
+}
+
+.hub-hero__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--hub-accent);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.hub-hero h1 {
+    font-size: 24px;
+    margin: 12px 0 8px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-hero p {
+    color: var(--hub-muted);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-relaxed);
+}
+
+.hub-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.hub-hero__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.hub-stat {
+    background: var(--hub-card-2);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+}
+
+.hub-stat__label {
+    font-size: 11px;
+    color: var(--hub-muted);
+}
+
+.hub-stat__value {
+    font-size: 20px;
+    font-weight: var(--font-weight-semibold);
+    margin-top: 6px;
+}
+
+.hub-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    background: var(--hub-card);
+    padding: 6px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--hub-border);
+}
+
+.hub-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--hub-muted);
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.hub-tab.active {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--hub-text);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.hub-panel {
+    display: none;
+}
+
+.hub-panel.active {
+    display: block;
+}
+
+.hub-grid {
+    display: grid;
+    gap: var(--spacing-lg);
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.hub-grid--workflows {
+    grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.4fr);
+}
+
+.hub-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.hub-card {
+    background: var(--hub-card);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    box-shadow: var(--hub-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.hub-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.hub-card__head h2,
+.hub-card__head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-card__head p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--hub-muted);
+}
+
+.hub-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.hub-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.hub-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.hub-btn {
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hub-border);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 12px;
+    font-weight: var(--font-weight-medium);
+    color: var(--hub-text);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.hub-btn-primary {
+    background: var(--hub-accent);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25);
+}
+
+.hub-btn-secondary {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.25);
+    color: var(--hub-accent);
+}
+
+.hub-btn-ghost {
+    background: transparent;
+    color: var(--hub-muted);
+}
+
+.hub-btn:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-default);
+}
+
+.hub-input,
+.hub-select,
+.hub-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--hub-border);
+    color: var(--hub-text);
+    font-size: 12px;
+}
+
+.hub-textarea {
+    resize: vertical;
+}
+
+.hub-form-row {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.hub-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    background: var(--hub-card-2);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--radius-md);
+}
+
+.hub-row__title {
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-row__meta {
+    font-size: 11px;
+    color: var(--hub-muted);
+}
+
+.hub-row__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.hub-workflow-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hub-border);
+    background: var(--hub-card-2);
+}
+
+.hub-workflow-title {
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--hub-text);
+}
+
+.hub-workflow-sub {
+    font-size: 11px;
+    color: var(--hub-muted);
+    margin-top: 4px;
+}
+
+.hub-empty {
+    text-align: center;
+    color: var(--hub-muted);
+    font-size: 12px;
+    padding: 20px;
+}
+
+.hub-help {
+    font-size: 11px;
+    color: var(--hub-muted);
+}
+
+.hub-divider {
+    height: 1px;
+    background: var(--hub-border);
+    margin: 12px 0;
+}
+
+.hub-run {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hub-border);
+    background: var(--hub-card-2);
+}
+
+.hub-run__left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.hub-run__status {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--hub-muted);
+}
+
+.hub-run__status.running { background: var(--hub-accent); }
+.hub-run__status.failed { background: var(--hub-danger); }
+.hub-run__status.succeeded { background: var(--success); }
+.hub-run__status.paused { background: var(--warning); }
+
+.hub-callout {
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hub-callout__title {
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-callout__text {
+    font-size: 12px;
+    color: var(--hub-muted);
+}
+
+.hub-links {
+    display: grid;
+    gap: 8px;
+}
+
+.hub-link {
+    color: var(--hub-accent);
+    font-size: 12px;
+}
+
+.hub-banner__card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--hub-card);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+}
+
+.hub-banner__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hub-banner__title {
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-banner__meta {
+    color: var(--hub-muted);
+    font-size: 11px;
+}
+
+.hub-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--hub-accent);
+    border-radius: 999px;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.6);
+}
+
+/* Переменные на .hub-modal: модалки рендерятся вне .agent-hub, иначе --hub-modal-surface не задана и фон прозрачный */
+.hub-modal {
+    --hub-modal-surface: #111116;
+    --hub-modal-surface-2: #18181f;
+    --hub-modal-border: rgba(255, 255, 255, 0.08);
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.hub-modal.hidden {
+    display: none;
+}
+
+.hub-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.hub-modal__panel {
+    position: relative;
+    z-index: 1;
+    width: min(980px, 94vw);
+    max-height: 90vh;
+    overflow: hidden;
+    background: var(--hub-modal-surface, #111116) !important;
+    background-color: var(--hub-modal-surface, #111116) !important;
+    opacity: 1;
+    border: 1px solid var(--hub-modal-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    outline: 1px solid rgba(255, 255, 255, 0.04);
+    display: flex;
+    flex-direction: column;
+}
+
+.hub-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--hub-modal-border);
+    background: var(--hub-modal-surface, #111116) !important;
+    background-color: var(--hub-modal-surface, #111116) !important;
+}
+
+.hub-modal__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.hub-modal__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px 24px 24px;
+    overflow-y: auto;
+    background: var(--hub-modal-surface, #111116) !important;
+    background-color: var(--hub-modal-surface, #111116) !important;
+}
+
+.hub-modal:not(.hidden) .hub-modal__panel {
+    animation: modal-rise 0.26s ease;
+}
+
+.hub-modal:not(.hidden) .hub-modal__backdrop {
+    animation: modal-fade 0.2s ease;
+}
+
+@keyframes modal-rise {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes modal-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hub-modal:not(.hidden) .hub-modal__panel,
+    .hub-modal:not(.hidden) .hub-modal__backdrop {
+        animation: none;
+    }
+}
+
+.hub-tools {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+}
+
+.hub-tool {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--hub-card-2);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--radius-md);
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.hub-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--hub-muted);
+}
+
+.hub-label {
+    font-size: 11px;
+    color: var(--hub-muted);
+}
+
+.hub-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hub-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--hub-text);
+    cursor: pointer;
+}
+
+.hub-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+}
+
+.hub-toggle__control {
+    width: 40px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
+    position: relative;
+    transition: all var(--transition-base);
+    flex-shrink: 0;
+}
+
+.hub-toggle__control::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform var(--transition-base);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.hub-toggle input:checked + .hub-toggle__control {
+    background: rgba(99, 102, 241, 0.6);
+    border-color: rgba(99, 102, 241, 0.6);
+}
+
+.hub-toggle input:checked + .hub-toggle__control::after {
+    transform: translateX(18px);
+}
+
+.hub-toggle input:focus-visible + .hub-toggle__control {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
+.hub-toggle__text {
+    font-size: 12px;
+    color: var(--hub-text);
+}
+
+.hub-modal .hub-input,
+.hub-modal .hub-select,
+.hub-modal .hub-textarea {
+    background: var(--hub-modal-surface-2) !important;
+    background-color: var(--hub-modal-surface-2) !important;
+    border-color: var(--border-default);
+    font-size: 14px;
+    padding: 11px 12px;
+    transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base);
+}
+
+.hub-modal .hub-input:focus,
+.hub-modal .hub-select:focus,
+.hub-modal .hub-textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    background: var(--hub-modal-surface-2);
+}
+
+.hub-modal .hub-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.hub-modal .hub-help {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.hub-modal .hub-btn {
+    padding: 8px 14px;
+}
+
+.hub-btn--icon {
+    border-radius: 999px;
+    font-size: 11px;
+    padding: 6px 12px;
+}
+
+.tb-modal .hub-modal__panel {
+    width: min(1280px, 96vw);
+    max-height: 94vh;
+    overflow: hidden;
+}
+
+.tb-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+}
+
+.tb-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--hub-modal-border);
+    background: var(--hub-modal-surface) !important;
+    background-color: var(--hub-modal-surface) !important;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.tb-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tb-title {
+    font-size: 18px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.tb-sub {
+    font-size: 12px;
+    color: var(--hub-muted);
+    margin-top: 4px;
+}
+
+.tb-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(280px, 330px) 1fr;
+    gap: 18px;
+    padding: 18px 22px 20px;
+    min-height: 0;
+}
+
+.tb-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.tb-section {
+    background: var(--hub-modal-surface-2) !important;
+    background-color: var(--hub-modal-surface-2) !important;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tb-ai {
+    border-color: rgba(99, 102, 241, 0.25);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.tb-section__title {
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--hub-text);
+}
+
+.tb-stats-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--hub-muted);
+}
+
+.tb-stats-row span:last-child {
+    font-variant-numeric: tabular-nums;
+    color: var(--hub-text);
+    font-weight: var(--font-weight-semibold);
+}
+
+.tb-tasks {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--hub-modal-surface-2) !important;
+    background-color: var(--hub-modal-surface-2) !important;
+    overflow: hidden;
+}
+
+.tb-tasks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-surface) !important;
+    background-color: var(--bg-surface) !important;
+}
+
+.tb-tasks-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tb-empty {
+    min-height: 220px;
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--hub-muted);
+    padding: 20px;
+    gap: 10px;
+}
+
+.tb-empty__title {
+    font-weight: var(--font-weight-semibold);
+    color: var(--hub-text);
+}
+
+.tb-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--hub-border);
+    background: var(--hub-card);
+}
+
+.tb-footer__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.task-card {
+    background: var(--hub-card-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.task-card__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.task-card__meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-card__subtitle {
+    font-size: 11px;
+    color: var(--hub-muted);
+    margin-top: 4px;
+}
+
+.task-number {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--hub-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.task-title {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--hub-border);
+    color: var(--hub-text);
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+    padding-bottom: 6px;
+}
+
+.task-title:focus {
+    outline: none;
+    border-bottom-color: var(--hub-accent);
+}
+
+.task-prompt,
+.task-verify,
+.task-model,
+.task-promise,
+.task-verify-promise {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--hub-text);
+    font-size: 13px;
+    padding: 8px 10px;
+}
+
+.task-prompt,
+.task-verify {
+    resize: vertical;
+}
+
+.task-model-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.task-inline-label {
+    font-size: 12px;
+    color: var(--hub-muted);
+    min-width: 70px;
+}
+
+.toggle-test-btn {
+    background: transparent;
+    border: none;
+    color: var(--hub-muted);
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.toggle-test-btn:hover {
+    color: var(--hub-accent);
+}
+
+.test-content {
+    margin-top: 10px;
+    background: var(--bg-surface);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.task-test-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.delete-task-btn {
+    background: transparent;
+    border: none;
+    color: var(--hub-muted);
+    cursor: pointer;
+}
+
+.delete-task-btn:hover {
+    color: var(--hub-danger);
+}
+
+.drag-handle {
+    color: var(--hub-muted);
+    cursor: grab;
+    padding-top: 2px;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.agent-editor-panel {
+    width: min(1100px, 94vw);
+}
+
+.agent-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.agent-editor-section,
+.agent-run-section {
+    background: var(--hub-modal-surface-2) !important;
+    background-color: var(--hub-modal-surface-2) !important;
+    opacity: 1;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.agent-editor-section h3,
+.agent-run-section h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--hub-text);
+}
+
+.agent-editor-section--full {
+    grid-column: 1 / -1;
+}
+
+.agent-editor-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 20px;
+    margin-top: 8px;
+    border-top: 1px solid var(--hub-modal-border);
+}
+
+.server-group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.server-group-chip {
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    font-size: 11px;
+    color: var(--hub-muted);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.server-group-chip.active {
+    border-color: rgba(99, 102, 241, 0.4);
+    color: var(--hub-text);
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.server-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+}
+
+.server-picker.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.server-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    border: 1px solid transparent;
+}
+
+.server-item:hover {
+    border-color: var(--hub-border);
+}
+
+.server-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid var(--hub-border);
+    background: var(--bg-elevated);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.server-check input {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.server-check input:checked {
+    background: var(--hub-accent);
+    border-radius: 4px;
+    border: 1px solid var(--hub-accent);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.server-check input:checked::after {
+    content: "";
+    width: 6px;
+    height: 10px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    display: block;
+    margin: 1px auto 0;
+    transform: rotate(45deg);
+}
+
+.server-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.server-name {
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.server-host {
+    font-size: 11px;
+    color: var(--hub-muted);
+}
+
+.server-group-label {
+    font-size: 10px;
+    color: var(--hub-muted);
+}
+
+.agent-run-panel {
+    width: min(920px, 94vw);
+}
+
+.agent-run-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 20px;
+}
+
+.agent-run-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.18);
+    color: var(--hub-text);
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+}
+
+.agent-run-subtitle {
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--hub-text);
+}
+
+.agent-editor-panel .hub-modal__head,
+.agent-run-panel .hub-modal__head {
+    border-bottom-color: rgba(148, 163, 184, 0.2);
+}
+
+.agent-editor-panel .hub-modal__body,
+.agent-run-panel .hub-modal__body {
+    padding-top: 20px;
+}
+
+.agent-editor-panel .hub-input,
+.agent-editor-panel .hub-select,
+.agent-editor-panel .hub-textarea,
+.agent-run-panel .hub-input,
+.agent-run-panel .hub-select,
+.agent-run-panel .hub-textarea {
+    font-size: 13px;
+}
+
+.agent-editor-panel .hub-textarea,
+.agent-run-panel .hub-textarea {
+    line-height: 1.5;
+}
+
+.agent-run-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 20px;
+    margin-top: 8px;
+    border-top: 1px solid var(--hub-modal-border);
+}
+
+@media (max-width: 960px) {
+    .hub-modal {
+        padding: 18px;
+    }
+    .hub-modal__head {
+        padding: 16px 18px;
+    }
+    .hub-modal__body {
+        padding: 16px 18px 20px;
+    }
+    .hub-grid--workflows {
+        grid-template-columns: 1fr;
+    }
+    .tb-body {
+        grid-template-columns: 1fr;
+    }
+    .agent-editor-grid {
+        grid-template-columns: 1fr;
+    }
+    .agent-run-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .agent-hub {
+        padding: 16px;
+    }
+    .hub-hero {
+        padding: 20px;
+    }
+    .hub-card {
+        padding: 16px;
+    }
+    .hub-modal {
+        padding: 12px;
+    }
+    .hub-modal__panel {
+        border-radius: 16px;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="agent-hub min-h-screen p-6 pb-20">
-    <!-- Active runs banner -->
-    <div id="active-runs-banner" class="mb-4 hidden">
-        <div class="glass-card rounded-2xl p-4 border-2 border-primary/50 running-indicator">
-            <div class="flex items-center gap-3">
-                <svg class="w-5 h-5 text-primary spinner" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-white font-medium">Task running...</span>
-                <span id="active-runs-info" class="text-sm text-gray-400"></span>
-                <button onclick="scrollToActiveRuns()" class="ml-auto text-xs text-primary hover:underline">Go to logs</button>
+<div class="agent-hub">
+    <div class="hub-shell">
+        <div id="active-runs-banner" class="hub-banner hidden">
+            <div class="hub-banner__card">
+                <div class="hub-banner__left">
+                    <span class="hub-dot"></span>
+                    <div>
+                        <div class="hub-banner__title">Выполняется задача</div>
+                        <div id="active-runs-info" class="hub-banner__meta"></div>
+                    </div>
+                </div>
+                <button onclick="scrollToActiveRuns()" class="hub-btn hub-btn-ghost">Перейти к логам</button>
             </div>
         </div>
-    </div>
 
-    <div class="flex flex-col gap-4 mb-6">
-        <div class="flex items-start justify-between">
-            <div>
-                <h1 class="text-2xl font-bold text-white">Agent Hub</h1>
-                <p class="text-gray-400 text-sm mt-1">Запуск агентов, управление workflow и просмотр логов выполнения.</p>
-            </div>
-            <div class="flex gap-2">
-                <!-- DEPRECATED: Новый профиль button removed. Use Custom Agents -->
-            </div>
-        </div>
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <div class="glass-card rounded-2xl p-4 lg:col-span-2">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-semibold text-white">Quick start</h2>
-                    <span class="text-xs text-gray-400">Auto-create</span>
+        <section class="hub-hero">
+            <div class="hub-hero__copy">
+                <div class="hub-hero__badge">Agent Hub</div>
+                <h1>Управление агентами, workflow и автоматизацией</h1>
+                <p>Единый центр: агентные роли, сценарии, вебхуки и контроль выполнения. Быстро, прозрачно, без шума.</p>
+                <div class="hub-hero__actions">
+                    <button class="hub-btn hub-btn-primary" onclick="openAgentEditor()">Создать агента</button>
+                    <button class="hub-btn hub-btn-secondary" onclick="openTaskBuilderDirect()">Новый workflow</button>
+                    <button class="hub-btn hub-btn-ghost" onclick="openWebhookForm()">Новый webhook</button>
                 </div>
-                <textarea id="quick-task" rows="2" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="What do you need? e.g. Create Django API and test"></textarea>
-                <div class="mt-2 text-[11px] text-gray-400">
-                    <div class="text-gray-300 mb-1">Чтобы агент работал точнее, укажи:</div>
-                    <ul class="list-disc list-inside space-y-0.5">
-                        <li>стек/версии и ограничения (например Django 5.2, без Docker)</li>
-                        <li>критерии готовности (тесты, линтеры, формат)</li>
-                        <li>доступы к серверам или режим только чтение</li>
-                    </ul>
+            </div>
+            <div class="hub-hero__stats">
+                <div class="hub-stat">
+                    <div class="hub-stat__label">Agents</div>
+                    <div class="hub-stat__value" id="stat-agents">0</div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                    <select id="quick-runtime" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="cursor" selected>Cursor CLI</option>
-                        <option value="ralph">Ralph Orchestrator</option>
-                    </select>
-                    <select id="quick-project" class="bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="__new__">📁 Новый проект</option>
-                        {% for project in projects_data %}
-                        <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                <div class="hub-stat">
+                    <div class="hub-stat__label">Workflows</div>
+                    <div class="hub-stat__value" id="stat-workflows">{{ workflows|length }}</div>
+                </div>
+                <div class="hub-stat">
+                    <div class="hub-stat__label">Webhooks</div>
+                    <div class="hub-stat__value" id="stat-webhooks">0</div>
+                </div>
+                <div class="hub-stat">
+                    <div class="hub-stat__label">Runs</div>
+                    <div class="hub-stat__value" id="stat-runs">{{ recent_runs|length }}</div>
+                </div>
+            </div>
+        </section>
+
+        <nav class="hub-tabs" role="tablist">
+            <button class="hub-tab active" data-hub-tab="agents" role="tab">Agents</button>
+            <button class="hub-tab" data-hub-tab="workflows" role="tab">Workflows</button>
+            <button class="hub-tab" data-hub-tab="automation" role="tab">Automation</button>
+            <button class="hub-tab" data-hub-tab="runs" role="tab">Runs</button>
+        </nav>
+
+        <section class="hub-panel active" data-hub-panel="agents">
+            <div class="hub-grid">
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Агенты</h2>
+                            <p>Роли, ограничения и навыки. Подключайте skills и сервера.</p>
+                        </div>
+                        <div class="hub-card__actions">
+                            <input id="agent-search" class="hub-input" placeholder="Поиск агента">
+                            <button class="hub-btn hub-btn-primary" onclick="openAgentEditor()">+ Agent</button>
+                        </div>
+                    </div>
+                    <div id="custom-agents-list" class="hub-list"></div>
+                </div>
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Запуск агента</h2>
+                            <p>Выберите агента и запустите задачу с подтверждением или сразу.</p>
+                        </div>
+                    </div>
+                    <div class="hub-card__body">
+                        <div id="selected-agent-preview" class="hub-empty">Выберите агента в списке слева.</div>
+                        <div class="hub-card__actions" style="margin-top: 16px;">
+                            <button class="hub-btn hub-btn-secondary" onclick="openAgentRun()">Запустить</button>
+                            <button class="hub-btn hub-btn-ghost" onclick="openAgentEditor()">Настроить агента</button>
+                        </div>
+                        <div class="hub-divider"></div>
+                        <div class="hub-links">
+                            <a href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer" class="hub-link" title="Codex Cloud — вход через ChatGPT">Codex Cloud: вход и веб-интерфейс</a>
+                            <a href="/skills/" class="hub-link">Skills: управление знаниями</a>
+                            <a href="/tasks/settings/" class="hub-link">Automation settings для задач</a>
+                            <a href="/tasks/" class="hub-link">Все задачи и подтверждения</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="hub-panel" data-hub-panel="workflows">
+            <div class="hub-grid hub-grid--workflows">
+                <div class="hub-stack">
+                    <div class="hub-card">
+                        <div class="hub-card__head">
+                            <div>
+                                <h2>Быстрый workflow</h2>
+                                <p>Опиши сценарий, выбери runtime и проект. Мы соберём шаги.</p>
+                            </div>
+                        </div>
+                        <div class="hub-card__body">
+                            <textarea id="quick-task" rows="3" class="hub-textarea" placeholder="Опишите задачу и критерии готовности"></textarea>
+                            <div class="hub-form-row">
+                                <select id="quick-runtime" class="hub-select">
+                                    <option value="cursor" selected>Cursor CLI</option>
+                                    <option value="codex">Codex CLI</option>
+                                    <option value="ralph">Ralph Orchestrator</option>
+                                </select>
+                                <select id="quick-project" class="hub-select">
+                                    <option value="__new__">📁 Новый проект</option>
+                                    {% for project in projects_data %}
+                                    <option value="{{ project.path }}">📂 {{ project.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <input id="quick-project-name" type="text" class="hub-input hidden" placeholder="Название проекта">
+                            <div class="hub-card__actions" style="margin-top: 12px;">
+                                <button id="btn-auto-create-all" onclick="autoCreateAll()" class="hub-btn hub-btn-primary">Создать и запустить</button>
+                                <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">Открыть Builder</button>
+                            </div>
+                            <p class="hub-help">Добавь стек, ограничения, критерии готовности — получишь точный workflow.</p>
+                        </div>
+                    </div>
+                    <div class="hub-card">
+                        <div class="hub-card__head">
+                            <div>
+                                <h2>Presets</h2>
+                                <p>Готовые шаблоны для быстрого старта.</p>
+                            </div>
+                        </div>
+                        <div class="hub-list">
+                            {% for preset in presets %}
+                            <div class="hub-row">
+                                <div>
+                                    <div class="hub-row__title">{{ preset.name }}</div>
+                                    <div class="hub-row__meta">{{ preset.description|default:"" }}</div>
+                                </div>
+                                <div class="hub-row__actions">
+                                    <button type="button" onclick="usePreset('{{ preset.name|escapejs }}')" class="hub-btn hub-btn-ghost">Use</button>
+                                </div>
+                            </div>
+                            {% empty %}
+                            <div class="hub-empty">Нет доступных presets.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Workflow Library</h2>
+                            <p>Сохранённые сценарии, импорт и редактирование шагов.</p>
+                        </div>
+                        <div class="hub-card__actions">
+                            <button type="button" onclick="openImportModal()" class="hub-btn hub-btn-ghost">Import</button>
+                            <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">Builder</button>
+                        </div>
+                    </div>
+                    <div class="hub-list">
+                        {% for workflow in workflows %}
+                        <div class="hub-workflow-card">
+                            <div>
+                                <div class="hub-workflow-title">{{ workflow.name }}</div>
+                                <div class="hub-workflow-sub">
+                                    {{ workflow.runtime|title }}
+                                    {% if workflow.target_server %} • {{ workflow.target_server.name }}{% endif %}
+                                    {% if workflow.script.steps %} • {{ workflow.script.steps|length }} steps{% endif %}
+                                    {% if workflow.project_path %} • {{ workflow.project_path }}{% endif %}
+                                </div>
+                            </div>
+                            <div class="hub-row__actions">
+                                <button type="button" onclick="editWorkflow({{ workflow.id }})" class="hub-btn hub-btn-ghost">Edit</button>
+                                <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="hub-btn hub-btn-ghost">Script</button>
+                                <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="hub-btn hub-btn-ghost">Delete</button>
+                                <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="hub-btn hub-btn-secondary">Run</button>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="hub-empty">Workflows пока нет. Создай через Builder.</div>
                         {% endfor %}
-                    </select>
+                    </div>
                 </div>
-                <input id="quick-project-name" type="text" class="hidden w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm mt-2" placeholder="Название проекта">
-                <div class="flex gap-3 mt-3">
-                    <button id="btn-auto-create-all" onclick="autoCreateAll()" class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center justify-center gap-2">
-                        <span>▶</span> Создать и запустить
-                    </button>
-                    <button type="button" onclick="openTaskBuilderDirect()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-sm text-gray-200 rounded-lg">🛠️ Builder</button>
-                </div>
-                <p class="section-hint mt-2">Модель автоматически выбирается Cursor (auto). Рантайм — среда выполнения задач.</p>
             </div>
-            <div class="glass-card rounded-2xl p-4">
-                <div class="text-xs text-gray-400">Last run</div>
-                {% if recent_runs %}
-                <div class="text-sm text-white mt-1">{{ recent_runs.0.runtime|title }} • {{ recent_runs.0.status|title }}</div>
-                <div class="text-xs text-gray-500 mt-2 line-clamp-2">{{ recent_runs.0.input_task }}</div>
-                {% else %}
-                <div class="text-sm text-gray-500 mt-2">No runs yet</div>
-                {% endif %}
-            </div>
-            <div class="glass-card rounded-2xl p-4">
-                <div class="text-xs text-gray-400">Active workflow</div>
-                {% if workflow_runs %}
-                <div class="text-sm text-white mt-1">{{ workflow_runs.0.run.workflow.name }}</div>
-                <div class="text-xs text-gray-500 mt-2">Status: {{ workflow_runs.0.run.status|title }}</div>
-                {% else %}
-                <div class="text-sm text-gray-500 mt-2">No runs yet</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+        </section>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div class="lg:col-span-3 flex flex-col space-y-4">
-            <div class="glass-card rounded-2xl p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-lg font-semibold text-white">Workflows</h2>
-                        <p class="section-hint">Пошаговые сценарии задач. Создайте через Import или Builder.</p>
+        <section class="hub-panel" data-hub-panel="automation">
+            <div class="hub-grid">
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Webhooks</h2>
+                            <p>Триггеры от Zabbix и мониторинга с автозапуском.</p>
+                        </div>
+                        <div class="hub-card__actions">
+                            <button type="button" onclick="toggleWebhookForm()" class="hub-btn hub-btn-secondary">+ New</button>
+                            <button type="button" onclick="loadWebhooks()" class="hub-btn hub-btn-ghost">Refresh</button>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <button type="button" onclick="openImportModal()" class="btn-unified btn-unified-secondary text-xs">📥 Import</button>
-                        <button type="button" onclick="openTaskBuilderDirect()" class="btn-unified btn-unified-primary text-xs">🛠️ Builder</button>
+                    <div id="webhook-form" class="hub-form hidden">
+                        <div class="hub-form-row">
+                            <input id="webhook-name" class="hub-input" placeholder="Webhook name">
+                            <select id="webhook-source-preset" class="hub-select">
+                                <option value="generic">Generic</option>
+                                <option value="zabbix">Zabbix</option>
+                                <option value="email">Email</option>
+                                <option value="slack">Slack</option>
+                                <option value="jira">Jira</option>
+                                <option value="github">GitHub</option>
+                                <option value="pagerduty">PagerDuty</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="webhook-source" class="hub-input" placeholder="source (zabbix/email/slack/etc)">
+                            <select id="webhook-custom-agent" class="hub-select">
+                                <option value="">— not set —</option>
+                            </select>
+                        </div>
+                        <div class="hub-form-row">
+                            <select id="webhook-agent-type" class="hub-select">
+                                <option value="react">react</option>
+                                <option value="ralph">ralph</option>
+                                <option value="complex">complex</option>
+                                <option value="simple">simple</option>
+                            </select>
+                            <select id="webhook-execution-mode" class="hub-select">
+                                <option value="task">task</option>
+                                <option value="workflow">workflow</option>
+                            </select>
+                        </div>
+                        <div class="hub-form-row">
+                            <select id="webhook-workflow-template" class="hub-select">
+                                <option value="">LLM generate</option>
+                                <option value="remediation">Remediation</option>
+                            </select>
+                            <select id="webhook-target-server" class="hub-select">
+                                <option value="">auto by payload</option>
+                            </select>
+                        </div>
+                        <div class="hub-form-row">
+                            <select id="webhook-runtime" class="hub-select">
+                                <option value="">runtime auto</option>
+                                <option value="cursor">cursor</option>
+                                <option value="claude">claude</option>
+                                <option value="gemini">gemini</option>
+                                <option value="grok">grok</option>
+                            </select>
+                            <input id="webhook-server-field" class="hub-input" placeholder="server field (optional) e.g. host.name">
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="webhook-event-id-field" class="hub-input" placeholder="external id field (event.id/message_id)">
+                            <input id="webhook-event-name-field" class="hub-input" placeholder="event name field (trigger.name/subject)">
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="webhook-event-name" class="hub-input" placeholder="default event name (optional)">
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="webhook-title-template" class="hub-input" placeholder="{{webhook_name}}: {{event_name}}">
+                        </div>
+                        <div class="hub-form-row">
+                            <textarea id="webhook-description-template" class="hub-textarea" rows="3" placeholder="{{payload_json}}"></textarea>
+                        </div>
+                        <div id="webhook-workflow-extra" class="hidden">
+                            <div class="hub-form-row">
+                                <textarea id="webhook-verify-prompt" class="hub-textarea" rows="2" placeholder="Verify prompt (optional)"></textarea>
+                            </div>
+                            <div class="hub-form-row">
+                                <select id="webhook-skill-ids" class="hub-select" multiple></select>
+                            </div>
+                        </div>
+                        <div class="hub-help">Доступные переменные: {{webhook_name}}, {{source}}, {{received_at}}, {{event_name}}, {{payload_json}}, а также любые поля payload через {{field.path}}.</div>
+                        <label class="hub-checkbox">
+                            <input type="checkbox" id="webhook-auto-execute" checked>
+                            Auto execute
+                        </label>
+                        <div class="hub-card__actions">
+                            <button type="button" onclick="saveWebhook()" class="hub-btn hub-btn-primary">Save</button>
+                            <button type="button" onclick="cancelWebhookForm()" class="hub-btn hub-btn-ghost">Cancel</button>
+                        </div>
                     </div>
+                    <div id="webhooks-list" class="hub-list"></div>
                 </div>
-                <div class="space-y-3 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
-                    {% for workflow in workflows %}
-                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="text-sm text-white">{{ workflow.name }}</div>
-                                <div class="text-xs text-gray-400">{{ workflow.description|default:"" }}</div>
-                            </div>
-                            <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">{{ workflow.runtime|title }}</span>
-                        </div>
-                        {% if workflow.project_path %}
-                        <div class="mt-2 flex items-center gap-1 text-[10px] text-primary/70">
-                            <span>📁</span>
-                            <span>{{ workflow.project_path }}</span>
-                        </div>
-                        {% endif %}
-                        {% if workflow.target_server %}
-                        <div class="mt-1 flex items-center gap-1 text-[10px] text-green-400/70">
-                            <span>🖥️</span>
-                            <span>{{ workflow.target_server.name }}</span>
-                        </div>
-                        {% endif %}
-                        <div class="flex justify-between items-center mt-3">
-                            <div class="text-[10px] text-gray-500">{% if workflow.target_server %}Server: {{ workflow.target_server.name }}{% elif workflow.project_path %}Project: {{ workflow.project_path }}{% else %}Ready to run{% endif %}</div>
-                            <div class="flex gap-2 flex-wrap">
-                                <button type="button" onclick="editWorkflow({{ workflow.id }})" class="text-xs text-accent hover:underline" title="Edit in Builder">Edit</button>
-                                <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="text-xs text-gray-300">Script</button>
-                                <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="text-xs text-red-400">Delete</button>
-                                <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="text-xs text-primary">Run</button>
-                                {% if workflow.project_path %}<a href="{% url 'agent_hub:api_workflow_download_project' workflow.id %}" class="text-xs text-green-400 hover:underline" title="Download project as ZIP">📦 Download</a>{% endif %}
-                            </div>
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Automation controls</h2>
+                            <p>Контроль выполнения и MCP-инструментов.</p>
                         </div>
                     </div>
-                    {% empty %}
-                    <div class="empty-state py-10">
-                        <span class="material-icons-round empty-state-icon" aria-hidden="true">account_tree</span>
-                        <p class="empty-state-text">No workflows yet</p>
-                        <p class="section-hint mb-3">Create a workflow via Import, Builder, or AI generate.</p>
-                        <button type="button" onclick="openTaskBuilderDirect()" class="empty-state-btn">🛠️ Builder</button>
+                    <div class="hub-card__body">
+                        <div class="hub-callout">
+                            <div class="hub-callout__title">Подтверждение задач</div>
+                            <div class="hub-callout__text">Настрой, когда требуется approval, и поведение авто-исполнения.</div>
+                            <a href="/tasks/settings/" class="hub-btn hub-btn-ghost">Открыть настройки</a>
+                        </div>
+                        <div class="hub-divider"></div>
+                        <div class="hub-card__head" style="padding: 0;">
+                            <h3>MCP Servers</h3>
+                            <button onclick="refreshMcpServers()" class="hub-btn hub-btn-ghost">Refresh</button>
+                        </div>
+                        <div id="mcp-servers-list" class="hub-list"></div>
+                        <div id="mcp-sources" class="hub-help"></div>
                     </div>
-                    {% endfor %}
                 </div>
             </div>
+        </section>
 
-            <div class="glass-card rounded-2xl p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold text-white">Workflow runs</h2>
-                </div>
-                <div id="workflow-runs-list" class="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
-                    {% for item in workflow_runs %}
-                    <div class="bg-bg-surface/60 rounded-xl border {% if item.run.status == 'running' %}border-primary/50 running-indicator{% else %}border-white/5{% endif %} p-3 workflow-run-card" data-run-id="{{ item.run.id }}" data-status="{{ item.run.status }}">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
+        <section class="hub-panel" data-hub-panel="runs">
+            <div class="hub-grid">
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Workflow runs</h2>
+                            <p>Текущие и завершённые прогоны.</p>
+                        </div>
+                    </div>
+                    <div id="workflow-runs-list" class="hub-list">
+                        {% for item in workflow_runs %}
+                        <div class="hub-run workflow-run-card" data-run-id="{{ item.run.id }}" data-status="{{ item.run.status }}">
+                            <div class="hub-run__left">
+                                <div class="hub-run__status {{ item.run.status }}"></div>
+                                <div>
+                                    <div class="hub-row__title">{{ item.run.workflow.name }}</div>
+                                    <div class="hub-row__meta">{{ item.run.status|title }} • {{ item.progress_pct }}% • Step {{ item.run.current_step }}/{{ item.total_steps|default:0 }}</div>
+                                </div>
+                            </div>
+                            <div class="hub-row__actions">
+                                <a href="/agents/logs/?type=workflow&run_id={{ item.run.id }}" class="hub-btn hub-btn-ghost">Logs</a>
                                 {% if item.run.status == 'running' %}
-                                <svg class="w-4 h-4 text-primary spinner" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                {% elif item.run.status == 'succeeded' %}
-                                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                {% elif item.run.status == 'failed' %}
-                                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <button onclick="stopWorkflow({{ item.run.id }})" class="hub-btn hub-btn-ghost">Stop</button>
                                 {% else %}
-                                <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/></svg>
-                                {% endif %}
-                                <span class="text-sm text-white">{{ item.run.workflow.name }}</span>
-                            </div>
-                            <span class="text-xs px-2 py-0.5 rounded-full {% if item.run.status == 'running' %}bg-primary/20 text-primary{% elif item.run.status == 'succeeded' %}bg-green-500/20 text-green-400{% elif item.run.status == 'failed' %}bg-red-500/20 text-red-400{% else %}bg-white/10 text-gray-400{% endif %}">
-                                {{ item.run.status|title }}
-                            </span>
-                        </div>
-                        
-                        <div class="mt-3">
-                            <div class="flex justify-between text-[10px] text-gray-400 mb-1">
-                                <span>Step {{ item.run.current_step }} of {{ item.total_steps|default:0 }}</span>
-                                <span>{{ item.progress_pct }}%</span>
-                            </div>
-                            <div class="h-2 bg-white/5 rounded-full overflow-hidden">
-                                <div class="h-full {% if item.run.status == 'running' %}bg-primary{% elif item.run.status == 'succeeded' %}bg-green-500{% elif item.run.status == 'failed' %}bg-red-500{% else %}bg-gray-500{% endif %} transition-all duration-500" style="width: {{ item.progress_pct }}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-2 text-xs text-gray-300">
-                            <span class="text-gray-500">Current stage:</span> {{ item.current_step_title|default:"Waiting" }}
-                        </div>
-                        
-                        <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/5">
-                            <div class="flex gap-2">
-                                <a href="/agents/logs/?type=workflow&run_id={{ item.run.id }}" class="px-2 py-1 text-xs bg-primary/20 text-primary rounded hover:bg-primary/30">Logs</a>
-                                {% if item.run.status == 'running' %}
-                                <button onclick="stopWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30">Stop</button>
-                                {% else %}
-                                <button onclick="restartWorkflow({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/10 text-gray-300 rounded hover:bg-white/20">Restart</button>
-                                <button onclick="deleteWorkflowRun({{ item.run.id }})" class="px-2 py-1 text-xs bg-white/5 text-gray-500 rounded hover:bg-white/10">Delete</button>
-                                {% if item.run.workflow.project_path %}<a href="{% url 'agent_hub:api_workflow_download_project' item.run.workflow.id %}" class="px-2 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 flex items-center gap-1"><span class="material-icons-round text-xs">download</span>ZIP</a>{% endif %}
+                                <button onclick="restartWorkflow({{ item.run.id }})" class="hub-btn hub-btn-ghost">Restart</button>
+                                <button onclick="deleteWorkflowRun({{ item.run.id }})" class="hub-btn hub-btn-ghost">Delete</button>
                                 {% endif %}
                             </div>
                         </div>
+                        {% empty %}
+                        <div class="hub-empty">Запусков workflow пока нет.</div>
+                        {% endfor %}
                     </div>
-                    {% empty %}
-                    <div class="empty-state py-10">
-                        <span class="material-icons-round empty-state-icon" aria-hidden="true">play_circle_outline</span>
-                        <p class="empty-state-text">No workflow runs yet</p>
-                        <p class="section-hint mb-3">Create a workflow above and click Run.</p>
-                    </div>
-                    {% endfor %}
                 </div>
-            </div>
-        </div>
-
-        <div class="lg:col-span-2 flex flex-col space-y-4">
-            <!-- DEPRECATED: Секция "Профили" скрыта. Используйте Custom Agents (/agents/custom-agents/) -->
-            <!-- <div class="glass-card rounded-2xl p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-lg font-semibold text-white">Профили</h2>
-                        <p class="section-hint">Настройки агента (модель, рантайм). Шаблон для запуска задач.</p>
+                <div class="hub-card">
+                    <div class="hub-card__head">
+                        <div>
+                            <h2>Agent runs</h2>
+                            <p>История запусков агентов.</p>
+                        </div>
                     </div>
-                    <select id="filter-runtime" class="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200">
-                        <option value="">Все рантаймы</option>
-                        <option value="cursor">Cursor</option>
-                        <option value="ralph">Ralph Orchestrator</option>
-                    </select>
-                </div>
-                <div id="profile-list" class="grid grid-cols-1 gap-3 max-h-[34vh] overflow-y-auto custom-scrollbar pr-1">
-                    {% for profile in profiles %}
-                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
-                        <div class="flex items-start justify-between">
+                    <div class="hub-list">
+                        {% for run in recent_runs %}
+                        <div class="hub-row">
                             <div>
-                                <h3 class="font-semibold text-white text-sm">{{ profile.name }}</h3>
-                                <p class="text-xs text-gray-400">{{ profile.description|default:"No description" }}</p>
+                                <div class="hub-row__title">{{ run.input_task|truncatewords:10 }}</div>
+                                <div class="hub-row__meta">{{ run.runtime|title }} • {{ run.status|title }}</div>
                             </div>
-                            <span class="text-[10px] px-2 py-1 rounded-full bg-white/10 text-gray-300">{{ profile.get_runtime_display }}</span>
-                        </div>
-                        <div class="flex items-center gap-2 text-[10px] text-gray-500 mt-2">
-                            <span>{{ profile.get_agent_type_display }}</span>
-                            <span>•</span>
-                            <span>{{ profile.mode|title }}</span>
-                        </div>
-                        <div class="flex gap-2 mt-3">
-                            <button onclick="runProfile({{ profile.id }}, event)" class="flex-1 px-3 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs text-primary">Run</button>
-                            <button onclick="editProfile({{ profile.id }})" class="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-300">Configure</button>
-                        </div>
-                    </div>
-                    {% empty %}
-                    <div class="col-span-full empty-state py-10">
-                        <span class="material-icons-round empty-state-icon" aria-hidden="true">smart_toy</span>
-                        <p class="empty-state-text">Нет профилей агентов</p>
-                        <p class="section-hint mb-3">Создайте профиль для запуска задач.</p>
-                        <button type="button" onclick="openProfileModal()" class="empty-state-btn">
-                            <span class="material-icons-round" style="font-size:1rem;">add</span>
-                            Create profile
-                        </button>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div> -->
-
-            <div class="glass-card rounded-2xl p-4">
-                <h2 class="text-lg font-semibold text-white mb-3">Presets</h2>
-                <div class="space-y-3 max-h-[22vh] overflow-y-auto custom-scrollbar pr-1">
-                    {% for preset in presets %}
-                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-sm text-white">{{ preset.name }}</div>
-                                <div class="text-xs text-gray-400">{{ preset.description|default:"" }}</div>
-                            </div>
-                            <button onclick="usePreset('{{ preset.name|escapejs }}')" class="text-xs text-primary">Use</button>
-                        </div>
-                    </div>
-                    {% empty %}
-                    <div class="text-gray-500 text-sm">No presets found.</div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <div class="glass-card rounded-2xl p-4">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-semibold text-white">MCP Servers</h2>
-                    <button onclick="refreshMcpServers()" class="text-xs text-primary">Refresh</button>
-                </div>
-                <div id="mcp-servers-list" class="space-y-2 text-sm text-gray-300">
-                    <div class="text-gray-500 text-sm">Загрузка...</div>
-                </div>
-                <div id="mcp-sources" class="text-[10px] text-gray-500 mt-3"></div>
-            </div>
-
-            <div class="glass-card rounded-2xl p-4">
-                <h2 class="text-lg font-semibold text-white mb-3">Agent runs</h2>
-                <div class="space-y-3 max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
-                    {% for run in recent_runs %}
-                    <div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs text-gray-400">{{ run.runtime|title }} • {{ run.status|title }}</span>
-                            <span class="text-[10px] text-gray-500">{{ run.created_at }}</span>
-                        </div>
-                        <div class="text-xs text-gray-200 mt-2 line-clamp-2">{{ run.input_task }}</div>
-                        <div class="flex items-center justify-between mt-2">
-                            <div class="flex gap-3">
-                                <a href="/agents/logs/?type=run&run_id={{ run.id }}" class="text-xs text-primary">Logs</a>
-                                <button onclick="stopAgentRun({{ run.id }})" class="text-xs text-red-400">Stop</button>
-                                <button onclick="deleteAgentRun({{ run.id }})" class="text-xs text-gray-400">Delete</button>
+                            <div class="hub-row__actions">
+                                <a href="/agents/logs/?type=run&run_id={{ run.id }}" class="hub-btn hub-btn-ghost">Logs</a>
+                                {% if run.status == 'running' %}
+                                <button onclick="stopAgentRun({{ run.id }})" class="hub-btn hub-btn-ghost">Stop</button>
+                                {% endif %}
                             </div>
                         </div>
+                        {% empty %}
+                        <div class="hub-empty">Запусков агентов пока нет.</div>
+                        {% endfor %}
                     </div>
-                    {% empty %}
-                    <div class="empty-state py-6">
-                        <span class="material-icons-round empty-state-icon" aria-hidden="true">history</span>
-                        <p class="empty-state-text">No runs yet</p>
-                        <p class="section-hint mb-2">Run a profile or workflow.</p>
-                    </div>
-                    {% endfor %}
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 </div>
 
+<div id="agentEditorModal" class="hub-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-editor-title">
+    <div class="hub-modal__backdrop" onclick="closeAgentEditor()"></div>
+    <div class="hub-modal__panel agent-editor-panel">
+        <div class="hub-modal__head">
+            <h2 id="agent-editor-title" class="hub-modal__title">Новый агент</h2>
+            <button class="hub-btn hub-btn-ghost hub-btn--icon" onclick="closeAgentEditor()" aria-label="Закрыть">Закрыть</button>
+        </div>
+        <form id="agent-editor-form" class="hub-modal__body agent-editor-grid">
+            <input type="hidden" id="agent-editor-id">
+
+            <div class="agent-editor-section agent-editor-section--full hub-assist-block">
+                <h3>✨ Создать с помощью AI</h3>
+                <p class="hub-help">Опишите задачу — AI предложит имя, описание и настройки агента.</p>
+                <textarea id="agent-assist-task" class="hub-textarea" rows="2" placeholder="Например: агент для проверки диска на серверах, создание отчёта и алерт в Zabbix"></textarea>
+                <div class="hub-card__actions" style="margin-top: 8px;">
+                    <button type="button" id="btn-agent-assist" onclick="applyAssistConfig()" class="hub-btn hub-btn-secondary">Предложить настройки</button>
+                </div>
+            </div>
+
+            <div class="agent-editor-section">
+                <h3>Идентичность</h3>
+                <label class="hub-label" for="agent-editor-name">Имя агента</label>
+                <input id="agent-editor-name" class="hub-input" placeholder="Например: DevOps Navigator">
+                <label class="hub-label" for="agent-editor-description">Описание</label>
+                <input id="agent-editor-description" class="hub-input" placeholder="Коротко: зачем он нужен">
+            </div>
+
+            <div class="agent-editor-section">
+                <h3>Контекст</h3>
+                <label class="hub-label" for="agent-editor-knowledge-base">База знаний</label>
+                <textarea id="agent-editor-knowledge-base" class="hub-textarea" rows="4" placeholder="Например: стек, ссылки, ограничения, бизнес-правила"></textarea>
+            </div>
+
+            <div class="agent-editor-section agent-editor-section--full">
+                <h3>Инструкции</h3>
+                <label class="hub-label" for="agent-editor-system-prompt">Системный промпт</label>
+                <textarea id="agent-editor-system-prompt" class="hub-textarea" rows="4" placeholder="Например: всегда уточняй неопределенности, пиши структурированно"></textarea>
+                <label class="hub-label" for="agent-editor-instructions">Дополнительные инструкции</label>
+                <textarea id="agent-editor-instructions" class="hub-textarea" rows="3" placeholder="Дополнительно: формат, стиль, ограничения"></textarea>
+            </div>
+
+            <div class="agent-editor-section">
+                <h3>Исполнение</h3>
+                <div class="hub-form-row">
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-runtime">Runtime</label>
+                        <select id="agent-editor-runtime" class="hub-select">
+                            <option value="claude">claude</option>
+                            <option value="cursor">cursor</option>
+                            <option value="internal">internal</option>
+                        </select>
+                    </div>
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-model">Модель</label>
+                        <select id="agent-editor-model" class="hub-select">
+                            <option value="claude-4.5-sonnet">claude-4.5-sonnet</option>
+                            <option value="claude-4.5-opus">claude-4.5-opus</option>
+                            <option value="claude-4.5-haiku">claude-4.5-haiku</option>
+                            <option value="grok-3">grok-3</option>
+                            <option value="auto">auto</option>
+                        </select>
+                    </div>
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-orchestrator">Оркестратор</label>
+                        <select id="agent-editor-orchestrator" class="hub-select">
+                            <option value="ralph_internal">ralph_internal</option>
+                            <option value="react">react</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="hub-form-row">
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-max-iterations">Макс. итераций</label>
+                        <input id="agent-editor-max-iterations" class="hub-input" type="number" min="1" value="10" placeholder="10">
+                    </div>
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-temperature">Temperature</label>
+                        <input id="agent-editor-temperature" class="hub-input" type="number" min="0" max="1" step="0.1" value="0.7" placeholder="0.7">
+                    </div>
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-completion-promise">Completion</label>
+                        <input id="agent-editor-completion-promise" class="hub-input" value="COMPLETE" placeholder="COMPLETE">
+                    </div>
+                </div>
+            </div>
+
+            <div class="agent-editor-section">
+                <h3>Доступ к серверам</h3>
+                <label class="hub-toggle">
+                    <input type="checkbox" id="agent-editor-all-servers" checked>
+                    <span class="hub-toggle__control" aria-hidden="true"></span>
+                    <span class="hub-toggle__text">Все серверы доступны</span>
+                </label>
+                <div class="hub-help">Если выключено — выберите конкретные серверы ниже.</div>
+                <label class="hub-label" for="agent-editor-allowed-servers">Разрешённые серверы</label>
+                <input id="agent-server-search" class="hub-input" placeholder="Поиск серверов по имени, хосту или группе">
+                <div id="agent-server-groups" class="server-group-chips"></div>
+                <div id="agent-server-list" class="server-picker"></div>
+                <select id="agent-editor-allowed-servers" class="hub-select hidden" multiple></select>
+            </div>
+
+            <div class="agent-editor-section agent-editor-section--full">
+                <h3>Навыки и инструменты</h3>
+                <div class="hub-form-row">
+                    <div class="hub-field">
+                        <label class="hub-label" for="agent-editor-skills">Навыки</label>
+                        <select id="agent-editor-skills" class="hub-select" multiple></select>
+                    </div>
+                    <div class="hub-field">
+                        <label class="hub-toggle">
+                            <input type="checkbox" id="agent-editor-mcp-auto">
+                            <span class="hub-toggle__control" aria-hidden="true"></span>
+                            <span class="hub-toggle__text">MCP auto-approve</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="hub-field">
+                    <label class="hub-label">Инструменты</label>
+                    <div id="agent-editor-tools" class="hub-tools"></div>
+                </div>
+            </div>
+
+            <div class="agent-editor-actions">
+                <button type="button" class="hub-btn hub-btn-primary" onclick="saveAgent()">Сохранить агента</button>
+                <button type="button" class="hub-btn hub-btn-ghost" onclick="closeAgentEditor()">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="agentRunModal" class="hub-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-run-title">
+    <div class="hub-modal__backdrop" onclick="closeAgentRun()"></div>
+    <div class="hub-modal__panel agent-run-panel">
+        <div class="hub-modal__head">
+            <h2 id="agent-run-title" class="hub-modal__title">Запуск агента</h2>
+            <button class="hub-btn hub-btn-ghost hub-btn--icon" onclick="closeAgentRun()" aria-label="Закрыть">Закрыть</button>
+        </div>
+        <form id="agent-run-form" class="hub-modal__body agent-run-grid">
+            <div class="agent-run-section">
+                <h3>Задача</h3>
+                <div id="agent-run-name" class="agent-run-title"></div>
+                <label class="hub-label" for="agent-run-task">Описание задачи</label>
+                <textarea id="agent-run-task" class="hub-textarea" rows="6" placeholder="Опишите задачу, ожидаемый результат и ограничения"></textarea>
+                <label class="hub-toggle">
+                    <input type="checkbox" id="agent-run-auto" checked>
+                    <span class="hub-toggle__control" aria-hidden="true"></span>
+                    <span class="hub-toggle__text">Автовыполнение</span>
+                </label>
+                <div class="hub-help">Если выключено — потребуется подтверждение перед выполнением.</div>
+            </div>
+            <div class="agent-run-section">
+                <h3>Контекст запуска</h3>
+                <div class="hub-field">
+                    <label class="hub-label" for="agent-run-server">Сервер</label>
+                    <select id="agent-run-server" class="hub-select">
+                        <option value="">Без сервера / code workflow</option>
+                    {% for server in servers_data %}
+                    <option value="{{ server.id }}">{{ server.name }} ({{ server.host }})</option>
+                    {% endfor %}
+                    </select>
+                </div>
+                <div class="hub-field">
+                    <label class="hub-label" for="agent-run-project">Проект</label>
+                    <select id="agent-run-project" class="hub-select">
+                        <option value="">Проект по умолчанию</option>
+                    {% for project in projects_data %}
+                    <option value="{{ project.path }}">{{ project.name }}</option>
+                    {% endfor %}
+                    </select>
+                </div>
+                <div class="hub-field">
+                    <label class="hub-label" for="agent-run-runtime">Runtime</label>
+                    <select id="agent-run-runtime" class="hub-select">
+                        <option value="">auto</option>
+                        <option value="cursor">cursor</option>
+                        <option value="claude">claude</option>
+                        <option value="codex">codex</option>
+                        <option value="gemini">gemini</option>
+                        <option value="grok">grok</option>
+                    </select>
+                </div>
+            </div>
+            <div class="agent-run-actions">
+                <button type="button" class="hub-btn hub-btn-primary" onclick="submitAgentRun()">Запустить</button>
+                <button type="button" class="hub-btn hub-btn-ghost" onclick="closeAgentRun()">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
 <!-- MCP Tools Modal -->
 <div id="mcpToolsModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="mcpToolsTitle" aria-hidden="true">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeMcpTools()" aria-hidden="true"></div>
@@ -621,123 +2090,106 @@
 </div>
 
 <!-- Task Builder Modal (Визуальный редактор задач) -->
-<div id="taskBuilderModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="taskBuilderTitle" aria-hidden="true">
-    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeTaskBuilder()" aria-hidden="true"></div>
-    <div class="absolute inset-4 md:inset-8 lg:inset-12 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <!-- Header -->
-        <div class="flex items-center justify-between p-4 border-b border-white/10">
-            <div class="flex items-center gap-4">
-                <h2 id="taskBuilderTitle" class="text-xl font-bold text-white">🛠️ Конструктор задач</h2>
-                <span class="text-xs text-gray-400">Создание workflow с model=auto</span>
+<div id="taskBuilderModal" class="hub-modal hidden tb-modal" role="dialog" aria-modal="true" aria-labelledby="taskBuilderTitle" aria-hidden="true">
+    <div class="hub-modal__backdrop" onclick="closeTaskBuilder()" aria-hidden="true"></div>
+    <div class="hub-modal__panel tb-panel">
+        <div class="tb-header">
+            <div>
+                <h2 id="taskBuilderTitle" class="tb-title">Конструктор workflow</h2>
+                <div class="tb-sub">Соберите шаги, среду и проект. Модель назначается автоматически.</div>
             </div>
-            <div class="flex items-center gap-3">
-                <button type="button" onclick="closeTaskBuilder()" class="text-gray-400 hover:text-white" aria-label="Close Task Builder">
-                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
+            <div class="tb-header__actions">
+                <button type="button" onclick="closeTaskBuilder()" class="hub-btn hub-btn-ghost hub-btn--icon" aria-label="Закрыть">Закрыть</button>
             </div>
         </div>
-        
-        <!-- Main Content -->
-        <div class="flex-1 flex overflow-hidden">
-            <!-- Left Panel: Settings -->
-            <div class="w-80 border-r border-white/10 p-4 flex flex-col gap-4 overflow-y-auto">
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Название workflow</label>
-                    <input id="tb-workflow-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Мой Workflow">
+
+        <div class="tb-body">
+            <aside class="tb-sidebar">
+                <div class="tb-section">
+                    <div class="tb-section__title">Основное</div>
+                    <label class="hub-label" for="tb-workflow-name">Название workflow</label>
+                    <input id="tb-workflow-name" type="text" class="hub-input" placeholder="Например: Deploy & тесты">
+                    <label class="hub-label" for="tb-project-description">Описание проекта</label>
+                    <textarea id="tb-project-description" rows="4" class="hub-textarea" placeholder="Опишите проект: цели, контекст, ограничения, критерии готовности"></textarea>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Описание проекта</label>
-                    <textarea id="tb-project-description" rows="3" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Опишите проект для AI анализа..."></textarea>
+
+                <div class="tb-section tb-ai">
+                    <div class="tb-section__title">AI Анализ</div>
+                    <button type="button" id="btn-smart-analyze" onclick="openAiAnalysisModal()" class="hub-btn hub-btn-secondary">Запустить AI анализ</button>
+                    <p class="hub-help">AI прочитает описание, предложит шаги, тесты и порядок выполнения.</p>
                 </div>
-                
-                <!-- AI Assist Section -->
-                <div class="border border-accent/30 rounded-lg p-3 bg-accent/5">
-                    <button type="button" id="btn-smart-analyze" onclick="openAiAnalysisModal()" class="w-full px-3 py-2 bg-accent/20 text-accent rounded-lg text-sm border border-accent/30 hover:bg-accent/30 flex items-center justify-center gap-2 transition-all">
-                        <span>🔍</span> AI Анализ
-                    </button>
-                    <p class="text-[10px] text-gray-500 mt-2 text-center">Анализирует описание и генерирует шаги</p>
-                </div>
-                
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Рантайм</label>
-                    <select id="tb-runtime" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+
+                <div class="tb-section">
+                    <div class="tb-section__title">Параметры</div>
+                    <label class="hub-label" for="tb-runtime">Рантайм</label>
+                    <select id="tb-runtime" class="hub-select">
                         <option value="cursor" selected>Cursor CLI</option>
                         <option value="ralph">Ralph Orchestrator</option>
                     </select>
-                </div>
-                
-                <!-- Скрытое поле модели (всегда auto) -->
-                <input type="hidden" id="tb-workflow-model" value="auto">
-                
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Папка проекта</label>
-                    <select id="tb-project" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
-                        <option value="__new__">📁 New project</option>
+
+                    <input type="hidden" id="tb-workflow-model" value="auto">
+
+                    <label class="hub-label" for="tb-project">Папка проекта</label>
+                    <select id="tb-project" class="hub-select">
+                        <option value="__new__">📁 Новый проект</option>
                         {% for project in projects_data %}
                         <option value="{{ project.path }}">📂 {{ project.name }}</option>
                         {% endfor %}
                     </select>
-                </div>
-                <div id="tb-new-project-container">
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Название нового проекта</label>
-                    <input id="tb-new-project-name" type="text" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm" placeholder="Автоматически">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">Целевой сервер (SSH)</label>
-                    <select id="tb-target-server" class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm">
+
+                    <div id="tb-new-project-container">
+                        <label class="hub-label" for="tb-new-project-name">Название нового проекта</label>
+                        <input id="tb-new-project-name" type="text" class="hub-input" placeholder="Например: payments-refactor">
+                    </div>
+
+                    <label class="hub-label" for="tb-target-server">Целевой сервер (SSH)</label>
+                    <select id="tb-target-server" class="hub-select">
                         <option value="">Все серверы (агент выбирает сам)</option>
                         {% for server in servers_data %}
                         <option value="{{ server.id }}">🖥️ {{ server.name }} ({{ server.host }})</option>
                         {% endfor %}
                     </select>
-                    <p class="text-[10px] text-gray-500 mt-1">Если указан — агент будет работать только с этим сервером</p>
+                    <p class="hub-help">Если указан — агент будет работать только с этим сервером.</p>
                 </div>
-                
-                <div class="mt-auto pt-4 border-t border-white/10">
-                    <div class="text-xs text-gray-500 mb-2">Статистика</div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-400">Задач:</span>
-                        <span id="tb-tasks-count" class="text-white font-medium">0</span>
+
+                <div class="tb-section tb-stats">
+                    <div class="tb-section__title">Статистика</div>
+                    <div class="tb-stats-row">
+                        <span>Задач</span>
+                        <span id="tb-tasks-count">0</span>
                     </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-400">С тестами:</span>
-                        <span id="tb-tests-count" class="text-white font-medium">0</span>
+                    <div class="tb-stats-row">
+                        <span>С тестами</span>
+                        <span id="tb-tests-count">0</span>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Right Panel: Tasks -->
-            <div class="flex-1 flex flex-col overflow-hidden">
-                <!-- Tasks Header -->
-                <div class="p-4 border-b border-white/10 flex items-center justify-between">
-                    <div class="text-sm text-gray-400">Перетаскивайте задачи для изменения порядка</div>
-                    <button onclick="addNewTask()" class="px-3 py-1.5 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30 flex items-center gap-2">
-                        <span>+</span> Добавить задачу
-                    </button>
+            </aside>
+
+            <div class="tb-tasks">
+                <div class="tb-tasks-header">
+                    <div>
+                        <div class="tb-section__title">Задачи</div>
+                        <div class="hub-help">Перетаскивайте задачи для изменения порядка.</div>
+                    </div>
+                    <button onclick="addNewTask()" class="hub-btn hub-btn-secondary">+ Добавить</button>
                 </div>
-                
-                <!-- Tasks List -->
-                <div id="tb-tasks-container" class="flex-1 p-4 overflow-y-auto space-y-3">
-                    <!-- Tasks будут добавляться сюда динамически -->
-                    <div id="tb-empty-state" class="flex flex-col items-center justify-center h-full text-gray-500">
-                        <svg class="w-16 h-16 mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
-                        <p class="text-lg mb-2">Задач пока нет</p>
-                        <p class="text-sm text-gray-600 mb-4">Добавьте задачу вручную или используйте AI Анализ слева</p>
-                        <button onclick="addNewTask()" class="px-4 py-2 bg-primary/20 text-primary rounded-lg text-sm hover:bg-primary/30">+ Добавить задачу</button>
+
+                <div id="tb-tasks-container" class="tb-tasks-list">
+                    <div id="tb-empty-state" class="tb-empty">
+                        <div class="tb-empty__title">Задач пока нет</div>
+                        <div class="hub-help">Добавьте задачу вручную или используйте AI Анализ слева.</div>
+                        <button onclick="addNewTask()" class="hub-btn hub-btn-primary">Добавить задачу</button>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Footer -->
-        <div class="p-4 border-t border-white/10 flex justify-between items-center">
-            <button onclick="clearAllTasks()" class="px-4 py-2 text-sm text-red-400 hover:text-red-300">Очистить все</button>
-            <div class="flex gap-3">
-                <button onclick="closeTaskBuilder()" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Отмена</button>
-                <button id="btn-save-workflow" onclick="saveTaskBuilderWorkflow()" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Сохранить workflow</button>
-                <button id="btn-save-run-workflow" onclick="saveAndRunTaskBuilderWorkflow()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg">Сохранить и запустить</button>
+
+        <div class="tb-footer">
+            <button onclick="clearAllTasks()" class="hub-btn hub-btn-ghost">Очистить все</button>
+            <div class="tb-footer__actions">
+                <button onclick="closeTaskBuilder()" class="hub-btn hub-btn-ghost">Отмена</button>
+                <button id="btn-save-workflow" onclick="saveTaskBuilderWorkflow()" class="hub-btn hub-btn-secondary">Сохранить workflow</button>
+                <button id="btn-save-run-workflow" onclick="saveAndRunTaskBuilderWorkflow()" class="hub-btn hub-btn-primary">Сохранить и запустить</button>
             </div>
         </div>
     </div>
@@ -745,61 +2197,56 @@
 
 <!-- Task Template (hidden) -->
 <template id="task-card-template">
-    <div class="task-card bg-bg-base border border-white/10 rounded-xl p-4 cursor-move hover:border-primary/50 transition-all" draggable="true">
-        <div class="flex items-start gap-3">
-            <!-- Drag Handle -->
-            <div class="drag-handle text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing pt-1">
+    <div class="task-card" draggable="true">
+        <div class="task-card__head">
+            <div class="drag-handle" aria-hidden="true">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
                 </svg>
             </div>
-            
-            <!-- Task Number -->
-            <div class="task-number flex-shrink-0 w-8 h-8 rounded-lg bg-primary/20 text-primary flex items-center justify-center text-sm font-bold">1</div>
-            
-            <!-- Task Content -->
-            <div class="flex-1 space-y-3">
-                <input type="text" class="task-title w-full bg-transparent border-b border-white/10 pb-1 text-white text-sm font-medium focus:outline-none focus:border-primary" placeholder="Название задачи">
-                <textarea class="task-prompt w-full bg-bg-surface border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none" rows="2" placeholder="Описание задачи (что должен сделать агент)..."></textarea>
-                
-                <!-- Model Selection (показывается если разрешено в настройках) -->
-                <div class="task-model-section hidden">
-                    <div class="flex items-center gap-2">
-                        <label class="text-xs text-gray-500 whitespace-nowrap">Модель:</label>
-                        <select class="task-model flex-1 bg-bg-surface border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
-                            <option value="auto" selected>Auto (по умолчанию)</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <!-- Test Section -->
-                <div class="task-test-section">
-                    <button class="toggle-test-btn text-xs text-gray-400 hover:text-primary flex items-center gap-1" onclick="toggleTestSection(this)">
-                        <span class="test-icon">▶</span> Добавить тест
-                    </button>
-                    <div class="test-content hidden mt-2 p-3 bg-bg-surface/50 rounded-lg border border-white/5">
-                        <label class="block text-xs text-gray-400 mb-1">Verify step — проверка (verify_prompt)</label>
-                        <textarea class="task-verify w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none" rows="2" placeholder="Что должен вывести агент для перехода дальше (напр. &lt;promise&gt;PASS&lt;/promise&gt;). Запусти тесты если нужно." title="Verify step — шаг проверки: что должен вывести агент (например &lt;promise&gt;PASS&lt;/promise&gt;) для перехода к следующему шагу."></textarea>
-                        <div class="flex gap-4 mt-2">
-                            <div class="flex-1">
-                                <label class="block text-xs text-gray-400 mb-1">Completion Promise</label>
-                                <input type="text" class="task-promise w-full bg-bg-base border border-white/10 rounded px-2 py-1 text-white text-xs" value="STEP_DONE">
-                            </div>
-                            <div class="flex-1">
-                                <label class="block text-xs text-gray-400 mb-1">Verify Promise</label>
-                                <input type="text" class="task-verify-promise w-full bg-bg-base border border-white/10 rounded px-2 py-1 text-white text-xs" value="PASS">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div class="task-number">1</div>
+            <div class="task-card__meta">
+                <input type="text" class="task-title" placeholder="Название задачи">
+                <div class="task-card__subtitle">Шаг workflow</div>
             </div>
-            
-            <!-- Delete Button -->
-            <button class="delete-task-btn text-gray-600 hover:text-red-400 transition-colors" onclick="deleteTask(this)">
+            <button class="delete-task-btn" onclick="deleteTask(this)" aria-label="Удалить задачу">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
             </button>
+        </div>
+
+        <div class="task-card__body">
+            <textarea class="task-prompt" rows="3" placeholder="Описание задачи (что должен сделать агент)..."></textarea>
+
+            <div class="task-model-section hidden">
+                <div class="task-model-row">
+                    <label class="task-inline-label">Модель</label>
+                    <select class="task-model">
+                        <option value="auto" selected>Auto (по умолчанию)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="task-test-section">
+                <button class="toggle-test-btn" onclick="toggleTestSection(this)" type="button">
+                    <span class="test-icon">▶</span> Добавить тест
+                </button>
+                <div class="test-content hidden">
+                    <label class="task-inline-label">Verify step — проверка (verify_prompt)</label>
+                    <textarea class="task-verify" rows="2" placeholder="Что должен вывести агент для перехода дальше (напр. <promise>PASS</promise>). Запусти тесты если нужно."></textarea>
+                    <div class="task-test-grid">
+                        <div>
+                            <label class="task-inline-label">Completion Promise</label>
+                            <input type="text" class="task-promise" value="STEP_DONE">
+                        </div>
+                        <div>
+                            <label class="task-inline-label">Verify Promise</label>
+                            <input type="text" class="task-verify-promise" value="PASS">
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -811,5 +2258,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/agent_hub.js' %}"></script>
+<script src="{% static 'js/agent_hub.js' %}?v=hub-v6"></script>
 {% endblock %}

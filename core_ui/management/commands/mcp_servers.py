@@ -1,5 +1,5 @@
 """
-MCP‑сервер по stdio: инструменты servers_list и server_execute.
+MCP‑сервер по stdio: инструменты по серверам и задачам.
 Запуск: WEU_USER_ID=<id> python manage.py mcp_servers
 Подключение из оркестратора или Cursor: stdio, command ["python", "manage.py", "mcp_servers"], env WEU_USER_ID=...
 """
@@ -39,6 +39,80 @@ MCP_TOOLS = [
             "required": ["server_name_or_id", "command"],
         },
     },
+    {
+        "name": "tasks_list",
+        "description": "Список задач пользователя. Поддерживает фильтры, дедлайны, сортировку по срочности и пагинацию.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "search": {"type": "string"},
+                "include_completed": {"type": "boolean"},
+                "overdue_only": {"type": "boolean"},
+                "due_before": {"type": "string"},
+                "sort_by": {"type": "string"},
+                "offset": {"type": "integer"},
+                "limit": {"type": "integer"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "task_detail",
+        "description": "Подробности задачи по task_id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "task_create",
+        "description": "Создать новую задачу (title, description, priority, status, due_date, assignee_username).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "priority": {"type": "string"},
+                "status": {"type": "string"},
+                "due_date": {"type": "string"},
+                "assignee_username": {"type": "string"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "task_update",
+        "description": "Обновить задачу (task_id + поля: status/priority/due_date/title/description/assignee_username).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "status": {"type": "string"},
+                "priority": {"type": "string"},
+                "due_date": {"type": "string"},
+                "assignee_username": {"type": "string"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "task_delete",
+        "description": "Удалить задачу по task_id. Требует confirm=true.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer"},
+                "confirm": {"type": "boolean"},
+            },
+            "required": ["task_id", "confirm"],
+        },
+    },
 ]
 
 
@@ -66,6 +140,13 @@ def handle_tools_list(req_id):
 
 async def run_tool(name: str, arguments: dict, user_id: int):
     from app.tools.server_tools import ServersListTool, ServerExecuteTool
+    from app.tools.tasks_tools import (
+        TasksListTool,
+        TaskDetailTool,
+        TaskCreateTool,
+        TaskUpdateTool,
+        TaskDeleteTool,
+    )
     ctx = {"user_id": user_id}
     if name == "servers_list":
         t = ServersListTool()
@@ -73,6 +154,26 @@ async def run_tool(name: str, arguments: dict, user_id: int):
         return out if isinstance(out, str) else json.dumps(out)
     if name == "server_execute":
         t = ServerExecuteTool()
+        out = await t.execute(_context=ctx, **arguments)
+        return out if isinstance(out, str) else json.dumps(out)
+    if name == "tasks_list":
+        t = TasksListTool()
+        out = await t.execute(_context=ctx, **arguments)
+        return out if isinstance(out, str) else json.dumps(out)
+    if name == "task_detail":
+        t = TaskDetailTool()
+        out = await t.execute(_context=ctx, **arguments)
+        return out if isinstance(out, str) else json.dumps(out)
+    if name == "task_create":
+        t = TaskCreateTool()
+        out = await t.execute(_context=ctx, **arguments)
+        return out if isinstance(out, str) else json.dumps(out)
+    if name == "task_update":
+        t = TaskUpdateTool()
+        out = await t.execute(_context=ctx, **arguments)
+        return out if isinstance(out, str) else json.dumps(out)
+    if name == "task_delete":
+        t = TaskDeleteTool()
         out = await t.execute(_context=ctx, **arguments)
         return out if isinstance(out, str) else json.dumps(out)
     raise ValueError(f"Unknown tool: {name}")
@@ -135,7 +236,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = "MCP stdio server: servers_list, server_execute. Set WEU_USER_ID."
+    help = "MCP stdio server: servers + tasks tools. Set WEU_USER_ID."
 
     def handle(self, *args, **options):
         main()

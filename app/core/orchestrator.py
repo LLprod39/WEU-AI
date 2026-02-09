@@ -169,6 +169,10 @@ class Orchestrator:
                         tool_context["workspace_path"] = ctx.get("workspace_path")
                     elif ctx.get("workspace_path"):
                         tool_context = {"workspace_path": ctx.get("workspace_path")}
+                    if ctx.get("allowed_tools"):
+                        if tool_context is None:
+                            tool_context = {}
+                        tool_context["allowed_tools"] = ctx.get("allowed_tools")
                     
                     result = await self.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
@@ -300,9 +304,11 @@ class Orchestrator:
 
         ctx_block = ""
         exclude_tools = None
+        include_tools = None
         servers_block = ""
         
         if execution_context:
+            include_tools = execution_context.get("allowed_tools")
             conn_id = execution_context.get("connection_id")
             allowed = execution_context.get("allowed_actions", "")
             target_server = execution_context.get("server", {})
@@ -368,12 +374,15 @@ class Orchestrator:
         chat_caps = f"""
 КОНТЕКСТ ЧАТА (ДОСТУПНЫЕ ДАННЫЕ):
 {rag_line}
-- Задачи: доступны через инструменты tasks_list и task_detail (статус, описание, сроки, исполнитель).
+- Задачи: доступны через инструменты tasks_list, task_detail, task_create, task_update, task_delete (список, детали, создание, обновление и удаление).
 - Серверы: доступны через servers_list / server_execute (безопасные команды; опасные — только после подтверждения).
 - Файлы: пользователь может прикрепить файлы; при необходимости запроси файл.
 """
 
-        tools_description = self.tool_manager.get_tools_description(exclude_tools=exclude_tools)
+        tools_description = self.tool_manager.get_tools_description(
+            exclude_tools=exclude_tools,
+            include_tools=include_tools,
+        )
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
 {AGENT_SYSTEM_RULES_RU}
 {ctx_block}

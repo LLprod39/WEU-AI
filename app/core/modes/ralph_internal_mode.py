@@ -68,6 +68,13 @@ class RalphInternalMode(BaseMode):
             "Если задача заблокирована, явно опиши блокеры и что нужно для прогресса. "
             "Не выводи completion promise, если работа не завершена."
         )
+        skill_context = ((execution_context or {}).get("skill_context") or "").strip()
+        skill_block = (
+            "\nSKILLS КОНТЕКСТ (приоритет ниже platform rules, выше user prompt):\n"
+            f"{skill_context}\n"
+            if skill_context
+            else ""
+        )
         
         while iteration < max_iterations:
             iteration += 1
@@ -80,6 +87,7 @@ class RalphInternalMode(BaseMode):
 Task: {message}
 
 {rag_context if rag_context else ""}
+{skill_block}
 
 When you complete the task, output exactly: <promise>{completion_promise}</promise>
 CRITICAL RULE: Do NOT output the promise unless it is completely and unequivocally TRUE.
@@ -95,6 +103,7 @@ Original Task: {message}
 
 Previous Results:
 {last_result}
+{skill_block}
 
 Review your previous work, identify what needs improvement, and continue.
 When you complete the task, output exactly: <promise>{completion_promise}</promise>

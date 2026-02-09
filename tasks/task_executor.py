@@ -86,13 +86,12 @@ class TaskExecutor:
                 agent_task = self._prepare_agent_task(task, server)
                 
                 # Выполняем через агента
-                agent_type = task.ai_agent_type or 'react'
                 result = await self._execute_with_agent(
-                    agent_type,
                     agent_task,
                     connection_id,
                     task,
-                    execution
+                    execution,
+                    user,
                 )
                 
                 # Сохраняем результат
@@ -211,16 +210,55 @@ class TaskExecutor:
     
     async def _execute_with_agent(
         self,
-        agent_type: str,
         task_description: str,
         connection_id: str,
         task: Task,
-        execution: TaskExecution
+        execution: TaskExecution,
+        user: User,
     ) -> Dict[str, Any]:
         """Выполнение задачи через агента"""
         try:
             # Получаем агента
             agent_manager = get_agent_manager()
+            agent_name = agent_manager.resolve_agent_name(task.ai_agent_type or 'react')
+            extra_context = {}
+
+            # Если выбран кастомный агент — добавляем его инструкции как skill_context
+            custom_agent = None
+            try:
+                custom_agent = task.recommended_custom_agent
+            except Exception:
+                custom_agent = None
+
+            if custom_agent and getattr(custom_agent, "is_active", False):
+                # Проверка доступа к серверам (если ограничен)
+                allowed_servers = custom_agent.allowed_servers
+                if isinstance(allowed_servers, list) and task.target_server_id not in allowed_servers:
+                    raise Exception(
+                        f"CustomAgent '{custom_agent.name}' не имеет доступа к серверу ID {task.target_server_id}"
+                    )
+
+                # Выбор внутреннего агента по orchestrator_mode
+                mode = (custom_agent.orchestrator_mode or "react").lower()
+                if mode in ("ralph_internal", "ralph", "ralph_cli"):
+                    agent_name = agent_manager.resolve_agent_name("ralph")
+                else:
+                    agent_name = agent_manager.resolve_agent_name("react")
+
+                skill_parts = []
+                if custom_agent.system_prompt:
+                    skill_parts.append(f"РОЛЬ АГЕНТА:\n{custom_agent.system_prompt.strip()}")
+                if custom_agent.instructions:
+                    skill_parts.append(f"ИНСТРУКЦИИ:\n{custom_agent.instructions.strip()}")
+                if custom_agent.knowledge_base:
+                    skill_parts.append(f"БАЗА ЗНАНИЙ:\n{custom_agent.knowledge_base.strip()}")
+                if custom_agent.allowed_tools:
+                    tools_str = ", ".join(custom_agent.allowed_tools) if isinstance(custom_agent.allowed_tools, list) else str(custom_agent.allowed_tools)
+                    skill_parts.append(f"РАЗРЕШЁННЫЕ ИНСТРУМЕНТЫ:\n{tools_str}")
+                    if isinstance(custom_agent.allowed_tools, list) and custom_agent.allowed_tools:
+                        extra_context["allowed_tools"] = custom_agent.allowed_tools
+                if skill_parts:
+                    extra_context["skill_context"] = "\n\n".join(skill_parts)
             
             # Контекст для агента
             context = {
@@ -234,13 +272,14 @@ class TaskExecutor:
                 'user_id': user.id,
                 'allowed_actions': 'выполнение команд на сервере',
             }
+            context.update(extra_context)
             
             logger.info(f"Agent context: connection_id={connection_id}, server={context['server']}")
             logger.info(f"=== EXECUTING AGENT ===")
             
             # Выполняем через агента
             result = await agent_manager.execute_agent(
-                agent_type,
+                agent_name,
                 task_description,
                 context
             )

@@ -35,12 +35,23 @@ _DEFAULT_ALLOWED = [
     "weuai.site",
     "www.weuai.site",
     "188.137.241.228",
+    "8c56-46-42-238-129.ngrok-free.app",
+    ".ngrok-free.app",  # любой поддомен ngrok (смена URL при рестарте)
 ]
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.getenv("ALLOWED_HOSTS", "").split(",")
     if h.strip()
 ] or _DEFAULT_ALLOWED
+
+# Истоки для CSRF при доступе через ngrok (Django не поддерживает wildcard в этой настройке)
+CSRF_TRUSTED_ORIGINS = [
+    "https://8c56-46-42-238-129.ngrok-free.app",
+    "http://8c56-46-42-238-129.ngrok-free.app",
+]
+_for_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "").strip()
+if _for_origins:
+    CSRF_TRUSTED_ORIGINS.extend(o.strip() for o in _for_origins.split(",") if o.strip())
 
 
 # Application definition
@@ -53,6 +64,7 @@ INSTALLED_APPS = [
     'passwords',
     'servers',
     'agent_hub',
+    'skills',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -65,6 +77,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
+    'core_ui.middleware.CsrfTrustNgrokMiddleware',  # до CSRF: доверяет ngrok-домены
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -263,6 +276,10 @@ def _parse_cursor_cli_extra_env():
 
 CURSOR_CLI_EXTRA_ENV = _parse_cursor_cli_extra_env()
 
+# Skills context composition
+SKILLS_GLOBAL_RULES = os.getenv("SKILLS_GLOBAL_RULES", "").strip()
+SKILLS_MAX_CONTEXT_CHARS = int(os.getenv("SKILLS_MAX_CONTEXT_CHARS", "24000"))
+
 # CLI runtime configuration for external agents
 def _cli_command(env_var: str, default_name: str) -> str:
     return os.getenv(env_var) or shutil.which(default_name) or default_name
@@ -345,6 +362,16 @@ CLI_RUNTIME_CONFIG = {
         ],
         "timeout_seconds": 1800,  # 30 РјРёРЅСѓС‚ РґР»СЏ РіР»СѓР±РѕРєРёС… РѕРїРµСЂР°С†РёР№
     },
+    # Codex (OpenAI): codex exec для headless, требует CODEX_API_KEY или OPENAI_API_KEY
+    # Документация: https://developers.openai.com/codex
+    "codex": {
+        "command": _cli_command("CODEX_CLI_PATH", "codex"),
+        # --skip-git-repo-check: для пустых/новых папок (Codex по умолчанию требует git)
+        "args": ["exec", "--full-auto", "--cd", "{workspace}", "--skip-git-repo-check"],
+        "prompt_style": "positional",
+        "allowed_args": ["model", "sandbox"],
+        "timeout_seconds": 1800,
+    },
 }
 
 # Default primary key field type
@@ -387,4 +414,3 @@ CELERY_TASK_ROUTES = {
     "tasks.tasks.run_workflow_async": {"queue": "workflows"},
     "agent_hub.tasks.*": {"queue": "agents"},
 }
-

@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+from . import automation as automation_views
+from . import webhooks as webhook_views
 
 app_name = "agent_hub"
 
@@ -59,4 +61,9 @@ urlpatterns = [
     path("api/custom-agents/", views.api_custom_agents_list, name="api_custom_agents_list"),
     path("api/custom-agents/<int:agent_id>/", views.api_custom_agent_detail, name="api_custom_agent_detail"),
     path("api/custom-agents/<int:agent_id>/export/", views.api_custom_agent_export, name="api_custom_agent_export"),
+    path("api/custom-agents/run/", automation_views.api_custom_agent_run, name="api_custom_agent_run"),
+    # Webhooks
+    path("api/webhooks/", webhook_views.api_webhooks_list, name="api_webhooks_list"),
+    path("api/webhooks/<int:webhook_id>/", webhook_views.api_webhook_detail, name="api_webhook_detail"),
+    path("api/webhooks/receive/<str:secret>/", webhook_views.api_webhook_receive, name="api_webhook_receive"),
 ]

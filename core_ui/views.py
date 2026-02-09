@@ -539,6 +539,38 @@ def _load_session(user_id, chat_id):
     return ChatSession.objects.filter(user_id=user_id, id=chat_id).select_related().first()
 
 
+def _load_task_context_for_user(user_id: int, task_id) -> dict:
+    """Sync helper: safe task context for chat prompts."""
+    try:
+        task_id = int(task_id)
+    except (TypeError, ValueError):
+        return {}
+
+    if not user_id or not task_id:
+        return {}
+
+    from django.contrib.auth.models import User
+    from tasks.models import Task
+    from app.services.permissions import PermissionService
+
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return {}
+    task = Task.objects.filter(id=task_id).select_related("assignee", "created_by").first()
+    if not task or not PermissionService.can_view_task(user, task):
+        return {}
+
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": (task.description or "")[:1000],
+        "status": task.status,
+        "priority": getattr(task, "priority", "MEDIUM"),
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "assignee": task.assignee.username if task.assignee else None,
+    }
+
+
 @sync_to_async
 def _get_server_names_for_user(user_id: int):
     """Синхронный запрос к ORM — вызывать только через sync_to_async из async-контекста."""
@@ -710,6 +742,7 @@ async def chat_api(request):
         specific_model = data.get('specific_model')
         use_rag = data.get('use_rag', True)
         chat_id = data.get('chat_id')
+        task_context_id = data.get('task_context_id')
         workspace_param = data.get('workspace', '').strip()  # Для IDE: имя проекта или относительный путь
 
         if not user_message:
@@ -727,6 +760,9 @@ async def chat_api(request):
             session = await asyncio.to_thread(_load_session, user_id, chat_id)
             if session:
                 initial_history = await asyncio.to_thread(_chat_history_from_session, session)
+        task_context = {}
+        if task_context_id and user_id:
+            task_context = await asyncio.to_thread(_load_task_context_for_user, user_id, task_context_id)
 
         async def event_stream():
             nonlocal session
@@ -767,7 +803,19 @@ async def chat_api(request):
                     cursor_approve_mcps = getattr(model_manager.config, "cursor_approve_mcps", False)
                     # Добавляем контекст серверов пользователя в промпт для Cursor CLI
                     servers_ctx = await asyncio.to_thread(_get_servers_context_for_prompt, user_id) if user_id else ""
-                    prompt_with_servers = (servers_ctx + "\n\n" + user_message) if servers_ctx else user_message
+                    task_ctx_prompt = ""
+                    if task_context:
+                        task_ctx_prompt = (
+                            "TASK CONTEXT:\n"
+                            f"- id: {task_context.get('id')}\n"
+                            f"- title: {task_context.get('title')}\n"
+                            f"- status: {task_context.get('status')}\n"
+                            f"- priority: {task_context.get('priority')}\n"
+                            f"- due_date: {task_context.get('due_date')}\n"
+                            f"- description: {task_context.get('description')}\n"
+                            "If user asks about 'this task', refer to this context instead of listing all tasks.\n\n"
+                        )
+                    prompt_with_servers = (servers_ctx + "\n\n" + task_ctx_prompt + user_message) if (servers_ctx or task_ctx_prompt) else user_message
                     if created_session_id is not None:
                         yield f"CHAT_ID:{created_session_id}\n"
                     async for chunk in _stream_cursor_cli(
@@ -813,6 +861,8 @@ async def chat_api(request):
                 execution_context = {}
                 if user_id:
                     execution_context["user_id"] = user_id
+                if task_context:
+                    execution_context["task_context"] = task_context
                 if workspace_path:
                     execution_context["workspace_path"] = workspace_path
                     execution_context["from_ide"] = True
@@ -1156,6 +1206,7 @@ def api_settings(request):
                     'grok_set': bool(os.getenv('GROK_API_KEY')),
                     'anthropic_set': bool(os.getenv('ANTHROPIC_API_KEY')),
                     'cursor_set': bool(os.getenv('CURSOR_API_KEY')),
+                    'codex_set': bool(os.getenv('CODEX_API_KEY') or os.getenv('OPENAI_API_KEY')),
                 },
                 'providers': registry.get_all_providers(),
             })

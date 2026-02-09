@@ -8,6 +8,7 @@ import json
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from loguru import logger
 from app.core.modes.base import BaseMode
+from app.core.task_board import build_task_board_payload
 
 
 class ReActMode(BaseMode):
@@ -69,6 +70,7 @@ class ReActMode(BaseMode):
         final_answer = ""
         max_iterations = 7  # Increased for better reasoning
         tool_calls_made = []  # Track tool usage
+        task_board_payload: Optional[Dict[str, Any]] = None
         
         while iteration < max_iterations:
             iteration += 1
@@ -109,12 +111,21 @@ class ReActMode(BaseMode):
                         tool_context["workspace_path"] = ctx.get("workspace_path")
                     elif ctx.get("workspace_path"):
                         tool_context = {"workspace_path": ctx.get("workspace_path")}
+                    if ctx.get("allowed_tools"):
+                        if tool_context is None:
+                            tool_context = {}
+                        tool_context["allowed_tools"] = ctx.get("allowed_tools")
                     
                     result = await self.orchestrator.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
                     )
 
                     result_str = self.orchestrator._format_tool_result(result)
+
+                    if tool_name in ("tasks_list", "task_detail"):
+                        payload = build_task_board_payload(tool_name, result_str, query=message)
+                        if payload:
+                            task_board_payload = payload
 
                     # Track tool usage for verification
                     tool_calls_made.append({
@@ -253,6 +264,13 @@ class ReActMode(BaseMode):
                     task_id = m.group(1)
                     return f"**[#{task_id}](task:{task_id})**"
                 final_answer = re.sub(r'(?<!\[)#(\d+)(?!\])', make_task_link, final_answer)
+
+        if task_board_payload:
+            payload_json = json.dumps(task_board_payload, ensure_ascii=False, separators=(",", ":"))
+            if final_answer.strip():
+                final_answer = f"{final_answer.rstrip()}\n\nWEU_TASKS_JSON:{payload_json}"
+            else:
+                final_answer = f"WEU_TASKS_JSON:{payload_json}"
 
         # Stream final answer
         yield final_answer

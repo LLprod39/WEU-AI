@@ -5,67 +5,112 @@
      draggable="true"
      onclick="openDetailModal({{ task.id }})">
 
-    <div class="task-header">
+    <!-- Priority indicator line -->
+    <div class="task-priority-line"></div>
+
+    <!-- Card content -->
+    <div class="task-content">
+        <!-- Header: Key + Actions -->
+        <div class="task-header">
+            {% if task.task_key %}
+            <span class="task-key">{{ task.task_key }}</span>
+            {% else %}
+            <span class="task-key">#{{ task.id }}</span>
+            {% endif %}
+
+            <div class="task-actions" onclick="event.stopPropagation()">
+                <a href="/chat/?task_id={{ task.id }}" class="task-action-btn" title="Discuss with AI">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </a>
+                <button class="task-action-btn delete" onclick="event.preventDefault(); deleteTask({{ task.id }})" title="Delete">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Title -->
         <h3 class="task-title">{{ task.title }}</h3>
-        <div class="task-actions" onclick="event.stopPropagation()">
-            <a href="/chat/?task_id={{ task.id }}" class="task-action" title="Discuss">
-                <span class="material-icons-round" style="font-size: 16px;">chat</span>
-            </a>
-            <a href="{% url 'tasks:task_delete' task.id %}" class="task-action delete" title="Delete"
-               onclick="return confirm('Delete this task?')">
-                <span class="material-icons-round" style="font-size: 16px;">delete</span>
-            </a>
+
+        <!-- Badges row -->
+        <div class="task-badges">
+            {% if task.sprint %}
+            <span class="task-badge sprint">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {{ task.sprint.name|truncatechars:12 }}
+            </span>
+            {% endif %}
+
+            {% if task.target_server %}
+            <span class="task-badge server">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+                {{ task.target_server.name|truncatechars:10 }}
+            </span>
+            {% endif %}
+
+            {% if task.due_date %}
+            <span class="task-badge due {% if task.is_overdue %}overdue{% endif %}">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                {{ task.due_date|date:"M d" }}
+            </span>
+            {% endif %}
+
+            {% if task.assigned_to_ai %}
+            <span class="task-badge ai {% if task.ai_execution_status == 'EXECUTING' %}executing{% endif %}">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5A2.5 2.5 0 0 0 7.5 18a2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 2.5-2.5a2.5 2.5 0 0 0-2.5-2.5z"/>
+                </svg>
+                {% if task.ai_execution_status == 'EXECUTING' %}Running{% elif task.ai_execution_status == 'COMPLETED' %}Done{% else %}AI{% endif %}
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- Labels -->
+        {% if task.label_relations.all %}
+        <div class="task-labels">
+            {% for rel in task.label_relations.all %}
+            <span class="task-label" style="--label-color: {{ rel.label.color }};">
+                {{ rel.label.name }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Footer: Progress + Assignee -->
+        <div class="task-footer">
+            {% if task.subtasks.exists %}
+            <div class="task-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ task.get_progress_percentage }}%;"></div>
+                </div>
+                <span class="progress-text">{{ task.completed_subtasks_count }}/{{ task.subtasks.count }}</span>
+            </div>
+            {% else %}
+            <div class="task-progress-placeholder"></div>
+            {% endif %}
+
+            {% if task.assignee %}
+            <div class="task-assignee" title="{{ task.assignee.username }}">
+                {{ task.assignee.username|slice:":1"|upper }}
+            </div>
+            {% endif %}
         </div>
     </div>
-
-    <div class="task-meta">
-        {% if task.target_server %}
-        <span class="task-badge server">
-            <span class="material-icons-round" style="font-size: 12px;">dns</span>
-            {{ task.target_server.name }}
-        </span>
-        {% endif %}
-
-        {% if task.due_date %}
-        <span class="task-badge due {% if task.is_overdue %}overdue{% endif %}">
-            <span class="material-icons-round" style="font-size: 12px;">schedule</span>
-            {{ task.due_date|date:"d M" }}
-        </span>
-        {% endif %}
-
-        {% if task.estimated_duration_hours %}
-        <span class="task-badge time">
-            <span class="material-icons-round" style="font-size: 12px;">timer</span>
-            {{ task.estimated_duration_hours }}h
-        </span>
-        {% endif %}
-
-        {% if task.assigned_to_ai %}
-        <span class="task-badge ai-status {% if task.ai_execution_status == 'EXECUTING' %}executing{% endif %}">
-            <span class="material-icons-round" style="font-size: 12px;">smart_toy</span>
-            {% if task.ai_execution_status == 'EXECUTING' %}Running{% elif task.ai_execution_status == 'COMPLETED' %}Done{% else %}AI{% endif %}
-        </span>
-        {% endif %}
-    </div>
-
-    {% if task.label_relations.all %}
-    <div class="task-labels">
-        {% for rel in task.label_relations.all %}
-        <span class="task-label" style="background: {{ rel.label.color }}22; color: {{ rel.label.color }};">
-            {{ rel.label.name }}
-        </span>
-        {% endfor %}
-    </div>
-    {% endif %}
-
-    {% with progress=task.get_progress_percentage %}
-    {% if task.subtasks.exists %}
-    <div class="task-progress">
-        <div class="task-progress-bar" style="width: {{ progress }}%"></div>
-    </div>
-    <div class="task-progress-text">
-        {{ task.subtasks.filter.is_completed|length|default:0 }}/{{ task.subtasks.count }} subtasks
-    </div>
-    {% endif %}
-    {% endwith %}
 </div>

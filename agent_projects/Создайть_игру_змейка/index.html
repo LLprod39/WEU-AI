@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Змейка</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #050d14;
+      --bg-mid: #0b1d2a;
+      --bg-glow: #163647;
+      --surface: rgba(10, 22, 31, 0.72);
+      --surface-border: rgba(114, 226, 255, 0.24);
+      --text-main: #ecf8ff;
+      --text-soft: #8db6c7;
+      --accent-cyan: #6bf2ff;
+      --accent-orange: #ff9d5c;
+      --accent-green: #57ec9c;
+      --font-display: "Chakra Petch", "Trebuchet MS", sans-serif;
+      --font-body: "Manrope", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: clamp(14px, 2vw, 30px);
+      font-family: var(--font-body);
+      color: var(--text-main);
+      background:
+        radial-gradient(circle at 12% 14%, #1c4159 0%, transparent 45%),
+        radial-gradient(circle at 88% 84%, #233036 0%, transparent 40%),
+        linear-gradient(150deg, var(--bg-deep), #071521 44%, var(--bg-mid));
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(0.2px);
+    }
+
+    body::before {
+      inset: 0;
+      background-image: linear-gradient(rgba(107, 242, 255, 0.05) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(107, 242, 255, 0.04) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at center, black 35%, transparent 80%);
+    }
+
+    body::after {
+      width: 360px;
+      height: 360px;
+      left: -90px;
+      top: -120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 157, 92, 0.42), transparent 70%);
+    }
+
+    .app {
+      width: min(1080px, 100%);
+      display: grid;
+      gap: clamp(14px, 2vw, 22px);
+      position: relative;
+      z-index: 1;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(16px);
+      animation: reveal 0.72s cubic-bezier(0.2, 0.78, 0.25, 1) forwards;
+    }
+
+    .reveal:nth-of-type(2) {
+      animation-delay: 0.1s;
+    }
+
+    .reveal:nth-of-type(3) {
+      animation-delay: 0.2s;
+    }
+
+    @keyframes reveal {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hud {
+      display: grid;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 18px;
+      padding: clamp(14px, 2vw, 20px);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+    }
+
+    .kicker {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.21em;
+      color: var(--text-soft);
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      letter-spacing: 0.03em;
+      font-size: clamp(1.85rem, 4vw, 2.65rem);
+      line-height: 1.05;
+      color: #d6fbff;
+      text-shadow: 0 0 18px rgba(107, 242, 255, 0.32);
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .stat {
+      min-width: 118px;
+      border-radius: 12px;
+      border: 1px solid rgba(115, 199, 228, 0.28);
+      background: linear-gradient(150deg, rgba(13, 31, 44, 0.85), rgba(11, 25, 36, 0.65));
+      padding: 9px 12px;
+      display: grid;
+      gap: 2px;
+    }
+
+    .stat span {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-soft);
+    }
+
+    .stat strong {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .hint {
+      color: #9bc8d8;
+      font-size: 0.93rem;
+    }
+
+    .stage {
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(13, 30, 42, 0.94), rgba(8, 17, 25, 0.96));
+      border: 1px solid rgba(114, 226, 255, 0.32);
+      box-shadow: 0 24px 58px rgba(0, 0, 0, 0.42);
+      aspect-ratio: 3 / 2;
+      min-height: 360px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 12px;
+      text-align: center;
+      background: radial-gradient(circle at center, rgba(8, 21, 31, 0.48), rgba(3, 9, 15, 0.9));
+      transition: opacity 0.24s ease, visibility 0.24s ease;
+      padding: 18px;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .overlay h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      letter-spacing: 0.04em;
+    }
+
+    .overlay p {
+      color: #b2d3e0;
+      max-width: 42ch;
+      margin-inline: auto;
+    }
+
+    button {
+      border: none;
+      border-radius: 11px;
+      padding: 0.72rem 1.42rem;
+      font: 700 0.95rem var(--font-display);
+      letter-spacing: 0.04em;
+      color: #121214;
+      background: linear-gradient(140deg, var(--accent-orange), #ffc66b);
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+      box-shadow: 0 10px 28px rgba(255, 157, 92, 0.33);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.04);
+      box-shadow: 0 14px 30px rgba(255, 157, 92, 0.48);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .mobile-controls {
+      width: min(280px, 100%);
+      margin-inline: auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .mobile-controls .ghost {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .mobile-controls button {
+      width: 100%;
+      padding: 12px 0;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      color: #e6f8ff;
+      background: linear-gradient(180deg, rgba(20, 58, 76, 0.95), rgba(10, 34, 45, 0.96));
+      border: 1px solid rgba(107, 242, 255, 0.3);
+      box-shadow: none;
+    }
+
+    .mobile-controls button:hover {
+      box-shadow: none;
+    }
+
+    @media (min-width: 900px) {
+      .mobile-controls {
+        width: 230px;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .hint {
+        font-size: 0.85rem;
+      }
+
+      .stage {
+        min-height: 320px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="hud reveal">
+      <p class="kicker">Аркада в объеме</p>
+      <h1>3D Змейка</h1>
+      <div class="stats">
+        <div class="stat">
+          <span>Счет</span>
+          <strong id="score">0</strong>
+        </div>
+        <div class="stat">
+          <span>Рекорд</span>
+          <strong id="best">0</strong>
+        </div>
+        <div class="stat">
+          <span>Скорость</span>
+          <strong id="speed">1.0x</strong>
+        </div>
+      </div>
+      <p class="hint">Клавиши: стрелки/WASD. На телефоне: свайп по полю или кнопки ниже.</p>
+    </header>
+
+    <section class="stage reveal">
+      <canvas id="gameCanvas" width="960" height="640" aria-label="3D поле игры Змейка"></canvas>
+
+      <div id="startOverlay" class="overlay">
+        <h2>Готов к запуску</h2>
+        <p>Собирай энерго-кубы, уклоняйся от стен и не врезайся в собственный хвост.</p>
+        <button id="startBtn" type="button">Начать игру</button>
+      </div>
+
+      <div id="gameOverOverlay" class="overlay hidden">
+        <h2>Игра окончена</h2>
+        <p id="finalScore">Счет: 0</p>
+        <button id="restartBtn" type="button">Играть снова</button>
+      </div>
+    </section>
+
+    <section class="mobile-controls reveal" aria-label="Управление">
+      <span class="ghost">.</span>
+      <button data-dir="up" type="button" aria-label="Вверх">▲</button>
+      <span class="ghost">.</span>
+      <button data-dir="left" type="button" aria-label="Влево">◀</button>
+      <button data-dir="down" type="button" aria-label="Вниз">▼</button>
+      <button data-dir="right" type="button" aria-label="Вправо">▶</button>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const startOverlay = document.getElementById("startOverlay");
+      const gameOverOverlay = document.getElementById("gameOverOverlay");
+      const startBtn = document.getElementById("startBtn");
+      const restartBtn = document.getElementById("restartBtn");
+      const scoreEl = document.getElementById("score");
+      const bestEl = document.getElementById("best");
+      const speedEl = document.getElementById("speed");
+      const finalScoreEl = document.getElementById("finalScore");
+
+      const GRID_SIZE = 16;
+      const BOARD_THICKNESS = 0.34;
+      const SNAKE_HEIGHT = 0.86;
+      const FOOD_HEIGHT = 0.88;
+      const BASE_TICK = 172;
+      const MIN_TICK = 82;
+      const SPEED_STEP = 4;
+      const STORAGE_KEY = "snake3dBest";
+
+      let snake = [];
+      let direction = { x: 1, y: 0 };
+      let queuedDirection = null;
+      let food = { x: 0, y: 0 };
+      let score = 0;
+      let best = Number.parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10) || 0;
+      let tickDelay = BASE_TICK;
+      let gameState = "idle";
+      let accumulator = 0;
+      let lastFrame = 0;
+      let flashUntil = 0;
+      let cssWidth = 0;
+      let cssHeight = 0;
+      let pointerStart = null;
+
+      const view = {
+        tileW: 34,
+        tileH: 18,
+        originX: 0,
+        originY: 0
+      };
+
+      const stars = Array.from({ length: 74 }, () => ({
+        x: Math.random(),
+        y: Math.random(),
+        size: 0.5 + Math.random() * 1.8,
+        speed: 0.5 + Math.random() * 1.6,
+        phase: Math.random() * Math.PI * 2
+      }));
+
+      const dirByName = {
+        up: { x: 0, y: -1 },
+        down: { x: 0, y: 1 },
+        left: { x: -1, y: 0 },
+        right: { x: 1, y: 0 }
+      };
+
+      function updateProjection() {
+        const fieldSize = Math.min(cssWidth, cssHeight);
+        view.tileW = Math.max(18, fieldSize / (GRID_SIZE + 4));
+        view.tileH = view.tileW * 0.52;
+        view.originX = cssWidth * 0.5;
+        view.originY = cssHeight * 0.16;
+      }
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        cssWidth = Math.max(300, Math.floor(rect.width));
+        cssHeight = Math.max(300, Math.floor(rect.height));
+        canvas.width = Math.floor(cssWidth * dpr);
+        canvas.height = Math.floor(cssHeight * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        updateProjection();
+      }
+
+      function updateHud() {
+        scoreEl.textContent = String(score);
+        bestEl.textContent = String(best);
+        speedEl.textContent = `${(BASE_TICK / tickDelay).toFixed(1)}x`;
+      }
+
+      function project(x, y, z) {
+        return {
+          x: view.originX + (x - y) * view.tileW * 0.5,
+          y: view.originY + (x + y) * view.tileH * 0.5 - z * view.tileH
+        };
+      }
+
+      function drawPolygon(points, fill, stroke) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i += 1) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        if (fill) {
+          ctx.fillStyle = fill;
+          ctx.fill();
+        }
+        if (stroke) {
+          ctx.strokeStyle = stroke;
+          ctx.stroke();
+        }
+      }
+
+      function drawPrism(x, y, w, d, z, h, palette) {
+        const topNW = project(x, y, z + h);
+        const topNE = project(x + w, y, z + h);
+        const topSE = project(x + w, y + d, z + h);
+        const topSW = project(x, y + d, z + h);
+
+        const botNE = project(x + w, y, z);
+        const botSE = project(x + w, y + d, z);
+        const botSW = project(x, y + d, z);
+
+        drawPolygon([topNE, botNE, botSE, topSE], palette.right, palette.rightStroke || null);
+        drawPolygon([topSW, topSE, botSE, botSW], palette.left, palette.leftStroke || null);
+        drawPolygon([topNW, topNE, topSE, topSW], palette.top, palette.topStroke || null);
+      }
+
+      function drawBackground(ts) {
+        const sky = ctx.createLinearGradient(0, 0, 0, cssHeight);
+        sky.addColorStop(0, "#08131d");
+        sky.addColorStop(0.58, "#0d1e2a");
+        sky.addColorStop(1, "#061018");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+        const glow = ctx.createRadialGradient(cssWidth * 0.5, cssHeight * 0.34, 20, cssWidth * 0.5, cssHeight * 0.34, cssWidth * 0.45);
+        glow.addColorStop(0, "rgba(94, 228, 255, 0.12)");
+        glow.addColorStop(1, "rgba(94, 228, 255, 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+        stars.forEach((star) => {
+          const pulse = 0.26 + 0.54 * (0.5 + 0.5 * Math.sin(ts * 0.0011 * star.speed + star.phase));
+          ctx.fillStyle = `rgba(172, 228, 245, ${pulse})`;
+          ctx.beginPath();
+          ctx.arc(star.x * cssWidth, star.y * cssHeight * 0.72, star.size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      function drawBoard(ts) {
+        const pulse = 0.6 + 0.4 * Math.sin(ts * 0.0016);
+        drawPrism(0, 0, GRID_SIZE, GRID_SIZE, -BOARD_THICKNESS, BOARD_THICKNESS, {
+          top: `rgba(15, 44, 58, ${0.92 + pulse * 0.02})`,
+          right: "rgba(9, 24, 34, 0.92)",
+          left: "rgba(7, 19, 27, 0.92)",
+          topStroke: "rgba(98, 230, 255, 0.12)"
+        });
+
+        for (let y = 0; y < GRID_SIZE; y += 1) {
+          for (let x = 0; x < GRID_SIZE; x += 1) {
+            const tone = (x + y) % 2 === 0 ? "rgba(106, 198, 224, 0.11)" : "rgba(37, 112, 136, 0.16)";
+            const tile = [
+              project(x, y, 0.001),
+              project(x + 1, y, 0.001),
+              project(x + 1, y + 1, 0.001),
+              project(x, y + 1, 0.001)
+            ];
+            drawPolygon(tile, tone, "rgba(86, 182, 208, 0.06)");
+          }
+        }
+      }
+
+      function drawShadow(cellX, cellY, alpha, spread) {
+        const size = spread || 0.34;
+        const shape = [
+          project(cellX + 0.5 - size, cellY + 0.5 - size, 0.004),
+          project(cellX + 0.5 + size, cellY + 0.5 - size, 0.004),
+          project(cellX + 0.5 + size, cellY + 0.5 + size, 0.004),
+          project(cellX + 0.5 - size, cellY + 0.5 + size, 0.004)
+        ];
+        drawPolygon(shape, `rgba(0, 0, 0, ${alpha})`, null);
+      }
+
+      function drawSnakeSegment(index, ts) {
+        const part = snake[index];
+        if (!part) {
+          return;
+        }
+
+        const ratio = index / Math.max(1, snake.length - 1);
+        const isHead = index === 0;
+        const hue = 152 - ratio * 24;
+        const sat = 76 - ratio * 16;
+        const light = 56 - ratio * 14;
+        const lift = isHead ? 0.02 * Math.sin(ts * 0.01) : 0;
+
+        const palette = isHead
+          ? {
+              top: "hsl(150 94% 66%)",
+              right: "hsl(150 73% 45%)",
+              left: "hsl(154 68% 36%)",
+              topStroke: "rgba(160, 255, 203, 0.44)"
+            }
+          : {
+              top: `hsl(${hue} ${sat}% ${light}%)`,
+              right: `hsl(${hue} ${Math.max(40, sat - 18)}% ${Math.max(22, light - 15)}%)`,
+              left: `hsl(${hue + 3} ${Math.max(34, sat - 24)}% ${Math.max(18, light - 20)}%)`
+            };
+
+        drawShadow(part.x, part.y, isHead ? 0.22 : 0.16, isHead ? 0.38 : 0.34);
+        drawPrism(part.x + 0.07, part.y + 0.07, 0.86, 0.86, 0, SNAKE_HEIGHT + lift, palette);
+
+        if (isHead) {
+          const mark = project(part.x + 0.5, part.y + 0.5, SNAKE_HEIGHT + 0.14);
+          const sparkle = project(part.x + 0.42, part.y + 0.42, SNAKE_HEIGHT + 0.18);
+          ctx.fillStyle = "rgba(7, 34, 20, 0.62)";
+          ctx.beginPath();
+          ctx.arc(mark.x, mark.y, Math.max(2, view.tileW * 0.075), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(224, 255, 236, 0.75)";
+          ctx.beginPath();
+          ctx.arc(sparkle.x, sparkle.y, Math.max(1.5, view.tileW * 0.03), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawFood(ts) {
+        const bob = 0.08 + 0.06 * Math.sin(ts * 0.0065);
+        drawShadow(food.x, food.y, 0.2, 0.32);
+        drawPrism(food.x + 0.18, food.y + 0.18, 0.64, 0.64, 0, FOOD_HEIGHT + bob, {
+          top: "hsl(18 97% 64%)",
+          right: "hsl(18 82% 48%)",
+          left: "hsl(10 72% 39%)",
+          topStroke: "rgba(255, 224, 192, 0.42)"
+        });
+
+        const spark = project(food.x + 0.5, food.y + 0.5, FOOD_HEIGHT + bob + 0.16);
+        const radius = 2.4 + 1.2 * Math.sin(ts * 0.008);
+        ctx.strokeStyle = "rgba(255, 196, 148, 0.62)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(spark.x, spark.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      function drawActors(ts) {
+        const queue = snake.map((part, index) => ({
+          type: "snake",
+          x: part.x,
+          y: part.y,
+          index
+        }));
+        queue.push({ type: "food", x: food.x, y: food.y });
+        queue.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.y - b.y);
+
+        queue.forEach((item) => {
+          if (item.type === "food") {
+            drawFood(ts);
+          } else {
+            drawSnakeSegment(item.index, ts);
+          }
+        });
+      }
+
+      function render(ts) {
+        drawBackground(ts);
+        drawBoard(ts);
+        drawActors(ts);
+
+        if (ts < flashUntil) {
+          const alpha = (flashUntil - ts) / 280;
+          ctx.fillStyle = `rgba(255, 192, 132, ${Math.max(0, alpha * 0.22)})`;
+          ctx.fillRect(0, 0, cssWidth, cssHeight);
+        }
+      }
+
+      function placeFood() {
+        if (snake.length >= GRID_SIZE * GRID_SIZE) {
+          return;
+        }
+        let candidate = null;
+        do {
+          candidate = {
+            x: Math.floor(Math.random() * GRID_SIZE),
+            y: Math.floor(Math.random() * GRID_SIZE)
+          };
+        } while (snake.some((part) => part.x === candidate.x && part.y === candidate.y));
+        food = candidate;
+      }
+
+      function initSnake() {
+        const center = Math.floor(GRID_SIZE / 2);
+        snake = [
+          { x: center + 1, y: center },
+          { x: center, y: center },
+          { x: center - 1, y: center },
+          { x: center - 2, y: center }
+        ];
+        direction = { x: 1, y: 0 };
+        queuedDirection = null;
+      }
+
+      function prepareRound() {
+        score = 0;
+        tickDelay = BASE_TICK;
+        accumulator = 0;
+        initSnake();
+        placeFood();
+        updateHud();
+      }
+
+      function queueTurn(nextDir) {
+        if (gameState === "gameover") {
+          return;
+        }
+        if (gameState === "idle") {
+          startGame();
+        }
+        const base = queuedDirection || direction;
+        if (nextDir.x === -base.x && nextDir.y === -base.y) {
+          return;
+        }
+        queuedDirection = nextDir;
+      }
+
+      function endGame() {
+        gameState = "gameover";
+        finalScoreEl.textContent = `Счет: ${score}`;
+        gameOverOverlay.classList.remove("hidden");
+      }
+
+      function step() {
+        if (queuedDirection) {
+          direction = queuedDirection;
+          queuedDirection = null;
+        }
+
+        const head = snake[0];
+        const nextHead = { x: head.x + direction.x, y: head.y + direction.y };
+        const willGrow = nextHead.x === food.x && nextHead.y === food.y;
+        const collisionBody = willGrow ? snake : snake.slice(0, -1);
+
+        const hitWall = nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= GRID_SIZE || nextHead.y >= GRID_SIZE;
+        const hitSelf = collisionBody.some((part) => part.x === nextHead.x && part.y === nextHead.y);
+
+        if (hitWall || hitSelf) {
+          endGame();
+          return;
+        }
+
+        snake.unshift(nextHead);
+        if (willGrow) {
+          score += 1;
+          tickDelay = Math.max(MIN_TICK, BASE_TICK - score * SPEED_STEP);
+          if (score > best) {
+            best = score;
+            localStorage.setItem(STORAGE_KEY, String(best));
+          }
+          flashUntil = performance.now() + 220;
+          placeFood();
+          updateHud();
+        } else {
+          snake.pop();
+        }
+      }
+
+      function startGame() {
+        prepareRound();
+        gameState = "running";
+        startOverlay.classList.add("hidden");
+        gameOverOverlay.classList.add("hidden");
+      }
+
+      function restartGame() {
+        prepareRound();
+        gameState = "running";
+        gameOverOverlay.classList.add("hidden");
+      }
+
+      function animate(ts) {
+        if (!lastFrame) {
+          lastFrame = ts;
+        }
+        const delta = Math.min(48, ts - lastFrame);
+        lastFrame = ts;
+
+        if (gameState === "running") {
+          accumulator += delta;
+          while (accumulator >= tickDelay && gameState === "running") {
+            step();
+            accumulator -= tickDelay;
+          }
+        }
+
+        render(ts);
+        requestAnimationFrame(animate);
+      }
+
+      const keyboardDirs = {
+        ArrowUp: dirByName.up,
+        ArrowDown: dirByName.down,
+        ArrowLeft: dirByName.left,
+        ArrowRight: dirByName.right,
+        w: dirByName.up,
+        W: dirByName.up,
+        s: dirByName.down,
+        S: dirByName.down,
+        a: dirByName.left,
+        A: dirByName.left,
+        d: dirByName.right,
+        D: dirByName.right
+      };
+
+      document.addEventListener("keydown", (event) => {
+        const mapped = keyboardDirs[event.key];
+        if (!mapped) {
+          return;
+        }
+        event.preventDefault();
+        queueTurn(mapped);
+      });
+
+      document.querySelectorAll("[data-dir]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const dir = dirByName[btn.dataset.dir];
+          if (dir) {
+            queueTurn(dir);
+          }
+        });
+      });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        pointerStart = { x: event.clientX, y: event.clientY };
+      });
+
+      canvas.addEventListener("pointerup", (event) => {
+        if (!pointerStart) {
+          return;
+        }
+        const dx = event.clientX - pointerStart.x;
+        const dy = event.clientY - pointerStart.y;
+        pointerStart = null;
+        const threshold = 18;
+        if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) {
+          return;
+        }
+        if (Math.abs(dx) > Math.abs(dy)) {
+          queueTurn(dx > 0 ? dirByName.right : dirByName.left);
+        } else {
+          queueTurn(dy > 0 ? dirByName.down : dirByName.up);
+        }
+      });
+
+      startBtn.addEventListener("click", startGame);
+      restartBtn.addEventListener("click", restartGame);
+      window.addEventListener("resize", resizeCanvas);
+
+      resizeCanvas();
+      prepareRound();
+      updateHud();
+      bestEl.textContent = String(best);
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>

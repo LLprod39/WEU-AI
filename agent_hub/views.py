@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 import subprocess
+import shlex
 import os
 import shutil
 import sys
@@ -31,7 +32,7 @@ from core_ui.middleware import get_template_name
 from app.core.llm import LLMProvider
 from app.tools.manager import get_tool_manager
 
-ALLOWED_RUNTIMES = {"cursor", "claude", "gemini", "grok"}  # CLI агенты
+ALLOWED_RUNTIMES = {"cursor", "claude", "codex", "gemini", "grok"}  # CLI агенты
 ALLOWED_RALPH_BACKENDS = {"cursor", "claude", "gemini", "grok"}  # Backends для Ralph
 
 
@@ -646,7 +647,7 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                     workspace = str(settings.AGENT_PROJECTS_DIR / path) if path else str(settings.BASE_DIR)
                 except Exception:
                     workspace = str(settings.BASE_DIR)
-            run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+            run_obj.logs = (run_obj.logs or "") + "\n[Phase: Pre-analysis (Cursor — проверка задачи перед запуском)]\n"
             _append_log_event(
                 run_obj,
                 {
@@ -700,7 +701,9 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
             run_obj.logs = (run_obj.logs or "") + f"Runtime: {runtime}\n"
             run_obj.logs = (run_obj.logs or "") + f"Workspace: {workspace}\n"
             run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n"
-            run_obj.logs = (run_obj.logs or "") + f"[CMD] {' '.join(_sanitize_command(cmd))}\n"
+            _v_cmd_display = cmd[:-1] + [task] if (runtime == "codex" and cmd and cmd[-1] == "-") else cmd
+            _v_cmd_str = shlex.join(_v_cmd_display) if (sys.version_info >= (3, 8)) else " ".join(_sanitize_command(cmd))
+            run_obj.logs = (run_obj.logs or "") + f"[CMD] {_v_cmd_str}\n"
             run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n\n"
             _append_log_event(
                 run_obj,
@@ -708,7 +711,7 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                     "type": "cmd",
                     "subtype": "start",
                     "title": "Запуск команды",
-                    "command": " ".join(_sanitize_command(cmd)),
+                    "command": _v_cmd_str,
                 },
             )
             run_obj.save(update_fields=["logs", "log_events", "meta"])
@@ -718,6 +721,8 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                 step_label="agent-run",
                 extra_env=_get_cursor_cli_extra_env(),
                 add_output_events=True,
+                runtime=runtime,
+                stdin_prompt=task if runtime == "codex" else None,
             )
             run_obj.output_text = result.get("output", "")
             run_obj.status = "succeeded" if result.get("success") else "failed"
@@ -1507,14 +1512,15 @@ def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], worksp
     
     prompt_style = runtime_cfg.get("prompt_style", "flag")
     logger.info(f"  Prompt style: {prompt_style}")
-    
-    final_cmd = cmd + cli_args + [prompt]
+    # Codex: промпт через stdin ("-"), иначе "unexpected argument" при пробелах
+    if runtime == "codex" and prompt is not None:
+        final_cmd = cmd + cli_args + ["-"]
+        logger.info(f"  Codex: промпт будет передан через stdin")
+    else:
+        final_cmd = cmd + cli_args + ([prompt] if prompt is not None else [])
     logger.info(f"  Финальная команда: {len(final_cmd)} элементов")
     logger.info(f"{'🔧'*30}\n")
-    
-    if prompt_style == "positional":
-        return cmd + cli_args + [prompt]
-    return cmd + cli_args + [prompt]
+    return final_cmd
 
 
 # Сколько строк лога накапливать перед записью в БД (снижает "database is locked" при SQLite)
@@ -1722,8 +1728,12 @@ def _run_cli_stream(
     process_env: dict = None,
     extra_env: dict = None,
     add_output_events: bool = False,
+    runtime: str = None,
+    stdin_prompt: str = None,
 ) -> Dict[str, Any]:
-    """Запуск CLI с парсингом stream-json для детального логирования."""
+    """Запуск CLI с парсингом stream-json для детального логирования.
+    Для Codex (runtime=codex) выводит сырой текст в логи, т.к. stream-json не используется.
+    Для Codex: stdin_prompt — промпт через stdin (cmd содержит "-")."""
     # ВАЖНО: всегда передаём os.environ чтобы CLI имели доступ к HOME, PATH и credentials
     spawn_env = {**os.environ}
     if process_env:
@@ -1741,18 +1751,24 @@ def _run_cli_stream(
             mcp_config_path = cmd[i + 1]
             break
     workspace = next((cmd[i + 1] for i, a in enumerate(cmd) if a == "--workspace" and i + 1 < len(cmd)), "")
+    if not workspace:
+        workspace = next((cmd[i + 1] for i, a in enumerate(cmd) if a == "--cd" and i + 1 < len(cmd)), "")
     debug_info = f"\n▶ Шаг: {step_label} | Команда: {cmd[0]} | Workspace: {workspace[:60]}{'...' if len(workspace) > 60 else ''}\n"
     if mcp_config_path:
         debug_info += f"  MCP config: {mcp_config_path}\n"
     logger.info(debug_info.strip())
     run_obj.logs = (run_obj.logs or "") + debug_info
+    cmd_display = cmd
+    if runtime == "codex" and stdin_prompt is not None and cmd and cmd[-1] == "-":
+        cmd_display = cmd[:-1] + [stdin_prompt]
+    cmd_display_str = shlex.join(cmd_display) if (sys.version_info >= (3, 8)) else " ".join(cmd)
     _append_log_event(
         run_obj,
         {
             "type": "cmd",
             "subtype": "start",
             "title": "Запуск команды",
-            "command": " ".join(cmd),
+            "command": cmd_display_str,
             "step_label": step_label,
         },
     )
@@ -1767,14 +1783,24 @@ def _run_cli_stream(
     }
     if spawn_env:
         popen_kw["env"] = spawn_env
+    if stdin_prompt is not None:
+        popen_kw["stdin"] = subprocess.PIPE
+        logger.info(f"📥 Codex: промпт будет передан через stdin ({len(stdin_prompt)} символов)")
     
     logger.info(f"🚀 Запуск процесса: {cmd[0]}")
     logger.info(f"🔧 Параметры Popen: stdout=PIPE, stderr=STDOUT, text=True, bufsize=1")
     print(f"\n[DEBUG] 🚀 Запуск процесса: {cmd[0]}", flush=True)
-    print(f"[DEBUG] 🎯 Полная команда: {' '.join(cmd)}", flush=True)
+    print(f"[DEBUG] 🎯 Полная команда: {cmd_display_str}", flush=True)
     
     try:
         process = subprocess.Popen(cmd, **popen_kw)
+        if stdin_prompt is not None:
+            try:
+                process.stdin.write(stdin_prompt)
+                process.stdin.flush()
+            finally:
+                process.stdin.close()
+            logger.info(f"✅ Промпт записан в stdin, stdin закрыт")
         logger.info(f"✅ Процесс запущен успешно, PID: {process.pid}")
         print(f"[DEBUG] ✅ Процесс запущен успешно, PID: {process.pid}", flush=True)
     except Exception as e:
@@ -1853,9 +1879,9 @@ def _run_cli_stream(
             first_output_timeout = getattr(settings, "CLI_FIRST_OUTPUT_TIMEOUT_SECONDS", 120)
             
             if not first_line_seen and elapsed >= first_output_timeout:
-                # Claude так и не вывел ни одной строки — прерываем (вероятно, MCP не запустился)
+                cli_name = "Codex" if runtime == "codex" else ("Claude" if "claude" in str(runtime) else "CLI")
                 logger.error(
-                    f"❌ Таймаут первого вывода: Claude не вывел ни одной строки за {elapsed} сек. "
+                    f"❌ Таймаут первого вывода: {cli_name} не вывел ни одной строки за {elapsed} сек. "
                     f"Прерываем процесс PID={process.pid}."
                 )
                 print(
@@ -1866,12 +1892,12 @@ def _run_cli_stream(
                     process.kill()
                 except Exception:
                     pass
+                mcp_hint = "" if runtime == "codex" else (
+                    f"\nВероятная причина (Cursor/Claude): MCP-сервер не успел запуститься."
+                    f"\nПроверьте: WEU_USER_ID=<id> python manage.py mcp_servers"
+                )
                 err_msg = (
-                    f"Claude не вывел ни одной строки за {elapsed} сек. Процесс прерван.\n\n"
-                    f"Вероятная причина: Claude ждёт ответа MCP-сервера, который не успел запуститься или завис при старте Django.\n\n"
-                    f"Проверьте MCP-сервер вручную (из той же среды, откуда запускается workflow):\n"
-                    f"  WEU_USER_ID=<id> python manage.py mcp_servers\n"
-                    f"Если команда зависает или падает — исправьте окружение/БД/зависимости."
+                    f"CLI не вывел ни одной строки за {elapsed} сек. Процесс прерван.{mcp_hint}"
                 )
                 run_obj.logs = (run_obj.logs or "") + f"\n[ERROR] {err_msg}\n"
                 _append_log_event(
@@ -1886,12 +1912,13 @@ def _run_cli_stream(
                 run_obj.save(update_fields=["logs", "log_events", "meta"])
                 return {"success": False, "output": "".join(output_chunks), "exit_code": -2}
             
-            msg = f"⏳ Ожидание вывода от Claude (PID={process.pid}), прошло {elapsed} сек..."
+            cli_label = "Codex" if runtime == "codex" else "CLI"
+            msg = f"⏳ Ожидание вывода от {cli_label} (PID={process.pid}), прошло {elapsed} сек..."
             logger.warning(msg)
             print(f"[DEBUG] {msg}", flush=True)
             hint = ""
             if elapsed >= 10:
-                hint = f" (Если > {first_output_timeout} сек — процесс будет прерван. Проверьте MCP: python manage.py mcp_servers)"
+                hint = f" (Если > {first_output_timeout} сек — процесс будет прерван)"
             run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] {msg}{hint}\n"
             run_obj.save(update_fields=["logs"])
             continue
@@ -1911,9 +1938,10 @@ def _run_cli_stream(
         if not first_line_seen:
             first_line_seen = True
             elapsed = time.time() - start_wait
-            logger.info(f"✅ Первая строка от Claude получена через {elapsed:.1f} сек")
-            print(f"[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек", flush=True)
-            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек\n"
+            cli_label = "Codex" if runtime == "codex" else "CLI"
+            logger.info(f"✅ Первая строка от {cli_label} получена через {elapsed:.1f} сек")
+            print(f"[DEBUG] ✅ Первая строка от {cli_label} через {elapsed:.1f} сек", flush=True)
+            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от {cli_label} через {elapsed:.1f} сек\n"
             run_obj.save(update_fields=["logs"])
         
         if line_stripped.startswith("{"):
@@ -1969,21 +1997,27 @@ def _run_cli_stream(
                 dirty_logs = True
                 maybe_flush()
         else:
-            # Сырой вывод (промпт, эхо) не пишем в run_obj.logs — только JSON-события для читаемости
-            if line_stripped and add_output_events:
-                _append_log_event(
-                    run_obj,
-                    {
-                        "type": "cmd_output",
-                        "title": "Вывод CLI",
-                        "message": line_stripped[:2000],
-                        "step_label": step_label,
-                        "line": line_number,
-                    },
-                )
-                pending_events += 1
-                dirty_events = True
-                maybe_flush()
+            # Сырой вывод: для Codex всегда пишем в логи (у него нет stream-json)
+            if line_stripped:
+                if runtime == "codex":
+                    run_obj.logs = (run_obj.logs or "") + line
+                    pending_lines += 1
+                    dirty_logs = True
+                    maybe_flush()
+                elif add_output_events:
+                    _append_log_event(
+                        run_obj,
+                        {
+                            "type": "cmd_output",
+                            "title": "Вывод CLI",
+                            "message": line_stripped[:2000],
+                            "step_label": step_label,
+                            "line": line_number,
+                        },
+                    )
+                    pending_events += 1
+                    dirty_events = True
+                    maybe_flush()
 
     logger.info(f"⏳ Ожидаем завершения процесса PID={process.pid}")
     print(f"[DEBUG] ⏳ Ожидаем завершения процесса PID={process.pid}", flush=True)
@@ -2088,8 +2122,8 @@ def _resolve_cli_command(runtime: str) -> str:
     env_var = _cli_env_var(runtime)
     logger.info(f"  ENV переменная для {runtime}: {env_var}")
     
-    # Для cursor и claude в Docker/на хосте явно учитываем env var при каждом вызове
-    if runtime in ["cursor", "claude"]:
+    # Для cursor, claude, codex в Docker/на хосте явно учитываем env var при каждом вызове
+    if runtime in ["cursor", "claude", "codex"]:
         path_from_env = (os.getenv(env_var) or "").strip()
         logger.info(f"  Проверка ENV переменной {env_var}: {path_from_env if path_from_env else 'НЕ УСТАНОВЛЕНА'}")
         
@@ -2144,6 +2178,12 @@ def _resolve_cli_command(runtime: str) -> str:
                 "В Docker в .env задай CLAUDE_CLI_PATH=/полный/путь/к/claude (бинарник должен быть в образе или смонтирован). "
                 "На хосте добавь claude в PATH или задай CLAUDE_CLI_PATH."
             )
+        elif runtime == "codex":
+            raise RuntimeError(
+                "CLI для 'codex' не найден (команда codex). "
+                "В Docker используй сервис codex или задай CODEX_CLI_PATH. "
+                "На хосте: npm i -g @openai/codex. Укажи CODEX_API_KEY в .env для headless."
+            )
         raise RuntimeError(
             f"CLI для '{runtime}' не найден: {command}. "
             f"Добавь в PATH или задай переменную окружения {env_var}"
@@ -2158,6 +2198,7 @@ def _cli_env_var(runtime: str) -> str:
     return {
         "cursor": "CURSOR_CLI_PATH",
         "claude": "CLAUDE_CLI_PATH",
+        "codex": "CODEX_CLI_PATH",
         "opencode": "OPENCODE_CLI_PATH",
         "gemini": "GEMINI_CLI_PATH",
         "ralph": "RALPH_CLI_PATH",
@@ -2340,7 +2381,7 @@ def _execute_workflow_run(run_id: int):
     # Фаза проверки задачи через Cursor (ask) перед запуском
     # ПРОПУСКАЕМ для серверных задач - им не нужен анализ кода!
     if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace and not is_server_task:
-        run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+        run_obj.logs = (run_obj.logs or "") + "\n[Phase: Pre-analysis (Cursor — проверка задачи перед запуском)]\n"
         _append_log_event(
             run_obj,
             {
@@ -2464,21 +2505,27 @@ def _run_steps_with_backend(
     # Логируем runtime для отладки
     logger.info(f"_run_steps_with_backend called with runtime={runtime} for workflow {workflow.id}")
     
-    # Подготовка environment variables для CLI (cursor, claude и другие)
+    # Подготовка environment variables для CLI (cursor, claude, codex и другие)
     extra_env = None
     mcp_config_file = None  # Путь к MCP конфигу для Claude CLI (--mcp-config)
-    if runtime in ["cursor", "claude"]:
+    if runtime in ["cursor", "claude", "codex"]:
         extra_env = _get_cursor_cli_extra_env() if runtime == "cursor" else {}
         extra_env = dict(extra_env or {})
-        # ВАЖНО: передаём HOME для Claude CLI (credentials в ~/.claude/)
         extra_env.setdefault("HOME", os.path.expanduser("~"))
+        # Codex: CODEX_API_KEY или OPENAI_API_KEY для headless (codex exec)
+        if runtime == "codex":
+            codex_key = os.getenv("CODEX_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if codex_key:
+                extra_env["CODEX_API_KEY"] = codex_key
+            extra_env["CODEX_UNSAFE_ALLOW_NO_SANDBOX"] = "1"  # для Docker
 
         if run_obj.initiated_by_id:
-            mcp_path = _ensure_mcp_servers_config(workspace, run_obj.initiated_by_id)
-            if mcp_path:
-                extra_env["MCP_CONFIG_PATH"] = mcp_path
-                mcp_config_file = mcp_path  # Для Claude CLI --mcp-config
             extra_env.setdefault("WEU_USER_ID", str(run_obj.initiated_by_id))
+            if runtime in ["cursor", "claude"]:
+                mcp_path = _ensure_mcp_servers_config(workspace, run_obj.initiated_by_id)
+                if mcp_path:
+                    extra_env["MCP_CONFIG_PATH"] = mcp_path
+                    mcp_config_file = mcp_path  # Для Claude CLI --mcp-config
         
         # Передаём целевой сервер в переменные окружения для MCP-инструментов
         if workflow.target_server_id:
@@ -2699,7 +2746,8 @@ def _run_steps_with_backend(
                         logger.warning(f"  ⚠️ НЕ содержит метку серверной задачи")
                     
                     logger.info(f"\n🎯 ПОЛНАЯ КОМАНДА CLI ({len(cmd)} элементов):")
-                    cmd_full = " ".join(cmd)
+                    _v_wf_cmd = cmd[:-1] + [current_prompt] if (runtime == "codex" and cmd and cmd[-1] == "-") else cmd
+                    cmd_full = shlex.join(_v_wf_cmd) if (sys.version_info >= (3, 8)) else " ".join(cmd)
                     logger.info(f"{cmd_full}")
                     
                     if extra_env:
@@ -2710,10 +2758,10 @@ def _run_steps_with_backend(
                     logger.info(f"{'='*70}\n")
                     
                     # Старый лог для обратной совместимости
-                    cmd_preview = " ".join(cmd[:5]) + "..." if len(cmd) > 5 else " ".join(cmd)
+                    cmd_preview = shlex.join(_v_wf_cmd[:5]) + "..." if len(cmd) > 5 else cmd_full
                     logger.info(f"Executing CLI: {cmd_preview} (runtime={runtime}, model={config.get('model', 'N/A')})")
                     
-                    result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env)
+                    result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env, runtime=runtime, stdin_prompt=current_prompt if runtime == "codex" else None)
                     last_output = result.get("output", "") or ""
                     
                     # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ РЕЗУЛЬТАТА
@@ -2785,7 +2833,7 @@ def _run_steps_with_backend(
                 if verify_prompt:
                     verify_text = f"{verify_prompt}\n\nWhen verified output exactly: <promise>{verify_promise}</promise>." if verify_promise else verify_prompt
                     verify_cmd = _build_cli_command(runtime, verify_text, {**config, "completion_promise": verify_promise}, workspace)
-                    verify_result = _run_cli_stream(verify_cmd, run_obj, step_label=f"{step_title} - verify", extra_env=extra_env)
+                    verify_result = _run_cli_stream(verify_cmd, run_obj, step_label=f"{step_title} - verify", extra_env=extra_env, runtime=runtime, stdin_prompt=verify_text if runtime == "codex" else None)
                     if verify_promise and not _promise_found(verify_result.get("output", ""), verify_promise):
                         last_error = f"Verification failed: expected {verify_promise}"
                         retry_attempt += 1

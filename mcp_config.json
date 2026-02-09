@@ -10,7 +10,7 @@
       "env": {
         "WEU_USER_ID": "4"
       },
-      "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)"
+      "description": "WEU AI MCP: servers_list/server_execute + tasks_list/task_detail/task_create/task_update/task_delete"
     }
   }
 }

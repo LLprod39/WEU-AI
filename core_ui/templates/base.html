@@ -190,9 +190,9 @@
                 <span class="material-icons-round text-lg {% if 'agents' in request.path %}text-primary{% endif %}" aria-hidden="true">smart_toy</span>
                 <span class="nav-text">Agents</span>
             </a>
-            <a href="{% url 'agent_hub:agents_page' %}?legacy=1" class="sidebar-link" aria-label="Workflows (Legacy View)">
-                <span class="material-icons-round text-lg" aria-hidden="true">account_tree</span>
-                <span class="nav-text">Workflows</span>
+            <a href="{% url 'skills:skills_page' %}" class="sidebar-link {% if '/skills/' in request.path %}active{% endif %}" aria-label="Skills">
+                <span class="material-icons-round text-lg {% if '/skills/' in request.path %}text-primary{% endif %}" aria-hidden="true">rule_folder</span>
+                <span class="nav-text">Skills</span>
             </a>
             {% endif %}
 

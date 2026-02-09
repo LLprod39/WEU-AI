@@ -81,18 +81,24 @@ def agents_page(request):
 
     # User's servers for target server selection
     servers_data = [
-        {"id": s.id, "name": s.name, "host": s.host}
-        for s in Server.objects.filter(user=request.user).only("id", "name", "host")
+        {
+            "id": s.id,
+            "name": s.name,
+            "host": s.host,
+            "group_id": s.group_id,
+            "group_name": s.group.name if s.group else "",
+            "group_color": s.group.color if s.group else "",
+        }
+        for s in Server.objects.filter(user=request.user)
+        .select_related("group")
+        .only("id", "name", "host", "group", "group__name", "group__color")
     ]
 
-    # Use new simplified template by default, legacy with ?legacy=1
-    use_legacy = request.GET.get("legacy") == "1"
+    # Desktop: use full Agent Hub by default
     if getattr(request, "is_mobile", False):
         template = "agent_hub/mobile/agents.html"
-    elif use_legacy:
-        template = "agent_hub/agents.html"
     else:
-        template = "agent_hub/agents_new.html"
+        template = "agent_hub/agents.html"
 
     return render(
         request,

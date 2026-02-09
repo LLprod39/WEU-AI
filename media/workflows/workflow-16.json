@@ -1,0 +1,37 @@
+{
+  "name": "Создайть игру змейка",
+  "runtime": "ralph",
+  "model": "auto",
+  "steps": [
+    {
+      "title": "Создайть игру змейка",
+      "prompt": "Создайть игру змейка",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 5
+    }
+  ],
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Step 1",
+        "description": "Создайть игру змейка",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Создайть игру змейка"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-16.json"
+}

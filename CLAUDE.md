@@ -45,7 +45,7 @@ python manage.py test                     # Run all tests
 - **Mini build** (`requirements.txt`): No PyTorch, no heavy RAG models, faster startup
 - **Full build** (`requirements-full.txt`): Includes sentence-transformers, PyTorch, full RAG
 
-Set `WEU_BUILD=mini` or `WEU_BUILD=full` in `.env`.
+Set `WEU_BUILD=mini` or `WEU_BUILD=full` in `.env`. Для Codex: `CODEX_API_KEY` или `OPENAI_API_KEY`, `INSTALL_CODEX=true` (Docker). См. `docs/CODEX_AGENT_SETUP.md`.
 
 ## Architecture
 

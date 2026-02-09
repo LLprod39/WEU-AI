@@ -26,6 +26,16 @@ ENV CI=1
 RUN curl -fsSL https://cursor.com/install | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
+# Codex CLI (OpenAI) — опционально. Задай INSTALL_CODEX=true в docker-compose для агента Codex.
+ARG INSTALL_CODEX=false
+RUN if [ "$INSTALL_CODEX" = "true" ]; then \
+  curl -fsSL "https://github.com/openai/codex/releases/download/rust-v0.98.0/codex-x86_64-unknown-linux-musl.tar.gz" -o /tmp/codex.tar.gz && \
+  tar -xzf /tmp/codex.tar.gz -C /tmp && \
+  mv /tmp/codex-x86_64-unknown-linux-musl /usr/local/bin/codex && \
+  chmod +x /usr/local/bin/codex && \
+  rm -f /tmp/codex.tar.gz; \
+fi
+
 COPY . .
 
 COPY docker/entrypoint.sh /entrypoint.sh

@@ -20,6 +20,13 @@ class AgentManager:
     def __init__(self):
         self.agents: Dict[str, BaseAgent] = {}
         self._register_builtin_agents()
+        self._agent_type_map = {
+            "simple": "Simple Agent",
+            "complex": "Complex Agent",
+            "react": "ReAct Agent",
+            "ralph": "Ralph Wiggum Agent",
+            "claude_code": "Claude Code Agent",
+        }
     
     def _register_builtin_agents(self):
         """Register all built-in agents"""
@@ -46,6 +53,14 @@ class AgentManager:
     def get_agent(self, name: str) -> Optional[BaseAgent]:
         """Get an agent by name"""
         return self.agents.get(name)
+
+    def resolve_agent_name(self, agent_type_or_name: str) -> str:
+        """Resolve agent name from a type or return the name as-is."""
+        if not agent_type_or_name:
+            return "ReAct Agent"
+        if agent_type_or_name in self.agents:
+            return agent_type_or_name
+        return self._agent_type_map.get(agent_type_or_name, agent_type_or_name)
     
     def get_all_agents(self) -> List[BaseAgent]:
         """Get all registered agents"""
@@ -75,6 +90,11 @@ class AgentManager:
             Execution result dictionary
         """
         agent = self.get_agent(agent_name)
+        if not agent:
+            resolved = self.resolve_agent_name(agent_name)
+            if resolved != agent_name:
+                agent_name = resolved
+                agent = self.get_agent(agent_name)
         if not agent:
             return {
                 'success': False,

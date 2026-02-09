@@ -32,7 +32,13 @@ class WorkflowService:
     """
 
     @staticmethod
-    def create_from_task(task: "Task", user: "User") -> tuple["AgentWorkflow | None", "AgentWorkflowRun | None"]:
+    def create_from_task(
+        task: "Task",
+        user: "User",
+        runtime_override: str | None = None,
+        project_path_override: str | None = None,
+        skill_ids_override: list[int] | None = None,
+    ) -> tuple["AgentWorkflow | None", "AgentWorkflowRun | None"]:
         """
         Create a workflow from a Task and start its execution.
 
@@ -42,6 +48,9 @@ class WorkflowService:
         Args:
             task: Task instance to create workflow from
             user: User who initiates the workflow
+            runtime_override: Optional runtime override for workflow execution
+            project_path_override: Optional project path override
+            skill_ids_override: Optional list of skills to inject into workflow
 
         Returns:
             Tuple of (workflow, run) or (None, None) if creation failed
@@ -62,14 +71,17 @@ class WorkflowService:
             logger.error(f"Task {task.id} has no title/description")
             return None, None
 
-        # Get project path from config
+        # Get project path from config (can be overridden)
         project_path = ""
-        try:
-            project_path = (
-                getattr(model_manager.config, "default_agent_output_path", None) or ""
-            ).strip()
-        except Exception:
-            pass
+        if project_path_override is not None:
+            project_path = (project_path_override or "").strip()
+        else:
+            try:
+                project_path = (
+                    getattr(model_manager.config, "default_agent_output_path", None) or ""
+                ).strip()
+            except Exception:
+                pass
 
         # Get target server from task
         target_server = getattr(task, "target_server", None)
@@ -77,7 +89,7 @@ class WorkflowService:
         target_server_name = target_server.name if target_server else None
 
         # Get runtime from settings
-        default_runtime = model_manager.config.default_provider or "cursor"
+        default_runtime = runtime_override or model_manager.config.default_provider or "cursor"
         
         # Load recommended CustomAgent if specified
         custom_agent = None
@@ -90,14 +102,20 @@ class WorkflowService:
             ).first()
         
         # If custom_agent exists, use its parameters
+        selected_skill_ids: list[int] = []
         if custom_agent:
             default_runtime = custom_agent.runtime
             logger.info(f"Using CustomAgent {custom_agent.name} (id={custom_agent.id}) for task {task.id}")
+            selected_skill_ids = list(custom_agent.skills.values_list("id", flat=True))
             
             # Add knowledge_base to task text if available
             if hasattr(custom_agent, 'knowledge_base') and custom_agent.knowledge_base:
                 task_text += f"\n\n--- База знаний агента ---\n{custom_agent.knowledge_base}"
                 logger.info(f"Added knowledge_base to task text for agent {custom_agent.name}")
+
+        # Apply explicit skill override (if provided)
+        if isinstance(skill_ids_override, list):
+            selected_skill_ids = skill_ids_override
 
         # Generate workflow script
         parsed = _generate_workflow_script(
@@ -111,6 +129,8 @@ class WorkflowService:
         if not parsed:
             logger.error(f"Failed to generate workflow for task {task.id}")
             return None, None
+        if selected_skill_ids:
+            parsed["skill_ids"] = selected_skill_ids
 
         # Create workflow
         workflow = AgentWorkflow.objects.create(
@@ -219,10 +239,14 @@ class WorkflowService:
 # New code should use WorkflowService.create_from_task() directly.
 
 
-def create_workflow_from_task(task: "Task", user: "User") -> tuple["AgentWorkflow | None", "AgentWorkflowRun | None"]:
+def create_workflow_from_task(
+    task: "Task",
+    user: "User",
+    **kwargs,
+) -> tuple["AgentWorkflow | None", "AgentWorkflowRun | None"]:
     """
     Backward compatibility alias for WorkflowService.create_from_task().
 
     Deprecated: Use WorkflowService.create_from_task() directly.
     """
-    return WorkflowService.create_from_task(task, user)
+    return WorkflowService.create_from_task(task, user, **kwargs)

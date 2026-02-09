@@ -78,6 +78,26 @@
                 <p class="text-xs text-gray-500 mt-2">API ключи настраиваются в файле .env в корне проекта</p>
             </div>
 
+            <!-- Codex: вход и настройка -->
+            <div class="glass-card rounded-xl p-6" id="tour-settings-codex">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-emerald-400">terminal</span>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-lg font-semibold text-white">Codex</h2>
+                        <p class="text-sm text-gray-500">Вход по подписке ChatGPT. После входа Codex доступен в Agents и Workflows.</p>
+                    </div>
+                    <span id="api-codex-status" class="text-xs font-medium px-2 py-1 rounded-lg bg-white/5">—</span>
+                </div>
+                <a href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-xl font-medium transition-colors">
+                    <span class="material-icons-round text-lg">open_in_new</span>
+                    Войти в Codex (ChatGPT)
+                </a>
+                <p class="text-xs text-gray-500 mt-3">Для workflow и CLI нужен <code class="bg-white/10 px-1 rounded">CODEX_API_KEY</code> или <code class="bg-white/10 px-1 rounded">OPENAI_API_KEY</code> в .env</p>
+            </div>
+
             <!-- Models -->
             <div class="glass-card rounded-xl p-6">
                 <div class="flex items-center gap-3 mb-6">
@@ -96,6 +116,7 @@
                         <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1" aria-label="Провайдер для агентов">
                             <option value="cursor">Cursor CLI (agent)</option>
                             <option value="claude">Claude CLI (claude)</option>
+                            <option value="codex">Codex CLI</option>
                             <option value="grok">Grok (в разработке)</option>
                             <option value="gemini">Gemini (в разработке)</option>
                         </select>
@@ -542,6 +563,11 @@
             if (cursorStatus) {
                 cursorStatus.textContent = apiKeys.cursor_set ? 'Configured' : 'Not set';
                 cursorStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.cursor_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
+            }
+            const codexStatus = document.getElementById('api-codex-status');
+            if (codexStatus) {
+                codexStatus.textContent = apiKeys.codex_set ? 'Configured' : 'Not set';
+                codexStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.codex_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400');
             }
 
             // Основной провайдер

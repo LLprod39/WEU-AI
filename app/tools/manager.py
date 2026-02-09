@@ -12,7 +12,13 @@ from app.tools.filesystem_tools import (
     CreateDirectoryTool, DeleteFileTool
 )
 from app.tools.web_tools import WebSearchTool, FetchWebpageTool
-from app.tools.tasks_tools import TasksListTool, TaskDetailTool
+from app.tools.tasks_tools import (
+    TasksListTool,
+    TaskDetailTool,
+    TaskCreateTool,
+    TaskUpdateTool,
+    TaskDeleteTool,
+)
 from app.mcp.client import MCPClient
 from app.mcp.config import load_mcp_config
 from django.conf import settings
@@ -54,6 +60,9 @@ class ToolManager:
             # Tasks Tools
             TasksListTool(),
             TaskDetailTool(),
+            TaskCreateTool(),
+            TaskUpdateTool(),
+            TaskDeleteTool(),
         ]
         
         for tool in builtin_tools:
@@ -145,13 +154,20 @@ class ToolManager:
         """Get tools filtered by category"""
         return [tool for tool in self.tools.values() if tool._metadata.category == category]
     
-    def get_tools_description(self, exclude_tools: Optional[List[str]] = None) -> str:
-        """Get formatted description of all tools for the LLM. exclude_tools: skip these (e.g. ssh_connect for delegated tasks)."""
+    def get_tools_description(
+        self,
+        exclude_tools: Optional[List[str]] = None,
+        include_tools: Optional[List[str]] = None,
+    ) -> str:
+        """Get formatted description of tools for the LLM. exclude_tools: skip these. include_tools: allow only these."""
         exclude = set(exclude_tools or [])
+        include = set(include_tools or []) if include_tools else None
         categories = {}
 
         for tool in self.tools.values():
             if tool._metadata.name in exclude:
+                continue
+            if include is not None and tool._metadata.name not in include:
                 continue
             cat = tool._metadata.category
             if cat not in categories:
@@ -181,6 +197,9 @@ class ToolManager:
             raise ValueError(f"Unknown tool: {tool_name}")
         
         if _context is not None:
+            allowed_tools = _context.get("allowed_tools") if isinstance(_context, dict) else None
+            if allowed_tools and tool_name not in allowed_tools:
+                raise PermissionError(f"Tool '{tool_name}' is not allowed for this agent")
             kwargs["_context"] = _context
         logger.info(f"Executing tool: {tool_name} with args: {list(kwargs.keys())}")
         

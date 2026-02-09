@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 import subprocess
+import shlex
 import os
 import shutil
 import sys
@@ -31,7 +32,7 @@ from core_ui.middleware import get_template_name
 from app.core.llm import LLMProvider
 from app.tools.manager import get_tool_manager
 
-ALLOWED_RUNTIMES = {"cursor", "claude", "gemini", "grok", "ralph"}  # CLI агенты + Ralph orchestrator
+ALLOWED_RUNTIMES = {"cursor", "claude", "codex", "gemini", "grok", "ralph"}  # CLI агенты + Ralph orchestrator
 ALLOWED_RALPH_BACKENDS = {"cursor", "claude", "gemini", "grok"}  # Backends для Ralph
 
 
@@ -141,6 +142,58 @@ def _parse_json_request(request) -> Dict[str, Any]:
         return json.loads(request.body or "{}")
     except json.JSONDecodeError:
         return {}
+
+
+def _normalize_skill_ids_for_user(user, raw_skill_ids) -> list[int]:
+    if not isinstance(raw_skill_ids, list):
+        return []
+    normalized = []
+    for raw in raw_skill_ids:
+        try:
+            sid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if sid > 0 and sid not in normalized:
+            normalized.append(sid)
+    if not normalized:
+        return []
+    try:
+        from skills.models import Skill
+        from skills.services import SkillService
+
+        return list(
+            Skill.objects.filter(SkillService._base_scope_filter(user), is_active=True, id__in=normalized)
+            .distinct()
+            .values_list("id", flat=True)
+        )
+    except Exception:
+        return []
+
+
+def _build_skill_context_for_user(
+    user_id: int,
+    raw_skill_ids,
+    channel: str,
+    runtime: str | None = None,
+) -> Dict[str, Any]:
+    if not user_id:
+        return {"skill_ids": [], "skill_names": [], "text": ""}
+    try:
+        from django.contrib.auth.models import User
+        from skills.services import SkillService
+
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            return {"skill_ids": [], "skill_names": [], "text": ""}
+        return SkillService.build_skill_context(
+            user=user,
+            skill_ids=raw_skill_ids if isinstance(raw_skill_ids, list) else None,
+            channel=channel,
+            runtime=runtime,
+            include_references=True,
+        )
+    except Exception:
+        return {"skill_ids": [], "skill_names": [], "text": ""}
 
 
 def _agent_name_from_type(agent_type: str) -> str:
@@ -636,6 +689,29 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
     run_obj.meta = meta
     run_obj.save(update_fields=["status", "started_at", "log_events", "meta"])
 
+    effective_task = task
+    config = dict(config or {})
+    try:
+        skill_ctx = _build_skill_context_for_user(
+            user_id=run_obj.initiated_by_id,
+            raw_skill_ids=config.get("skill_ids"),
+            channel="agent",
+            runtime=runtime,
+        )
+        if skill_ctx.get("text"):
+            from skills.services import SkillService
+
+            effective_task = SkillService.prepend_context(task, skill_ctx["text"])
+            config["skill_context"] = skill_ctx["text"]
+            meta = run_obj.meta or {}
+            meta["skill_ids"] = skill_ctx.get("skill_ids") or []
+            meta["skill_names"] = skill_ctx.get("skill_names") or []
+            meta["skill_context_len"] = len(skill_ctx.get("text") or "")
+            run_obj.meta = meta
+            run_obj.save(update_fields=["meta"])
+    except Exception as e:
+        logger.warning(f"Failed to apply skills for AgentRun {run_id}: {e}")
+
     try:
         if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and runtime in ("ralph", "cursor"):
             workspace = config.get("workspace") or ""
@@ -659,7 +735,7 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                     isolated_path = settings.AGENT_PROJECTS_DIR / safe_name
                     isolated_path.mkdir(parents=True, exist_ok=True)
                     workspace = str(isolated_path)
-            run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+            run_obj.logs = (run_obj.logs or "") + "\n[Phase: Pre-analysis (Cursor — проверка задачи перед запуском)]\n"
             _append_log_event(
                 run_obj,
                 {
@@ -670,7 +746,7 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                 },
             )
             run_obj.save(update_fields=["logs", "log_events", "meta"])
-            analyze_result = _run_cursor_ask_analyze(workspace, task[:6000], timeout_sec=90)
+            analyze_result = _run_cursor_ask_analyze(workspace, effective_task[:6000], timeout_sec=90)
             run_obj.logs = (run_obj.logs or "") + (analyze_result.get("output", "") or "")[:3000] + "\n"
             run_obj.logs = (run_obj.logs or "") + "[Cursor analyze done — запуск агента]\n"
             _append_log_event(
@@ -686,7 +762,8 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
         if runtime == "internal":
             agent_manager = get_agent_manager()
             agent_name = _agent_name_from_type(agent_type)
-            result = async_to_sync(agent_manager.execute_agent)(agent_name, task, config)
+            config["skill_context"] = config.get("skill_context") or (run_obj.meta or {}).get("skill_context")
+            result = async_to_sync(agent_manager.execute_agent)(agent_name, effective_task, config)
             run_obj.output_text = result.get("result") or ""
             run_obj.logs = json.dumps(result.get("metadata") or {}, ensure_ascii=False)
             run_obj.status = "succeeded" if result.get("success") else "failed"
@@ -712,13 +789,13 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                     isolated_path = settings.AGENT_PROJECTS_DIR / safe_name
                     isolated_path.mkdir(parents=True, exist_ok=True)
                     workspace = str(isolated_path)
-            cmd = _build_cli_command(runtime, task, config, workspace=workspace)
+            cmd = _build_cli_command(runtime, effective_task, config, workspace=workspace)
             meta = run_obj.meta or {}
             meta["cli_command"] = _sanitize_command(cmd)
             meta["cli_command_full"] = cmd
             meta["workspace"] = workspace
             meta["runtime"] = runtime
-            meta["input_prompt"] = task
+            meta["input_prompt"] = effective_task
             meta["config"] = _redact_sensitive(config)
             run_obj.meta = meta
             run_obj.logs = (run_obj.logs or "") + f"\n{'='*60}\n"
@@ -726,7 +803,11 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
             run_obj.logs = (run_obj.logs or "") + f"Runtime: {runtime}\n"
             run_obj.logs = (run_obj.logs or "") + f"Workspace: {workspace}\n"
             run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n"
-            run_obj.logs = (run_obj.logs or "") + f"[CMD] {' '.join(_sanitize_command(cmd))}\n"
+            _cmd_display = cmd
+            if runtime == "codex" and cmd and cmd[-1] == "-":
+                _cmd_display = cmd[:-1] + [effective_task]
+            _cmd_display_str = shlex.join(_cmd_display) if (sys.version_info >= (3, 8)) else " ".join(_sanitize_command(cmd))
+            run_obj.logs = (run_obj.logs or "") + f"[CMD] {_cmd_display_str}\n"
             run_obj.logs = (run_obj.logs or "") + f"{'='*60}\n\n"
             _append_log_event(
                 run_obj,
@@ -734,7 +815,7 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                     "type": "cmd",
                     "subtype": "start",
                     "title": "Запуск команды",
-                    "command": " ".join(_sanitize_command(cmd)),
+                    "command": shlex.join(cmd[:-1] + [effective_task]) if (runtime == "codex" and cmd and cmd[-1] == "-") else " ".join(_sanitize_command(cmd)),
                 },
             )
             run_obj.save(update_fields=["logs", "log_events", "meta"])
@@ -744,6 +825,8 @@ def _execute_agent_run(run_id: int, agent_type: str, runtime: str, task: str, co
                 step_label="agent-run",
                 extra_env=_get_cursor_cli_extra_env(),
                 add_output_events=True,
+                runtime=runtime,
+                stdin_prompt=effective_task if runtime == "codex" else None,
             )
             run_obj.output_text = result.get("output", "")
             run_obj.status = "succeeded" if result.get("success") else "failed"
@@ -791,6 +874,8 @@ def api_profile_run(request, profile_id: int):
     agent_type = data.get("agent_type") or profile.agent_type
     runtime = data.get("runtime") or profile.runtime
     config = data.get("config") or profile.config or {}
+    if isinstance(data.get("skill_ids"), list):
+        config = {**config, "skill_ids": _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))}
     
     if runtime not in ALLOWED_RUNTIMES:
         return JsonResponse({"error": f"Runtime '{runtime}' не поддерживается"}, status=400)
@@ -834,6 +919,8 @@ def api_agent_run(request):
     agent_type = data.get("agent_type") or (profile.agent_type if profile else "react")
     runtime = data.get("runtime") or (profile.runtime if profile else default_runtime)
     config = data.get("config") or (profile.config if profile else {})
+    if isinstance(data.get("skill_ids"), list):
+        config = {**config, "skill_ids": _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))}
     if runtime not in ALLOWED_RUNTIMES:
         return JsonResponse({"error": f"Runtime '{runtime}' не поддерживается"}, status=400)
     # Валидация модели для cursor (если не указана - будет auto по умолчанию)
@@ -1345,6 +1432,7 @@ def api_workflow_delete(request, workflow_id: int):
 def api_workflow_generate(request):
     data = _parse_json_request(request)
     task = data.get("task", "").strip()
+    skill_ids = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
     
     # Используем default_provider из настроек вместо жестко заданного "ralph"
     from app.core.model_config import model_manager
@@ -1381,6 +1469,8 @@ def api_workflow_generate(request):
 
     if not parsed:
         return JsonResponse({"error": "Failed to generate workflow"}, status=500)
+    if skill_ids:
+        parsed["skill_ids"] = skill_ids
 
     workflow = AgentWorkflow.objects.create(
         owner=request.user,
@@ -1617,7 +1707,13 @@ def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], worksp
         formatted_args = [_format_arg(runtime_cfg, arg, workspace) for arg in base_args]
         logger.info(f"  Formatted args: {formatted_args}")
         cmd += formatted_args
-        cmd += [prompt] if prompt is not None else []
+        # Codex: промпт передаём через stdin (propmt "-"), чтобы избежать ошибки "unexpected argument"
+        # при промптах с пробелами. Документация: PROMPT | - (read stdin)
+        if runtime == "codex" and prompt is not None:
+            cmd += ["-"]
+            logger.info(f"  Codex: промпт будет передан через stdin")
+        else:
+            cmd += [prompt] if prompt is not None else []
 
     allowed_args = runtime_cfg.get("allowed_args", [])
     logger.info(f"  Allowed args: {allowed_args}")
@@ -1851,8 +1947,12 @@ def _run_cli_stream(
     process_env: dict = None,
     extra_env: dict = None,
     add_output_events: bool = False,
+    runtime: str = None,
+    stdin_prompt: str = None,
 ) -> Dict[str, Any]:
-    """Запуск CLI с парсингом stream-json для детального логирования."""
+    """Запуск CLI с парсингом stream-json для детального логирования.
+    Для Codex (runtime=codex) выводит сырой текст в логи, т.к. stream-json не используется.
+    Для Codex: stdin_prompt — промпт через stdin (cmd содержит "-"), иначе "unexpected argument" при пробелах."""
     # ВАЖНО: всегда передаём os.environ чтобы CLI имели доступ к HOME, PATH и credentials
     spawn_env = {**os.environ}
     if process_env:
@@ -1870,18 +1970,25 @@ def _run_cli_stream(
             mcp_config_path = cmd[i + 1]
             break
     workspace = next((cmd[i + 1] for i, a in enumerate(cmd) if a == "--workspace" and i + 1 < len(cmd)), "")
+    if not workspace:
+        workspace = next((cmd[i + 1] for i, a in enumerate(cmd) if a == "--cd" and i + 1 < len(cmd)), "")
     debug_info = f"\n▶ Шаг: {step_label} | Команда: {cmd[0]} | Workspace: {workspace[:60]}{'...' if len(workspace) > 60 else ''}\n"
     if mcp_config_path:
         debug_info += f"  MCP config: {mcp_config_path}\n"
     logger.info(debug_info.strip())
     run_obj.logs = (run_obj.logs or "") + debug_info
+    # Для Codex с stdin: показываем copy-pastable команду (промпт в кавычках вместо "-")
+    cmd_display = cmd
+    if runtime == "codex" and stdin_prompt is not None and cmd and cmd[-1] == "-":
+        cmd_display = cmd[:-1] + [stdin_prompt]
+    cmd_display_str = shlex.join(cmd_display) if (sys.version_info >= (3, 8)) else " ".join(cmd)
     _append_log_event(
         run_obj,
         {
             "type": "cmd",
             "subtype": "start",
             "title": "Запуск команды",
-            "command": " ".join(cmd),
+            "command": cmd_display_str,
             "step_label": step_label,
         },
     )
@@ -1896,14 +2003,24 @@ def _run_cli_stream(
     }
     if spawn_env:
         popen_kw["env"] = spawn_env
+    if stdin_prompt is not None:
+        popen_kw["stdin"] = subprocess.PIPE
+        logger.info(f"📥 Codex: промпт будет передан через stdin ({len(stdin_prompt)} символов)")
     
     logger.info(f"🚀 Запуск процесса: {cmd[0]}")
     logger.info(f"🔧 Параметры Popen: stdout=PIPE, stderr=STDOUT, text=True, bufsize=1")
     print(f"\n[DEBUG] 🚀 Запуск процесса: {cmd[0]}", flush=True)
-    print(f"[DEBUG] 🎯 Полная команда: {' '.join(cmd)}", flush=True)
+    print(f"[DEBUG] 🎯 Полная команда: {cmd_display_str}", flush=True)
     
     try:
         process = subprocess.Popen(cmd, **popen_kw)
+        if stdin_prompt is not None:
+            try:
+                process.stdin.write(stdin_prompt)
+                process.stdin.flush()
+            finally:
+                process.stdin.close()
+            logger.info(f"✅ Промпт записан в stdin, stdin закрыт")
         logger.info(f"✅ Процесс запущен успешно, PID: {process.pid}")
         print(f"[DEBUG] ✅ Процесс запущен успешно, PID: {process.pid}", flush=True)
     except Exception as e:
@@ -1982,9 +2099,9 @@ def _run_cli_stream(
             first_output_timeout = getattr(settings, "CLI_FIRST_OUTPUT_TIMEOUT_SECONDS", 120)
             
             if not first_line_seen and elapsed >= first_output_timeout:
-                # Claude так и не вывел ни одной строки — прерываем (вероятно, MCP не запустился)
+                cli_name = "Codex" if runtime == "codex" else ("Claude" if runtime == "claude" else "CLI")
                 logger.error(
-                    f"❌ Таймаут первого вывода: Claude не вывел ни одной строки за {elapsed} сек. "
+                    f"❌ Таймаут первого вывода: {cli_name} не вывел ни одной строки за {elapsed} сек. "
                     f"Прерываем процесс PID={process.pid}."
                 )
                 print(
@@ -1995,12 +2112,12 @@ def _run_cli_stream(
                     process.kill()
                 except Exception:
                     pass
+                mcp_hint = "" if runtime == "codex" else (
+                    f"\nВероятная причина (Cursor/Claude): MCP-сервер не успел запуститься."
+                    f"\nПроверьте: WEU_USER_ID=<id> python manage.py mcp_servers"
+                )
                 err_msg = (
-                    f"Claude не вывел ни одной строки за {elapsed} сек. Процесс прерван.\n\n"
-                    f"Вероятная причина: Claude ждёт ответа MCP-сервера, который не успел запуститься или завис при старте Django.\n\n"
-                    f"Проверьте MCP-сервер вручную (из той же среды, откуда запускается workflow):\n"
-                    f"  WEU_USER_ID=<id> python manage.py mcp_servers\n"
-                    f"Если команда зависает или падает — исправьте окружение/БД/зависимости."
+                    f"CLI не вывел ни одной строки за {elapsed} сек. Процесс прерван.{mcp_hint}"
                 )
                 run_obj.logs = (run_obj.logs or "") + f"\n[ERROR] {err_msg}\n"
                 _append_log_event(
@@ -2015,12 +2132,13 @@ def _run_cli_stream(
                 run_obj.save(update_fields=["logs", "log_events", "meta"])
                 return {"success": False, "output": "".join(output_chunks), "exit_code": -2}
             
-            msg = f"⏳ Ожидание вывода от Claude (PID={process.pid}), прошло {elapsed} сек..."
+            cli_label = "Codex" if runtime == "codex" else "CLI"
+            msg = f"⏳ Ожидание вывода от {cli_label} (PID={process.pid}), прошло {elapsed} сек..."
             logger.warning(msg)
             print(f"[DEBUG] {msg}", flush=True)
             hint = ""
             if elapsed >= 10:
-                hint = f" (Если > {first_output_timeout} сек — процесс будет прерван. Проверьте MCP: python manage.py mcp_servers)"
+                hint = f" (Если > {first_output_timeout} сек — процесс будет прерван)"
             run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] {msg}{hint}\n"
             run_obj.save(update_fields=["logs"])
             continue
@@ -2040,9 +2158,10 @@ def _run_cli_stream(
         if not first_line_seen:
             first_line_seen = True
             elapsed = time.time() - start_wait
-            logger.info(f"✅ Первая строка от Claude получена через {elapsed:.1f} сек")
-            print(f"[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек", flush=True)
-            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от Claude через {elapsed:.1f} сек\n"
+            cli_label = "Codex" if runtime == "codex" else "CLI"
+            logger.info(f"✅ Первая строка от {cli_label} получена через {elapsed:.1f} сек")
+            print(f"[DEBUG] ✅ Первая строка от {cli_label} через {elapsed:.1f} сек", flush=True)
+            run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от {cli_label} через {elapsed:.1f} сек\n"
             run_obj.save(update_fields=["logs"])
         
         if line_stripped.startswith("{"):
@@ -2098,21 +2217,27 @@ def _run_cli_stream(
                 dirty_logs = True
                 maybe_flush()
         else:
-            # Сырой вывод (промпт, эхо) не пишем в run_obj.logs — только JSON-события для читаемости
-            if line_stripped and add_output_events:
-                _append_log_event(
-                    run_obj,
-                    {
-                        "type": "cmd_output",
-                        "title": "Вывод CLI",
-                        "message": line_stripped[:2000],
-                        "step_label": step_label,
-                        "line": line_number,
-                    },
-                )
-                pending_events += 1
-                dirty_events = True
-                maybe_flush()
+            # Сырой вывод: для Codex всегда пишем в логи (у него нет stream-json)
+            if line_stripped:
+                if runtime == "codex":
+                    run_obj.logs = (run_obj.logs or "") + line
+                    pending_lines += 1
+                    dirty_logs = True
+                    maybe_flush()
+                elif add_output_events:
+                    _append_log_event(
+                        run_obj,
+                        {
+                            "type": "cmd_output",
+                            "title": "Вывод CLI",
+                            "message": line_stripped[:2000],
+                            "step_label": step_label,
+                            "line": line_number,
+                        },
+                    )
+                    pending_events += 1
+                    dirty_events = True
+                    maybe_flush()
 
     logger.info(f"⏳ Ожидаем завершения процесса PID={process.pid}")
     print(f"[DEBUG] ⏳ Ожидаем завершения процесса PID={process.pid}", flush=True)
@@ -2496,7 +2621,7 @@ def _execute_workflow_run(run_id: int):
     # Фаза проверки задачи через Cursor (ask) перед запуском
     # ПРОПУСКАЕМ для серверных задач - им не нужен анализ кода!
     if getattr(settings, "ANALYZE_TASK_BEFORE_RUN", True) and steps and workspace and not is_server_task:
-        run_obj.logs = (run_obj.logs or "") + "\n[Phase: Cursor analyze task]\n"
+        run_obj.logs = (run_obj.logs or "") + "\n[Phase: Pre-analysis (Cursor — проверка задачи перед запуском)]\n"
         _append_log_event(
             run_obj,
             {
@@ -2626,6 +2751,22 @@ def _run_steps_with_backend(
         from app.core.model_config import model_manager
         runtime = model_manager.config.default_provider or "cursor"
         logger.info(f"_run_steps_with_backend: replaced 'auto' with '{runtime}'")
+
+    workflow_skill_ctx = _build_skill_context_for_user(
+        user_id=run_obj.initiated_by_id,
+        raw_skill_ids=(workflow.script or {}).get("skill_ids"),
+        channel="workflow",
+        runtime=runtime,
+    )
+    workflow_skill_text = (workflow_skill_ctx.get("text") or "").strip()
+    if workflow_skill_text:
+        run_meta = run_obj.meta or {}
+        run_meta["skill_ids"] = workflow_skill_ctx.get("skill_ids") or []
+        run_meta["skill_names"] = workflow_skill_ctx.get("skill_names") or []
+        run_meta["skill_context_len"] = len(workflow_skill_text)
+        run_obj.meta = run_meta
+        run_obj.logs = (run_obj.logs or "") + f"[Skills context applied: {', '.join(workflow_skill_ctx.get('skill_names') or [])}]\n"
+        run_obj.save(update_fields=["meta", "logs"])
     
     # Логируем runtime для отладки
     logger.info(f"_run_steps_with_backend called with runtime={runtime} for workflow {workflow.id}")
@@ -2779,6 +2920,13 @@ def _run_steps_with_backend(
                 run_obj.retry_count = retry_attempt
                 run_obj.save(update_fields=["retry_count"])
                 current_prompt_base = step_prompt
+                if workflow_skill_text:
+                    try:
+                        from skills.services import SkillService
+
+                        current_prompt_base = SkillService.prepend_context(current_prompt_base, workflow_skill_text)
+                    except Exception:
+                        pass
                 
                 # СИСТЕМНЫЙ ПРОМПТ ДЛЯ ИЗОЛИРОВАННЫХ ЗАДАЧ (серверные, DevOps)
                 # Агент должен работать ТОЛЬКО с серверами через MCP, БЕЗ поиска файлов
@@ -2939,7 +3087,8 @@ def _run_steps_with_backend(
                         logger.warning(f"  ⚠️ НЕ содержит метку серверной задачи")
                     
                     logger.info(f"\n🎯 ПОЛНАЯ КОМАНДА CLI ({len(cmd)} элементов):")
-                    cmd_full = " ".join(cmd)
+                    _wf_cmd_display = cmd[:-1] + [current_prompt] if (runtime == "codex" and cmd and cmd[-1] == "-") else cmd
+                    cmd_full = shlex.join(_wf_cmd_display) if (sys.version_info >= (3, 8)) else " ".join(cmd)
                     logger.info(f"{cmd_full}")
                     
                     if extra_env:
@@ -2950,10 +3099,10 @@ def _run_steps_with_backend(
                     logger.info(f"{'='*70}\n")
                     
                     # Старый лог для обратной совместимости
-                    cmd_preview = " ".join(cmd[:5]) + "..." if len(cmd) > 5 else " ".join(cmd)
+                    cmd_preview = shlex.join(_wf_cmd_display[:5]) + "..." if len(cmd) > 5 else cmd_full
                     logger.info(f"Executing CLI: {cmd_preview} (runtime={runtime}, model={config.get('model', 'N/A')})")
                     
-                    result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env)
+                    result = _run_cli_stream(cmd, run_obj, step_label=step_label, extra_env=extra_env, runtime=runtime, stdin_prompt=current_prompt if runtime == "codex" else None)
                     last_output = result.get("output", "") or ""
                     
                     # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ РЕЗУЛЬТАТА
@@ -3025,7 +3174,7 @@ def _run_steps_with_backend(
                 if verify_prompt:
                     verify_text = f"{verify_prompt}\n\nWhen verified output exactly: <promise>{verify_promise}</promise>." if verify_promise else verify_prompt
                     verify_cmd = _build_cli_command(runtime, verify_text, {**config, "completion_promise": verify_promise}, workspace)
-                    verify_result = _run_cli_stream(verify_cmd, run_obj, step_label=f"{step_title} - verify", extra_env=extra_env)
+                    verify_result = _run_cli_stream(verify_cmd, run_obj, step_label=f"{step_title} - verify", extra_env=extra_env, runtime=runtime, stdin_prompt=verify_text if runtime == "codex" else None)
                     if verify_promise and not _promise_found(verify_result.get("output", ""), verify_promise):
                         last_error = f"Verification failed: expected {verify_promise}"
                         retry_attempt += 1
@@ -3375,6 +3524,7 @@ def api_assist_config(request):
 def api_assist_auto(request):
     data = _parse_json_request(request)
     task = data.get("task", "").strip()
+    skill_ids = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
     
     # Используем default_provider из настроек вместо "ralph"
     from app.core.model_config import model_manager
@@ -3435,6 +3585,8 @@ def api_assist_auto(request):
     script = _generate_workflow_script(task, runtime)
     if not script:
         return JsonResponse({"error": "Failed to generate workflow"}, status=500)
+    if skill_ids:
+        script["skill_ids"] = skill_ids
 
     workflow = AgentWorkflow.objects.create(
         owner=request.user,
@@ -3757,6 +3909,7 @@ def api_workflow_create_manual(request):
     runtime = data.get("runtime", default_runtime)
     
     steps = data.get("steps", [])
+    skill_ids = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
     run_after_save = data.get("run_after_save", False)
     target_server_id = data.get("target_server_id")
     workflow_model = data.get("model", "auto")  # Модель workflow-level
@@ -3801,6 +3954,8 @@ def api_workflow_create_manual(request):
         "model": workflow_model,  # Модель workflow-level
         "steps": []
     }
+    if skill_ids:
+        script["skill_ids"] = skill_ids
     
     for step in steps:
         step_data = {
@@ -3932,6 +4087,11 @@ def api_workflow_import(request):
         runtime = default_runtime
     script["runtime"] = runtime
     script["name"] = name
+    script_skill_ids = _normalize_skill_ids_for_user(request.user, script.get("skill_ids"))
+    if script_skill_ids:
+        script["skill_ids"] = script_skill_ids
+    else:
+        script.pop("skill_ids", None)
     # Если runtime ralph, но ralph_yml нет — генерируем из steps (чтобы не было «Ralph script отсутствует»)
     if runtime == "ralph" and not script.get("ralph_yml"):
         backend = script.get("backend") or default_runtime
@@ -3988,6 +4148,7 @@ def api_workflow_get(request, workflow_id: int):
             "target_server_id": workflow.target_server_id,
             "target_server_name": workflow.target_server.name if workflow.target_server else None,
             "steps": steps,
+            "skill_ids": script.get("skill_ids", []),
             "created_at": workflow.created_at.isoformat() if hasattr(workflow, "created_at") else "",
         },
     })
@@ -4028,6 +4189,11 @@ def api_workflow_update(request, workflow_id: int):
         valid_models = [m["id"] for m in getattr(settings, "CURSOR_AVAILABLE_MODELS", [])]
         if workflow_model and workflow_model in valid_models:
             script["model"] = workflow_model
+        workflow.script = script
+
+    if "skill_ids" in data:
+        script = workflow.script or {}
+        script["skill_ids"] = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
         workflow.script = script
     
     if "steps" in data:
@@ -4158,7 +4324,11 @@ def api_custom_agents_list(request):
     """
     if request.method == 'GET':
         try:
-            agents = CustomAgent.objects.filter(owner=request.user, is_active=True).order_by('-updated_at')
+            agents = (
+                CustomAgent.objects.filter(owner=request.user, is_active=True)
+                .prefetch_related("skills")
+                .order_by('-updated_at')
+            )
             
             agents_data = []
             for agent in agents:
@@ -4172,6 +4342,8 @@ def api_custom_agents_list(request):
                     'allowed_tools': agent.allowed_tools,
                     'allowed_servers': agent.allowed_servers,
                     'knowledge_base': agent.knowledge_base,
+                    'skill_ids': list(agent.skills.values_list("id", flat=True)),
+                    'skill_names': list(agent.skills.values_list("name", flat=True)),
                     'usage_count': agent.usage_count,
                     'is_public': agent.is_public,
                     'created_at': agent.created_at.isoformat(),
@@ -4223,6 +4395,9 @@ def api_custom_agents_list(request):
                 allowed_servers=allowed_servers,
                 knowledge_base=data.get('knowledge_base', ''),
             )
+            skill_ids = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
+            if skill_ids:
+                agent.skills.set(skill_ids)
             
             logger.info(f"Created custom agent: {agent.name} (id={agent.id})")
             
@@ -4272,6 +4447,8 @@ def api_custom_agent_detail(request, agent_id: int):
                 'mcp_auto_approve': agent.mcp_auto_approve,
                 'allowed_servers': agent.allowed_servers,
                 'knowledge_base': agent.knowledge_base,
+                'skill_ids': list(agent.skills.values_list("id", flat=True)),
+                'skill_names': list(agent.skills.values_list("name", flat=True)),
                 'usage_count': agent.usage_count,
                 'is_public': agent.is_public,
                 'created_at': agent.created_at.isoformat(),
@@ -4327,6 +4504,10 @@ def api_custom_agent_detail(request, agent_id: int):
             
             if 'knowledge_base' in data:
                 agent.knowledge_base = data['knowledge_base']
+
+            if 'skill_ids' in data:
+                skill_ids = _normalize_skill_ids_for_user(request.user, data.get("skill_ids"))
+                agent.skills.set(skill_ids)
             
             agent.save()
             

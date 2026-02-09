@@ -2,6 +2,7 @@
 Models for agent profiles, presets, and run logs.
 """
 from typing import Dict
+import secrets
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -25,6 +26,7 @@ class AgentProfile(models.Model):
         ("internal", "Internal"),
         ("cursor", "Cursor CLI"),
         ("claude", "Claude Code CLI"),
+        ("codex", "Codex CLI"),
         ("opencode", "OpenCode CLI"),
         ("gemini", "Gemini CLI"),
         ("ralph", "Ralph Orchestrator"),
@@ -275,6 +277,12 @@ class CustomAgent(models.Model):
         blank=True,
         help_text='null/"all" = все серверы пользователя, [id1, id2, ...] = только указанные серверы'
     )
+    skills = models.ManyToManyField(
+        "skills.Skill",
+        blank=True,
+        related_name="bound_custom_agents",
+        help_text="Skills, которые будут автоматически добавляться в prompt этого агента",
+    )
     knowledge_base = models.TextField(
         blank=True,
         default='',
@@ -312,6 +320,7 @@ class CustomAgent(models.Model):
             "allowed_tools": self.allowed_tools,
             "max_iterations": self.max_iterations,
             "temperature": self.temperature,
+            "skill_ids": list(self.skills.values_list("id", flat=True)),
         }
     
     def get_allowed_servers(self, user):
@@ -330,3 +339,82 @@ class CustomAgent(models.Model):
         elif isinstance(self.allowed_servers, list):
             return Server.objects.filter(user=user, is_active=True, id__in=self.allowed_servers)
         return Server.objects.none()
+
+
+def _generate_webhook_secret() -> str:
+    # 48 hex chars, URL-safe and easy to paste into webhook URLs
+    return secrets.token_hex(24)
+
+
+class AgentWebhook(models.Model):
+    """
+    Webhook triggers for automatic agent execution.
+    """
+    EXECUTION_MODES = [
+        ("task", "Task"),
+        ("workflow", "Workflow"),
+    ]
+
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="agent_webhooks")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    source = models.CharField(max_length=50, default="generic")
+    secret = models.CharField(max_length=64, unique=True, db_index=True, default=_generate_webhook_secret)
+    config = models.JSONField(default=dict, blank=True)
+
+    # Agent selection
+    custom_agent = models.ForeignKey(
+        "agent_hub.CustomAgent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="webhook_triggers",
+    )
+    agent_type = models.CharField(
+        max_length=50,
+        default="react",
+        help_text="Fallback agent type if custom_agent is not set",
+    )
+    auto_execute = models.BooleanField(default=True)
+    execution_mode = models.CharField(max_length=20, choices=EXECUTION_MODES, default="task")
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["owner", "-updated_at"]),
+            models.Index(fields=["source"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.source})"
+
+
+class AgentWebhookEvent(models.Model):
+    """Webhook delivery log for debugging and audit."""
+    STATUS_CHOICES = [
+        ("received", "Received"),
+        ("processed", "Processed"),
+        ("failed", "Failed"),
+    ]
+
+    webhook = models.ForeignKey(AgentWebhook, on_delete=models.CASCADE, related_name="events")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="received")
+    payload = models.JSONField(default=dict, blank=True)
+    result = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["webhook", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"WebhookEvent {self.id} ({self.status})"

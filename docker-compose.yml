@@ -60,8 +60,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Всегда mini по умолчанию. Для full задайте WEU_BUILD=full в .env
         BUILD: ${WEU_BUILD:-mini}
+        INSTALL_CODEX: ${INSTALL_CODEX:-true}
     container_name: weu-web
     env_file: .env
     environment:
@@ -78,7 +78,8 @@ services:
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
       # Cursor CLI headless: без входа по Google. Ключ в .env из Cursor → Settings → API Access.
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
-      # Мастер-пароль для расшифровки паролей серверов в воркфлоу. Задай в .env.
+      CODEX_API_KEY: ${CODEX_API_KEY:-}
+      CODEX_UNSAFE_ALLOW_NO_SANDBOX: "1"
       MASTER_PASSWORD: ${MASTER_PASSWORD:-}
       REDIS_URL: redis://redis:6379/0
       # Celery configuration
@@ -94,14 +95,14 @@ services:
     restart: unless-stopped
     volumes:
       - agent_projects_data:/app/agent_projects
-  # Контейнер для запуска агентов (Cursor CLI / Ralph). Веб вызывает его при необходимости.
+  # Контейнер для запуска агентов (Cursor CLI / Ralph / Codex). Веб вызывает его при необходимости.
   agent-runner:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # Всегда mini по умолчанию. Для full задайте WEU_BUILD=full в .env
         BUILD: ${WEU_BUILD:-mini}
+        INSTALL_CODEX: ${INSTALL_CODEX:-true}
     container_name: weu-agent-runner
     env_file: .env
     environment:
@@ -112,6 +113,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
       DJANGO_SETTINGS_MODULE: web_ui.settings
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      CODEX_API_KEY: ${CODEX_API_KEY:-}
+      CODEX_UNSAFE_ALLOW_NO_SANDBOX: "1"
       REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
