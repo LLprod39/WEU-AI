@@ -276,6 +276,7 @@
         width: 360px;
         display: flex;
         flex-direction: column;
+        min-height: 0;
         background: rgba(17, 17, 19, 0.6);
         border-left: 1px solid rgba(255,255,255,0.06);
         flex-shrink: 0;
@@ -299,11 +300,19 @@
 
     .ai-messages {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         padding: 12px;
         display: flex;
         flex-direction: column;
         gap: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .ai-messages > * {
+        min-width: 0;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 
     .ai-input-area {
@@ -361,11 +370,13 @@
 
     /* Messages */
     .msg {
-        max-width: 90%;
+        max-width: 100%;
         padding: 8px 12px;
         border-radius: 12px;
         font-size: 12px;
         line-height: 1.4;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 
     .msg-user {
@@ -592,6 +603,17 @@
         background: rgba(255,255,255,0.1);
         border-radius: 2px;
     }
+
+    .report-body-md { overflow-wrap: break-word; word-break: break-word; min-width: 0; }
+    .report-body-md table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 10px 0; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; }
+    .report-body-md th, .report-body-md td { padding: 8px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); overflow-wrap: break-word; word-break: break-word; }
+    .report-body-md th { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; font-weight: 600; }
+    .report-body-md tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+    .report-body-md ul, .report-body-md ol { margin: 8px 0; padding-left: 20px; }
+    .report-body-md li { margin: 4px 0; }
+    .report-body-md strong { color: #e5e7eb; font-weight: 600; }
+    .report-body-md p { margin: 8px 0; }
+    .report-body-md code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 </style>
 
 <div class="terminal-hub">
@@ -652,6 +674,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
 // Tab management
@@ -982,6 +1005,9 @@ function connectTab(tabId) {
             case 'ai_command_status':
                 updateCmdStatus(tabId, msg);
                 break;
+            case 'ai_report':
+                handleAiReport(tabId, msg);
+                break;
             case 'ai_error':
                 appendAiMsg(tabId, 'system', msg.message || 'AI Error');
                 break;
@@ -1022,6 +1048,25 @@ function appendAiMsg(tabId, role, text) {
     div.className = 'msg msg-' + role;
     div.innerHTML = '<div style="white-space: pre-wrap;">' + escapeHtml(text) + '</div>';
     container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderReportBody(text) {
+    if (!text) return '';
+    if (typeof marked !== 'undefined') {
+        var html = marked.parse(text);
+        return (html || '').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    }
+    return '<div style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+}
+
+function handleAiReport(tabId, msg) {
+    const container = document.getElementById('ai-messages-' + tabId);
+    if (!container || !msg.report) return;
+    const block = document.createElement('div');
+    block.className = 'msg msg-assistant msg-report';
+    block.innerHTML = '<div class="report-title" style="display:flex;align-items:center;gap:6px;padding:10px 14px;background:rgba(99,102,241,0.15);font-size:12px;font-weight:600;color:#a5b4fc;border-left:3px solid rgba(99,102,241,0.6);"><span class="material-icons-round" style="font-size:14px;">summarize</span> Отчёт</div><div class="report-body report-body-md" style="padding:12px 14px;font-size:13px;color:#d1d5db;">' + renderReportBody(msg.report) + '</div>';
+    container.appendChild(block);
     container.scrollTop = container.scrollHeight;
 }
 

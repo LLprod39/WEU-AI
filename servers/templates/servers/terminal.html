@@ -145,19 +145,40 @@
     /* AI Panel */
     .ai-panel {
         width: 420px;
+        min-width: 320px;
+        max-width: 900px;
         display: flex;
         flex-direction: column;
+        min-height: 0;
         background: rgba(17, 17, 19, 0.6);
         border-left: 1px solid rgba(255,255,255,0.06);
-        transition: width 0.3s ease, transform 0.3s ease;
+        transition: transform 0.3s ease;
         flex-shrink: 0;
+        position: relative;
     }
 
     .ai-panel.collapsed {
-        width: 0;
+        width: 0 !important;
+        min-width: 0;
         transform: translateX(100%);
         border-left: none;
     }
+
+    .ai-panel-resizer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: col-resize;
+        z-index: 10;
+        background: transparent;
+    }
+    .ai-panel-resizer:hover,
+    .ai-panel-resizer:active {
+        background: rgba(99, 102, 241, 0.3);
+    }
+    .ai-panel.collapsed .ai-panel-resizer { display: none; }
 
     .ai-panel-header {
         padding: 16px 20px;
@@ -168,11 +189,19 @@
 
     .ai-messages {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .ai-messages > * {
+        min-width: 0;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 
     .ai-input-area {
@@ -215,10 +244,12 @@
         border: 1px solid rgba(99, 102, 241, 0.3);
         border-radius: 16px 16px 4px 16px;
         padding: 10px 14px;
-        max-width: 85%;
+        max-width: 100%;
         color: #e0e7ff;
         font-size: 13px;
         line-height: 1.5;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 
     .msg-assistant {
@@ -227,10 +258,80 @@
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 16px 16px 16px 4px;
         padding: 10px 14px;
-        max-width: 85%;
+        max-width: 100%;
         color: #d1d5db;
         font-size: 13px;
         line-height: 1.5;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
+    .msg-report {
+        border-left: 3px solid rgba(99, 102, 241, 0.6);
+        padding: 0;
+        min-width: 0;
+        max-width: 100%;
+    }
+    .msg-report .report-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 14px;
+        background: rgba(99, 102, 241, 0.1);
+        font-size: 12px;
+        font-weight: 600;
+        color: #a5b4fc;
+    }
+    .msg-report .report-body {
+        padding: 12px 14px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #d1d5db;
+        overflow-wrap: break-word;
+        word-break: break-word;
+        min-width: 0;
+    }
+    .msg-report .report-body table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        margin: 10px 0;
+        font-size: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .msg-report .report-body th,
+    .msg-report .report-body td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+    .msg-report .report-body th {
+        background: rgba(99, 102, 241, 0.2);
+        color: #a5b4fc;
+        font-weight: 600;
+    }
+    .msg-report .report-body tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+    .msg-report .report-body tr:hover { background: rgba(255,255,255,0.05); }
+    .msg-report .report-body ul, .msg-report .report-body ol {
+        margin: 8px 0;
+        padding-left: 20px;
+    }
+    .msg-report .report-body li { margin: 4px 0; }
+    .msg-report .report-body strong { color: #e5e7eb; font-weight: 600; }
+    .msg-report .report-body p { margin: 8px 0; }
+    .msg-report .report-body p:first-child { margin-top: 0; }
+    .msg-report .report-body p:last-child { margin-bottom: 0; }
+    .msg-report .report-body code {
+        background: rgba(0,0,0,0.3);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 
     .msg-system {
@@ -251,6 +352,8 @@
         border-radius: 12px;
         overflow: hidden;
         margin: 8px 0;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .cmd-card-header {
@@ -592,6 +695,7 @@
 
     <!-- AI Panel -->
     <div id="ai-panel" class="ai-panel">
+        <div id="ai-panel-resizer" class="ai-panel-resizer" title="Тяните, чтобы изменить ширину"></div>
         <div class="ai-panel-header">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
@@ -655,6 +759,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
 const serverId = {{ server.id }};
@@ -871,6 +976,9 @@ function connectTerminal() {
             case 'ai_command_status':
                 updateCommandStatus(msg);
                 break;
+            case 'ai_report':
+                handleAiReport(msg);
+                break;
             case 'ai_error':
                 appendMessage('system', msg.message || 'AI Error');
                 break;
@@ -916,6 +1024,45 @@ function toggleAiPanel() {
     btn.style.display = panel.classList.contains('collapsed') ? 'flex' : 'none';
 }
 
+// AI panel resize (drag left edge)
+(function initAiPanelResizer() {
+    const panel = document.getElementById('ai-panel');
+    const resizer = document.getElementById('ai-panel-resizer');
+    if (!panel || !resizer) return;
+    const MIN_W = 320, MAX_W = 900;
+    function getSavedWidth() {
+        try {
+            var w = parseInt(localStorage.getItem('weu_ai_panel_width'), 10);
+            return (w >= MIN_W && w <= MAX_W) ? w : 420;
+        } catch (e) { return 420; }
+    }
+    function setWidth(w) {
+        w = Math.max(MIN_W, Math.min(MAX_W, w));
+        panel.style.width = w + 'px';
+        try { localStorage.setItem('weu_ai_panel_width', String(w)); } catch (e) {}
+    }
+    setWidth(getSavedWidth());
+    resizer.addEventListener('mousedown', function(e) {
+        if (e.button !== 0 || panel.classList.contains('collapsed')) return;
+        e.preventDefault();
+        var startX = e.clientX, startW = panel.offsetWidth;
+        function onMove(e) {
+            var w = startW + (startX - e.clientX);
+            setWidth(w);
+        }
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+})();
+
 function appendMessage(role, text) {
     const container = document.getElementById('ai-messages');
     if (!container) return;
@@ -924,6 +1071,25 @@ function appendMessage(role, text) {
     div.className = 'msg-' + role;
     div.innerHTML = '<div style="white-space: pre-wrap;">' + escapeHtml(text) + '</div>';
     container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function renderReportBody(text) {
+    if (!text) return '';
+    if (typeof marked !== 'undefined') {
+        var html = marked.parse(text);
+        return (html || '').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    }
+    return '<div style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+}
+
+function handleAiReport(msg) {
+    const container = document.getElementById('ai-messages');
+    if (!container || !msg.report) return;
+    const block = document.createElement('div');
+    block.className = 'msg-assistant msg-report';
+    block.innerHTML = '<div class="report-title"><span class="material-icons-round text-sm">summarize</span> Отчёт</div><div class="report-body">' + renderReportBody(msg.report) + '</div>';
+    container.appendChild(block);
     container.scrollTop = container.scrollHeight;
 }
 

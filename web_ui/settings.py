@@ -15,6 +15,13 @@ import json
 import os
 import shutil
 
+# Загрузка .env до чтения os.getenv (для POSTGRES_*, CELERY_* и т.д.)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -148,7 +155,7 @@ def _get_database_config():
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
             "HOST": os.getenv("POSTGRES_HOST", "localhost"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "CONN_MAX_AGE": 60,  # РїРµСЂРµРёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ СЃРѕРµРґРёРЅРµРЅРёР№ РїСЂРё РЅР°РіСЂСѓР·РєРµ
+            "CONN_MAX_AGE": 0,  # постоянные соединения — БД не закрывается при множестве запросов
             "OPTIONS": {
                 "connect_timeout": 10,
                 "options": "-c statement_timeout=30000",  # 30s РјР°РєСЃ. РЅР° Р·Р°РїСЂРѕСЃ
@@ -157,6 +164,9 @@ def _get_database_config():
     return {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "OPTIONS": {
+            "timeout": 60,  # ждать lock до 60 сек (polling + логи = много конкурентных запросов)
+        },
     }
 
 
@@ -221,7 +231,7 @@ SITE_URL = os.getenv('SITE_URL', 'http://localhost:9000')
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR / 'core_ui' / 'static',
 ]
@@ -297,6 +307,7 @@ CURSOR_AVAILABLE_MODELS = [
     {"id": "gemini-3-pro", "name": "Gemini 3 Pro", "description": "Google Pro, 200k РєРѕРЅС‚РµРєСЃС‚"},
     {"id": "grok-code", "name": "Grok Code", "description": "xAI, 256k РєРѕРЅС‚РµРєСЃС‚"},
     {"id": "composer-1", "name": "Composer 1", "description": "Cursor native, 200k РєРѕРЅС‚РµРєСЃС‚"},
+    {"id": "composer-1.5", "name": "Composer 1.5", "description": "Cursor planning, 200k РєРѕРЅС‚РµРєСЃС‚"},
 ]
 
 # Р РµРєРѕРјРµРЅРґР°С†РёРё РјРѕРґРµР»РµР№ РїРѕ С‚РёРїСѓ Р·Р°РґР°С‡Рё (РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ SmartTaskAnalyzer)
@@ -328,15 +339,15 @@ CLI_RUNTIME_CONFIG = {
         "command": _cli_command("CURSOR_CLI_PATH", "agent"),
         # РќР•Рў --force: Р°РіРµРЅС‚ РЅРµ РјРѕР¶РµС‚ РјРµРЅСЏС‚СЊ С„Р°Р№Р»С‹ Р»РѕРєР°Р»СЊРЅРѕ
         # --sandbox enabled: РїСЂРёРЅСѓРґРёС‚РµР»СЊРЅР°СЏ РёР·РѕР»СЏС†РёСЏ filesystem
-        "args": ["-p", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}", "--sandbox", "enabled"],
+        "args": ["-p", "--trust", "--output-format", "stream-json", "--stream-partial-output", "--workspace", "{workspace}", "--sandbox", "enabled"],
         "prompt_style": "positional",
         "allowed_args": ["model", "approve-mcps"],
     },
-    # cursor_plan: СЂРµР¶РёРј --mode=plan РґР»СЏ Р°РЅР°Р»РёР·Р°/РїР»Р°РЅРёСЂРѕРІР°РЅРёСЏ (СѓС‚РѕС‡РЅСЏСЋС‰РёРµ РІРѕРїСЂРѕСЃС‹)
-    # Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ: https://cursor.com/ru/docs/cli/overview
+    # cursor_plan: режим --mode=plan для генерации workflow (Composer 1.5 пишет план)
+    # Документация: https://cursor.com/docs/agent/planning
     "cursor_plan": {
         "command": _cli_command("CURSOR_CLI_PATH", "agent"),
-        "args": ["-p", "--mode=plan"],  # --mode=plan РґР»СЏ РїР»Р°РЅРёСЂРѕРІР°РЅРёСЏ СЃ РІРѕРїСЂРѕСЃР°РјРё
+        "args": ["-p", "--trust", "--mode=plan", "--output-format", "text", "--workspace", "{workspace}"],
         "prompt_style": "positional",
         "allowed_args": ["model"],
     },

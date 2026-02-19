@@ -42,6 +42,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "ai_status", status: "thinking"|"running"|"waiting_confirm"|"idle", ...}
           {type: "ai_response", assistant_text: str, commands: [{id, cmd, why, requires_confirm, reason}]}
           {type: "ai_command_status", id: int, status: "running"|"done"|"skipped", exit_code?, reason?}
+          {type: "ai_report", report: str}
           {type: "ai_error", message: "<text>"}
       - client -> server:
           {type: "connect", master_password?, password?, cols?, rows?, term_type?}
@@ -72,6 +73,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     _ai_exit_futures: dict[int, asyncio.Future[int]]
     _ai_active_cmd_id: Optional[int]
     _ai_active_output: str
+    _ai_user_message: str
 
     _terminal_tail: str
 
@@ -96,6 +98,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_exit_futures = {}
         self._ai_active_cmd_id = None
         self._ai_active_output = ""
+        self._ai_user_message = ""
         self._terminal_tail = ""
         self._marker_suppress = {"stdout": False, "stderr": False}
         self._marker_line_buf = {"stdout": "", "stderr": ""}
@@ -153,6 +156,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             return
         if msg_type == "ai_cancel":
             await self._handle_ai_cancel(content or {})
+            return
+        if msg_type == "ping":
+            await self.send_json({"type": "pong"})
             return
 
         await self.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
@@ -315,7 +321,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             self._ai_plan = []
             self._ai_plan_index = 0
             self._ai_next_id = 1
-
+            self._ai_user_message = msg
         await self.send_json({"type": "ai_status", "status": "thinking"})
 
         try:
@@ -493,9 +499,43 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     if self._ai_plan_index < len(self._ai_plan) and int(self._ai_plan[self._ai_plan_index].get("id") or 0) == item_id:
                         self._ai_plan[self._ai_plan_index]["status"] = "done"
                         self._ai_plan[self._ai_plan_index]["exit_code"] = exit_code
+                        self._ai_plan[self._ai_plan_index]["output_snippet"] = output_snippet or ""
                         self._ai_plan_index += 1
 
                 await self.send_json({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code})
+
+            # После выполнения всех команд — сформировать отчёт по выводу (анализ логов, проблем и т.д.)
+            if send_idle:
+                user_msg = getattr(self, "_ai_user_message", "") or ""
+                async with self._ai_lock:
+                    plan_snapshot = list(self._ai_plan) if self._ai_plan else []
+                done_items = [
+                    {
+                        "cmd": str(it.get("cmd") or "").strip(),
+                        "exit_code": it.get("exit_code"),
+                        "output": (str(it.get("output_snippet") or "").strip())[:2000],
+                    }
+                    for it in plan_snapshot
+                    if str(it.get("status") or "") == "done"
+                ]
+                done_with_output = [x for x in done_items if (x.get("output") or "").strip()]
+                if user_msg and done_items:
+                    report = ""
+                    if done_with_output:
+                        try:
+                            report = (await self._ai_make_report(user_msg, done_with_output)).strip()
+                        except Exception as e:
+                            logger.warning("AI report generation failed: %s", e)
+                    if not report:
+                        # Всегда дать обратную связь: если вывод не сохранился или LLM не ответил
+                        codes = [x.get("exit_code") for x in done_items]
+                        all_ok = all(c == 0 for c in codes if c is not None)
+                        if all_ok:
+                            report = "Команды выполнены успешно (код выхода 0). Вывод смотрите в консоли слева. Краткий анализ по выводу сформировать не удалось — попробуйте запрос ещё раз или проверьте логи вручную."
+                        else:
+                            report = "Команды выполнены. Коды выхода: " + ", ".join(str(c) for c in codes) + ". Вывод в консоли слева. Для анализа проверьте вывод вручную."
+                    if report:
+                        await self.send_json({"type": "ai_report", "report": report})
 
         except asyncio.CancelledError:
             raise
@@ -555,9 +595,13 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         finally:
             async with self._ai_lock:
                 self._ai_exit_futures.pop(cmd_id, None)
-                self._ai_active_cmd_id = None
+                # _ai_active_cmd_id пока не сбрасываем — оставляем на время задержки для сбора буферизованного вывода
 
+        # Небольшая задержка, чтобы буферизованный вывод (напр. journalctl) успел прийти в _ai_active_output
+        await asyncio.sleep(0.4)
         output_snippet = (self._ai_active_output or "")[-2000:]
+        async with self._ai_lock:
+            self._ai_active_cmd_id = None
         return exit_code, output_snippet
 
     async def _ai_type_text(self, text: str):
@@ -611,6 +655,52 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             raise ValueError(out.strip())
 
         return self._extract_json_object(out)
+
+    async def _ai_make_report(self, user_message: str, commands_with_output: list[dict[str, Any]]) -> str:
+        """
+        По выводу выполненных команд и запросу пользователя формирует краткий отчёт:
+        какие проблемы обнаружены или что проблем нет.
+        """
+        from app.core.llm import LLMProvider
+
+        parts = []
+        for i, row in enumerate(commands_with_output[:10], 1):
+            cmd = row.get("cmd") or ""
+            code = row.get("exit_code")
+            out = (row.get("output") or "").strip()
+            if not out:
+                out = "(пустой вывод)"
+            parts.append(f"Команда {i}: {cmd}\nКод выхода: {code}\nВывод:\n{out[:1500]}")
+        context = "\n\n---\n\n".join(parts)
+
+        prompt = f"""Ты DevOps-ассистент. По выводу выполненных команд нужно дать короткий наглядный отчёт.
+
+ПРАВИЛА:
+- Отвечай кратко: 2–6 пунктов или одна компактная таблица, без воды.
+- Используй Markdown для наглядности:
+  - Таблицы для метрик (например: | Метрика | Значение | Статус |)
+  - Списки через - или 1. для перечисления проблем или пунктов
+  - **жирный** для акцента (важные цифры, статус)
+  - Эмодзи уместно: ✅ норма, ⚠️ внимание, ❌ ошибка, 📊 для блоков с цифрами
+- Если проблем нет — один короткий блок с ✅ и ключевыми показателями.
+- Если есть проблемы — таблица или список: что не так и где.
+- Без заголовка "Отчёт" и без лишнего вступления — сразу по делу.
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
+{user_message[:500]}
+
+ВЫВОД КОМАНД:
+{context[:12000]}
+
+Наглядный краткий отчёт (Markdown, таблицы/списки):"""
+
+        llm = LLMProvider()
+        out = ""
+        async for chunk in llm.stream_chat(prompt, model="auto"):
+            out += chunk
+            if len(out) > 4000:
+                break
+        return (out or "").strip()
 
     @staticmethod
     def _extract_json_object(text: str) -> dict[str, Any]:

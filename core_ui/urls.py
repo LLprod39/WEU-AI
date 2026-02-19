@@ -9,6 +9,7 @@ from tasks import project_views as task_project_views
 urlpatterns = [
     # Public landing (no auth)
     path('welcome/', views.welcome_view, name='welcome'),
+    path('landing/videos/<str:filename>', views.serve_landing_video, name='landing_video'),
     path('docs/ui-guide/', views.docs_ui_guide_view, name='docs_ui_guide'),
 
     # Authentication

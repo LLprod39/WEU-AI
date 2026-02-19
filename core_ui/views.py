@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 from django.shortcuts import render, redirect
-from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden
+from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
@@ -145,6 +145,26 @@ def docs_ui_guide_view(request):
     return render(request, 'docs_ui_guide.html')
 
 
+_ALLOWED_LANDING_VIDEOS = {'agent.mp4', 'mcp.mp4', 'server.mp4', 'task.mp4', 'agent.mkv', 'mcp.mkv', 'server.mkv', 'task.mkv'}
+
+
+@require_GET
+def serve_landing_video(request, filename):
+    """Раздача видео для лендинга (не зависит от staticfiles). Файлы в core_ui/static/landing/videos/."""
+    if filename not in _ALLOWED_LANDING_VIDEOS:
+        raise Http404
+    video_dir = (Path(settings.BASE_DIR) / 'core_ui' / 'static' / 'landing' / 'videos').resolve()
+    filepath = (video_dir / filename).resolve()
+    try:
+        filepath.relative_to(video_dir)
+    except ValueError:
+        raise Http404
+    if not filepath.is_file():
+        raise Http404
+    content_type = 'video/mp4' if filename.endswith('.mp4') else 'video/x-matroska'
+    return FileResponse(open(filepath, 'rb'), content_type=content_type, as_attachment=False)
+
+
 # ============================================
 # Main Page Views
 # ============================================
@@ -206,63 +226,163 @@ def monitor_view(request):
 @login_required
 def dashboard_view(request):
     """Dashboard - main page with system overview for DevOps admins."""
-    from datetime import date
+    from datetime import date, timedelta
+    from django.utils import timezone as tz
     from servers.models import Server
     from tasks.models import Task
     from agent_hub.models import AgentRun, AgentWorkflow
 
-    # Collect stats
+    # Stats (same for all users for global overview)
+    servers_total = Server.objects.count()
+    servers_active = Server.objects.filter(is_active=True).count()
+    tasks_total = Task.objects.count()
+    tasks_pending = Task.objects.filter(status='TODO').count()
+    tasks_in_progress = Task.objects.filter(status='IN_PROGRESS').count()
+    agents_running = AgentRun.objects.filter(status='running').count()
+    agents_today = AgentRun.objects.filter(created_at__date=date.today()).count()
+    workflows_total = AgentWorkflow.objects.count()
+
+    # Failed runs in last 24h
+    last_24h = tz.now() - timedelta(hours=24)
+    failed_runs_count = AgentRun.objects.filter(status='failed', created_at__gte=last_24h).count()
+
     context = {
-        'servers': {
-            'total': Server.objects.count(),
-            'active': Server.objects.filter(is_active=True).count(),
-        },
+        'servers': {'total': servers_total, 'active': servers_active},
         'tasks': {
-            'total': Task.objects.count(),
-            'pending': Task.objects.filter(status='pending').count(),
-            'in_progress': Task.objects.filter(status='in_progress').count(),
+            'total': tasks_total,
+            'pending': tasks_pending,
+            'in_progress': tasks_in_progress,
         },
-        'agents': {
-            'running': AgentRun.objects.filter(status='running').count(),
-            'today': AgentRun.objects.filter(created_at__date=date.today()).count(),
-        },
-        'workflows': {
-            'total': AgentWorkflow.objects.count(),
-        },
+        'agents': {'running': agents_running, 'today': agents_today},
+        'workflows': {'total': workflows_total},
         'recent_runs': AgentRun.objects.order_by('-created_at')[:5],
+        'failed_runs_count': failed_runs_count,
     }
+
+    # User-scoped widgets (tasks, projects)
+    overdue_tasks_count = 0
+    if user_can_feature(request.user, 'tasks'):
+        try:
+            from tasks.permissions import get_tasks_for_user, get_projects_for_user
+            my_tasks_qs = get_tasks_for_user(request.user).filter(
+                assignee=request.user,
+                status__in=['TODO', 'IN_PROGRESS']
+            ).select_related('project').order_by('due_date', '-updated_at')[:5]
+            context['recent_tasks'] = list(my_tasks_qs)
+            projects_qs = get_projects_for_user(request.user).order_by('-updated_at')[:3]
+            context['recent_projects'] = list(projects_qs)
+            # Overdue tasks
+            overdue_tasks_count = get_tasks_for_user(request.user).filter(
+                assignee=request.user,
+                status__in=['TODO', 'IN_PROGRESS'],
+                due_date__lt=date.today(),
+            ).count()
+        except Exception:
+            context['recent_tasks'] = []
+            context['recent_projects'] = []
+    else:
+        context['recent_tasks'] = []
+        context['recent_projects'] = []
+
+    context['overdue_tasks_count'] = overdue_tasks_count
+
+    # Unread notifications count (tasks)
+    if user_can_feature(request.user, 'tasks'):
+        try:
+            from tasks.models import TaskNotification
+            context['unread_notifications_count'] = TaskNotification.objects.filter(
+                user=request.user, is_read=False
+            ).count()
+        except Exception:
+            context['unread_notifications_count'] = 0
+    else:
+        context['unread_notifications_count'] = 0
+
+    # Recent chats (last 5)
+    try:
+        recent_chats_qs = ChatSession.objects.filter(user=request.user).order_by('-updated_at')[:5]
+        context['recent_chats'] = list(recent_chats_qs)
+    except Exception:
+        context['recent_chats'] = []
+
+    # Attention items count (for hero summary)
+    attention_count = (
+        context.get('unread_notifications_count', 0)
+        + overdue_tasks_count
+        + agents_running
+        + failed_runs_count
+    )
+    context['attention_count'] = attention_count
+
+    # App version for System Status card
+    context['app_version'] = getattr(settings, 'WEU_VERSION', '2.0.0')
+
     return render(request, 'dashboard.html', context)
 
 
 @login_required
 def api_dashboard_stats(request):
     """API endpoint for dashboard statistics (for real-time updates)."""
-    from datetime import date
+    from datetime import date, timedelta
+    from django.utils import timezone as tz
     from servers.models import Server
     from tasks.models import Task
     from agent_hub.models import AgentRun, AgentWorkflow
 
-    return JsonResponse({
-        'success': True,
-        'data': {
-            'servers': {
-                'total': Server.objects.count(),
-                'active': Server.objects.filter(is_active=True).count(),
-            },
-            'tasks': {
-                'total': Task.objects.count(),
-                'pending': Task.objects.filter(status='pending').count(),
-                'in_progress': Task.objects.filter(status='in_progress').count(),
-            },
-            'agents': {
-                'running': AgentRun.objects.filter(status='running').count(),
-                'today': AgentRun.objects.filter(created_at__date=date.today()).count(),
-            },
-            'workflows': {
-                'total': AgentWorkflow.objects.count(),
-            },
-        }
-    })
+    last_24h = tz.now() - timedelta(hours=24)
+    failed_runs_count = AgentRun.objects.filter(status='failed', created_at__gte=last_24h).count()
+    agents_running = AgentRun.objects.filter(status='running').count()
+
+    data = {
+        'servers': {
+            'total': Server.objects.count(),
+            'active': Server.objects.filter(is_active=True).count(),
+        },
+        'tasks': {
+            'total': Task.objects.count(),
+            'pending': Task.objects.filter(status='TODO').count(),
+            'in_progress': Task.objects.filter(status='IN_PROGRESS').count(),
+        },
+        'agents': {
+            'running': agents_running,
+            'today': AgentRun.objects.filter(created_at__date=date.today()).count(),
+        },
+        'workflows': {
+            'total': AgentWorkflow.objects.count(),
+        },
+        'failed_runs_count': failed_runs_count,
+    }
+
+    overdue_tasks_count = 0
+    if user_can_feature(request.user, 'tasks'):
+        try:
+            from tasks.models import TaskNotification
+            data['unread_notifications_count'] = TaskNotification.objects.filter(
+                user=request.user, is_read=False
+            ).count()
+        except Exception:
+            data['unread_notifications_count'] = 0
+        try:
+            from tasks.permissions import get_tasks_for_user
+            overdue_tasks_count = get_tasks_for_user(request.user).filter(
+                assignee=request.user,
+                status__in=['TODO', 'IN_PROGRESS'],
+                due_date__lt=date.today(),
+            ).count()
+        except Exception:
+            pass
+    else:
+        data['unread_notifications_count'] = 0
+
+    data['overdue_tasks_count'] = overdue_tasks_count
+    data['attention_count'] = (
+        data.get('unread_notifications_count', 0)
+        + overdue_tasks_count
+        + agents_running
+        + failed_runs_count
+    )
+
+    return JsonResponse({'success': True, 'data': data})
 
 
 @login_required
