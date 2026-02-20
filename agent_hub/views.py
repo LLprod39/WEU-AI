@@ -2367,7 +2367,8 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
         if target_server_id:
             qs = qs.filter(id=target_server_id)
         servers = list(qs.only(
-            "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt"
+            "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt",
+            "notes", "corporate_context",
         ))
         if not servers:
             return ""
@@ -2402,6 +2403,13 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
                 f"  tool server_execute {{\"server_name_or_id\": \"{target_name}\", \"command\": \"df -h\"}}",
                 "",
             ]
+            if servers[0].notes or servers[0].corporate_context:
+                lines.append("Контекст сервера (учитывай при выполнении):")
+                if servers[0].notes:
+                    lines.append(f"  Заметки: {servers[0].notes.strip()}")
+                if servers[0].corporate_context:
+                    lines.append(f"  Корпоративный контекст: {servers[0].corporate_context.strip()}")
+                lines.append("")
         else:
             lines = [
                 "\n\n=== СЕРВЕРЫ ПОЛЬЗОВАТЕЛЯ (из вкладки Servers) ===",
@@ -2432,6 +2440,11 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
                 cmd_hint = f"ssh {s.username}@{s.host} -p {s.port} '<command>'  # пароль неизвестен, задай MASTER_PASSWORD в env"
             lines.append(f"- {s.name}:")
             lines.append(f"    {cmd_hint}")
+            if s.notes or s.corporate_context:
+                if s.notes:
+                    lines.append(f"    Заметки: {s.notes.strip()}")
+                if s.corporate_context:
+                    lines.append(f"    Корпоративный контекст: {s.corporate_context.strip()}")
         lines.append("")
         lines.append("sshpass уже установлен. При ошибке подключения — проверь host/port/username.")
         lines.append("")
