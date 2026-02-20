@@ -93,6 +93,7 @@ from agent_hub.views_legacy import (
     # Custom Agents API
     api_custom_agents_list,
     api_custom_agent_detail,
+    api_custom_agent_remove_mcp,
     api_custom_agent_export,
     # Helper functions used by other modules
     _generate_workflow_script,
@@ -166,6 +167,7 @@ __all__ = [
     # Custom Agents API
     "api_custom_agents_list",
     "api_custom_agent_detail",
+    "api_custom_agent_remove_mcp",
     "api_custom_agent_export",
     # Helper functions
     "_generate_workflow_script",

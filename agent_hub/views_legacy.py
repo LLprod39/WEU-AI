@@ -4826,6 +4826,31 @@ def api_custom_agent_detail(request, agent_id: int):
 @csrf_exempt
 @login_required
 @require_feature('agents')
+@require_http_methods(["POST"])
+def api_custom_agent_remove_mcp(request, agent_id: int):
+    """Remove one MCP server from agent by name"""
+    try:
+        agent = CustomAgent.objects.get(id=agent_id, owner=request.user)
+        data = json.loads(request.body or '{}')
+        mcp_name = (data.get('mcp_name') or '').strip()
+        if not mcp_name:
+            return JsonResponse({'success': False, 'error': 'mcp_name required'}, status=400)
+        mcp_servers = dict(agent.mcp_servers or {})
+        if mcp_name not in mcp_servers:
+            return JsonResponse({'success': False, 'error': f'MCP "{mcp_name}" not found in agent'}, status=404)
+        del mcp_servers[mcp_name]
+        agent.mcp_servers = mcp_servers
+        agent.save()
+        return JsonResponse({'success': True, 'message': f'MCP "{mcp_name}" удалён из агента'})
+    except CustomAgent.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Agent not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_custom_agent_export(request, agent_id: int):
     """Экспорт агента в JSON формат (для Claude Code CLI)"""
