@@ -2393,8 +2393,16 @@
     function submitAgentRun() {
         var agentId = document.getElementById('agent-run-id').value;
         var task = document.getElementById('agent-run-task').value;
-        if (!agentId || !task.trim()) {
-            showToastSafe('Agent and task are required', 'error');
+        if (!agentId && !task.trim()) {
+            showToastSafe('Выберите агента и введите описание задачи', 'error');
+            return;
+        }
+        if (!agentId) {
+            showToastSafe('Выберите или создайте агента', 'error');
+            return;
+        }
+        if (!task.trim()) {
+            showToastSafe('Введите описание задачи', 'error');
             return;
         }
         var payload = {
