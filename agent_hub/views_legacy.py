@@ -311,8 +311,10 @@ Return ONLY valid JSON, no markdown:
 {{"name":"...","description":"...","runtime":"cursor","task_type":"server","steps":[{{"title":"...","prompt":"Execute via server_execute. Output <promise>STEP_DONE</promise> when done","completion_promise":"STEP_DONE","max_iterations":3}}]}}
 Task: {task}"""
     else:
-        prompt = f"""Generate a workflow JSON for CODE task. Return ONLY valid JSON:
-{{"name":"...","description":"...","runtime":"cursor","task_type":"code","steps":[{{"title":"...","prompt":"...","completion_promise":"STEP_DONE","max_iterations":5}}]}}
+        prompt = f"""Generate a workflow JSON for CODE task. Return ONLY valid JSON.
+For steps that change code, include verify_prompt so the agent runs tests after the step; if verification fails, the step is retried automatically.
+Example step with tests: {{"title":"...","prompt":"...","completion_promise":"STEP_DONE","max_iterations":5,"verify_prompt":"Run tests for this step (e.g. pytest, npm test). Output <promise>PASS</promise> when all pass.","verify_promise":"PASS"}}
+Full schema: {{"name":"...","description":"...","runtime":"cursor","task_type":"code","steps":[{{"title":"...","prompt":"...","completion_promise":"STEP_DONE","max_iterations":5,"verify_prompt":"Verify work and run tests if needed. Output <promise>PASS</promise> when ok.","verify_promise":"PASS"}}]}}
 Task: {task}"""
     try:
         planning_dir = Path(settings.MEDIA_ROOT) / "workflows" / "planning"
@@ -412,7 +414,7 @@ RULES FOR CODE TASKS:
 - Agent should NOT access main project code
 - Keep steps short and actionable
 - Each step must include completion_promise
-- Include verify_prompt and verify_promise for testing steps
+- For steps that change code, ALWAYS add verify_prompt and verify_promise so the agent runs tests after the step; if tests fail, the workflow will retry the step automatically.
 - Ralph workflow: шаги по порядку, completion_promise для завершения
 
 Task description:
@@ -3259,8 +3261,13 @@ def _run_steps_with_backend(
                     current_prompt_base = servers_context + "\n\n" + current_prompt_base
                 if retry_attempt > 0:
                     current_prompt_base = (
-                        f"Previous attempt failed with error: {last_error}\n\n"
-                        f"Please fix the issue and try again.\n\nOriginal task:\n{step_prompt}"
+                        f"Previous attempt failed: {last_error}\n\n"
+                        + (
+                            "Verification (tests) failed. Run tests for this step (e.g. pytest, npm test), fix any failures, then complete the task and output the completion promise. The workflow will run a verify step after; it must output <promise>PASS</promise> when tests pass.\n\n"
+                            if last_error and "Verification failed" in str(last_error)
+                            else "Please fix the issue and try again.\n\n"
+                        )
+                        + f"Original task:\n{step_prompt}"
                     )
                     if servers_context:
                         current_prompt_base = servers_context + "\n\n" + current_prompt_base
