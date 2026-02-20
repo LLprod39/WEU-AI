@@ -60,6 +60,7 @@ urlpatterns = [
     path("custom-agents/", views.custom_agents_view, name="custom_agents"),
     path("api/custom-agents/", views.api_custom_agents_list, name="api_custom_agents_list"),
     path("api/custom-agents/<int:agent_id>/", views.api_custom_agent_detail, name="api_custom_agent_detail"),
+    path("api/custom-agents/<int:agent_id>/remove-mcp/", views.api_custom_agent_remove_mcp, name="api_custom_agent_remove_mcp"),
     path("api/custom-agents/<int:agent_id>/export/", views.api_custom_agent_export, name="api_custom_agent_export"),
     path("api/custom-agents/run/", automation_views.api_custom_agent_run, name="api_custom_agent_run"),
     # Webhooks

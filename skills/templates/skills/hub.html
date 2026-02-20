@@ -340,8 +340,9 @@
                         <div id="mcp-pool" class="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5"></div>
                         <p id="mcp-pool-empty" class="text-xs text-gray-500 px-4 pb-4 hidden">Нет MCP. Установите из каталога или создайте новый.</p>
                     </div>
-                    <!-- MCP Editor -->
-                    <div class="flex-1 overflow-y-auto p-5">
+                    <!-- MCP Editor + Agent MCP panel -->
+                    <div class="flex-1 overflow-y-auto p-5 space-y-6">
+                        <!-- Editor -->
                         <div class="max-w-2xl mx-auto space-y-4">
                             <div class="flex items-center justify-between gap-3">
                                 <h2 class="text-sm font-semibold text-white">Настройка MCP</h2>
@@ -362,6 +363,24 @@
                                     <button type="button" id="btn-mcp-del" class="px-3 py-1.5 text-xs rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition-colors"><span class="material-icons-round text-sm mr-1">delete</span>Удалить</button>
                                 </div>
                             </form>
+                        </div>
+
+                        <!-- Agent MCP Overview Panel -->
+                        <div class="max-w-2xl mx-auto">
+                            <div class="border border-white/[.06] rounded-xl overflow-hidden">
+                                <div class="px-4 py-3 bg-white/[.02] border-b border-white/[.06] flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-icons-round text-sm text-primary">smart_toy</span>
+                                        <span class="text-xs font-semibold text-white">MCP у агентов</span>
+                                    </div>
+                                    <button onclick="loadAgentMcpPanel()" class="p-1 rounded text-gray-500 hover:text-white transition-colors" title="Обновить">
+                                        <span class="material-icons-round text-sm">refresh</span>
+                                    </button>
+                                </div>
+                                <div id="agent-mcp-panel" class="divide-y divide-white/[.04]">
+                                    <div class="px-4 py-6 text-center text-xs text-gray-500">Загрузка...</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -651,7 +670,7 @@ function maybeLoadRegistry(){
 window.switchTab=function(tab){
     document.querySelectorAll('.hub-tab-btn').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab)});
     document.querySelectorAll('.hub-panel').forEach(p=>{p.classList.toggle('hidden',p.dataset.panel!==tab)});
-    if(tab==='mcp')setTimeout(maybeLoadRegistry,0);
+    if(tab==='mcp'){setTimeout(maybeLoadRegistry,0);setTimeout(()=>{renderAgentMcpPanel();},50);}
 };
 document.querySelectorAll('.hub-tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 
@@ -940,20 +959,45 @@ function renderMcpPool(){
     document.getElementById('mcp-count').textContent=filtered.length;
     if(!filtered.length){wrap.innerHTML='';empty.classList.remove('hidden');return}
     empty.classList.add('hidden');
+    // Build agent lookup: which agents already have each MCP by name
+    const agents=INIT.agents||[];
     wrap.innerHTML=filtered.map(m=>{
         const sel=state.currentMcpId===m.id;
-        return `<div class="mcp-pool-item flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${sel?'skill-card-active border-primary/50':'border-white/[.06] bg-white/[.02] hover:border-primary/30'}" onclick="selectMcp(${m.id})">
-            <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 text-primary"><span class="material-icons-round text-lg">extension</span></div>
-            <div class="min-w-0 flex-1">
-                <div class="text-xs font-medium text-white">${esc(m.name)}</div>
-                <div class="text-[10px] text-gray-500 font-mono truncate">${esc(m.command)} ${(m.args||[]).join(' ')}</div>
-                ${m.description?`<div class="text-[10px] text-gray-500 mt-0.5 truncate">${esc(m.description)}</div>`:''}
+        // Agents that already have this MCP
+        const alreadyIn=agents.filter(a=>(a.mcp_names||[]).includes(m.name));
+        const agentsHtml=alreadyIn.length
+            ? alreadyIn.map(a=>`<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 text-[9px] font-medium">${esc(a.name)}</span>`).join('')
+            : '';
+        // Agents not yet assigned
+        const notIn=agents.filter(a=>!(a.mcp_names||[]).includes(m.name));
+        const addOpts=notIn.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+        return `<div class="mcp-pool-item rounded-xl border transition-all ${sel?'skill-card-active border-primary/50':'border-white/[.06] bg-white/[.02] hover:border-primary/30'}">
+            <div class="flex items-center gap-3 p-3 cursor-pointer" onclick="selectMcp(${m.id})">
+                <div class="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 text-primary"><span class="material-icons-round text-base">extension</span></div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-semibold text-white">${esc(m.name)}</div>
+                    <div class="text-[10px] text-gray-500 font-mono truncate">${esc(m.command)} ${(m.args||[]).slice(0,3).join(' ')}</div>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0" onclick="event.stopPropagation()">
+                    <button type="button" class="p-1.5 rounded-lg text-sky-400 hover:bg-sky-500/15 transition-colors" id="mcp-test-${m.id}" onclick="mcpTest(${m.id})" title="Проверить">
+                        <span class="material-icons-round text-sm">wifi_tethering</span>
+                    </button>
+                    <button type="button" class="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 transition-colors" onclick="mcpDelete(${m.id})" title="Удалить">
+                        <span class="material-icons-round text-sm">delete_outline</span>
+                    </button>
+                </div>
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0" onclick="event.stopPropagation()">
-                <select class="input-field text-[10px] px-2 py-1.5 min-w-0 max-w-[120px]" onchange="mcpAddToAgent(${m.id},this.value);this.selectedIndex=0" title="Добавить в агента"><option value="">В агента</option>${INIT.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>
-                <button type="button" class="p-1.5 rounded-lg text-sky-400 hover:bg-sky-500/15 transition-colors" id="mcp-test-${m.id}" onclick="mcpTest(${m.id})" title="Проверить соединение"><span class="material-icons-round text-sm">wifi_tethering</span></button>
-                <button type="button" class="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 transition-colors" onclick="mcpDelete(${m.id})" title="Удалить"><span class="material-icons-round text-sm">delete_outline</span></button>
-            </div>
+            ${alreadyIn.length?`<div class="px-3 pb-2 flex items-center gap-1 flex-wrap"><span class="text-[9px] text-gray-600 mr-1">Агенты:</span>${agentsHtml}</div>`:''}
+            ${notIn.length?`<div class="px-3 pb-3 flex items-center gap-2 border-t border-white/[.04] pt-2 mt-0">
+                <span class="material-icons-round text-[13px] text-gray-500">add_circle_outline</span>
+                <select class="input-field text-[10px] px-2 py-1 flex-1 min-w-0" id="mcp-agent-sel-${m.id}" title="Добавить в агента">
+                    <option value="">— добавить в агента —</option>${addOpts}
+                </select>
+                <button type="button" onclick="mcpAddToAgent(${m.id},document.getElementById('mcp-agent-sel-${m.id}').value)"
+                    class="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary-light text-[10px] font-medium transition-colors flex-shrink-0">
+                    Добавить
+                </button>
+            </div>`:`<div class="px-3 pb-2.5 flex items-center gap-1.5 border-t border-white/[.04] pt-2"><span class="material-icons-round text-[12px] text-emerald-400">check_circle</span><span class="text-[10px] text-emerald-400">Добавлен во все агенты</span></div>`}
         </div>`;
     }).join('');
 }
@@ -978,7 +1022,7 @@ function renderMcpCatalog(){
     }).join('');
 }
 window.loadMcpPool=async function(){
-    try{const d=await api('/skills/api/mcp/pool/');state.mcpPool=d.servers||[];renderMcpPool();renderOverview();refreshRegistryGrid();}catch(e){}
+    try{const d=await api('/skills/api/mcp/pool/');state.mcpPool=d.servers||[];renderMcpPool();renderOverview();refreshRegistryGrid();renderAgentMcpPanel();}catch(e){}
 };
 window.mcpDelete=async function(id,skipConfirm){
     const m=(state.mcpPool||[]).find(x=>x.id===id);
@@ -987,7 +1031,94 @@ window.mcpDelete=async function(id,skipConfirm){
 };
 window.mcpAddToAgent=async function(serverId,agentId){
     if(!agentId)return;
-    try{const d=await api(`/skills/api/mcp/pool/${serverId}/add-to-agent/`,{method:'POST',body:JSON.stringify({agent_id:Number(agentId)})});toast(d.message)}catch(e){}
+    const agentIdNum=Number(agentId);
+    try{
+        const d=await api(`/skills/api/mcp/pool/${serverId}/add-to-agent/`,{method:'POST',body:JSON.stringify({agent_id:agentIdNum})});
+        toast(d.message||'MCP добавлен в агента','success');
+        // Update local INIT.agents so renderMcpPool immediately shows the binding
+        const mcp=(state.mcpPool||[]).find(m=>m.id===serverId);
+        const ag=INIT.agents.find(a=>a.id===agentIdNum);
+        if(mcp&&ag){
+            if(!ag.mcp_names)ag.mcp_names=[];
+            if(!ag.mcp_names.includes(mcp.name))ag.mcp_names.push(mcp.name);
+            if(!ag.mcp_servers)ag.mcp_servers={};
+            ag.mcp_servers[mcp.name]={enabled:true,command:mcp.command,args:mcp.args||[]};
+        }
+        renderMcpPool();
+        renderAgentMcpPanel();
+    }catch(e){toast('Ошибка добавления MCP','error');}
+};
+
+// ========== Agent MCP Panel ==========
+async function loadAgentMcpPanel(){
+    try{
+        const d=await api('/agents/api/custom-agents/');
+        (d.agents||[]).forEach(a=>{
+            const existing=INIT.agents.find(x=>x.id===a.id);
+            if(existing){
+                existing.mcp_servers=a.mcp_servers||{};
+                existing.mcp_names=Object.keys(a.mcp_servers||{});
+            }
+        });
+        renderMcpPool();
+        renderAgentMcpPanel();
+    }catch(e){console.warn('loadAgentMcpPanel error',e);}
+}
+function renderAgentMcpPanel(){
+    const panel=document.getElementById('agent-mcp-panel');
+    if(!panel)return;
+    const agents=INIT.agents||[];
+    const agentsWithMcp=agents.filter(a=>Object.keys(a.mcp_servers||{}).length>0);
+    if(!agents.length){
+        panel.innerHTML='<div class="px-4 py-5 text-center text-xs text-gray-500">Нет агентов. Создайте агента в разделе Agents.</div>';
+        return;
+    }
+    if(!agentsWithMcp.length){
+        panel.innerHTML='<div class="px-4 py-5 text-center text-xs text-gray-500">Ни у одного агента нет MCP серверов. Добавьте MCP к агенту слева.</div>';
+        return;
+    }
+    panel.innerHTML=agentsWithMcp.map(a=>{
+        const mcps=Object.entries(a.mcp_servers||{});
+        const mcpChips=mcps.map(([name,cfg])=>`
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[.03] border border-white/[.06] group">
+                <span class="material-icons-round text-[11px] text-primary/70">extension</span>
+                <span class="text-[11px] text-gray-300 font-medium flex-1 min-w-0 truncate" title="${esc(name)}">${esc(name)}</span>
+                <span class="text-[9px] font-mono text-gray-600 truncate max-w-[80px]" title="${esc((cfg.args||[]).join(' '))}">${esc(cfg.command||'')} ${(cfg.args||[]).slice(0,2).join(' ')}</span>
+                <button onclick="mcpRemoveFromAgent(${a.id},'${esc(name).replace(/'/g,"\\'")}',this)"
+                    class="p-0.5 rounded text-gray-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" title="Удалить из агента">
+                    <span class="material-icons-round text-[13px]">close</span>
+                </button>
+            </div>`).join('');
+        return `<div class="px-4 py-3">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span class="material-icons-round text-[11px] text-primary">smart_toy</span>
+                </span>
+                <span class="text-xs font-semibold text-white">${esc(a.name)}</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-white/[.05] text-gray-500">${mcps.length} MCP</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">${mcpChips}</div>
+        </div>`;
+    }).join('');
+}
+window.mcpRemoveFromAgent=async function(agentId,mcpName,btnEl){
+    if(!confirm(`Удалить MCP «${mcpName}» из агента?`))return;
+    if(btnEl)btnEl.disabled=true;
+    try{
+        const d=await api(`/agents/api/custom-agents/${agentId}/remove-mcp/`,{method:'POST',body:JSON.stringify({mcp_name:mcpName})});
+        toast(d.message||'MCP удалён из агента','success');
+        // Update local state
+        const ag=INIT.agents.find(a=>a.id===agentId);
+        if(ag&&ag.mcp_servers){
+            delete ag.mcp_servers[mcpName];
+            ag.mcp_names=(ag.mcp_names||[]).filter(n=>n!==mcpName);
+        }
+        renderMcpPool();
+        renderAgentMcpPanel();
+    }catch(e){
+        toast('Ошибка удаления MCP','error');
+        if(btnEl)btnEl.disabled=false;
+    }
 };
 window.mcpTest=async function(id){
     const btn=document.getElementById('mcp-test-'+id);

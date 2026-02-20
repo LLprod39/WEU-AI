@@ -1,0 +1,1299 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#050507">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WEU AI">
+<meta name="mobile-web-app-capable" content="yes">
+<title>WEU AI</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg-deep:    #050507;
+  --bg-base:    #09090b;
+  --bg-surface: #111113;
+  --bg-elevated:#18181b;
+  --bg-card:    #0f0f11;
+  --border:     rgba(255,255,255,0.07);
+  --border-md:  rgba(255,255,255,0.12);
+  --primary:    #6366f1;
+  --primary-h:  #4f46e5;
+  --primary-l:  #818cf8;
+  --primary-m:  rgba(99,102,241,0.15);
+  --primary-g:  rgba(99,102,241,0.28);
+  --accent:     #06b6d4;
+  --accent-m:   rgba(6,182,212,0.12);
+  --success:    #22c55e;
+  --success-m:  rgba(34,197,94,0.12);
+  --warning:    #f59e0b;
+  --warning-m:  rgba(245,158,11,0.12);
+  --danger:     #ef4444;
+  --danger-m:   rgba(239,68,68,0.12);
+  --t1: #fafafa;
+  --t2: #a1a1aa;
+  --t3: #71717a;
+  --t4: #3f3f46;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', Consolas, monospace;
+  --tab-h: 64px;
+  --header-h: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+  height: 100%; width: 100%;
+  overflow: hidden;
+  background: var(--bg-deep);
+  color: var(--t1);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* ── APP SHELL ── */
+.app {
+  display: flex; flex-direction: column;
+  height: 100%; width: 100%;
+  position: fixed; inset: 0;
+}
+
+/* ── HEADER ── */
+.app-header {
+  position: relative;
+  padding: calc(var(--safe-top) + 10px) 16px 10px;
+  background: rgba(5,5,7,0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  z-index: 50; flex-shrink: 0;
+  min-height: calc(var(--safe-top) + var(--header-h));
+}
+
+.header-logo {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--primary-m);
+  border: 1px solid rgba(99,102,241,0.3);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.header-logo .material-icons-round { font-size: 18px; color: var(--primary-l); }
+
+.header-titles { flex: 1; min-width: 0; }
+.header-app-name { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.header-page-title {
+  font-size: 12px; color: var(--t3);
+  font-family: var(--mono); letter-spacing: .02em;
+}
+
+.header-actions { display: flex; align-items: center; gap: 6px; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; color: var(--t2);
+  transition: background .15s, color .15s;
+  -webkit-user-select: none; user-select: none;
+}
+.icon-btn:active { background: rgba(255,255,255,0.08); }
+.icon-btn .material-icons-round { font-size: 18px; }
+
+.notif-badge {
+  position: absolute; top: 5px; right: 5px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--danger);
+  border: 1px solid var(--bg-deep);
+  display: none;
+}
+.notif-badge.show { display: block; }
+
+/* Spinning refresh icon */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin .7s linear infinite; }
+
+/* ── PULL-TO-REFRESH ── */
+.ptr-indicator {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s;
+  z-index: 10; pointer-events: none;
+}
+.ptr-indicator.show { opacity: 1; }
+.ptr-indicator .material-icons-round { font-size: 18px; color: var(--primary-l); }
+
+/* ── CONTENT AREA ── */
+.app-content {
+  flex: 1; overflow: hidden;
+  position: relative;
+}
+
+/* ── TABS PANELS ── */
+.tab-panel {
+  position: absolute; inset: 0;
+  overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  padding: 16px 16px calc(var(--tab-h) + var(--safe-bot) + 16px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s ease;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-panel::-webkit-scrollbar { display: none; }
+.tab-panel.active { opacity: 1; pointer-events: all; }
+
+/* ── BOTTOM TAB BAR ── */
+.tab-bar {
+  position: relative;
+  background: rgba(9,9,11,0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding-bottom: var(--safe-bot);
+  flex-shrink: 0; z-index: 50;
+}
+
+.tab-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px; padding: 8px 4px;
+  cursor: pointer; min-height: var(--tab-h);
+  position: relative; color: var(--t4);
+  transition: color .18s;
+  -webkit-user-select: none; user-select: none;
+}
+.tab-item:active { opacity: .7; }
+.tab-item.active { color: var(--primary-l); }
+.tab-item .material-icons-round { font-size: 22px; }
+.tab-label { font-size: 10px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+
+.tab-dot {
+  position: absolute; top: 7px; right: calc(50% - 13px);
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--danger); border: 1px solid var(--bg-deep);
+  display: none;
+}
+.tab-dot.show { display: block; }
+
+/* Active tab indicator */
+.tab-bar::before {
+  content: '';
+  position: absolute; top: 0; height: 2px; width: 25%;
+  background: linear-gradient(90deg, transparent, var(--primary-l), transparent);
+  transition: left .25s cubic-bezier(.4,0,.2,1);
+  left: 0;
+}
+
+/* ── SKELETON ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-surface) 50%, var(--bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+.skel-card { height: 88px; border-radius: 14px; margin-bottom: 12px; }
+.skel-line { height: 14px; border-radius: 6px; margin-bottom: 8px; }
+.skel-line.short { width: 60%; }
+
+/* ── SECTION LABEL ── */
+.section-label {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; margin-top: 4px;
+}
+.section-title {
+  font-size: 12px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--t4);
+  font-family: var(--mono);
+}
+.section-action {
+  font-size: 12px; color: var(--primary-l); cursor: pointer;
+  padding: 4px 8px; border-radius: 6px; background: var(--primary-m);
+}
+
+/* ── STAT CARDS ROW ── */
+.stats-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px; padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  opacity: 0; transition: opacity .2s;
+}
+.stat-card.s-primary::before { background: linear-gradient(90deg, transparent, var(--primary-l), transparent); opacity: 1; }
+.stat-card.s-accent::before { background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 1; }
+.stat-card.s-success::before { background: linear-gradient(90deg, transparent, var(--success), transparent); opacity: 1; }
+
+.stat-icon { font-size: 18px; }
+.stat-icon.c-primary { color: var(--primary-l); }
+.stat-icon.c-accent { color: var(--accent); }
+.stat-icon.c-success { color: var(--success); }
+.stat-num { font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+.stat-lbl { font-size: 10px; color: var(--t3); font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+
+/* ── ACTIVE RUNS WIDGET ── */
+.runs-widget {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px; overflow: hidden;
+  margin-bottom: 20px;
+}
+.widget-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.widget-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(34,197,94,.4);
+  animation: livepulse 2s infinite;
+}
+@keyframes livepulse {
+  0% { box-shadow: 0 0 0 0 rgba(34,197,94,.4); }
+  70% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+.widget-count { font-family: var(--mono); font-size: 12px; color: var(--t3); }
+
+.run-mini-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .15s;
+}
+.run-mini-item:last-child { border-bottom: none; }
+.run-mini-item:active { background: rgba(255,255,255,.03); }
+
+.run-status-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.rsd-running { background: var(--success); animation: livepulse 2s infinite; }
+.rsd-succeeded { background: var(--success); opacity: .5; }
+.rsd-failed { background: var(--danger); }
+.rsd-queued { background: var(--warning); }
+.rsd-cancelled { background: var(--t4); }
+
+.run-mini-info { flex: 1; min-width: 0; }
+.run-mini-task { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-mini-meta { font-size: 11px; color: var(--t3); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+
+.runtime-pill {
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em;
+}
+.rt-ralph { background: rgba(139,92,246,.15); color: #a78bfa; }
+.rt-cursor { background: var(--primary-m); color: var(--primary-l); }
+.rt-claude { background: var(--accent-m); color: var(--accent); }
+.rt-internal { background: var(--success-m); color: var(--success); }
+.rt-codex { background: var(--warning-m); color: var(--warning); }
+.rt-default { background: rgba(255,255,255,.06); color: var(--t3); }
+
+/* ── NOTIFICATIONS ── */
+.notif-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex; gap: 12px; align-items: flex-start;
+  cursor: pointer; transition: all .2s;
+  position: relative; overflow: hidden;
+}
+.notif-item.unread { border-color: rgba(99,102,241,.25); }
+.notif-item.unread::before {
+  content: ''; position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--primary);
+}
+.notif-item:active { transform: scale(.98); }
+.notif-item.read { opacity: .55; }
+
+.notif-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.notif-icon .material-icons-round { font-size: 18px; }
+
+.ni-success { background: var(--success-m); border: 1px solid rgba(34,197,94,.2); color: var(--success); }
+.ni-danger { background: var(--danger-m); border: 1px solid rgba(239,68,68,.2); color: var(--danger); }
+.ni-warning { background: var(--warning-m); border: 1px solid rgba(245,158,11,.2); color: var(--warning); }
+.ni-info { background: var(--primary-m); border: 1px solid rgba(99,102,241,.2); color: var(--primary-l); }
+.ni-accent { background: var(--accent-m); border: 1px solid rgba(6,182,212,.2); color: var(--accent); }
+
+.notif-body { flex: 1; min-width: 0; }
+.notif-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.notif-msg { font-size: 12px; color: var(--t2); line-height: 1.5; }
+.notif-time { font-size: 11px; color: var(--t4); margin-top: 6px; font-family: var(--mono); }
+
+.notif-unread-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary-l); flex-shrink: 0; margin-top: 3px;
+}
+
+/* Mark all read btn */
+.mark-all-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--t2); font-size: 13px; font-weight: 500;
+  cursor: pointer; margin-bottom: 16px;
+  transition: all .18s;
+}
+.mark-all-btn:active { background: var(--bg-elevated); }
+.mark-all-btn .material-icons-round { font-size: 16px; }
+
+/* ── RUNS LIST ── */
+.run-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px; margin-bottom: 10px;
+  overflow: hidden; cursor: pointer;
+  transition: border-color .2s;
+}
+.run-card:active { border-color: var(--border-md); }
+
+.run-card-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+}
+.run-status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  padding: 3px 8px; border-radius: 5px; text-transform: uppercase; letter-spacing: .05em;
+  flex-shrink: 0;
+}
+.rsb-running { background: var(--success-m); color: var(--success); border: 1px solid rgba(34,197,94,.25); }
+.rsb-succeeded { background: rgba(34,197,94,.08); color: var(--success); border: 1px solid rgba(34,197,94,.15); }
+.rsb-failed { background: var(--danger-m); color: var(--danger); border: 1px solid rgba(239,68,68,.25); }
+.rsb-queued { background: var(--warning-m); color: var(--warning); border: 1px solid rgba(245,158,11,.25); }
+.rsb-cancelled { background: rgba(255,255,255,.05); color: var(--t3); border: 1px solid var(--border); }
+
+.rsb-running .run-status-indicator {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--success);
+  animation: livepulse 2s infinite;
+}
+
+.run-card-info { flex: 1; min-width: 0; }
+.run-task-text { font-size: 13px; font-weight: 500; color: var(--t1); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
+.run-card-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.run-time { font-size: 11px; color: var(--t4); font-family: var(--mono); }
+
+/* Expanded output */
+.run-output {
+  display: none; padding: 0 16px 14px;
+  border-top: 1px solid var(--border);
+}
+.run-output.open { display: block; }
+.run-output pre {
+  font-family: var(--mono); font-size: 11px; color: var(--t2);
+  background: var(--bg-base); border-radius: 8px; padding: 12px;
+  overflow-x: auto; line-height: 1.65; max-height: 200px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+}
+.run-output-label { font-size: 10px; color: var(--t4); font-family: var(--mono); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; padding-top: 14px; }
+
+/* ── TASKS ── */
+.task-columns {
+  display: flex; gap: 12px;
+  overflow-x: auto; overflow-y: visible;
+  padding-bottom: 8px; margin: 0 -16px; padding: 0 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.task-columns::-webkit-scrollbar { display: none; }
+
+.task-col {
+  flex: 0 0 240px;
+}
+.task-col-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; padding: 0 2px;
+}
+.task-col-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-family: var(--mono); }
+.task-col-count {
+  font-family: var(--mono); font-size: 10px;
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(255,255,255,.06); color: var(--t3);
+}
+
+.col-todo .task-col-title { color: var(--t3); }
+.col-inprogress .task-col-title { color: var(--primary-l); }
+.col-done .task-col-title { color: var(--success); }
+.col-blocked .task-col-title { color: var(--danger); }
+
+.task-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px;
+  margin-bottom: 8px; cursor: pointer;
+  transition: border-color .2s, transform .15s;
+  position: relative;
+}
+.task-card:active { transform: scale(.97); border-color: var(--border-md); }
+
+.task-key { font-family: var(--mono); font-size: 10px; color: var(--t4); margin-bottom: 6px; }
+.task-title { font-size: 13px; font-weight: 500; line-height: 1.4; margin-bottom: 8px; }
+.task-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
+.priority-badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .05em;
+}
+.prio-high { background: var(--danger-m); color: var(--danger); border: 1px solid rgba(239,68,68,.2); }
+.prio-medium { background: var(--warning-m); color: var(--warning); border: 1px solid rgba(245,158,11,.2); }
+.prio-low { background: rgba(255,255,255,.06); color: var(--t3); border: 1px solid var(--border); }
+
+.ai-tag {
+  font-family: var(--mono); font-size: 9px;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--primary-m); color: var(--primary-l);
+  border: 1px solid rgba(99,102,241,.2);
+}
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center;
+}
+.empty-icon { font-size: 48px; color: var(--t4); margin-bottom: 16px; }
+.empty-title { font-size: 16px; font-weight: 600; color: var(--t2); margin-bottom: 6px; }
+.empty-sub { font-size: 13px; color: var(--t4); line-height: 1.6; }
+
+/* ── HOME PANEL EXTRAS ── */
+.quick-links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.quick-link {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px; display: flex; align-items: center; gap: 10px;
+  text-decoration: none; color: var(--t1); cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.quick-link:active { background: var(--bg-elevated); border-color: var(--border-md); }
+.quick-link-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.quick-link-icon .material-icons-round { font-size: 20px; }
+.quick-link-text { font-size: 13px; font-weight: 600; }
+.quick-link-sub { font-size: 11px; color: var(--t3); margin-top: 1px; }
+
+.ql-agents { background: var(--primary-m); border: 1px solid rgba(99,102,241,.2); color: var(--primary-l); }
+.ql-tasks { background: var(--accent-m); border: 1px solid rgba(6,182,212,.2); color: var(--accent); }
+.ql-servers { background: var(--success-m); border: 1px solid rgba(34,197,94,.2); color: var(--success); }
+.ql-chat { background: var(--warning-m); border: 1px solid rgba(245,158,11,.2); color: var(--warning); }
+
+/* ── FILTER CHIPS ── */
+.chips-row {
+  display: flex; gap: 8px; margin-bottom: 14px;
+  overflow-x: auto; padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.chips-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0; padding: 6px 14px; border-radius: 100px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--t3); transition: all .18s;
+  -webkit-user-select: none; user-select: none;
+}
+.chip.active { background: var(--primary-m); border-color: rgba(99,102,241,.3); color: var(--primary-l); }
+.chip:active { opacity: .7; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: calc(var(--tab-h) + var(--safe-bot) + 14px); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--bg-elevated); border: 1px solid var(--border-md);
+  border-radius: 100px; padding: 10px 18px;
+  font-size: 13px; font-weight: 500; color: var(--t1);
+  white-space: nowrap; opacity: 0;
+  transition: opacity .2s, transform .2s;
+  z-index: 1000; pointer-events: none;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── OVERLAY DETAIL ── */
+.detail-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: flex-end;
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s;
+}
+.detail-overlay.open { opacity: 1; pointer-events: all; }
+.detail-bg { position: absolute; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px); }
+.detail-sheet {
+  position: relative; width: 100%;
+  background: var(--bg-surface); border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--border);
+  max-height: 80vh; display: flex; flex-direction: column;
+  transform: translateY(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+  padding-bottom: var(--safe-bot);
+}
+.detail-overlay.open .detail-sheet { transform: translateY(0); }
+.sheet-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--t4); margin: 12px auto 0;
+}
+.sheet-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.sheet-title { font-size: 16px; font-weight: 700; }
+.sheet-sub { font-size: 12px; color: var(--t3); margin-top: 4px; }
+.sheet-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.sheet-body pre {
+  font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  color: var(--t2); white-space: pre-wrap; word-break: break-word;
+}
+
+/* ── DATE SEPARATOR ── */
+.date-sep {
+  display: flex; align-items: center; gap: 10px;
+  margin: 16px 0 10px; color: var(--t4); font-size: 11px;
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .07em;
+}
+.date-sep::before, .date-sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── LOGIN REDIRECT ── */
+.login-prompt {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; padding: 32px; text-align: center; gap: 16px;
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- HEADER -->
+  <header class="app-header" id="appHeader">
+    <div class="header-logo"><span class="material-icons-round">auto_awesome</span></div>
+    <div class="header-titles">
+      <div class="header-app-name">WEU AI</div>
+      <div class="header-page-title" id="headerPageTitle">Главная</div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="notifBtn" onclick="switchTab('notifs')" title="Уведомления">
+        <span class="material-icons-round">notifications</span>
+        <span class="notif-badge" id="headerNotifBadge"></span>
+      </button>
+      <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="Обновить">
+        <span class="material-icons-round" id="refreshIcon">refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <div class="app-content">
+
+    <!-- ═══ HOME TAB ═══ -->
+    <div class="tab-panel active" id="panel-home">
+      <div class="section-label">
+        <span class="section-title">Обзор</span>
+        <span class="section-action" onclick="refreshCurrent()">Обновить</span>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-row" id="homeStats">
+        <div class="stat-card s-primary skeleton skel-card"></div>
+        <div class="stat-card s-accent skeleton skel-card"></div>
+        <div class="stat-card s-success skeleton skel-card"></div>
+      </div>
+
+      <!-- Active Runs Widget -->
+      <div class="section-label" style="margin-top:4px">
+        <span class="section-title">Активные запуски</span>
+        <span class="section-action" onclick="switchTab('runs')">Все</span>
+      </div>
+      <div class="runs-widget" id="homeRunsWidget">
+        <div style="padding:24px 16px;">
+          <div class="skeleton skel-line"></div>
+          <div class="skeleton skel-line short"></div>
+        </div>
+      </div>
+
+      <!-- Quick Links -->
+      <div class="section-label">
+        <span class="section-title">Быстрый доступ</span>
+      </div>
+      <div class="quick-links">
+        <a href="/agents/" class="quick-link">
+          <div class="quick-link-icon ql-agents"><span class="material-icons-round">smart_toy</span></div>
+          <div><div class="quick-link-text">Агенты</div><div class="quick-link-sub">Запустить</div></div>
+        </a>
+        <a href="/tasks/" class="quick-link">
+          <div class="quick-link-icon ql-tasks"><span class="material-icons-round">task_alt</span></div>
+          <div><div class="quick-link-text">Задачи</div><div class="quick-link-sub">Трекер</div></div>
+        </a>
+        <a href="/servers/" class="quick-link">
+          <div class="quick-link-icon ql-servers"><span class="material-icons-round">dns</span></div>
+          <div><div class="quick-link-text">Серверы</div><div class="quick-link-sub">SSH</div></div>
+        </a>
+        <a href="/chat/" class="quick-link">
+          <div class="quick-link-icon ql-chat"><span class="material-icons-round">chat</span></div>
+          <div><div class="quick-link-text">Чат</div><div class="quick-link-sub">ИИ-ассистент</div></div>
+        </a>
+      </div>
+
+      <!-- Recent Notifications preview -->
+      <div class="section-label">
+        <span class="section-title">Уведомления</span>
+        <span class="section-action" onclick="switchTab('notifs')">Все</span>
+      </div>
+      <div id="homeNotifPreview">
+        <div class="skeleton skel-card"></div>
+        <div class="skeleton skel-card"></div>
+      </div>
+    </div>
+
+    <!-- ═══ NOTIFICATIONS TAB ═══ -->
+    <div class="tab-panel" id="panel-notifs">
+      <button class="mark-all-btn" id="markAllBtn" onclick="markAllRead()" style="display:none">
+        <span class="material-icons-round">done_all</span>
+        Отметить все прочитанными
+      </button>
+      <div id="notifsList">
+        <div class="skeleton skel-card"></div>
+        <div class="skeleton skel-card"></div>
+        <div class="skeleton skel-card"></div>
+      </div>
+    </div>
+
+    <!-- ═══ RUNS TAB ═══ -->
+    <div class="tab-panel" id="panel-runs">
+      <div class="chips-row" id="runsChips">
+        <div class="chip active" data-filter="all" onclick="filterRuns('all', this)">Все</div>
+        <div class="chip" data-filter="running" onclick="filterRuns('running', this)">Активные</div>
+        <div class="chip" data-filter="succeeded" onclick="filterRuns('succeeded', this)">Успешно</div>
+        <div class="chip" data-filter="failed" onclick="filterRuns('failed', this)">Ошибки</div>
+      </div>
+      <div id="runsList">
+        <div class="skeleton skel-card"></div>
+        <div class="skeleton skel-card"></div>
+        <div class="skeleton skel-card"></div>
+      </div>
+    </div>
+
+    <!-- ═══ TASKS TAB ═══ -->
+    <div class="tab-panel" id="panel-tasks">
+      <div class="task-columns" id="taskColumns">
+        <div style="flex:0 0 240px"><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div></div>
+        <div style="flex:0 0 240px"><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div></div>
+        <div style="flex:0 0 240px"><div class="skeleton skel-card"></div></div>
+      </div>
+    </div>
+
+  </div><!-- /app-content -->
+
+  <!-- TAB BAR -->
+  <nav class="tab-bar" id="tabBar">
+    <div class="tab-item active" data-tab="home" onclick="switchTab('home')">
+      <span class="material-icons-round">home</span>
+      <span class="tab-label">Главная</span>
+    </div>
+    <div class="tab-item" data-tab="notifs" onclick="switchTab('notifs')">
+      <span class="material-icons-round">notifications</span>
+      <span class="tab-label">Уведомл.</span>
+      <span class="tab-dot" id="notifTabDot"></span>
+    </div>
+    <div class="tab-item" data-tab="runs" onclick="switchTab('runs')">
+      <span class="material-icons-round">play_circle</span>
+      <span class="tab-label">Запуски</span>
+      <span class="tab-dot" id="runsTabDot" style="background:var(--success)"></span>
+    </div>
+    <div class="tab-item" data-tab="tasks" onclick="switchTab('tasks')">
+      <span class="material-icons-round">check_circle</span>
+      <span class="tab-label">Задачи</span>
+    </div>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- DETAIL OVERLAY -->
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-bg" onclick="closeDetail()"></div>
+  <div class="detail-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="detailTitle">Детали</div>
+      <div class="sheet-sub" id="detailSub"></div>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── CSRF ──
+const CSRF = '{{ csrf_token }}';
+
+// ── STATE ──
+let state = {
+  activeTab: 'home',
+  stats: null,
+  runs: [],
+  notifs: [],
+  tasks: [],
+  runsFilter: 'all',
+  unreadCount: 0,
+  activeRunsCount: 0,
+  loaded: { home: false, notifs: false, runs: false, tasks: false },
+};
+
+// ── TABS ──
+const TAB_TITLES = { home: 'Главная', notifs: 'Уведомления', runs: 'Запуски', tasks: 'Задачи' };
+
+function switchTab(tab) {
+  if (state.activeTab === tab) return;
+  state.activeTab = tab;
+
+  // panels
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+
+  // tab items
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
+
+  // tab bar underline
+  const idx = ['home','notifs','runs','tasks'].indexOf(tab);
+  document.getElementById('tabBar').style.setProperty('--tab-offset', idx);
+  document.querySelector('.tab-bar::before') // handled via CSS calc below
+
+  // header title
+  document.getElementById('headerPageTitle').textContent = TAB_TITLES[tab];
+
+  // Update tab bar indicator via left position
+  const tabBar = document.getElementById('tabBar');
+  const items = tabBar.querySelectorAll('.tab-item');
+  const activeItem = tabBar.querySelector('[data-tab="' + tab + '"]');
+  const itemIndex = Array.from(items).indexOf(activeItem);
+  // We'll use a pseudo-element trick via a real element overlay
+  updateTabIndicator(itemIndex);
+
+  // Load data if not loaded
+  if (!state.loaded[tab]) loadTab(tab);
+}
+
+// Tab indicator element
+(function() {
+  const bar = document.getElementById('tabBar');
+  const ind = document.createElement('div');
+  ind.id = 'tabIndicator';
+  ind.style.cssText = `
+    position:absolute;top:0;height:2px;width:25%;
+    background:linear-gradient(90deg,transparent,var(--primary-l),transparent);
+    transition:left .25s cubic-bezier(.4,0,.2,1);pointer-events:none;
+  `;
+  bar.appendChild(ind);
+})();
+
+function updateTabIndicator(idx) {
+  const ind = document.getElementById('tabIndicator');
+  if (ind) ind.style.left = (idx * 25) + '%';
+}
+
+// ── LOAD DATA ──
+async function loadTab(tab) {
+  if (tab === 'home') await loadHome();
+  else if (tab === 'notifs') await loadNotifs();
+  else if (tab === 'runs') await loadRuns();
+  else if (tab === 'tasks') await loadTasks();
+  state.loaded[tab] = true;
+}
+
+async function fetchJSON(url) {
+  try {
+    const r = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 403) { window.location.href = '{% url "login" %}?next=/mobile/'; return null; }
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+async function postJSON(url, data) {
+  try {
+    const r = await fetch(url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify(data || {})
+    });
+    if (!r.ok) return null;
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('json') ? await r.json() : {};
+  } catch(e) { return null; }
+}
+
+// ── HOME ──
+async function loadHome() {
+  const [stats, runs, notifs] = await Promise.all([
+    fetchJSON('/api/dashboard/stats/'),
+    fetchJSON('/agents/api/runs/?limit=20'),
+    fetchJSON('/tasks/notifications/')
+  ]);
+
+  state.stats = stats;
+  state.runs = runs || [];
+  state.notifs = Array.isArray(notifs) ? notifs : (notifs?.results || []);
+
+  renderHomeStats();
+  renderHomeRuns();
+  renderHomeNotifPreview();
+  updateBadges();
+}
+
+function renderHomeStats() {
+  const s = state.stats || {};
+  const runs = state.runs || [];
+  const activeRuns = runs.filter(r => r.status === 'running' || r.status === 'queued').length;
+  state.activeRunsCount = activeRuns;
+
+  document.getElementById('homeStats').innerHTML = `
+    <div class="stat-card s-primary">
+      <span class="material-icons-round stat-icon c-primary">task_alt</span>
+      <div class="stat-num">${s.tasks_count ?? (s.total_tasks ?? '—')}</div>
+      <div class="stat-lbl">Задачи</div>
+    </div>
+    <div class="stat-card s-accent">
+      <span class="material-icons-round stat-icon c-accent">dns</span>
+      <div class="stat-num">${s.servers_count ?? (s.total_servers ?? '—')}</div>
+      <div class="stat-lbl">Серверы</div>
+    </div>
+    <div class="stat-card s-success">
+      <span class="material-icons-round stat-icon c-success">play_circle</span>
+      <div class="stat-num">${activeRuns}</div>
+      <div class="stat-lbl">Активные</div>
+    </div>
+  `;
+}
+
+function renderHomeRuns() {
+  const runs = state.runs || [];
+  const active = runs.filter(r => r.status === 'running' || r.status === 'queued').slice(0, 5);
+  const widget = document.getElementById('homeRunsWidget');
+
+  if (!active.length) {
+    widget.innerHTML = `
+      <div class="empty-state" style="padding:32px 16px;">
+        <span class="material-icons-round empty-icon" style="font-size:32px">hourglass_empty</span>
+        <div class="empty-sub">Нет активных запусков</div>
+      </div>`;
+    return;
+  }
+
+  widget.innerHTML = `
+    <div class="widget-header">
+      <span class="widget-title"><span class="live-dot"></span>Активные</span>
+      <span class="widget-count">${active.length}</span>
+    </div>
+    ${active.map(r => `
+      <div class="run-mini-item" onclick="showRunDetail(${r.id})">
+        <span class="run-status-dot rsd-${r.status}"></span>
+        <div class="run-mini-info">
+          <div class="run-mini-task">${esc(r.input_task || 'Без описания')}</div>
+          <div class="run-mini-meta">
+            <span class="runtime-pill rt-${(r.runtime||'default').toLowerCase()}">${r.runtime || 'unknown'}</span>
+            <span>${relTime(r.created_at)}</span>
+          </div>
+        </div>
+        <span class="material-icons-round" style="font-size:16px;color:var(--t4)">chevron_right</span>
+      </div>`).join('')}`;
+}
+
+function renderHomeNotifPreview() {
+  const unread = (state.notifs || []).filter(n => !n.is_read).slice(0, 3);
+  const el = document.getElementById('homeNotifPreview');
+
+  if (!unread.length) {
+    el.innerHTML = `
+      <div class="notif-item">
+        <div class="notif-icon ni-success"><span class="material-icons-round">check_circle</span></div>
+        <div class="notif-body">
+          <div class="notif-title">Всё прочитано</div>
+          <div class="notif-msg">Нет новых уведомлений</div>
+        </div>
+      </div>`;
+    return;
+  }
+  el.innerHTML = unread.map(n => renderNotifItem(n)).join('');
+}
+
+// ── NOTIFICATIONS ──
+async function loadNotifs() {
+  if (!state.notifs.length) {
+    const data = await fetchJSON('/tasks/notifications/');
+    state.notifs = Array.isArray(data) ? data : (data?.results || []);
+  }
+  renderNotifs();
+  updateBadges();
+}
+
+function renderNotifs() {
+  const list = document.getElementById('notifsList');
+  const unread = state.notifs.filter(n => !n.is_read);
+  const markBtn = document.getElementById('markAllBtn');
+
+  if (unread.length > 0) markBtn.style.display = 'flex';
+  else markBtn.style.display = 'none';
+
+  if (!state.notifs.length) {
+    list.innerHTML = `<div class="empty-state">
+      <span class="material-icons-round empty-icon">notifications_none</span>
+      <div class="empty-title">Нет уведомлений</div>
+      <div class="empty-sub">Уведомления появятся здесь когда что-то произойдёт</div>
+    </div>`;
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  state.notifs.forEach(n => {
+    const d = dateLabel(n.created_at);
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(n);
+  });
+
+  let html = '';
+  Object.entries(groups).forEach(([date, items]) => {
+    html += `<div class="date-sep">${date}</div>`;
+    html += items.map(n => renderNotifItem(n)).join('');
+  });
+  list.innerHTML = html;
+}
+
+function renderNotifItem(n) {
+  const { icon, cls } = notifMeta(n.notification_type);
+  const readCls = n.is_read ? 'read' : 'unread';
+  return `
+    <div class="notif-item ${readCls}" id="notif-${n.id}" onclick="markRead(${n.id})">
+      ${!n.is_read ? '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary);border-radius:14px 0 0 14px;"></div>' : ''}
+      <div class="notif-icon ${cls}"><span class="material-icons-round">${icon}</span></div>
+      <div class="notif-body">
+        <div class="notif-title">${esc(n.title || n.notification_type)}</div>
+        <div class="notif-msg">${esc(n.message || '')}</div>
+        <div class="notif-time">${relTime(n.created_at)}</div>
+      </div>
+      ${!n.is_read ? '<div class="notif-unread-dot"></div>' : ''}
+    </div>`;
+}
+
+function notifMeta(type) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('fail') || t.includes('error')) return { icon: 'error', cls: 'ni-danger' };
+  if (t.includes('complet') || t.includes('success') || t.includes('done')) return { icon: 'check_circle', cls: 'ni-success' };
+  if (t.includes('start') || t.includes('execut')) return { icon: 'play_circle', cls: 'ni-info' };
+  if (t.includes('warn') || t.includes('overdue') || t.includes('ending')) return { icon: 'warning', cls: 'ni-warning' };
+  if (t.includes('assign')) return { icon: 'person_add', cls: 'ni-accent' };
+  if (t.includes('server')) return { icon: 'dns', cls: 'ni-info' };
+  if (t.includes('sprint')) return { icon: 'speed', cls: 'ni-info' };
+  if (t.includes('project')) return { icon: 'folder', cls: 'ni-accent' };
+  if (t.includes('question') || t.includes('confirm')) return { icon: 'help', cls: 'ni-warning' };
+  return { icon: 'notifications', cls: 'ni-info' };
+}
+
+async function markRead(id) {
+  const notif = state.notifs.find(n => n.id === id);
+  if (!notif || notif.is_read) return;
+
+  const el = document.getElementById('notif-' + id);
+  if (el) { el.classList.remove('unread'); el.classList.add('read'); }
+
+  notif.is_read = true;
+  state.unreadCount = Math.max(0, state.unreadCount - 1);
+  updateBadges();
+
+  const url = notif.action_url || `/tasks/notifications/${id}/read/`;
+  await postJSON(url, {});
+}
+
+async function markAllRead() {
+  const unread = state.notifs.filter(n => !n.is_read);
+  if (!unread.length) return;
+
+  unread.forEach(n => { n.is_read = true; });
+  state.unreadCount = 0;
+  updateBadges();
+  renderNotifs();
+
+  await postJSON('/tasks/notifications/mark-all-read/', {});
+  showToast('Все уведомления прочитаны');
+}
+
+// ── RUNS ──
+async function loadRuns() {
+  if (!state.runs.length) {
+    const data = await fetchJSON('/agents/api/runs/?limit=30');
+    state.runs = data || [];
+  }
+  renderRuns();
+}
+
+function filterRuns(filter, chipEl) {
+  state.runsFilter = filter;
+  document.querySelectorAll('#runsChips .chip').forEach(c => c.classList.remove('active'));
+  chipEl.classList.add('active');
+  renderRuns();
+}
+
+function renderRuns() {
+  const list = document.getElementById('runsList');
+  let runs = state.runs;
+  if (state.runsFilter !== 'all') runs = runs.filter(r => r.status === state.runsFilter);
+
+  if (!runs.length) {
+    list.innerHTML = `<div class="empty-state">
+      <span class="material-icons-round empty-icon">smart_toy</span>
+      <div class="empty-title">Нет запусков</div>
+      <div class="empty-sub">Здесь появятся запуски агентов</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = runs.map(r => `
+    <div class="run-card" id="run-${r.id}" onclick="toggleRunCard(${r.id})">
+      <div class="run-card-header">
+        <span class="run-status-badge rsb-${r.status}">
+          ${r.status === 'running' ? '<span class="run-status-indicator"></span>' : ''}
+          ${statusLabel(r.status)}
+        </span>
+        <div class="run-card-info">
+          <div class="run-task-text">${esc(r.input_task || 'Без описания')}</div>
+          <div class="run-card-meta">
+            <span class="runtime-pill rt-${(r.runtime||'default').toLowerCase()}">${r.runtime || '—'}</span>
+            <span class="run-time">${relTime(r.created_at)}</span>
+            ${r.finished_at ? `<span class="run-time">${duration(r.started_at, r.finished_at)}</span>` : ''}
+          </div>
+        </div>
+        <span class="material-icons-round" style="font-size:16px;color:var(--t4);flex-shrink:0" id="run-chevron-${r.id}">expand_more</span>
+      </div>
+      <div class="run-output" id="run-output-${r.id}">
+        <div class="run-output-label">Вывод</div>
+        <pre>${esc(truncate(r.output_text || r.logs || 'Нет вывода', 800))}</pre>
+      </div>
+    </div>`).join('');
+}
+
+function toggleRunCard(id) {
+  const output = document.getElementById('run-output-' + id);
+  const chevron = document.getElementById('run-chevron-' + id);
+  if (!output) return;
+  const open = output.classList.toggle('open');
+  if (chevron) chevron.textContent = open ? 'expand_less' : 'expand_more';
+}
+
+async function showRunDetail(id) {
+  const run = state.runs.find(r => r.id === id);
+  if (!run) return;
+
+  document.getElementById('detailTitle').textContent = statusLabel(run.status) + ' — ' + (run.runtime || '?');
+  document.getElementById('detailSub').textContent = relTime(run.created_at);
+  document.getElementById('detailBody').innerHTML = `
+    <p style="font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.6">${esc(run.input_task || '—')}</p>
+    <div style="font-size:10px;color:var(--t4);font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Вывод</div>
+    <pre>${esc(run.output_text || run.logs || 'Нет вывода')}</pre>`;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+// ── TASKS ──
+async function loadTasks() {
+  const data = await fetchJSON('/tasks/board-api/');
+  state.tasks = data?.tasks || data || [];
+  renderTasks();
+}
+
+function renderTasks() {
+  const cols = document.getElementById('taskColumns');
+  const statuses = [
+    { key: 'TODO', label: 'К выполнению', cls: 'col-todo' },
+    { key: 'IN_PROGRESS', label: 'В работе', cls: 'col-inprogress' },
+    { key: 'DONE', label: 'Готово', cls: 'col-done' },
+    { key: 'BLOCKED', label: 'Блок', cls: 'col-blocked' },
+  ];
+
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+
+  if (!tasks.length) {
+    cols.innerHTML = `<div class="empty-state" style="min-width:280px">
+      <span class="material-icons-round empty-icon">assignment</span>
+      <div class="empty-title">Нет задач</div>
+      <div class="empty-sub">Создайте задачи в трекере</div>
+    </div>`;
+    return;
+  }
+
+  cols.innerHTML = statuses.map(s => {
+    const colTasks = tasks.filter(t => t.status === s.key);
+    if (!colTasks.length && s.key === 'BLOCKED') return '';
+    return `
+      <div class="task-col ${s.cls}">
+        <div class="task-col-header">
+          <span class="task-col-title">${s.label}</span>
+          <span class="task-col-count">${colTasks.length}</span>
+        </div>
+        ${colTasks.length ? colTasks.map(t => `
+          <div class="task-card" onclick="window.location='/tasks/${t.id}/'">
+            <div class="task-key">${esc(t.task_key || '#' + t.id)}</div>
+            <div class="task-title">${esc(t.title)}</div>
+            <div class="task-card-footer">
+              <span class="priority-badge prio-${(t.priority||'').toLowerCase()}">${t.priority || '—'}</span>
+              ${t.assigned_to_ai ? '<span class="ai-tag">AI</span>' : ''}
+            </div>
+          </div>`).join('') : `<div style="padding:12px 2px;font-size:12px;color:var(--t4)">Пусто</div>`}
+      </div>`;
+  }).join('');
+}
+
+// ── BADGES ──
+function updateBadges() {
+  const unread = (state.notifs || []).filter(n => !n.is_read).length;
+  state.unreadCount = unread;
+
+  const badge = document.getElementById('headerNotifBadge');
+  const dot = document.getElementById('notifTabDot');
+  if (badge) badge.classList.toggle('show', unread > 0);
+  if (dot) dot.classList.toggle('show', unread > 0);
+
+  const active = (state.runs || []).filter(r => r.status === 'running').length;
+  const runsDot = document.getElementById('runsTabDot');
+  if (runsDot) runsDot.classList.toggle('show', active > 0);
+}
+
+// ── REFRESH ──
+async function refreshCurrent() {
+  const icon = document.getElementById('refreshIcon');
+  icon.classList.add('spinning');
+
+  const tab = state.activeTab;
+  state.loaded[tab] = false;
+
+  // Reset cached data for current tab
+  if (tab === 'home') { state.stats = null; state.runs = []; state.notifs = []; }
+  if (tab === 'notifs') state.notifs = [];
+  if (tab === 'runs') state.runs = [];
+  if (tab === 'tasks') state.tasks = [];
+
+  await loadTab(tab);
+
+  icon.classList.remove('spinning');
+  showToast('Обновлено');
+}
+
+// ── DETAIL OVERLAY ──
+function closeDetail() {
+  document.getElementById('detailOverlay').classList.remove('open');
+}
+
+// Swipe down to close detail
+let touchStartY = 0;
+document.getElementById('detailOverlay').addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
+document.getElementById('detailOverlay').addEventListener('touchmove', e => {
+  const sheet = document.querySelector('.detail-sheet');
+  const delta = e.touches[0].clientY - touchStartY;
+  if (delta > 0) sheet.style.transform = `translateY(${delta}px)`;
+}, { passive: true });
+document.getElementById('detailOverlay').addEventListener('touchend', e => {
+  const sheet = document.querySelector('.detail-sheet');
+  const delta = e.changedTouches[0].clientY - touchStartY;
+  sheet.style.transform = '';
+  if (delta > 80) closeDetail();
+}, { passive: true });
+
+// ── TOAST ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── HELPERS ──
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
+
+function relTime(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return 'только что';
+  if (s < 3600) return Math.floor(s/60) + ' мин. назад';
+  if (s < 86400) return Math.floor(s/3600) + ' ч. назад';
+  return Math.floor(s/86400) + ' д. назад';
+}
+
+function dateLabel(iso) {
+  if (!iso) return 'Ранее';
+  const d = new Date(iso);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  if (d >= today) return 'Сегодня';
+  if (d >= yesterday) return 'Вчера';
+  return d.toLocaleDateString('ru-RU', { day:'numeric', month:'long' });
+}
+
+function duration(start, end) {
+  if (!start || !end) return '';
+  const ms = new Date(end) - new Date(start);
+  const s = Math.floor(ms/1000);
+  if (s < 60) return s + 'с';
+  return Math.floor(s/60) + 'м ' + (s%60) + 'с';
+}
+
+function statusLabel(s) {
+  return { running:'Выполняется', succeeded:'Успешно', failed:'Ошибка', queued:'В очереди', cancelled:'Отменён' }[s] || s;
+}
+
+// ── AUTO-REFRESH every 30s for active runs ──
+setInterval(async () => {
+  if (state.activeRunsCount > 0 || state.activeTab === 'runs') {
+    const data = await fetchJSON('/agents/api/runs/?limit=30');
+    if (data) {
+      state.runs = data;
+      updateBadges();
+      if (state.activeTab === 'home') renderHomeRuns();
+      if (state.activeTab === 'runs') renderRuns();
+    }
+  }
+}, 30000);
+
+// ── INIT ──
+(async function init() {
+  updateTabIndicator(0);
+  await loadHome();
+})();
+</script>
+</body>
+</html>

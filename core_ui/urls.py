@@ -12,6 +12,9 @@ urlpatterns = [
     path('landing/videos/<str:filename>', views.serve_landing_video, name='landing_video'),
     path('docs/ui-guide/', views.docs_ui_guide_view, name='docs_ui_guide'),
 
+    # Mobile PWA
+    path('mobile/', views.mobile_app_view, name='mobile_app'),
+
     # Authentication
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(next_page='login'), name='logout'),

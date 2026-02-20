@@ -69,6 +69,7 @@ def skills_page(request):
                 "runtime": a.runtime,
                 "skill_ids": list(a.skills.values_list("id", flat=True)),
                 "mcp_names": list((a.mcp_servers or {}).keys()),
+                "mcp_servers": a.mcp_servers or {},
             })
     except Exception:
         pass

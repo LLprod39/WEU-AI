@@ -248,6 +248,13 @@
                         <span class="material-icons-round text-lg">dashboard</span>
                         <span class="hidden sm:inline">Terminal Hub</span>
                     </a>
+                    <button onclick="openGlobalContextModal()" class="px-4 py-2 bg-violet-500/15 hover:bg-violet-500/25 text-violet-400 border border-violet-500/25 rounded-xl transition-all flex items-center gap-2 text-sm" title="Global AI Context">
+                        <span class="material-icons-round text-lg">public</span>
+                        <span class="hidden sm:inline">Global Context</span>
+                        {% if global_rules.rules or global_rules.forbidden_commands %}
+                        <span class="w-2 h-2 rounded-full bg-violet-400"></span>
+                        {% endif %}
+                    </button>
                     <button onclick="openGroupModal()" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl transition-all flex items-center gap-2 text-sm">
                         <span class="material-icons-round text-lg">folder</span>
                         <span class="hidden sm:inline">New Group</span>
@@ -328,6 +335,9 @@
                                 <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
                                     <span class="material-icons-round text-lg">check_circle</span>
                                 </button>
+                                <button onclick="openEditModal({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Edit Server">
+                                    <span class="material-icons-round text-lg">edit</span>
+                                </button>
                                 <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
                                     <span class="material-icons-round text-lg">terminal</span>
                                     Connect
@@ -369,6 +379,15 @@
                     {% for tag in group.tags.all %}
                     <span class="px-2 py-1 rounded bg-white/5 text-[10px] text-gray-400">{{ tag.name }}</span>
                     {% endfor %}
+                    {% if group.rules or group.forbidden_commands %}
+                    <span class="px-2 py-1 rounded bg-violet-500/15 text-[10px] text-violet-400 flex items-center gap-1">
+                        <span class="material-icons-round text-xs">psychology</span>
+                        Context
+                    </span>
+                    {% endif %}
+                    <button onclick="event.stopPropagation(); openGroupContextModal({{ group.id }}, '{{ group.name|escapejs }}')" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-violet-400 transition-colors" title="Edit Group Context">
+                        <span class="material-icons-round text-base">tune</span>
+                    </button>
                     <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer" onclick="event.stopPropagation()">
                         <input type="checkbox" class="server-checkbox" id="select-all-group-{{ group.id }}" onchange="toggleSelectAll('group-{{ group.id }}')">
                         Select all
@@ -414,6 +433,9 @@
                             <div class="flex items-center gap-2 flex-shrink-0">
                                 <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
                                     <span class="material-icons-round text-lg">check_circle</span>
+                                </button>
+                                <button onclick="openEditModal({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Edit Server">
+                                    <span class="material-icons-round text-lg">edit</span>
                                 </button>
                                 <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
                                     <span class="material-icons-round text-lg">terminal</span>
@@ -611,6 +633,247 @@
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Edit Server Modal -->
+<div id="editServerModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeEditModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-icons-round text-amber-400">edit</span>
+                Edit Server
+            </h2>
+            <button onclick="closeEditModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <form id="editServerForm" onsubmit="saveEditServer(event)" class="p-6 overflow-y-auto custom-scrollbar">
+            <input type="hidden" id="edit-server-id">
+            <div class="space-y-5">
+                <!-- Name -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Server Name *</label>
+                    <input type="text" id="edit-server-name" required
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                </div>
+                <!-- Host & Port -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Host *</label>
+                        <input type="text" id="edit-server-host" required
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Port</label>
+                        <input type="number" id="edit-server-port"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
+                    </div>
+                </div>
+                <!-- Username & Group -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Username *</label>
+                        <input type="text" id="edit-server-username" required
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Group</label>
+                        <select id="edit-server-group" class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                            <option value="">No group</option>
+                            {% for group in groups %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <!-- Auth Method -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Authentication *</label>
+                    <select id="edit-server-auth-method" required onchange="toggleEditAuthFields()"
+                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                        <option value="password">Password</option>
+                        <option value="key">SSH Key</option>
+                        <option value="key_password">SSH Key + Passphrase</option>
+                    </select>
+                </div>
+                <!-- Password Fields -->
+                <div id="edit-password-field" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">New Password <span class="text-gray-600">(leave empty to keep current)</span></label>
+                        <input type="password" id="edit-server-password" placeholder="New password (optional)"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-2">Master Password</label>
+                        <input type="password" id="edit-server-master-password" placeholder="Required to save new password"
+                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                    </div>
+                </div>
+                <!-- Key Path -->
+                <div id="edit-key-field" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">SSH Key Path</label>
+                    <input type="text" id="edit-server-key-path"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
+                </div>
+                <!-- Tags -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Tags</label>
+                    <input type="text" id="edit-server-tags" placeholder="production, api, critical"
+                           class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                </div>
+                <!-- Notes -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Notes</label>
+                    <textarea id="edit-server-notes" rows="2" placeholder="Internal notes about this server..."
+                              class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors resize-none"></textarea>
+                </div>
+                <!-- Corporate Context (AI) -->
+                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="material-icons-round text-primary text-lg">psychology</span>
+                        <span class="text-sm font-medium text-white">AI Context</span>
+                    </div>
+                    <textarea id="edit-server-corporate-context" rows="5" placeholder="Context for AI assistant:
+• Proxy settings: export http_proxy=...
+• VPN requirements
+• Special access conditions
+• Environment variables"
+                              class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono text-xs resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
+                <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button type="submit" class="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl transition-all font-medium">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Global Context Modal -->
+<div id="globalContextModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeGlobalContextModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-icons-round text-violet-400">public</span>
+                Global Server Context
+            </h2>
+            <button onclick="closeGlobalContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto custom-scrollbar space-y-5">
+            <p class="text-sm text-gray-400">Эти правила применяются ко <strong class="text-white">всем серверам</strong> и передаются AI агенту при каждом выполнении задачи.</p>
+
+            <!-- Rules -->
+            <div class="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-round text-violet-400 text-lg">policy</span>
+                    <span class="text-sm font-medium text-white">Глобальные правила</span>
+                </div>
+                <textarea id="global-rules" rows="5" placeholder="Политики безопасности, корпоративные требования, запрещённые операции...
+Например:
+• Всегда делать бэкап перед изменениями
+• Не выполнять операции на prod без подтверждения
+• Использовать sudo только при необходимости"
+                          class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500/50 transition-colors resize-none"></textarea>
+            </div>
+
+            <!-- Forbidden Commands -->
+            <div class="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-round text-red-400 text-lg">block</span>
+                    <span class="text-sm font-medium text-white">Запрещённые команды</span>
+                    <span class="text-[10px] text-gray-500">(по одной на строку)</span>
+                </div>
+                <textarea id="global-forbidden" rows="4" placeholder="rm -rf /
+mkfs
+dd if=/dev/zero
+shutdown
+reboot"
+                          class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500/50 transition-colors font-mono text-xs resize-none"></textarea>
+            </div>
+
+            <!-- Required Checks -->
+            <div class="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-round text-emerald-400 text-lg">checklist</span>
+                    <span class="text-sm font-medium text-white">Обязательные проверки перед выполнением</span>
+                    <span class="text-[10px] text-gray-500">(по одной на строку)</span>
+                </div>
+                <textarea id="global-checks" rows="3" placeholder="df -h
+free -m
+systemctl status"
+                          class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors font-mono text-xs resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-white/10">
+                <button onclick="closeGlobalContextModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button onclick="saveGlobalContext()" class="px-6 py-2.5 bg-violet-500 hover:bg-violet-400 text-white rounded-xl transition-all font-medium flex items-center gap-2">
+                    <span class="material-icons-round text-lg">save</span>
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Group Context Modal -->
+<div id="groupContextModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeGroupContextModal()"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-icons-round text-violet-400">tune</span>
+                Group Context: <span id="group-context-name" class="text-violet-300 ml-1"></span>
+            </h2>
+            <button onclick="closeGroupContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto custom-scrollbar space-y-5">
+            <input type="hidden" id="group-context-id">
+            <p class="text-sm text-gray-400">Правила и ограничения для <strong class="text-white">этой группы</strong> серверов. Дополняют глобальный контекст.</p>
+
+            <!-- Rules -->
+            <div class="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-round text-violet-400 text-lg">policy</span>
+                    <span class="text-sm font-medium text-white">Правила группы</span>
+                </div>
+                <textarea id="group-rules" rows="5" placeholder="Специфичные политики для этой группы серверов...
+Например:
+• Только деплой через CI/CD
+• Обязательное code review
+• Мониторинг Datadog включён"
+                          class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500/50 transition-colors resize-none"></textarea>
+            </div>
+
+            <!-- Forbidden Commands -->
+            <div class="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-icons-round text-red-400 text-lg">block</span>
+                    <span class="text-sm font-medium text-white">Запрещённые команды для группы</span>
+                    <span class="text-[10px] text-gray-500">(по одной на строку)</span>
+                </div>
+                <textarea id="group-forbidden" rows="4" placeholder="service stop
+systemctl disable
+truncate"
+                          class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500/50 transition-colors font-mono text-xs resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-white/10">
+                <button onclick="closeGroupContextModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button onclick="saveGroupContext()" class="px-6 py-2.5 bg-violet-500 hover:bg-violet-400 text-white rounded-xl transition-all font-medium flex items-center gap-2">
+                    <span class="material-icons-round text-lg">save</span>
+                    Save
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -841,11 +1104,190 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeModal();
         closeGroupModal();
+        closeEditModal();
+        closeGlobalContextModal();
+        closeGroupContextModal();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         document.getElementById('server-search')?.focus();
     }
 });
+
+// ========== Edit Server Modal ==========
+function toggleEditAuthFields() {
+    const authMethod = document.getElementById('edit-server-auth-method').value;
+    document.getElementById('edit-password-field').classList.toggle('hidden', !['password', 'key_password'].includes(authMethod));
+    document.getElementById('edit-key-field').classList.toggle('hidden', !['key', 'key_password'].includes(authMethod));
+}
+
+async function openEditModal(serverId) {
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/get/', {
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const s = await resp.json();
+        document.getElementById('edit-server-id').value = s.id;
+        document.getElementById('edit-server-name').value = s.name || '';
+        document.getElementById('edit-server-host').value = s.host || '';
+        document.getElementById('edit-server-port').value = s.port || 22;
+        document.getElementById('edit-server-username').value = s.username || '';
+        document.getElementById('edit-server-auth-method').value = s.auth_method || 'password';
+        document.getElementById('edit-server-key-path').value = s.key_path || '';
+        document.getElementById('edit-server-tags').value = s.tags || '';
+        document.getElementById('edit-server-notes').value = s.notes || '';
+        document.getElementById('edit-server-corporate-context').value = s.corporate_context || '';
+        const groupSel = document.getElementById('edit-server-group');
+        groupSel.value = s.group_id || '';
+        toggleEditAuthFields();
+        document.getElementById('editServerModal').classList.remove('hidden');
+    } catch(e) {
+        console.error('Error loading server:', e);
+        alert('Failed to load server data');
+    }
+}
+
+function closeEditModal() {
+    document.getElementById('editServerModal').classList.add('hidden');
+    document.getElementById('editServerForm').reset();
+}
+
+async function saveEditServer(e) {
+    e.preventDefault();
+    const serverId = document.getElementById('edit-server-id').value;
+    const password = document.getElementById('edit-server-password').value;
+    const masterPassword = document.getElementById('edit-server-master-password').value;
+
+    const payload = {
+        name: document.getElementById('edit-server-name').value,
+        host: document.getElementById('edit-server-host').value,
+        port: parseInt(document.getElementById('edit-server-port').value) || 22,
+        username: document.getElementById('edit-server-username').value,
+        auth_method: document.getElementById('edit-server-auth-method').value,
+        key_path: document.getElementById('edit-server-key-path').value,
+        tags: document.getElementById('edit-server-tags').value,
+        notes: document.getElementById('edit-server-notes').value,
+        corporate_context: document.getElementById('edit-server-corporate-context').value,
+        group_id: document.getElementById('edit-server-group').value || null,
+    };
+    if (password && masterPassword) {
+        payload.password = password;
+        payload.master_password = masterPassword;
+    }
+
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/update/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            closeEditModal();
+            if (window.showToast) window.showToast('Server updated', 'success');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to update'));
+        }
+    } catch(e) {
+        console.error('Error updating server:', e);
+        alert('Error updating server');
+    }
+}
+
+// ========== Global Context Modal ==========
+async function openGlobalContextModal() {
+    try {
+        const resp = await fetch('/servers/api/global-context/', {
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await resp.json();
+        document.getElementById('global-rules').value = data.rules || '';
+        document.getElementById('global-forbidden').value = (data.forbidden_commands || []).join('\n');
+        document.getElementById('global-checks').value = (data.required_checks || []).join('\n');
+        document.getElementById('globalContextModal').classList.remove('hidden');
+    } catch(e) {
+        console.error('Error loading global context:', e);
+        alert('Failed to load global context');
+    }
+}
+
+function closeGlobalContextModal() {
+    document.getElementById('globalContextModal').classList.add('hidden');
+}
+
+async function saveGlobalContext() {
+    const payload = {
+        rules: document.getElementById('global-rules').value,
+        forbidden_commands: document.getElementById('global-forbidden').value,
+        required_checks: document.getElementById('global-checks').value,
+    };
+    try {
+        const resp = await fetch('/servers/api/global-context/save/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            closeGlobalContextModal();
+            if (window.showToast) window.showToast('Global context saved', 'success');
+            else location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+        }
+    } catch(e) {
+        console.error('Error saving global context:', e);
+        alert('Error saving global context');
+    }
+}
+
+// ========== Group Context Modal ==========
+async function openGroupContextModal(groupId, groupName) {
+    try {
+        const resp = await fetch('/servers/api/groups/' + groupId + '/context/', {
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await resp.json();
+        document.getElementById('group-context-id').value = groupId;
+        document.getElementById('group-context-name').textContent = groupName;
+        document.getElementById('group-rules').value = data.rules || '';
+        document.getElementById('group-forbidden').value = (data.forbidden_commands || []).join('\n');
+        document.getElementById('groupContextModal').classList.remove('hidden');
+    } catch(e) {
+        console.error('Error loading group context:', e);
+        alert('Failed to load group context');
+    }
+}
+
+function closeGroupContextModal() {
+    document.getElementById('groupContextModal').classList.add('hidden');
+}
+
+async function saveGroupContext() {
+    const groupId = document.getElementById('group-context-id').value;
+    const payload = {
+        rules: document.getElementById('group-rules').value,
+        forbidden_commands: document.getElementById('group-forbidden').value,
+    };
+    try {
+        const resp = await fetch('/servers/api/groups/' + groupId + '/context/save/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            closeGroupContextModal();
+            if (window.showToast) window.showToast('Group context saved', 'success');
+            else location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+        }
+    } catch(e) {
+        console.error('Error saving group context:', e);
+        alert('Error saving group context');
+    }
+}
 </script>
 {% endblock %}

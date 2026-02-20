@@ -4095,12 +4095,14 @@ def api_custom_agents_list(request):
                     'model': agent.model,
                     'orchestrator_mode': agent.orchestrator_mode,
                     'allowed_tools': agent.allowed_tools,
+                    'mcp_servers': agent.mcp_servers or {},
+                    'mcp_auto_approve': agent.mcp_auto_approve,
                     'usage_count': agent.usage_count,
                     'is_public': agent.is_public,
                     'created_at': agent.created_at.isoformat(),
                     'updated_at': agent.updated_at.isoformat(),
                 })
-            
+
             return JsonResponse({'success': True, 'agents': agents_data})
         
         except Exception as e:
@@ -4236,6 +4238,31 @@ def api_custom_agent_detail(request, agent_id: int):
         except Exception as e:
             logger.error(f"Error deleting custom agent: {e}")
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('agents')
+@require_http_methods(["POST"])
+def api_custom_agent_remove_mcp(request, agent_id: int):
+    """Remove one MCP server from agent by name"""
+    try:
+        agent = CustomAgent.objects.get(id=agent_id, owner=request.user)
+        data = json.loads(request.body or '{}')
+        mcp_name = (data.get('mcp_name') or '').strip()
+        if not mcp_name:
+            return JsonResponse({'success': False, 'error': 'mcp_name required'}, status=400)
+        mcp_servers = dict(agent.mcp_servers or {})
+        if mcp_name not in mcp_servers:
+            return JsonResponse({'success': False, 'error': f'MCP "{mcp_name}" not found in agent'}, status=404)
+        del mcp_servers[mcp_name]
+        agent.mcp_servers = mcp_servers
+        agent.save()
+        return JsonResponse({'success': True, 'message': f'MCP "{mcp_name}" удалён из агента'})
+    except CustomAgent.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Agent not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @csrf_exempt

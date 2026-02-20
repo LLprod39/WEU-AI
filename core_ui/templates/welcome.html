@@ -405,13 +405,124 @@
         .rd1{transition-delay:.07s;} .rd2{transition-delay:.14s;} .rd3{transition-delay:.21s;}
         .rd4{transition-delay:.28s;} .rd5{transition-delay:.35s;} .rd6{transition-delay:.42s;}
 
+        /* ── Mobile hamburger ── */
+        .mob-menu-btn {
+            display:none;
+            align-items:center; justify-content:center;
+            width:40px; height:40px; border-radius:10px;
+            background:rgba(255,255,255,0.04);
+            border:1px solid var(--border);
+            cursor:pointer; color:var(--t2);
+            transition:all .18s;
+        }
+        .mob-menu-btn .material-icons-round { font-size:22px; }
+        .mob-menu-btn:hover { background:rgba(255,255,255,0.07); color:var(--t1); }
+
+        /* Mobile nav drawer */
+        .mob-drawer {
+            display:none;
+            position:fixed; top:0; left:0; right:0; bottom:0;
+            z-index:200;
+        }
+        .mob-drawer.open { display:block; }
+        .mob-overlay {
+            position:absolute; inset:0;
+            background:rgba(0,0,0,0.7);
+            backdrop-filter:blur(4px);
+            -webkit-backdrop-filter:blur(4px);
+        }
+        .mob-panel {
+            position:absolute; top:0; right:0; bottom:0;
+            width:min(280px,85vw);
+            background:var(--bg-surface);
+            border-left:1px solid var(--border);
+            display:flex; flex-direction:column;
+            transform:translateX(100%);
+            transition:transform .28s cubic-bezier(.4,0,.2,1);
+        }
+        .mob-drawer.open .mob-panel { transform:translateX(0); }
+        .mob-panel-head {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:16px 20px; border-bottom:1px solid var(--border);
+        }
+        .mob-close-btn {
+            width:36px; height:36px; border-radius:8px;
+            background:rgba(255,255,255,0.04); border:1px solid var(--border);
+            display:flex; align-items:center; justify-content:center;
+            cursor:pointer; color:var(--t3);
+        }
+        .mob-close-btn .material-icons-round { font-size:20px; }
+        .mob-nav-links {
+            flex:1; padding:16px 12px;
+            display:flex; flex-direction:column; gap:4px;
+        }
+        .mob-nav-link {
+            display:flex; align-items:center; gap:12px;
+            padding:12px 14px; border-radius:10px;
+            text-decoration:none; color:var(--t2); font-size:15px; font-weight:500;
+            transition:all .18s;
+        }
+        .mob-nav-link:hover, .mob-nav-link:active { color:var(--t1); background:rgba(255,255,255,0.05); }
+        .mob-nav-link .material-icons-round { font-size:20px; color:var(--t4); }
+        .mob-nav-cta {
+            margin:12px; padding:14px 18px;
+            background:linear-gradient(135deg,var(--primary) 0%,#8b5cf6 100%);
+            color:#fff; text-decoration:none; border-radius:12px;
+            display:flex; align-items:center; justify-content:center; gap:10px;
+            font-weight:600; font-size:15px;
+        }
+        .mob-nav-cta .material-icons-round { font-size:18px; }
+
+        @media(max-width:768px){
+            .mob-menu-btn { display:flex; }
+            .hnav { display:none; }
+        }
+
+        /* ── Mobile hero ── */
         @media(max-width:600px){
-            .hero{padding:120px 0 56px;}
-            .hero h1{font-size:32px;}
-            .hero-sub{font-size:16px;}
-            .btn-primary,.btn-ghost{padding:12px 20px;font-size:14px;}
-            .mock-app{height:200px;}
-            .mock-sidebar{display:none;}
+            .hero { padding:108px 0 48px; }
+            .hero h1 { font-size:30px; letter-spacing:-.025em; }
+            .hero-sub { font-size:15px; line-height:1.65; margin-bottom:28px; }
+            .hero-acts { gap:10px; }
+            .btn-primary { padding:13px 24px; font-size:14px; width:100%; justify-content:center; }
+            .btn-ghost { padding:13px 20px; font-size:14px; width:100%; justify-content:center; }
+            .trust-row { gap:5px 14px; font-size:10px; }
+        }
+
+        /* ── Mobile mockup ── */
+        @media(max-width:600px){
+            .ui-mockup { margin-top:40px; border-radius:12px; }
+            .mock-app { height:auto; flex-direction:column; }
+            .mock-sidebar { display:none; }
+            /* Replace table with compact stat cards on mobile */
+            .mock-table { display:none; }
+            .mock-stats { flex-wrap:wrap; }
+            .mock-stat { min-width:calc(50% - 4px); }
+            .mock-page-title { font-size:12px; }
+        }
+
+        /* ── Mobile sections ── */
+        @media(max-width:600px){
+            .about-sec, .feat-sec, .vid-sec, .trust-sec, .cta-sec { padding:64px 0; }
+            .feat-card { padding:24px 20px; }
+            .vid-info h4 { font-size:13px; }
+            .vid-info p { font-size:11px; }
+            .s-title { font-size:clamp(24px,6.5vw,36px); }
+            .s-desc { font-size:14px; }
+            .stat-n { font-size:26px; }
+        }
+
+        /* ── Mobile footer ── */
+        @media(max-width:480px){
+            .flinks { gap:14px; }
+            .flinks a { font-size:12px; }
+        }
+
+        /* ── Touch improvements ── */
+        @media(hover:none){
+            .feat-card:hover { background:var(--bg-surface); }
+            .feat-card:hover::after { opacity:0; }
+            .vid-card:hover { transform:none; box-shadow:none; }
         }
     </style>
 </head>
@@ -440,8 +551,45 @@
                 <span class="material-icons-round">arrow_forward</span>
             </a>
         </nav>
+        <button class="mob-menu-btn" onclick="openMobMenu()" aria-label="Меню">
+            <span class="material-icons-round">menu</span>
+        </button>
     </div>
 </header>
+
+<!-- ══ MOBILE DRAWER ══ -->
+<div class="mob-drawer" id="mobDrawer" role="dialog" aria-modal="true">
+    <div class="mob-overlay" onclick="closeMobMenu()"></div>
+    <div class="mob-panel">
+        <div class="mob-panel-head">
+            <a href="{% url 'welcome' %}" class="logo">
+                <div class="logo-icon"><span class="material-icons-round">auto_awesome</span></div>
+                <span class="logo-name">WEU AI</span>
+            </a>
+            <button class="mob-close-btn" onclick="closeMobMenu()" aria-label="Закрыть">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="mob-nav-links">
+            <a href="#demo" class="mob-nav-link" onclick="closeMobMenu()">
+                <span class="material-icons-round">play_circle</span>
+                Демо
+            </a>
+            <a href="{% url 'docs_ui_guide' %}" class="mob-nav-link">
+                <span class="material-icons-round">menu_book</span>
+                Документация
+            </a>
+            <a href="#" class="mob-nav-link" onclick="closeMobMenu()">
+                <span class="material-icons-round">info</span>
+                О платформе
+            </a>
+        </div>
+        <a href="{% url 'login' %}" class="mob-nav-cta">
+            <span class="material-icons-round">login</span>
+            Войти в платформу
+        </a>
+    </div>
+</div>
 
 <!-- ══ HERO ══ -->
 <section class="hero">
@@ -810,6 +958,19 @@
         v.addEventListener('error', showFb);
     });
 })();
+
+/* Mobile drawer */
+function openMobMenu(){
+    var d = document.getElementById('mobDrawer');
+    d.classList.add('open');
+    document.body.style.overflow='hidden';
+}
+function closeMobMenu(){
+    var d = document.getElementById('mobDrawer');
+    d.classList.remove('open');
+    document.body.style.overflow='';
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeMobMenu(); });
 </script>
 </body>
 </html>

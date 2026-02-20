@@ -145,6 +145,12 @@ def docs_ui_guide_view(request):
     return render(request, 'docs_ui_guide.html')
 
 
+@login_required
+def mobile_app_view(request):
+    """Mobile PWA — compact app shell for phones."""
+    return render(request, 'mobile_app.html')
+
+
 _ALLOWED_LANDING_VIDEOS = {'agent.mp4', 'mcp.mp4', 'server.mp4', 'task.mp4', 'agent.mkv', 'mcp.mkv', 'server.mkv', 'task.mkv'}
 
 

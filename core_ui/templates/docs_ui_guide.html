@@ -262,11 +262,83 @@
         .check-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 1.65; color: var(--t2); margin-bottom: 10px; }
         .check-list li .material-icons-round { font-size: 18px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
 
-        /* --- Sidebar overlay for mobile --- */
+        /* --- Mobile sidebar toggle button --- */
         #sidebar-toggle { display: none; }
         @media(max-width: 768px) {
-            #sidebar-toggle { display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--border); border-radius: 7px; width: 34px; height: 34px; cursor: pointer; color: var(--t2); }
+            #sidebar-toggle {
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+                border-radius: 8px; width: 38px; height: 38px;
+                cursor: pointer; color: var(--t2);
+                flex-shrink: 0; transition: all .18s;
+            }
+            #sidebar-toggle:hover { background: rgba(255,255,255,0.07); color: var(--t1); }
             #sidebar-toggle .material-icons-round { font-size: 20px; }
+        }
+
+        /* --- Mobile sidebar drawer --- */
+        .mob-sb-overlay {
+            display: none;
+            position: fixed; inset: 0; z-index: 200;
+        }
+        .mob-sb-overlay.open { display: block; }
+        .mob-sb-bg {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .mob-sb-panel {
+            position: absolute; top: 0; left: 0; bottom: 0;
+            width: min(300px, 88vw);
+            background: var(--bg-s);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            transform: translateX(-100%);
+            transition: transform .28s cubic-bezier(.4,0,.2,1);
+            overflow-y: auto;
+        }
+        .mob-sb-overlay.open .mob-sb-panel { transform: translateX(0); }
+        .mob-sb-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; background: var(--bg-s); z-index: 1;
+        }
+        .mob-sb-close {
+            width: 34px; height: 34px; border-radius: 8px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--t3); flex-shrink: 0;
+        }
+        .mob-sb-close .material-icons-round { font-size: 18px; }
+        .mob-sb-content { padding: 16px 12px 32px; }
+
+        /* --- Responsive header --- */
+        @media(max-width: 768px) {
+            .dh-logo { min-width: auto; }
+            .dh-logo-badge { display: none; }
+            .dh-search { display: none; }
+            .dh-right .dh-link:not(.btn-login) { display: none; }
+            .doc-content { padding: 28px 18px 80px; }
+            .doc-h1 { font-size: clamp(24px, 7vw, 36px); }
+            .doc-lead { font-size: 15px; }
+        }
+        @media(max-width: 480px) {
+            .doc-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+            .tab-bar::-webkit-scrollbar { display: none; }
+            pre.code-block { font-size: 12px; padding: 14px 14px; }
+            .feat-grid { grid-template-columns: 1fr; }
+            .doc-nav-btns { flex-direction: column; }
+            .doc-nav-btn { min-width: auto; }
+            h2.doc-h2 { font-size: 18px; }
+        }
+
+        /* Touch improvements */
+        @media(hover: none) {
+            .nav-item:hover { color: var(--t2); background: none; }
+            .nav-item:hover .material-icons-round { color: var(--t4); }
+            .nav-item.active:hover { color: var(--primary-l); background: var(--primary-m); }
         }
     </style>
 </head>
@@ -292,6 +364,26 @@
     </div>
     <button id="sidebar-toggle" onclick="toggleSidebar()"><span class="material-icons-round">menu</span></button>
 </header>
+
+<!-- ══ MOBILE SIDEBAR OVERLAY ══ -->
+<div class="mob-sb-overlay" id="mobSbOverlay">
+    <div class="mob-sb-bg" onclick="closeMobSidebar()"></div>
+    <nav class="mob-sb-panel" id="mobSbPanel">
+        <div class="mob-sb-header">
+            <a href="{% url 'welcome' %}" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--t1);">
+                <div class="dh-logo-icon"><span class="material-icons-round">auto_awesome</span></div>
+                <span style="font-weight:700;font-size:15px;">WEU AI</span>
+                <span style="font-size:10px;color:var(--t3);font-family:var(--mono);padding:2px 6px;background:var(--bg-e);border-radius:4px;border:1px solid var(--border);">docs</span>
+            </a>
+            <button class="mob-sb-close" onclick="closeMobSidebar()" aria-label="Закрыть">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="mob-sb-content" id="mobSbContent">
+            <!-- Filled by JS from desktop sidebar -->
+        </div>
+    </nav>
+</div>
 
 <div class="doc-layout">
 
@@ -1255,16 +1347,17 @@ truncate -s 0      <span class="comment"># обнуление файлов</span
 
 <script>
 function showSection(id, navEl) {
-    // Hide all
     document.querySelectorAll('.doc-section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    // Show target
     const sec = document.getElementById('section-' + id);
     if (sec) sec.classList.add('active');
-    if (navEl) navEl.classList.add('active');
+    // Always activate the desktop sidebar item for this section
+    const desktopNavEl = document.querySelector('#docSidebar [data-section="' + id + '"]');
+    if (desktopNavEl) desktopNavEl.classList.add('active');
+    else if (navEl) navEl.classList.add('active');
     window.scrollTo(0, 0);
-    // Close mobile sidebar
-    document.getElementById('docSidebar').style.display = '';
+    closeMobSidebar();
+    syncMobActiveState(id);
     return false;
 }
 
@@ -1279,12 +1372,40 @@ function showTab(group, tabId, btn) {
 }
 
 function toggleSidebar() {
-    const sb = document.getElementById('docSidebar');
-    sb.style.display = sb.style.display === 'block' ? '' : 'block';
+    openMobSidebar();
+}
+
+function openMobSidebar() {
+    // Copy desktop sidebar content into mobile panel on first open
+    const mobContent = document.getElementById('mobSbContent');
+    if (!mobContent.hasChildNodes()) {
+        mobContent.innerHTML = document.getElementById('docSidebar').innerHTML;
+        // Wire up mobile nav items to also close the overlay
+        mobContent.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => closeMobSidebar());
+        });
+    }
+    document.getElementById('mobSbOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMobSidebar() {
+    document.getElementById('mobSbOverlay').classList.remove('open');
+    document.body.style.overflow = '';
 }
 
 function focusSearch() {
     // Placeholder for search
+}
+
+// Sync active state to mobile sidebar
+function syncMobActiveState(id) {
+    const mobContent = document.getElementById('mobSbContent');
+    if (mobContent.hasChildNodes()) {
+        mobContent.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        const mobEl = mobContent.querySelector('[data-section="' + id + '"]');
+        if (mobEl) mobEl.classList.add('active');
+    }
 }
 
 // Handle hash navigation
@@ -1295,6 +1416,8 @@ window.addEventListener('load', () => {
         if (navEl) showSection(hash, navEl);
     }
 });
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMobSidebar(); });
 </script>
 </body>
 </html>

@@ -18,4 +18,9 @@ urlpatterns = [
     path('api/groups/<int:group_id>/remove-member/', views.group_remove_member, name='group_remove_member'),
     path('api/groups/<int:group_id>/subscribe/', views.group_subscribe, name='group_subscribe'),
     path('api/bulk-update/', views.bulk_update_servers, name='bulk_update_servers'),
+    path('api/global-context/', views.global_context_get, name='global_context_get'),
+    path('api/global-context/save/', views.global_context_save, name='global_context_save'),
+    path('api/groups/<int:group_id>/context/', views.group_context_get, name='group_context_get'),
+    path('api/groups/<int:group_id>/context/save/', views.group_context_save, name='group_context_save'),
+    path('api/<int:server_id>/get/', views.server_get, name='server_get'),
 ]

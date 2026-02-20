@@ -19,6 +19,7 @@ from .models import (
     ServerGroupMember,
     ServerGroupTag,
     ServerGroupSubscription,
+    GlobalServerRules,
 )
 from app.tools.ssh_tools import ssh_manager
 from passwords.encryption import PasswordEncryption
@@ -50,17 +51,19 @@ def server_list(request):
         Q(user=request.user) | Q(memberships__user=request.user)
     ).distinct()
     group_tags = ServerGroupTag.objects.filter(user=request.user)
-    
+    global_rules, _ = GlobalServerRules.objects.get_or_create(user=request.user)
+
     # Mobile or desktop template
     if getattr(request, 'is_mobile', False):
         template = 'servers/mobile/list.html'
     else:
         template = 'servers/list.html'
-    
+
     return render(request, template, {
         'servers': servers,
         'groups': groups,
         'group_tags': group_tags,
+        'global_rules': global_rules,
     })
 
 
@@ -495,6 +498,117 @@ def server_execute_command(request, server_id):
         
         result = async_to_sync(exec_cmd)()
         return JsonResponse(result)
-        
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('servers')
+@require_http_methods(["GET"])
+def global_context_get(request):
+    """Get global server rules/context for current user"""
+    rules, _ = GlobalServerRules.objects.get_or_create(user=request.user)
+    return JsonResponse({
+        'rules': rules.rules,
+        'forbidden_commands': rules.forbidden_commands,
+        'required_checks': rules.required_checks,
+        'environment_vars': rules.environment_vars,
+    })
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def global_context_save(request):
+    """Save global server rules/context for current user"""
+    try:
+        data = json.loads(request.body)
+        rules, _ = GlobalServerRules.objects.get_or_create(user=request.user)
+        if 'rules' in data:
+            rules.rules = data['rules']
+        if 'forbidden_commands' in data:
+            fc = data['forbidden_commands']
+            if isinstance(fc, str):
+                fc = [c.strip() for c in fc.splitlines() if c.strip()]
+            rules.forbidden_commands = fc
+        if 'required_checks' in data:
+            rc = data['required_checks']
+            if isinstance(rc, str):
+                rc = [c.strip() for c in rc.splitlines() if c.strip()]
+            rules.required_checks = rc
+        if 'environment_vars' in data:
+            rules.environment_vars = data['environment_vars']
+        rules.save()
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('servers')
+@require_http_methods(["GET"])
+def group_context_get(request, group_id):
+    """Get context (rules, forbidden_commands, environment_vars) for a group"""
+    group = get_object_or_404(ServerGroup, id=group_id)
+    role = _get_group_role(group, request.user)
+    if not role:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    return JsonResponse({
+        'id': group.id,
+        'name': group.name,
+        'rules': group.rules,
+        'forbidden_commands': group.forbidden_commands,
+        'environment_vars': group.environment_vars,
+    })
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def group_context_save(request, group_id):
+    """Save context (rules, forbidden_commands, environment_vars) for a group"""
+    group = get_object_or_404(ServerGroup, id=group_id)
+    role = _get_group_role(group, request.user)
+    if role not in ["owner", "admin"]:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    try:
+        data = json.loads(request.body)
+        if 'rules' in data:
+            group.rules = data['rules']
+        if 'forbidden_commands' in data:
+            fc = data['forbidden_commands']
+            if isinstance(fc, str):
+                fc = [c.strip() for c in fc.splitlines() if c.strip()]
+            group.forbidden_commands = fc
+        if 'environment_vars' in data:
+            group.environment_vars = data['environment_vars']
+        group.save()
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('servers')
+@require_http_methods(["GET"])
+def server_get(request, server_id):
+    """Get server details for editing"""
+    server = get_object_or_404(Server, id=server_id, user=request.user)
+    return JsonResponse({
+        'id': server.id,
+        'name': server.name,
+        'host': server.host,
+        'port': server.port,
+        'username': server.username,
+        'auth_method': server.auth_method,
+        'key_path': server.key_path,
+        'tags': server.tags,
+        'notes': server.notes,
+        'corporate_context': server.corporate_context,
+        'group_id': server.group_id,
+        'is_active': server.is_active,
+        'network_config': server.network_config,
+    })
