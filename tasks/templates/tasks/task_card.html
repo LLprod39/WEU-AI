@@ -1,12 +1,18 @@
-<div class="task-card priority-{{ task.priority|lower }} {% if task.is_overdue %}overdue{% endif %}"
+<div class="task-card priority-{{ task.priority|lower }}{% if task.is_overdue %} overdue{% endif %}{% if task.ai_execution_status == 'EXECUTING' or task.ai_execution_status == 'PLANNING' or task.ai_execution_status == 'ANALYZING' %} ai-running{% endif %}"
      data-task-id="{{ task.id }}"
      data-priority="{{ task.priority }}"
      data-ai-assigned="{{ task.assigned_to_ai|yesno:'true,false' }}"
+     data-ai-status="{{ task.ai_execution_status|default:'' }}"
      draggable="true"
      onclick="openDetailModal({{ task.id }})">
 
     <!-- Priority indicator line -->
     <div class="task-priority-line"></div>
+
+    <!-- AI running indicator bar (animated top stripe) -->
+    {% if task.ai_execution_status == 'EXECUTING' or task.ai_execution_status == 'PLANNING' or task.ai_execution_status == 'ANALYZING' %}
+    <div class="task-ai-running-bar"></div>
+    {% endif %}
 
     <!-- Card content -->
     <div class="task-content">
@@ -73,12 +79,29 @@
             {% endif %}
 
             {% if task.assigned_to_ai %}
-            <span class="task-badge ai {% if task.ai_execution_status == 'EXECUTING' %}executing{% endif %}">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5A2.5 2.5 0 0 0 7.5 18a2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 2.5-2.5a2.5 2.5 0 0 0-2.5-2.5z"/>
-                </svg>
-                {% if task.ai_execution_status == 'EXECUTING' %}Running{% elif task.ai_execution_status == 'COMPLETED' %}Done{% else %}AI{% endif %}
-            </span>
+                {% if task.ai_execution_status == 'EXECUTING' or task.ai_execution_status == 'PLANNING' or task.ai_execution_status == 'ANALYZING' %}
+                <span class="task-badge ai executing" title="ИИ выполняет задачу">
+                    <span class="ai-pulse-dot"></span>
+                    {% if task.ai_execution_status == 'PLANNING' %}Планирует{% elif task.ai_execution_status == 'ANALYZING' %}Анализ{% else %}Выполняет{% endif %}
+                </span>
+                {% elif task.ai_execution_status == 'COMPLETED' %}
+                <span class="task-badge ai done" title="Выполнено ИИ">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Готово
+                </span>
+                {% elif task.ai_execution_status == 'FAILED' %}
+                <span class="task-badge ai failed" title="Ошибка выполнения">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    Ошибка
+                </span>
+                {% else %}
+                <span class="task-badge ai" title="Назначено ИИ">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5 2.5 2.5 0 0 0 7.5 18a2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 16.5 13z"/>
+                    </svg>
+                    AI
+                </span>
+                {% endif %}
             {% endif %}
         </div>
 

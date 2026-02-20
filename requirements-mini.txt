@@ -1,8 +1,9 @@
 # WEU MVP — мини-сборка для тестов: без PyTorch, без моделей RAG, без тяжёлых зависимостей.
 # Чат, задачи, пароли, серверы, оркестратор — работают. RAG и эмбеддинги — только в full.
 
-# БД
+# БД (Django postgres backend требует psycopg2; psycopg3 — для скриптов)
 psycopg[binary]>=3.1.8
+psycopg2-binary>=2.9
 
 # LLM
 google-genai

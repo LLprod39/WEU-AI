@@ -1,0 +1,56 @@
+{
+  "name": "Проверить место на диске и логи",
+  "description": "Проверить место на диске и логи на сервере lunix",
+  "runtime": "cursor",
+  "task_type": "server",
+  "steps": [
+    {
+      "title": "Проверить место на диске",
+      "prompt": "Execute via server_execute with server_name_or_id=\"lunix\": run df -h and lsblk to check disk space. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    },
+    {
+      "title": "Проверить логи",
+      "prompt": "Execute via server_execute with server_name_or_id=\"lunix\": check system logs for errors (journalctl -p err -n 50, dmesg, or /var/log/*.log). Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Проверить место на диске",
+        "description": "Проверить место на диске",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute with server_name_or_id=\"lunix\": run df -h and lsblk to check disk space. Output <promise>STEP_DONE</promise> when done"
+      },
+      "step_2": {
+        "name": "Проверить логи",
+        "description": "Проверить логи",
+        "triggers": [
+          "step_1.done"
+        ],
+        "publishes": [
+          "step_2.done"
+        ],
+        "instructions": "Execute via server_execute with server_name_or_id=\"lunix\": check system logs for errors (journalctl -p err -n 50, dmesg, or /var/log/*.log). Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-39.json"
+}

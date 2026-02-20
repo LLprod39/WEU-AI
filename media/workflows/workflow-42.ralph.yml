@@ -1,0 +1,25 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Clone LAMA repository"
+    description: "Clone LAMA repository"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "На сервере lunix выполни через server_execute: клонируй репозиторий https://github.com/facebookresearch/LAMA в /opt/LAMA (или подходящую директорию). Если директория уже существует — обнови через git pull. Output <promise>STEP_DONE</promise> когда готово."
+  step_2:
+    name: "Build and run LAMA in Docker"
+    description: "Build and run LAMA in Docker"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "На сервере lunix: проверь наличие Dockerfile в /opt/LAMA. Если есть — собери образ и запусти контейнер. Если нет — создай Dockerfile на основе requirements проекта и собери. Убедись что контейнер запущен. Output <promise>STEP_DONE</promise> когда готово."
+  step_3:
+    name: "Verify deployment"
+    description: "Verify deployment"
+    triggers: ["step_2.done"]
+    publishes: ["step_3.done"]
+    instructions: "На сервере lunix: проверь что контейнер LAMA работает (docker ps), логи без критических ошибок. Output <promise>STEP_DONE</promise> когда готово."

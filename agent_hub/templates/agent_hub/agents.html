@@ -1011,6 +1011,257 @@
     grid-column: 1 / -1;
 }
 
+/* ── Agent Wizard ─────────────────────────────────────── */
+.agent-wizard-steps {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--hub-modal-border);
+    background: var(--hub-modal-surface);
+    padding: 0 24px;
+    gap: 0;
+}
+.agent-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 13px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--hub-muted);
+    border-bottom: 2px solid transparent;
+    cursor: default;
+    transition: color .18s, border-color .18s;
+    user-select: none;
+    white-space: nowrap;
+}
+.agent-wizard-step .wz-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+    background: var(--hub-border);
+    color: var(--hub-muted);
+    transition: background .18s, color .18s;
+    flex-shrink: 0;
+}
+.agent-wizard-step.active {
+    color: var(--primary, #6366f1);
+    border-bottom-color: var(--primary, #6366f1);
+}
+.agent-wizard-step.active .wz-num {
+    background: var(--primary, #6366f1);
+    color: #fff;
+}
+.agent-wizard-step.done {
+    color: var(--hub-muted);
+    opacity: .6;
+}
+.agent-wizard-step.done .wz-num {
+    background: transparent;
+    color: var(--success, #10b981);
+    font-size: 14px;
+}
+
+/* Wizard panels */
+.agent-wizard-panel { display: none; }
+.agent-wizard-panel.active {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.agent-wizard-panel.active.wz-single {
+    grid-template-columns: 1fr;
+}
+.wz-full { grid-column: 1 / -1; }
+
+/* Wizard footer */
+.agent-wizard-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--hub-modal-border);
+    background: var(--hub-modal-surface);
+    flex-shrink: 0;
+}
+
+/* Wizard body scroll area */
+.agent-wizard-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px 24px;
+}
+
+/* Agent emoji avatar picker */
+.agent-avatar-picker {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.agent-avatar-opt {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    border: 2px solid var(--hub-border);
+    background: var(--hub-card-2);
+    font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: border-color .15s, transform .1s;
+}
+.agent-avatar-opt:hover { border-color: var(--primary, #6366f1); transform: scale(1.08); }
+.agent-avatar-opt.selected { border-color: var(--primary, #6366f1); background: color-mix(in srgb, var(--primary,#6366f1) 15%, transparent); }
+
+/* Tool category grid */
+.agent-tools-group { display: flex; flex-direction: column; gap: 8px; }
+.agent-tools-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--hub-muted);
+}
+.agent-tools-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* AI assist compact */
+.wz-assist-block {
+    background: color-mix(in srgb, var(--primary,#6366f1) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary,#6366f1) 25%, transparent);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    grid-column: 1 / -1;
+}
+.wz-assist-block h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+.wz-assist-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+.wz-assist-row .hub-textarea { margin: 0; flex: 1; }
+
+/* Runtime card select */
+.agent-runtime-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+.agent-runtime-card {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--hub-border);
+    background: var(--hub-card-2);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.agent-runtime-card:hover { border-color: var(--primary, #6366f1); }
+.agent-runtime-card.selected {
+    border-color: var(--primary, #6366f1);
+    background: color-mix(in srgb, var(--primary,#6366f1) 10%, transparent);
+}
+.agent-runtime-card__name { font-size: 12px; font-weight: 600; color: var(--hub-text); }
+.agent-runtime-card__desc { font-size: 10px; color: var(--hub-muted); }
+
+/* Workflow library table */
+.wf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wf-table th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--hub-muted);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--hub-border);
+}
+.wf-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--hub-border) 50%, transparent);
+    vertical-align: middle;
+}
+.wf-table tr:last-child td { border-bottom: none; }
+.wf-table tr:hover td { background: var(--hub-card-2); }
+.wf-runtime-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--hub-card-2);
+    border: 1px solid var(--hub-border);
+    color: var(--hub-muted);
+}
+.wf-runtime-stack {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+}
+.wf-runtime-cli-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--hub-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hub-accent) 30%, transparent);
+    color: var(--hub-accent);
+    opacity: 0.85;
+}
+.wf-actions { display: flex; gap: 4px; align-items: center; }
+.wf-action-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--hub-muted);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all .15s;
+}
+.wf-action-btn:hover { background: var(--hub-card-2); border-color: var(--hub-border); color: var(--hub-text); }
+.wf-action-btn.danger:hover { background: color-mix(in srgb,#f43f5e 12%,transparent); color: #f43f5e; border-color: color-mix(in srgb,#f43f5e 30%,transparent); }
+.wf-action-btn.primary:hover { background: color-mix(in srgb,var(--primary,#6366f1) 12%,transparent); color: var(--primary,#6366f1); border-color: color-mix(in srgb,var(--primary,#6366f1) 30%,transparent); }
+
+/* Preset cards redesign */
+.wf-preset-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--hub-border);
+    background: var(--hub-card-2);
+    transition: border-color .15s, background .15s;
+}
+.wf-preset-card:hover { border-color: var(--primary,#6366f1); background: color-mix(in srgb,var(--primary,#6366f1) 5%,transparent); }
+.wf-preset-accent {
+    width: 4px; align-self: stretch;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.wf-preset-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.wf-preset-info { flex: 1; min-width: 0; }
+.wf-preset-name { font-size: 12px; font-weight: 600; color: var(--hub-text); }
+.wf-preset-desc { font-size: 11px; color: var(--hub-muted); }
+
 .agent-editor-actions {
     grid-column: 1 / -1;
     display: flex;
@@ -1259,17 +1510,17 @@
         <section class="hub-hero">
             <div class="hub-hero__copy">
                 <div class="hub-hero__badge">Agent Hub</div>
-                <h1>Управление агентами, workflow и автоматизацией</h1>
-                <p>Единый центр: агентные роли, сценарии, вебхуки и контроль выполнения. Быстро, прозрачно, без шума.</p>
+                <h1>Делегируй рутину AI — сфокусируйся на важном</h1>
+                <p>Создавай агентов для автоматизации DevOps-задач: мониторинг серверов, деплой, чистка логов, алерты. Запускай вручную или по триггеру.</p>
                 <div class="hub-hero__actions">
-                    <button class="hub-btn hub-btn-primary" onclick="openAgentEditor()">Создать агента</button>
+                    <button class="hub-btn hub-btn-primary" onclick="openAgentEditor()">+ Новый агент</button>
                     <button class="hub-btn hub-btn-secondary" onclick="openTaskBuilderDirect()">Новый workflow</button>
-                    <button class="hub-btn hub-btn-ghost" onclick="openWebhookForm()">Новый webhook</button>
+                    <button class="hub-btn hub-btn-ghost" onclick="openWebhookForm()">Webhook</button>
                 </div>
             </div>
             <div class="hub-hero__stats">
                 <div class="hub-stat">
-                    <div class="hub-stat__label">Agents</div>
+                    <div class="hub-stat__label">Агенты</div>
                     <div class="hub-stat__value" id="stat-agents">0</div>
                 </div>
                 <div class="hub-stat">
@@ -1281,17 +1532,17 @@
                     <div class="hub-stat__value" id="stat-webhooks">0</div>
                 </div>
                 <div class="hub-stat">
-                    <div class="hub-stat__label">Runs</div>
+                    <div class="hub-stat__label">Запуски</div>
                     <div class="hub-stat__value" id="stat-runs">{{ recent_runs|length }}</div>
                 </div>
             </div>
         </section>
 
         <nav class="hub-tabs" role="tablist">
-            <button class="hub-tab active" data-hub-tab="agents" role="tab">Agents</button>
+            <button class="hub-tab active" data-hub-tab="agents" role="tab">Агенты</button>
             <button class="hub-tab" data-hub-tab="workflows" role="tab">Workflows</button>
-            <button class="hub-tab" data-hub-tab="automation" role="tab">Automation</button>
-            <button class="hub-tab" data-hub-tab="runs" role="tab">Runs</button>
+            <button class="hub-tab" data-hub-tab="automation" role="tab">Автоматизация</button>
+            <button class="hub-tab" data-hub-tab="runs" role="tab">Запуски</button>
         </nav>
 
         <section class="hub-panel active" data-hub-panel="agents">
@@ -1299,8 +1550,8 @@
                 <div class="hub-card">
                     <div class="hub-card__head">
                         <div>
-                            <h2>Агенты</h2>
-                            <p>Роли, ограничения и навыки. Подключайте skills и сервера.</p>
+                            <h2>Мои агенты</h2>
+                            <p>Каждый агент — специалист по своей задаче: мониторинг, деплой, бэкап, алерты.</p>
                         </div>
                         <div class="hub-card__actions">
                             <input id="agent-search" class="hub-input" placeholder="Поиск агента">
@@ -1312,22 +1563,37 @@
                 <div class="hub-card">
                     <div class="hub-card__head">
                         <div>
-                            <h2>Запуск агента</h2>
-                            <p>Выберите агента и запустите задачу с подтверждением или сразу.</p>
+                            <h2>Запуск задачи</h2>
+                            <p>Выберите агента слева и делегируйте ему задачу.</p>
                         </div>
                     </div>
                     <div class="hub-card__body">
-                        <div id="selected-agent-preview" class="hub-empty">Выберите агента в списке слева.</div>
+                        <div id="selected-agent-preview" class="hub-empty">← Выберите агента из списка</div>
                         <div class="hub-card__actions" style="margin-top: 16px;">
-                            <button class="hub-btn hub-btn-secondary" onclick="openAgentRun()">Запустить</button>
-                            <button class="hub-btn hub-btn-ghost" onclick="openAgentEditor()">Настроить агента</button>
+                            <button class="hub-btn hub-btn-primary" onclick="openAgentRun()">
+                                <span class="material-icons-round" style="font-size:15px;vertical-align:-2px;">play_arrow</span>
+                                Запустить задачу
+                            </button>
+                            <button class="hub-btn hub-btn-ghost" onclick="openAgentEditor()">Настроить</button>
                         </div>
                         <div class="hub-divider"></div>
                         <div class="hub-links">
-                            <a href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer" class="hub-link" title="Codex Cloud — вход через ChatGPT">Codex Cloud: вход и веб-интерфейс</a>
-                            <a href="/skills/" class="hub-link">Skills: управление знаниями</a>
-                            <a href="/tasks/settings/" class="hub-link">Automation settings для задач</a>
-                            <a href="/tasks/" class="hub-link">Все задачи и подтверждения</a>
+                            <a href="/skills/" class="hub-link">
+                                <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;">rule_folder</span>
+                                Skills &amp; MCP — инструменты агентов
+                            </a>
+                            <a href="/tasks/" class="hub-link">
+                                <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;">task_alt</span>
+                                Очередь задач и подтверждения
+                            </a>
+                            <a href="/tasks/settings/" class="hub-link">
+                                <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;">tune</span>
+                                Настройки автоматизации
+                            </a>
+                            <a href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer" class="hub-link">
+                                <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;">open_in_new</span>
+                                Codex Cloud (OpenAI)
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -1336,21 +1602,22 @@
 
         <section class="hub-panel" data-hub-panel="workflows">
             <div class="hub-grid hub-grid--workflows">
+                <!-- Left column: quick create + presets -->
                 <div class="hub-stack">
                     <div class="hub-card">
                         <div class="hub-card__head">
                             <div>
                                 <h2>Быстрый workflow</h2>
-                                <p>Опиши сценарий, выбери runtime и проект. Мы соберём шаги.</p>
+                                <p>Опиши сценарий, выбери runtime и проект — мы соберём шаги.</p>
                             </div>
                         </div>
                         <div class="hub-card__body">
-                            <textarea id="quick-task" rows="3" class="hub-textarea" placeholder="Опишите задачу и критерии готовности"></textarea>
-                            <div class="hub-form-row">
+                            <textarea id="quick-task" rows="4" class="hub-textarea" placeholder="Например: развернуть новую версию сервиса, проверить логи, откатить при ошибке..."></textarea>
+                            <div class="hub-form-row" style="margin-top:10px;">
                                 <select id="quick-runtime" class="hub-select">
-                                    <option value="cursor" selected>Cursor CLI</option>
-                                    <option value="codex">Codex CLI</option>
-                                    <option value="ralph">Ralph Orchestrator</option>
+                                    <option value="cursor" selected>⚡ Cursor CLI</option>
+                                    <option value="codex">🤖 Codex CLI</option>
+                                    <option value="ralph">🧠 Ralph Orchestrator</option>
                                 </select>
                                 <select id="quick-project" class="hub-select">
                                     <option value="__new__">📁 Новый проект</option>
@@ -1359,14 +1626,21 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <input id="quick-project-name" type="text" class="hub-input hidden" placeholder="Название проекта">
-                            <div class="hub-card__actions" style="margin-top: 12px;">
-                                <button id="btn-auto-create-all" onclick="autoCreateAll()" class="hub-btn hub-btn-primary">Создать и запустить</button>
-                                <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">Открыть Builder</button>
+                            <input id="quick-project-name" type="text" class="hub-input hidden" placeholder="Название проекта" style="margin-top:8px;">
+                            <div style="display:flex;gap:8px;margin-top:14px;">
+                                <button id="btn-auto-create-all" onclick="autoCreateAll()" class="hub-btn hub-btn-primary" style="flex:1;">
+                                    <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;">play_arrow</span>
+                                    Создать и запустить
+                                </button>
+                                <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">
+                                    <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;">account_tree</span>
+                                    Builder
+                                </button>
                             </div>
-                            <p class="hub-help">Добавь стек, ограничения, критерии готовности — получишь точный workflow.</p>
+                            <p class="hub-help" style="margin-top:10px;">Добавь стек, ограничения, критерии готовности — получишь точный workflow.</p>
                         </div>
                     </div>
+
                     <div class="hub-card">
                         <div class="hub-card__head">
                             <div>
@@ -1374,57 +1648,119 @@
                                 <p>Готовые шаблоны для быстрого старта.</p>
                             </div>
                         </div>
-                        <div class="hub-list">
+                        <div class="hub-list" style="padding:12px;display:flex;flex-direction:column;gap:8px;">
                             {% for preset in presets %}
-                            <div class="hub-row">
-                                <div>
-                                    <div class="hub-row__title">{{ preset.name }}</div>
-                                    <div class="hub-row__meta">{{ preset.description|default:"" }}</div>
+                            <div class="wf-preset-card">
+                                <div class="wf-preset-accent" style="background:{% cycle '#6366f1' '#10b981' '#f59e0b' '#3b82f6' '#ec4899' %};"></div>
+                                <div class="wf-preset-icon" style="background:{% cycle 'color-mix(in srgb,#6366f1 15%,transparent)' 'color-mix(in srgb,#10b981 15%,transparent)' 'color-mix(in srgb,#f59e0b 15%,transparent)' 'color-mix(in srgb,#3b82f6 15%,transparent)' 'color-mix(in srgb,#ec4899 15%,transparent)' %};">
+                                    {% if 'deploy' in preset.name|lower %}🚀{% elif 'check' in preset.name|lower or 'мониторинг' in preset.name|lower %}📊{% elif 'backup' in preset.name|lower %}💾{% elif 'test' in preset.name|lower %}🧪{% else %}⚡{% endif %}
                                 </div>
-                                <div class="hub-row__actions">
-                                    <button type="button" onclick="usePreset('{{ preset.name|escapejs }}')" class="hub-btn hub-btn-ghost">Use</button>
+                                <div class="wf-preset-info">
+                                    <div class="wf-preset-name">{{ preset.name }}</div>
+                                    <div class="wf-preset-desc">{{ preset.description|default:"Готовый шаблон" }}</div>
                                 </div>
+                                <button type="button" onclick="usePreset('{{ preset.name|escapejs }}')" class="hub-btn hub-btn-ghost" style="flex-shrink:0;font-size:11px;padding:4px 10px;">
+                                    Применить
+                                </button>
                             </div>
                             {% empty %}
-                            <div class="hub-empty">Нет доступных presets.</div>
+                            <div class="hub-empty">Нет presets. Создайте workflow и сохраните как шаблон.</div>
                             {% endfor %}
                         </div>
                     </div>
                 </div>
+
+                <!-- Right column: workflow library -->
                 <div class="hub-card">
                     <div class="hub-card__head">
                         <div>
                             <h2>Workflow Library</h2>
-                            <p>Сохранённые сценарии, импорт и редактирование шагов.</p>
+                            <p>Сохранённые сценарии — редактирование, запуск, просмотр шагов.</p>
                         </div>
                         <div class="hub-card__actions">
-                            <button type="button" onclick="openImportModal()" class="hub-btn hub-btn-ghost">Import</button>
-                            <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">Builder</button>
+                            <button type="button" onclick="openImportModal()" class="hub-btn hub-btn-ghost">
+                                <span class="material-icons-round" style="font-size:15px;vertical-align:-2px;">upload</span>
+                                Import
+                            </button>
+                            <button type="button" onclick="openTaskBuilderDirect()" class="hub-btn hub-btn-secondary">
+                                <span class="material-icons-round" style="font-size:15px;vertical-align:-2px;">add</span>
+                                Builder
+                            </button>
                         </div>
                     </div>
-                    <div class="hub-list">
-                        {% for workflow in workflows %}
-                        <div class="hub-workflow-card">
-                            <div>
-                                <div class="hub-workflow-title">{{ workflow.name }}</div>
-                                <div class="hub-workflow-sub">
-                                    {{ workflow.runtime|title }}
-                                    {% if workflow.target_server %} • {{ workflow.target_server.name }}{% endif %}
-                                    {% if workflow.script.steps %} • {{ workflow.script.steps|length }} steps{% endif %}
-                                    {% if workflow.project_path %} • {{ workflow.project_path }}{% endif %}
-                                </div>
-                            </div>
-                            <div class="hub-row__actions">
-                                <button type="button" onclick="editWorkflow({{ workflow.id }})" class="hub-btn hub-btn-ghost">Edit</button>
-                                <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="hub-btn hub-btn-ghost">Script</button>
-                                <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="hub-btn hub-btn-ghost">Delete</button>
-                                <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="hub-btn hub-btn-secondary">Run</button>
-                            </div>
-                        </div>
-                        {% empty %}
-                        <div class="hub-empty">Workflows пока нет. Создай через Builder.</div>
-                        {% endfor %}
+                    {% if workflows %}
+                    <div style="overflow-x:auto;">
+                        <table class="wf-table">
+                            <thead>
+                                <tr>
+                                    <th>Workflow</th>
+                                    <th>Runtime</th>
+                                    <th>Шаги</th>
+                                    <th>Проект</th>
+                                    <th style="text-align:right;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for workflow in workflows %}
+                                <tr>
+                                    <td>
+                                        <div style="font-weight:600;font-size:13px;color:var(--hub-text);">{{ workflow.name }}</div>
+                                        {% if workflow.target_server %}
+                                        <div style="font-size:11px;color:var(--hub-muted);">🖥 {{ workflow.target_server.name }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if workflow.runtime == 'cursor' or workflow.runtime == 'claude' or workflow.runtime == 'codex' or workflow.runtime == 'opencode' or workflow.runtime == 'gemini' %}
+                                        {# CLI runtime — Ralph оркестрирует, CLI выполняет #}
+                                        <div class="wf-runtime-stack">
+                                            <span class="wf-runtime-badge">🧠 Ralph</span>
+                                            <span class="wf-runtime-cli-badge">
+                                                {% if workflow.runtime == 'cursor' %}⚡{% elif workflow.runtime == 'claude' %}🤖{% elif workflow.runtime == 'codex' %}◆{% elif workflow.runtime == 'gemini' %}✦{% else %}▸{% endif %}
+                                                {{ workflow.runtime|title }}
+                                            </span>
+                                        </div>
+                                        {% elif workflow.runtime == 'ralph' %}
+                                        <span class="wf-runtime-badge">🧠 Ralph</span>
+                                        {% else %}
+                                        <span class="wf-runtime-badge">
+                                            {{ workflow.runtime|title }}
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="color:var(--hub-muted);">
+                                        {% if workflow.script.steps %}{{ workflow.script.steps|length }}{% else %}—{% endif %}
+                                    </td>
+                                    <td style="font-size:11px;color:var(--hub-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        {{ workflow.project_path|default:"—" }}
+                                    </td>
+                                    <td>
+                                        <div class="wf-actions" style="justify-content:flex-end;">
+                                            <button type="button" onclick="editWorkflow({{ workflow.id }})" class="wf-action-btn" title="Редактировать">
+                                                <span class="material-icons-round" style="font-size:15px;">edit</span>
+                                            </button>
+                                            <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="wf-action-btn" title="Просмотр шагов">
+                                                <span class="material-icons-round" style="font-size:15px;">list_alt</span>
+                                            </button>
+                                            <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="wf-action-btn danger" title="Удалить">
+                                                <span class="material-icons-round" style="font-size:15px;">delete_outline</span>
+                                            </button>
+                                            <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="wf-action-btn primary" title="Запустить">
+                                                <span class="material-icons-round" style="font-size:15px;">play_arrow</span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
+                    {% else %}
+                    <div class="hub-empty" style="padding:40px 20px;text-align:center;">
+                        <span class="material-icons-round" style="font-size:40px;color:var(--hub-border);display:block;margin-bottom:12px;">account_tree</span>
+                        Workflows пока нет.<br>
+                        <span style="color:var(--hub-muted);font-size:12px;">Используй Быстрый workflow слева или открой Builder.</span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </section>
@@ -1540,12 +1876,11 @@
                             <a href="/tasks/settings/" class="hub-btn hub-btn-ghost">Открыть настройки</a>
                         </div>
                         <div class="hub-divider"></div>
-                        <div class="hub-card__head" style="padding: 0;">
-                            <h3>MCP Servers</h3>
-                            <button onclick="refreshMcpServers()" class="hub-btn hub-btn-ghost">Refresh</button>
+                        <div class="hub-callout">
+                            <div class="hub-callout__title">MCP — каталог, пул и подключение</div>
+                            <div class="hub-callout__text">Всё управление MCP (подключённые серверы, каталог, «Мои MCP», установка в агентов) — в разделе Skills / MCP.</div>
+                            <a href="{% url 'skills:skills_page' %}?tab=mcp" class="hub-btn hub-btn-primary">Открыть Skills / MCP</a>
                         </div>
-                        <div id="mcp-servers-list" class="hub-list"></div>
-                        <div id="mcp-sources" class="hub-help"></div>
                     </div>
                 </div>
             </div>
@@ -1618,131 +1953,225 @@
 
 <div id="agentEditorModal" class="hub-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-editor-title">
     <div class="hub-modal__backdrop" onclick="closeAgentEditor()"></div>
-    <div class="hub-modal__panel agent-editor-panel">
-        <div class="hub-modal__head">
+    <div class="hub-modal__panel agent-editor-panel" style="display:flex;flex-direction:column;max-height:90vh;">
+
+        <!-- Modal header -->
+        <div class="hub-modal__head" style="flex-shrink:0;">
             <h2 id="agent-editor-title" class="hub-modal__title">Новый агент</h2>
-            <button class="hub-btn hub-btn-ghost hub-btn--icon" onclick="closeAgentEditor()" aria-label="Закрыть">Закрыть</button>
+            <button class="hub-btn hub-btn-ghost hub-btn--icon" onclick="closeAgentEditor()" aria-label="Закрыть">
+                <span class="material-icons-round" style="font-size:18px;">close</span>
+            </button>
         </div>
-        <form id="agent-editor-form" class="hub-modal__body agent-editor-grid">
+
+        <!-- Step indicators -->
+        <div class="agent-wizard-steps" role="tablist">
+            <div class="agent-wizard-step active" id="wz-step-1" role="tab" aria-selected="true">
+                <span class="wz-num">1</span>
+                <span>Профиль</span>
+            </div>
+            <div class="agent-wizard-step" id="wz-step-2" role="tab" aria-selected="false">
+                <span class="wz-num">2</span>
+                <span>Задачи и инструменты</span>
+            </div>
+            <div class="agent-wizard-step" id="wz-step-3" role="tab" aria-selected="false">
+                <span class="wz-num">3</span>
+                <span>AI движок</span>
+            </div>
+        </div>
+
+        <!-- Scrollable body -->
+        <form id="agent-editor-form" class="agent-wizard-body" autocomplete="off">
             <input type="hidden" id="agent-editor-id">
+            <input type="hidden" id="agent-editor-avatar" value="🔧">
 
-            <div class="agent-editor-section agent-editor-section--full hub-assist-block">
-                <h3>✨ Создать с помощью AI</h3>
-                <p class="hub-help">Опишите задачу — AI предложит имя, описание и настройки агента.</p>
-                <textarea id="agent-assist-task" class="hub-textarea" rows="2" placeholder="Например: агент для проверки диска на серверах, создание отчёта и алерт в Zabbix"></textarea>
-                <div class="hub-card__actions" style="margin-top: 8px;">
-                    <button type="button" id="btn-agent-assist" onclick="applyAssistConfig()" class="hub-btn hub-btn-secondary">Предложить настройки</button>
-                </div>
-            </div>
+            <!-- ═══ STEP 1 — Профиль ═══ -->
+            <div class="agent-wizard-panel active" id="wz-panel-1">
 
-            <div class="agent-editor-section">
-                <h3>Идентичность</h3>
-                <label class="hub-label" for="agent-editor-name">Имя агента</label>
-                <input id="agent-editor-name" class="hub-input" placeholder="Например: DevOps Navigator">
-                <label class="hub-label" for="agent-editor-description">Описание</label>
-                <input id="agent-editor-description" class="hub-input" placeholder="Коротко: зачем он нужен">
-            </div>
-
-            <div class="agent-editor-section">
-                <h3>Контекст</h3>
-                <label class="hub-label" for="agent-editor-knowledge-base">База знаний</label>
-                <textarea id="agent-editor-knowledge-base" class="hub-textarea" rows="4" placeholder="Например: стек, ссылки, ограничения, бизнес-правила"></textarea>
-            </div>
-
-            <div class="agent-editor-section agent-editor-section--full">
-                <h3>Инструкции</h3>
-                <label class="hub-label" for="agent-editor-system-prompt">Системный промпт</label>
-                <textarea id="agent-editor-system-prompt" class="hub-textarea" rows="4" placeholder="Например: всегда уточняй неопределенности, пиши структурированно"></textarea>
-                <label class="hub-label" for="agent-editor-instructions">Дополнительные инструкции</label>
-                <textarea id="agent-editor-instructions" class="hub-textarea" rows="3" placeholder="Дополнительно: формат, стиль, ограничения"></textarea>
-            </div>
-
-            <div class="agent-editor-section">
-                <h3>Исполнение</h3>
-                <div class="hub-form-row">
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-runtime">Runtime</label>
-                        <select id="agent-editor-runtime" class="hub-select">
-                            <option value="claude">claude</option>
-                            <option value="cursor">cursor</option>
-                            <option value="internal">internal</option>
-                        </select>
-                    </div>
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-model">Модель</label>
-                        <select id="agent-editor-model" class="hub-select">
-                            <option value="claude-4.5-sonnet">claude-4.5-sonnet</option>
-                            <option value="claude-4.5-opus">claude-4.5-opus</option>
-                            <option value="claude-4.5-haiku">claude-4.5-haiku</option>
-                            <option value="grok-3">grok-3</option>
-                            <option value="auto">auto</option>
-                        </select>
-                    </div>
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-orchestrator">Оркестратор</label>
-                        <select id="agent-editor-orchestrator" class="hub-select">
-                            <option value="ralph_internal">ralph_internal</option>
-                            <option value="react">react</option>
-                        </select>
+                <!-- AI Assist -->
+                <div class="wz-assist-block">
+                    <h3>✨ Сгенерировать через AI</h3>
+                    <div class="wz-assist-row">
+                        <textarea id="agent-assist-task" class="hub-textarea" rows="2" placeholder="Например: агент для проверки дисков на всех prod-серверах и отправки отчёта в Slack"></textarea>
+                        <button type="button" id="btn-agent-assist" onclick="applyAssistConfig()" class="hub-btn hub-btn-secondary" style="flex-shrink:0;white-space:nowrap;">Сгенерировать</button>
                     </div>
                 </div>
-                <div class="hub-form-row">
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-max-iterations">Макс. итераций</label>
-                        <input id="agent-editor-max-iterations" class="hub-input" type="number" min="1" value="10" placeholder="10">
+
+                <!-- Left col: Identity -->
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div>
+                        <label class="hub-label">Иконка</label>
+                        <div class="agent-avatar-picker">
+                            <div class="agent-avatar-opt selected" data-emoji="🔧" onclick="selectAgentAvatar(this)" title="Инструмент">🔧</div>
+                            <div class="agent-avatar-opt" data-emoji="🖥️" onclick="selectAgentAvatar(this)" title="Сервер">🖥️</div>
+                            <div class="agent-avatar-opt" data-emoji="🚀" onclick="selectAgentAvatar(this)" title="Деплой">🚀</div>
+                            <div class="agent-avatar-opt" data-emoji="🛡️" onclick="selectAgentAvatar(this)" title="Безопасность">🛡️</div>
+                            <div class="agent-avatar-opt" data-emoji="📊" onclick="selectAgentAvatar(this)" title="Мониторинг">📊</div>
+                            <div class="agent-avatar-opt" data-emoji="⚡" onclick="selectAgentAvatar(this)" title="Автоматизация">⚡</div>
+                        </div>
                     </div>
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-temperature">Temperature</label>
-                        <input id="agent-editor-temperature" class="hub-input" type="number" min="0" max="1" step="0.1" value="0.7" placeholder="0.7">
+                    <div>
+                        <label class="hub-label" for="agent-editor-name">Название <span style="color:#f43f5e;">*</span></label>
+                        <input id="agent-editor-name" class="hub-input" placeholder="Например: Disk Monitor, Deploy Bot, Log Cleaner" style="font-size:15px;font-weight:500;">
                     </div>
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-completion-promise">Completion</label>
-                        <input id="agent-editor-completion-promise" class="hub-input" value="COMPLETE" placeholder="COMPLETE">
+                    <div>
+                        <label class="hub-label" for="agent-editor-description">Что делает</label>
+                        <input id="agent-editor-description" class="hub-input" placeholder="Например: проверяет диски, чистит логи, перезапускает сервисы">
                     </div>
                 </div>
-            </div>
 
-            <div class="agent-editor-section">
-                <h3>Доступ к серверам</h3>
-                <label class="hub-toggle">
-                    <input type="checkbox" id="agent-editor-all-servers" checked>
-                    <span class="hub-toggle__control" aria-hidden="true"></span>
-                    <span class="hub-toggle__text">Все серверы доступны</span>
-                </label>
-                <div class="hub-help">Если выключено — выберите конкретные серверы ниже.</div>
-                <label class="hub-label" for="agent-editor-allowed-servers">Разрешённые серверы</label>
-                <input id="agent-server-search" class="hub-input" placeholder="Поиск серверов по имени, хосту или группе">
-                <div id="agent-server-groups" class="server-group-chips"></div>
-                <div id="agent-server-list" class="server-picker"></div>
-                <select id="agent-editor-allowed-servers" class="hub-select hidden" multiple></select>
-            </div>
-
-            <div class="agent-editor-section agent-editor-section--full">
-                <h3>Навыки и инструменты</h3>
-                <div class="hub-form-row">
-                    <div class="hub-field">
-                        <label class="hub-label" for="agent-editor-skills">Навыки</label>
-                        <select id="agent-editor-skills" class="hub-select" multiple></select>
-                    </div>
-                    <div class="hub-field">
-                        <label class="hub-toggle">
-                            <input type="checkbox" id="agent-editor-mcp-auto">
-                            <span class="hub-toggle__control" aria-hidden="true"></span>
-                            <span class="hub-toggle__text">MCP auto-approve</span>
-                        </label>
+                <!-- Right col: Infrastructure context -->
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div style="flex:1;display:flex;flex-direction:column;">
+                        <label class="hub-label" for="agent-editor-knowledge-base">Контекст инфраструктуры</label>
+                        <p class="hub-help" style="margin-bottom:6px;">ОС, стек, пути, пороги, ограничения — всё что агент должен учитывать при выполнении задач.</p>
+                        <textarea id="agent-editor-knowledge-base" class="hub-textarea" rows="7" placeholder="Например:
+ОС: Ubuntu 22.04 LTS
+Сервисы: Nginx, PostgreSQL 15, Redis
+Логи: /var/log/nginx/, /var/log/app/
+Диск критично: >85%
+Деплой: /opt/apps/, systemctl restart
+Мониторинг: Zabbix, алерты в #ops-alerts" style="flex:1;resize:vertical;font-family:monospace;font-size:12px;"></textarea>
                     </div>
                 </div>
-                <div class="hub-field">
-                    <label class="hub-label">Инструменты</label>
+
+            </div><!-- /wz-panel-1 -->
+
+            <!-- ═══ STEP 2 — Задачи и инструменты ═══ -->
+            <div class="agent-wizard-panel" id="wz-panel-2" style="display:none;flex-direction:column;gap:16px;">
+
+                <!-- System prompt -->
+                <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <label class="hub-label" for="agent-editor-system-prompt" style="margin:0;">Инструкция агента</label>
+                        <span class="hub-help" style="margin:0;">Что и как должен делать агент</span>
+                    </div>
+                    <textarea id="agent-editor-system-prompt" class="hub-textarea" rows="6" placeholder="Например: проверяй использование диска командой df -h, если >85% — очищай /tmp и старые логи старше 7 дней, сообщай о результате. Не удаляй файлы без проверки размера."></textarea>
+                </div>
+
+                <!-- Extra instructions (collapsible) -->
+                <details style="border:1px solid var(--hub-border);border-radius:var(--radius-md);padding:10px 14px;">
+                    <summary style="font-size:12px;font-weight:600;color:var(--hub-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;">
+                        <span class="material-icons-round" style="font-size:14px;">expand_more</span>
+                        Дополнительные ограничения
+                    </summary>
+                    <textarea id="agent-editor-instructions" class="hub-textarea" rows="3" placeholder="Например: не трогать файлы новее 24ч, не перезапускать БД без подтверждения, всегда делать бэкап конфига перед изменением" style="margin-top:10px;"></textarea>
+                </details>
+
+                <!-- Skills -->
+                <div>
+                    <label class="hub-label">Сценарии (Skills)</label>
+                    <p class="hub-help" style="margin-bottom:8px;">Готовые playbook-сценарии, которые агент сможет выполнять.</p>
+                    <select id="agent-editor-skills" class="hub-select" multiple style="min-height:80px;"></select>
+                </div>
+
+                <!-- Tools by category -->
+                <div>
+                    <label class="hub-label">Разрешённые инструменты</label>
+                    <p class="hub-help" style="margin-bottom:8px;">SSH, файлы, веб — что агент может использовать при выполнении задач.</p>
                     <div id="agent-editor-tools" class="hub-tools"></div>
                 </div>
-            </div>
 
-            <div class="agent-editor-actions">
-                <button type="button" class="hub-btn hub-btn-primary" onclick="saveAgent()">Сохранить агента</button>
-                <button type="button" class="hub-btn hub-btn-ghost" onclick="closeAgentEditor()">Отмена</button>
+                <!-- MCP -->
+                <div>
+                    <label class="hub-toggle">
+                        <input type="checkbox" id="agent-editor-mcp-auto">
+                        <span class="hub-toggle__control" aria-hidden="true"></span>
+                        <span class="hub-toggle__text">MCP auto-approve — не запрашивать подтверждение для MCP-инструментов</span>
+                    </label>
+                </div>
+
+            </div><!-- /wz-panel-2 -->
+
+            <!-- ═══ STEP 3 — AI движок ═══ -->
+            <div class="agent-wizard-panel" id="wz-panel-3" style="display:none;">
+
+                <!-- Hidden fields: defaults, not shown to user -->
+                <input type="hidden" id="agent-editor-model" value="auto">
+                <input type="hidden" id="agent-editor-orchestrator" value="ralph_internal">
+                <input type="hidden" id="agent-editor-max-iterations" value="10">
+                <input type="hidden" id="agent-editor-temperature" value="0.7">
+                <input type="hidden" id="agent-editor-completion-promise" value="COMPLETE">
+
+                <!-- Left col: Runtime choice -->
+                <div style="display:flex;flex-direction:column;gap:16px;">
+                    <div>
+                        <label class="hub-label">AI агент-исполнитель</label>
+                        <p class="hub-help" style="margin-bottom:12px;">Выберите движок, который будет выполнять задачи на серверах.</p>
+                        <div class="agent-runtime-cards" id="agent-runtime-cards" style="grid-template-columns:1fr;gap:10px;">
+                            <div class="agent-runtime-card selected" data-runtime="claude" onclick="selectRuntime(this)">
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <div style="font-size:24px;line-height:1;flex-shrink:0;">🤖</div>
+                                    <div>
+                                        <div class="agent-runtime-card__name">Claude Code</div>
+                                        <div class="agent-runtime-card__desc">Лучший выбор для DevOps · SSH-команды, файлы, скрипты, MCP-инструменты · Anthropic headless CLI</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="agent-runtime-card" data-runtime="codex" onclick="selectRuntime(this)">
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <div style="font-size:24px;line-height:1;flex-shrink:0;">⚡</div>
+                                    <div>
+                                        <div class="agent-runtime-card__name">Codex</div>
+                                        <div class="agent-runtime-card__desc">Автономное выполнение в изолированном sandbox · подходит для генерации скриптов и кода · OpenAI CLI</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="agent-runtime-card" data-runtime="cursor" onclick="selectRuntime(this)">
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <div style="font-size:24px;line-height:1;flex-shrink:0;">🖱️</div>
+                                    <div>
+                                        <div class="agent-runtime-card__name">Cursor Agent</div>
+                                        <div class="agent-runtime-card__desc">Работа с кодовой базой и конфигами · редактирование файлов в проекте · Cursor CLI</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="agent-editor-runtime" value="claude">
+                    </div>
+                </div>
+
+                <!-- Right col: Server access -->
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div>
+                        <label class="hub-label">Серверы для выполнения задач</label>
+                        <label class="hub-toggle" style="margin-bottom:8px;">
+                            <input type="checkbox" id="agent-editor-all-servers" checked>
+                            <span class="hub-toggle__control" aria-hidden="true"></span>
+                            <span class="hub-toggle__text">Все серверы (рекомендуется)</span>
+                        </label>
+                        <p class="hub-help">Ограничьте доступ, если агент должен работать только с конкретными серверами или группой.</p>
+                    </div>
+                    <input id="agent-server-search" class="hub-input" placeholder="Поиск по имени, хосту, группе">
+                    <div id="agent-server-groups" class="server-group-chips"></div>
+                    <div id="agent-server-list" class="server-picker" style="max-height:240px;overflow-y:auto;"></div>
+                    <select id="agent-editor-allowed-servers" class="hub-select hidden" multiple></select>
+                </div>
+
+            </div><!-- /wz-panel-3 -->
+
+        </form><!-- /agent-editor-form -->
+
+        <!-- Wizard footer -->
+        <div class="agent-wizard-footer">
+            <div>
+                <button type="button" id="agent-wizard-back" class="hub-btn hub-btn-ghost" onclick="agentWizardBack()" style="display:none;">
+                    <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;">arrow_back</span>
+                    Назад
+                </button>
             </div>
-        </form>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" class="hub-btn hub-btn-ghost" onclick="closeAgentEditor()">Отмена</button>
+                <button type="button" id="agent-wizard-next" class="hub-btn hub-btn-secondary" onclick="agentWizardNext()">
+                    Далее
+                    <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;">arrow_forward</span>
+                </button>
+                <button type="button" id="agent-wizard-save" class="hub-btn hub-btn-primary" onclick="saveAgent()" style="display:none;">
+                    <span class="material-icons-round" style="font-size:16px;vertical-align:-3px;">check</span>
+                    Создать агента
+                </button>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -1754,6 +2183,7 @@
             <button class="hub-btn hub-btn-ghost hub-btn--icon" onclick="closeAgentRun()" aria-label="Закрыть">Закрыть</button>
         </div>
         <form id="agent-run-form" class="hub-modal__body agent-run-grid">
+            <input type="hidden" id="agent-run-id" value="">
             <div class="agent-run-section">
                 <h3>Задача</h3>
                 <div id="agent-run-name" class="agent-run-title"></div>
@@ -1786,15 +2216,10 @@
                     {% endfor %}
                     </select>
                 </div>
-                <div class="hub-field">
+                <div class="hub-field" style="display:none;">
                     <label class="hub-label" for="agent-run-runtime">Runtime</label>
                     <select id="agent-run-runtime" class="hub-select">
-                        <option value="">auto</option>
-                        <option value="cursor">cursor</option>
-                        <option value="claude">claude</option>
-                        <option value="codex">codex</option>
-                        <option value="gemini">gemini</option>
-                        <option value="grok">grok</option>
+                        <option value="cursor" selected>cursor (Composer 1.5 → plan)</option>
                     </select>
                 </div>
             </div>
@@ -2258,5 +2683,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/agent_hub.js' %}?v=hub-v6"></script>
+<script src="{% static 'js/agent_hub.js' %}?v=hub-v9"></script>
 {% endblock %}

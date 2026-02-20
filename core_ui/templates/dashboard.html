@@ -7,109 +7,220 @@
 
 {% block content %}
 <div class="dashboard-container">
-    <!-- Stats Grid -->
-    <div class="dashboard-stats">
-        <div class="stat-card stat-card-servers">
-            <div class="stat-icon">
-                <span class="material-icons-round">dns</span>
+
+    <!-- ===== HERO + STATS ROW ===== -->
+    <div class="dashboard-top">
+        <div class="dashboard-hero">
+            <div class="hero-greeting">
+                <span class="hero-wave">&#x1F44B;</span>
+                <h1 class="hero-title">{{ request.user.username }}</h1>
             </div>
-            <div class="stat-content">
-                <div class="stat-value" id="statServersActive">{{ servers.active }}</div>
-                <div class="stat-label">Active Servers</div>
-                <div class="stat-secondary">{{ servers.total }} total</div>
+            <div class="hero-summary">
+                <span class="hero-time" id="heroTime"></span>
+                <span class="hero-divider">&middot;</span>
+                <span class="hero-status" id="heroStatus">
+                    {% if attention_count > 0 %}
+                        <span class="hero-badge hero-badge-warn">{{ attention_count }}</span> требует внимания
+                    {% else %}
+                        <span class="hero-badge hero-badge-ok">&#10003;</span> всё в порядке
+                    {% endif %}
+                </span>
             </div>
-            <a href="{% url 'servers:server_list' %}" class="stat-link">
-                <span class="material-icons-round">arrow_forward</span>
-            </a>
         </div>
 
-        <div class="stat-card stat-card-tasks">
-            <div class="stat-icon">
-                <span class="material-icons-round">task_alt</span>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value" id="statTasksPending">{{ tasks.pending }}</div>
-                <div class="stat-label">Pending Tasks</div>
-                <div class="stat-secondary">{{ tasks.in_progress }} in progress</div>
-            </div>
-            <a href="{% url 'tasks:task_list' %}" class="stat-link">
-                <span class="material-icons-round">arrow_forward</span>
+        <!-- Stats (compact row) -->
+        <div class="dashboard-stats">
+            <a href="{% url 'servers:server_list' %}" class="stat-card stat-card-servers stat-card-link">
+                <div class="stat-icon"><span class="material-icons-round">dns</span></div>
+                <div class="stat-content">
+                    <div class="stat-value" id="statServersActive">{{ servers.active }}</div>
+                    <div class="stat-label">Серверы</div>
+                </div>
+                {% if servers.active == 0 and servers.total == 0 %}
+                <span class="stat-alert"><span class="material-icons-round">warning</span></span>
+                {% endif %}
             </a>
-        </div>
-
-        <div class="stat-card stat-card-agents">
-            <div class="stat-icon">
-                <span class="material-icons-round">smart_toy</span>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value" id="statAgentsRunning">{{ agents.running }}</div>
-                <div class="stat-label">Running Agents</div>
-                <div class="stat-secondary">{{ agents.today }} today</div>
-            </div>
-            <a href="{% url 'monitor' %}" class="stat-link">
-                <span class="material-icons-round">arrow_forward</span>
+            <a href="{% url 'tasks:task_list' %}" class="stat-card stat-card-tasks stat-card-link">
+                <div class="stat-icon"><span class="material-icons-round">task_alt</span></div>
+                <div class="stat-content">
+                    <div class="stat-value" id="statTasksPending">{{ tasks.pending }}</div>
+                    <div class="stat-label">Задачи</div>
+                </div>
             </a>
-        </div>
-
-        <div class="stat-card stat-card-workflows">
-            <div class="stat-icon">
-                <span class="material-icons-round">account_tree</span>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value" id="statWorkflows">{{ workflows.total }}</div>
-                <div class="stat-label">Workflows</div>
-                <div class="stat-secondary">Automation</div>
-            </div>
-            <a href="{% url 'agent_hub:agents_page' %}" class="stat-link">
-                <span class="material-icons-round">arrow_forward</span>
+            <a href="{% url 'monitor' %}" class="stat-card stat-card-agents stat-card-link">
+                <div class="stat-icon"><span class="material-icons-round">smart_toy</span></div>
+                <div class="stat-content">
+                    <div class="stat-value" id="statAgentsRunning">{{ agents.running }}</div>
+                    <div class="stat-label">Агенты</div>
+                </div>
+                {% if agents.running > 0 %}
+                <span class="stat-pulse"></span>
+                {% endif %}
+            </a>
+            <a href="{% url 'agent_hub:agents_page' %}" class="stat-card stat-card-workflows stat-card-link">
+                <div class="stat-icon"><span class="material-icons-round">account_tree</span></div>
+                <div class="stat-content">
+                    <div class="stat-value" id="statWorkflows">{{ workflows.total }}</div>
+                    <div class="stat-label">Воркфлоу</div>
+                </div>
             </a>
         </div>
     </div>
 
-    <!-- Main Content Grid -->
+    <!-- ===== ATTENTION BLOCK ===== -->
+    {% if attention_count > 0 %}
+    <div class="dashboard-attention" id="dashboardAttention">
+        <div class="attention-items">
+            {% if unread_notifications_count > 0 %}
+            <a href="{% url 'tasks:task_list' %}" class="attention-chip attention-info">
+                <span class="material-icons-round">mark_email_unread</span>
+                {{ unread_notifications_count }} уведомлений
+            </a>
+            {% endif %}
+            {% if overdue_tasks_count > 0 %}
+            <a href="{% url 'tasks:task_list' %}" class="attention-chip attention-warning">
+                <span class="material-icons-round">event_busy</span>
+                {{ overdue_tasks_count }} просрочено
+            </a>
+            {% endif %}
+            {% if agents.running > 0 %}
+            <a href="{% url 'monitor' %}" class="attention-chip attention-active">
+                <span class="material-icons-round">sync</span>
+                {{ agents.running }} запущено
+            </a>
+            {% endif %}
+            {% if failed_runs_count > 0 %}
+            <a href="{% url 'monitor' %}" class="attention-chip attention-error">
+                <span class="material-icons-round">error_outline</span>
+                {{ failed_runs_count }} ошибок
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ===== COMMAND CENTER (replaces Quick Actions) ===== -->
+    <div class="command-center">
+        <div class="command-center-header">
+            <span class="material-icons-round">terminal</span>
+            Командный центр
+        </div>
+        <div class="command-grid">
+            {% if user_can_agents %}
+            <a href="{% url 'agent_hub:agents_page' %}" class="command-card command-card-primary">
+                <div class="command-card-icon">
+                    <span class="material-icons-round">play_arrow</span>
+                </div>
+                <div class="command-card-body">
+                    <span class="command-card-title">Запустить агента</span>
+                    <span class="command-card-desc">{{ agents.today }} запусков сегодня</span>
+                </div>
+                <span class="material-icons-round command-card-arrow">east</span>
+            </a>
+            {% endif %}
+            {% if user_can_tasks %}
+            <a href="{% url 'tasks:task_list' %}?action=new" class="command-card">
+                <div class="command-card-icon command-icon-amber">
+                    <span class="material-icons-round">add_task</span>
+                </div>
+                <div class="command-card-body">
+                    <span class="command-card-title">Новая задача</span>
+                    <span class="command-card-desc">{{ tasks.in_progress }} в работе</span>
+                </div>
+                <span class="material-icons-round command-card-arrow">east</span>
+            </a>
+            {% endif %}
+            <a href="{% url 'chat' %}" class="command-card">
+                <div class="command-card-icon command-icon-cyan">
+                    <span class="material-icons-round">chat</span>
+                </div>
+                <div class="command-card-body">
+                    <span class="command-card-title">AI Чат</span>
+                    <span class="command-card-desc">{% if recent_chats %}{{ recent_chats|length }} сессий{% else %}Начать диалог{% endif %}</span>
+                </div>
+                <span class="material-icons-round command-card-arrow">east</span>
+            </a>
+            {% if user_can_servers %}
+            <a href="{% url 'servers:server_list' %}" class="command-card">
+                <div class="command-card-icon command-icon-green">
+                    <span class="material-icons-round">dns</span>
+                </div>
+                <div class="command-card-body">
+                    <span class="command-card-title">Серверы</span>
+                    <span class="command-card-desc">{{ servers.active }}/{{ servers.total }} активны</span>
+                </div>
+                <span class="material-icons-round command-card-arrow">east</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ===== MAIN CONTENT GRID ===== -->
     <div class="dashboard-grid">
-        <!-- Quick Actions -->
-        <div class="dashboard-card">
+
+        {% if user_can_tasks and recent_tasks %}
+        <!-- My Tasks -->
+        <div class="dashboard-card dashboard-card-anim">
             <div class="card-header">
                 <h2 class="card-title">
-                    <span class="material-icons-round">bolt</span>
-                    Quick Actions
+                    <span class="material-icons-round">assignment</span>
+                    Мои задачи
                 </h2>
+                <a href="{% url 'tasks:task_list' %}" class="card-action">Все задачи</a>
             </div>
             <div class="card-content">
-                <div class="quick-actions">
-                    <a href="{% url 'agent_hub:agents_page' %}" class="quick-action-btn">
-                        <span class="material-icons-round">play_arrow</span>
-                        <span>Run Agent</span>
+                <div class="dashboard-tasks-list">
+                    {% for task in recent_tasks %}
+                    <a href="{% url 'tasks:task_list' %}#task-{{ task.id }}" class="dashboard-task-item">
+                        <span class="task-item-status task-status-{{ task.status|lower }}">{{ task.get_status_display }}</span>
+                        <span class="task-item-title">{{ task.title|truncatewords:8 }}</span>
+                        <span class="task-item-meta">{{ task.priority }}{% if task.due_date %} &middot; {{ task.due_date|date:"d.m" }}{% endif %}</span>
                     </a>
-                    <a href="{% url 'tasks:task_list' %}?action=new" class="quick-action-btn">
-                        <span class="material-icons-round">add_task</span>
-                        <span>New Task</span>
-                    </a>
-                    <a href="{% url 'servers:server_list' %}" class="quick-action-btn">
-                        <span class="material-icons-round">add</span>
-                        <span>Add Server</span>
-                    </a>
-                    <a href="{% url 'chat' %}" class="quick-action-btn">
-                        <span class="material-icons-round">chat</span>
-                        <span>AI Chat</span>
-                    </a>
+                    {% endfor %}
                 </div>
             </div>
         </div>
+        {% endif %}
+
+        <!-- Recent Chats -->
+        {% if recent_chats %}
+        <div class="dashboard-card dashboard-card-anim">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">forum</span>
+                    Последние чаты
+                </h2>
+                <a href="{% url 'chat' %}" class="card-action">Все чаты</a>
+            </div>
+            <div class="card-content">
+                <div class="dashboard-chats-list">
+                    {% for chat in recent_chats %}
+                    <a href="{% url 'chat' %}?session={{ chat.id }}" class="dashboard-chat-item">
+                        <span class="material-icons-round chat-item-icon">chat_bubble_outline</span>
+                        <div class="chat-item-content">
+                            <span class="chat-item-title">{{ chat.title|truncatewords:6 }}</span>
+                            <span class="chat-item-meta">{{ chat.updated_at|timesince }} назад</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Recent Agent Runs -->
-        <div class="dashboard-card">
+        <div class="dashboard-card dashboard-card-anim">
             <div class="card-header">
                 <h2 class="card-title">
                     <span class="material-icons-round">history</span>
-                    Recent Agent Runs
+                    Последние запуски
                 </h2>
-                <a href="{% url 'monitor' %}" class="card-action">View All</a>
+                <a href="{% url 'monitor' %}" class="card-action">Монитор</a>
             </div>
             <div class="card-content">
                 <div class="runs-list" id="recentRunsList">
                     {% for run in recent_runs %}
+                    <a href="{% url 'monitor' %}?run_id={{ run.id }}" class="run-item-link">
                     <div class="run-item">
                         <div class="run-status run-status-{{ run.status }}">
                             {% if run.status == 'running' %}
@@ -127,61 +238,93 @@
                             <div class="run-prompt">{{ run.input_task|truncatewords:10 }}</div>
                         </div>
                         <div class="run-meta">
-                            <span class="run-time">{{ run.created_at|timesince }} ago</span>
+                            <span class="run-time">{{ run.created_at|timesince }} назад</span>
                         </div>
                     </div>
+                    </a>
                     {% empty %}
                     <div class="runs-empty">
                         <span class="material-icons-round">inbox</span>
-                        <p>No recent runs</p>
-                        <a href="{% url 'agent_hub:agents_page' %}" class="btn-primary-sm">Run an Agent</a>
+                        <p>Нет запусков</p>
+                        <a href="{% url 'agent_hub:agents_page' %}" class="btn-primary-sm">Запустить агента</a>
                     </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
 
+        {% if user_can_tasks and recent_projects %}
+        <!-- Recent Projects -->
+        <div class="dashboard-card dashboard-card-anim">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">folder</span>
+                    Проекты
+                </h2>
+                <a href="{% url 'tasks:project_list' %}" class="card-action">Все проекты</a>
+            </div>
+            <div class="card-content">
+                <div class="dashboard-projects-list">
+                    {% for project in recent_projects %}
+                    <a href="{% url 'tasks:project_detail' project.pk %}" class="dashboard-project-item">
+                        <span class="material-icons-round project-item-icon">folder</span>
+                        <span class="project-item-name">{{ project.name|truncatewords:5 }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- System Status -->
-        <div class="dashboard-card">
+        <div class="dashboard-card dashboard-card-anim">
             <div class="card-header">
                 <h2 class="card-title">
                     <span class="material-icons-round">monitor_heart</span>
-                    System Status
+                    Статус системы
                 </h2>
+                {% if app_version %}<span class="card-version">v{{ app_version }}</span>{% endif %}
             </div>
             <div class="card-content">
                 <div class="status-list">
                     <div class="status-item">
                         <span class="status-name">API</span>
-                        <span class="status-badge status-online" id="statusApi">
-                            <span class="status-dot"></span>
-                            Online
-                        </span>
+                        <span class="status-badge status-online" id="statusApi"><span class="status-dot"></span>Онлайн</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-name">Database</span>
-                        <span class="status-badge status-online" id="statusDb">
-                            <span class="status-dot"></span>
-                            Online
-                        </span>
+                        <span class="status-name">База данных</span>
+                        <span class="status-badge status-online" id="statusDb"><span class="status-dot"></span>Онлайн</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-name">RAG Engine</span>
-                        <span class="status-badge" id="statusRag">
-                            <span class="status-dot"></span>
-                            Checking...
-                        </span>
+                        <span class="status-name">RAG</span>
+                        <span class="status-badge" id="statusRag"><span class="status-dot"></span>Проверка...</span>
+                        <span class="status-hint status-rag-hint hidden" id="statusRagHint">Требуется full build</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-name">MCP Server</span>
-                        <span class="status-badge" id="statusMcp">
-                            <span class="status-dot"></span>
-                            Checking...
-                        </span>
+                        <span class="status-name">MCP</span>
+                        <span class="status-badge" id="statusMcp"><span class="status-dot"></span>Проверка...</span>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Disk Usage -->
+        {% if user_can_settings %}
+        <div class="dashboard-card dashboard-card-anim" id="diskUsageCard">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="material-icons-round">storage</span>
+                    Место на диске
+                </h2>
+            </div>
+            <div class="card-content">
+                <div class="disk-usage-list" id="diskUsageList">
+                    <div class="disk-loading"><span class="material-icons-round animate-spin">sync</span>Загрузка...</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 {% endblock %}
@@ -189,55 +332,87 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Check health status
+    // Hero clock
+    var heroTimeEl = document.getElementById('heroTime');
+    function updateTime() {
+        if (!heroTimeEl) return;
+        var now = new Date();
+        heroTimeEl.textContent = now.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+    updateTime();
+    setInterval(updateTime, 30000);
+
+    // Health check
     fetch('/api/health/')
-        .then(r => r.json())
-        .then(data => {
-            const ragEl = document.getElementById('statusRag');
-            const apiEl = document.getElementById('statusApi');
-
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var ragEl = document.getElementById('statusRag');
+            var apiEl = document.getElementById('statusApi');
             if (ragEl) {
-                const ragStatus = data.services?.rag || 'unavailable';
-                ragEl.className = 'status-badge ' + (ragStatus === 'ok' ? 'status-online' : 'status-offline');
-                ragEl.innerHTML = '<span class="status-dot"></span>' + (ragStatus === 'ok' ? 'Online' : 'Offline');
+                var rs = data.services && data.services.rag ? data.services.rag : 'unavailable';
+                ragEl.className = 'status-badge ' + (rs === 'ok' ? 'status-online' : 'status-offline');
+                ragEl.innerHTML = '<span class="status-dot"></span>' + (rs === 'ok' ? 'Онлайн' : 'Офлайн');
+                var rh = document.getElementById('statusRagHint');
+                if (rh && rs !== 'ok') rh.classList.remove('hidden');
             }
-
             if (apiEl && data.status) {
                 apiEl.className = 'status-badge ' + (data.status === 'ok' ? 'status-online' : 'status-warning');
-                apiEl.innerHTML = '<span class="status-dot"></span>' + (data.status === 'ok' ? 'Online' : 'Degraded');
+                apiEl.innerHTML = '<span class="status-dot"></span>' + (data.status === 'ok' ? 'Онлайн' : 'Деградация');
             }
         })
-        .catch(() => {
-            const apiEl = document.getElementById('statusApi');
-            if (apiEl) {
-                apiEl.className = 'status-badge status-offline';
-                apiEl.innerHTML = '<span class="status-dot"></span>Error';
-            }
+        .catch(function() {
+            var a = document.getElementById('statusApi');
+            if (a) { a.className = 'status-badge status-offline'; a.innerHTML = '<span class="status-dot"></span>Ошибка'; }
         });
 
-    // MCP status check
-    const mcpEl = document.getElementById('statusMcp');
-    if (mcpEl) {
-        // Assume MCP is available if the page loaded
-        mcpEl.className = 'status-badge status-online';
-        mcpEl.innerHTML = '<span class="status-dot"></span>Available';
+    // MCP
+    var mcpEl = document.getElementById('statusMcp');
+    if (mcpEl) { mcpEl.className = 'status-badge status-online'; mcpEl.innerHTML = '<span class="status-dot"></span>Доступен'; }
+
+    // Disk
+    var diskList = document.getElementById('diskUsageList');
+    if (diskList) {
+        fetch('/api/disk/')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.paths || !data.paths.length) { diskList.innerHTML = '<div class="disk-empty">Нет данных</div>'; return; }
+                var h = '';
+                data.paths.forEach(function(p) {
+                    if (p.error) return;
+                    var pct = p.percent_used || 0;
+                    var cls = pct > 85 ? 'disk-bar-danger' : (pct > 70 ? 'disk-bar-warning' : 'disk-bar-ok');
+                    var usedStr = p.used_human || '';
+                    var totalStr = p.total_human || '';
+                    h += '<div class="disk-item"><div class="disk-item-header"><span class="disk-item-path">' + (p.label || p.path) + '</span><span class="disk-item-pct">' + pct + '%</span></div><div class="disk-bar-track"><div class="disk-bar-fill ' + cls + '" style="width:' + Math.min(pct, 100) + '%"></div></div><div class="disk-item-detail">' + usedStr + ' / ' + totalStr + '</div></div>';
+                });
+                diskList.innerHTML = h || '<div class="disk-empty">Нет данных</div>';
+            })
+            .catch(function() { diskList.innerHTML = '<div class="disk-empty">Не удалось загрузить</div>'; });
     }
 
-    // Refresh stats every 30 seconds
+    // Auto-refresh
     setInterval(function() {
         fetch('/api/dashboard/stats/')
-            .then(r => r.json())
-            .then(data => {
-                if (data.success && data.data) {
-                    const d = data.data;
-                    const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
-                    el('statServersActive', d.servers?.active || 0);
-                    el('statTasksPending', d.tasks?.pending || 0);
-                    el('statAgentsRunning', d.agents?.running || 0);
-                    el('statWorkflows', d.workflows?.total || 0);
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || !data.data) return;
+                var d = data.data;
+                var el = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+                el('statServersActive', d.servers ? d.servers.active : 0);
+                el('statTasksPending', d.tasks ? d.tasks.pending : 0);
+                el('statAgentsRunning', d.agents ? d.agents.running : 0);
+                el('statWorkflows', d.workflows ? d.workflows.total : 0);
+                // Update hero
+                var hs = document.getElementById('heroStatus');
+                if (hs && d.attention_count !== undefined) {
+                    hs.innerHTML = d.attention_count > 0
+                        ? '<span class="hero-badge hero-badge-warn">' + d.attention_count + '</span> требует внимания'
+                        : '<span class="hero-badge hero-badge-ok">&#10003;</span> всё в порядке';
                 }
+                var ab = document.getElementById('dashboardAttention');
+                if (ab && d.attention_count === 0) ab.style.display = 'none';
             })
-            .catch(() => {});
+            .catch(function() {});
     }, 30000);
 });
 </script>

@@ -2,6 +2,15 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+from pathlib import Path
+
+# Загрузка .env до любых настроек Django (важно для WSL/Docker)
+try:
+    from dotenv import load_dotenv
+    project_root = Path(__file__).resolve().parent
+    load_dotenv(project_root / ".env")
+except ImportError:
+    pass
 
 
 def main():

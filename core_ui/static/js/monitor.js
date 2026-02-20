@@ -720,11 +720,11 @@
         };
     }
 
-    // URL parameter handling
+    // URL parameter handling (?run_id= from dashboard, ?run= and ?workflow= for direct links)
     function parseUrlParams() {
         const params = new URLSearchParams(window.location.search);
         return {
-            runId: params.get('run'),
+            runId: params.get('run_id') || params.get('run'),
             workflowId: params.get('workflow'),
             type: params.get('type')
         };

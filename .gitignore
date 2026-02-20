@@ -25,10 +25,13 @@ venv/
 ENV/
 env/
 .venv
+.venv*/
 
-# IDE
+# IDE / local tools
 .vscode/
 .idea/
+.cursor/
+.playwright-mcp/
 *.swp
 *.swo
 *~
@@ -62,3 +65,7 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Large binaries (GitHub 100 MB limit)
+*.exe
+**/claude.exe

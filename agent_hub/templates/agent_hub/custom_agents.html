@@ -321,6 +321,13 @@
             <!-- MCP -->
             <div class="builder-section">
                 <h3>MCP Servers</h3>
+                <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 12px; color: #94a3b8;">Добавить из Моих MCP:</span>
+                    <select id="mcp-pool-select" style="min-width: 160px; padding: 6px 10px; border-radius: 8px; background: #1e293b; color: #e2e8f0; border: 1px solid #334155;">
+                        <option value="">— выбрать —</option>
+                    </select>
+                    <button type="button" id="mcp-pool-add-btn" class="btn-secondary" style="padding: 6px 12px;">Добавить</button>
+                </div>
                 <div id="mcp-servers">
                     <!-- Заполняется через JS -->
                 </div>
@@ -382,20 +389,22 @@ const DEFAULT_MCP_SERVERS = {
     }
 };
 let SKILL_OPTIONS = [];
+let MCP_POOL_LIST = [];
+let ALL_MCP_SERVERS = {};
 
 function showBuilder(agentId = null) {
     document.getElementById('builder-form').classList.add('active');
     document.getElementById('agents-list').style.display = 'none';
-    
+    ALL_MCP_SERVERS = { ...DEFAULT_MCP_SERVERS };
     if (agentId) {
         loadAgent(agentId);
     } else {
         resetForm();
+        renderTools();
+        renderMCPServers();
+        renderSkillOptions();
+        loadMcpPoolSelect();
     }
-    
-    renderTools();
-    renderMCPServers();
-    renderSkillOptions();
 }
 
 function hideBuilder() {
@@ -427,8 +436,8 @@ function renderTools() {
 function renderMCPServers() {
     const container = document.getElementById('mcp-servers');
     container.innerHTML = '';
-    
-    Object.entries(DEFAULT_MCP_SERVERS).forEach(([name, config]) => {
+    Object.entries(ALL_MCP_SERVERS).forEach(([name, config]) => {
+        const argsStr = Array.isArray(config.args) ? config.args.join(', ') : (config.args || '');
         const div = document.createElement('div');
         div.className = 'mcp-server-config';
         div.innerHTML = `
@@ -439,19 +448,50 @@ function renderMCPServers() {
                 </label>
             </div>
             <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">
-                ${config.description}
+                ${config.description || ''}
             </div>
             <div class="form-group">
                 <label style="font-size: 12px;">Command</label>
-                <input type="text" name="mcp_${name}_command" value="${config.command}" style="font-size: 12px;">
+                <input type="text" name="mcp_${name}_command" value="${(config.command || '').replace(/"/g, '&quot;')}" style="font-size: 12px;">
             </div>
             <div class="form-group">
                 <label style="font-size: 12px;">Args (comma-separated)</label>
-                <input type="text" name="mcp_${name}_args" value="${config.args.join(', ')}" style="font-size: 12px;">
+                <input type="text" name="mcp_${name}_args" value="${argsStr.replace(/"/g, '&quot;')}" style="font-size: 12px;">
             </div>
         `;
         container.appendChild(div);
     });
+}
+async function loadMcpPoolSelect() {
+    const sel = document.getElementById('mcp-pool-select');
+    if (!sel) return;
+    try {
+        const r = await fetch('/skills/api/mcp/pool/');
+        const d = await r.json();
+        MCP_POOL_LIST = d.servers || [];
+        sel.innerHTML = '<option value="">— выбрать —</option>';
+        MCP_POOL_LIST.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            opt.dataset.config = JSON.stringify({ name: s.name, command: s.command, args: s.args || [], description: s.description || '' });
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Failed to load MCP pool', e);
+    }
+}
+function addMcpFromPool() {
+    const sel = document.getElementById('mcp-pool-select');
+    if (!sel || !sel.value) return;
+    const opt = sel.options[sel.selectedIndex];
+    const configStr = opt.dataset.config;
+    if (!configStr) return;
+    const config = JSON.parse(configStr);
+    if (ALL_MCP_SERVERS[config.name]) return;
+    ALL_MCP_SERVERS[config.name] = { enabled: true, command: config.command, args: config.args, description: config.description };
+    renderMCPServers();
+    sel.value = '';
 }
 
 function renderSkillOptions(selected = []) {
@@ -560,14 +600,15 @@ async function saveAgent(event) {
         data.skill_ids = Array.from(skillSelect.selectedOptions).map(o => parseInt(o.value, 10)).filter(Boolean);
     }
     
-    // MCP servers
-    Object.keys(DEFAULT_MCP_SERVERS).forEach(name => {
+    // MCP servers (all shown: default + from pool)
+    Object.keys(ALL_MCP_SERVERS).forEach(name => {
         if (formData.get(`mcp_${name}_enabled`) === 'on') {
+            const desc = (ALL_MCP_SERVERS[name] && ALL_MCP_SERVERS[name].description) || '';
             data.mcp_servers[name] = {
                 enabled: true,
                 command: formData.get(`mcp_${name}_command`),
-                args: formData.get(`mcp_${name}_args`).split(',').map(s => s.trim()),
-                description: DEFAULT_MCP_SERVERS[name].description
+                args: (formData.get(`mcp_${name}_args`) || '').split(',').map(s => s.trim()).filter(Boolean),
+                description: desc
             };
         }
     });
@@ -627,12 +668,19 @@ async function loadAgent(agentId) {
             });
             renderSkillOptions(agent.skill_ids || []);
             
-            // MCP servers
+            // MCP servers: merge default + agent's (so pool servers appear when editing)
+            ALL_MCP_SERVERS = { ...DEFAULT_MCP_SERVERS, ...(agent.mcp_servers || {}) };
+            renderMCPServers();
+            loadMcpPoolSelect();
             Object.entries(agent.mcp_servers || {}).forEach(([name, config]) => {
                 const enabledCheckbox = document.querySelector(`input[name="mcp_${name}_enabled"]`);
                 if (enabledCheckbox && config.enabled) {
                     enabledCheckbox.checked = true;
                 }
+                const cmdInput = document.querySelector(`input[name="mcp_${name}_command"]`);
+                if (cmdInput && config.command) cmdInput.value = config.command;
+                const argsInput = document.querySelector(`input[name="mcp_${name}_args"]`);
+                if (argsInput && config.args) argsInput.value = Array.isArray(config.args) ? config.args.join(', ') : config.args;
             });
         }
     } catch (error) {
@@ -706,6 +754,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSkillOptions();
     loadAgents();
     document.getElementById('agent-form').addEventListener('submit', saveAgent);
+    const mcpPoolAddBtn = document.getElementById('mcp-pool-add-btn');
+    if (mcpPoolAddBtn) mcpPoolAddBtn.addEventListener('click', addMcpFromPool);
 });
 </script>
 {% endblock %}

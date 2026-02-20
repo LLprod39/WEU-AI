@@ -1,0 +1,25 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Step 1"
+    description: "Проверить окружение и зависимости"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "Определить ОС (WSL2/Linux), наличие Docker, свободное место. Для WSL2 рекомендован драйвер docker или none. Убедиться что CPU виртуализация доступна при необходимости."
+  step_2:
+    name: "Step 2"
+    description: "Установить Minikube"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "Скачать и установить Minikube для Linux по официальной инструкции: скачать бинарник minikube, сделать исполняемым, поместить в PATH (например /usr/local/bin). Альтернатива: установка через пакетный менеджер если доступен (например curl -LO ... && install minikube /usr/local/bin/)."
+  step_3:
+    name: "Step 3"
+    description: "Проверить установку"
+    triggers: ["step_2.done"]
+    publishes: ["step_3.done"]
+    instructions: "Выполнить minikube version, при необходимости minikube start с подходящим драйвером (docker для WSL2) и убедиться что кластер поднимается. Кратко зафиксировать результат в ответе."

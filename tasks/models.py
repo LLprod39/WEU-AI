@@ -203,6 +203,12 @@ class Task(models.Model):
         help_text="Время последней синхронизации с внешней системой"
     )
 
+    ai_execution_report = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Структурированный отчёт о выполнении (команды, ошибки, находки)",
+    )
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
@@ -522,6 +528,7 @@ class TaskNotification(models.Model):
         ('TASK_MENTIONED', 'Упоминание в задаче'),
         ('TASK_WATCHING', 'Обновление отслеживаемой задачи'),
         ('TASK_MOVED', 'Задача перемещена'),
+        ('STATUS_CHANGED', 'Изменение статуса задачи'),
         # Спринты
         ('SPRINT_STARTED', 'Спринт начат'),
         ('SPRINT_ENDING', 'Спринт заканчивается'),

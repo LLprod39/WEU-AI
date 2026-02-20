@@ -1,0 +1,130 @@
+{
+  "base_hp": 20,
+  "starting_credits": 120,
+  "leak_damage": 1,
+  "grid": {
+    "cols": 6,
+    "rows": 7
+  },
+  "path": [
+    {
+      "col": 0,
+      "row": 3
+    },
+    {
+      "col": 1,
+      "row": 3
+    },
+    {
+      "col": 2,
+      "row": 3
+    },
+    {
+      "col": 2,
+      "row": 2
+    },
+    {
+      "col": 3,
+      "row": 2
+    },
+    {
+      "col": 4,
+      "row": 2
+    },
+    {
+      "col": 4,
+      "row": 4
+    },
+    {
+      "col": 5,
+      "row": 4
+    }
+  ],
+  "obstacles": [
+    {
+      "col": 1,
+      "row": 1
+    },
+    {
+      "col": 3,
+      "row": 1
+    },
+    {
+      "col": 1,
+      "row": 5
+    },
+    {
+      "col": 3,
+      "row": 5
+    },
+    {
+      "col": 5,
+      "row": 1
+    }
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "enemy_id": "enemy_basic",
+      "count": 8,
+      "spawn_interval_sec": 0.9
+    },
+    {
+      "wave": 2,
+      "enemy_id": "enemy_fast",
+      "count": 10,
+      "spawn_interval_sec": 0.75
+    },
+    {
+      "wave": 3,
+      "enemy_id": "enemy_tank",
+      "count": 5,
+      "spawn_interval_sec": 1.2
+    }
+  ],
+  "wave_scaling": {
+    "enabled": true,
+    "max_waves": 18,
+    "base_enemy_count": 7,
+    "enemy_count_growth_per_wave": 1.8,
+    "extra_enemy_count_per_5_waves": 2,
+    "spawn_interval_base_sec": 0.94,
+    "spawn_interval_decay_per_wave": 0.019,
+    "spawn_interval_min_sec": 0.38,
+    "min_entries_per_wave": 1,
+    "max_entries_per_wave": 3,
+    "boss_wave_interval": 5,
+    "boss_enemy_id": "enemy_tank",
+    "enemy_pool": [
+      {
+        "enemy_id": "enemy_basic",
+        "weight": 1.4,
+        "start_wave": 1
+      },
+      {
+        "enemy_id": "enemy_fast",
+        "weight": 1.1,
+        "start_wave": 2
+      },
+      {
+        "enemy_id": "enemy_tank",
+        "weight": 0.34,
+        "start_wave": 4
+      }
+    ]
+  },
+  "procedural_map": {
+    "enabled": true,
+    "obstacle_density": 0.17,
+    "max_attempts": 14,
+    "seed_offset": 7919,
+    "start": {
+      "col": 0,
+      "row": 3
+    },
+    "end": {
+      "col": 5,
+      "row": 3
+    }
+  }
+}

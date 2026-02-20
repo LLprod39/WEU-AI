@@ -250,13 +250,50 @@ Rules:
     return parsed
 
 
+def _generate_workflow_script_via_cursor(task: str, runtime: str, target_server_name: str = None) -> Dict[str, Any] | None:
+    """Генерация workflow через Cursor CLI (Composer 1.5, --mode=plan)."""
+    is_server_task = target_server_name is not None
+    if is_server_task:
+        prompt = f"""Generate a workflow JSON for SERVER task. Target server: «{target_server_name}».
+Return ONLY valid JSON, no markdown:
+{{"name":"...","description":"...","runtime":"cursor","task_type":"server","steps":[{{"title":"...","prompt":"Execute via server_execute. Output <promise>STEP_DONE</promise> when done","completion_promise":"STEP_DONE","max_iterations":3}}]}}
+Task: {task}"""
+    else:
+        prompt = f"""Generate a workflow JSON for CODE task. Return ONLY valid JSON:
+{{"name":"...","description":"...","runtime":"cursor","task_type":"code","steps":[{{"title":"...","prompt":"...","completion_promise":"STEP_DONE","max_iterations":5}}]}}
+Task: {task}"""
+    try:
+        planning_dir = Path(settings.MEDIA_ROOT) / "workflows" / "planning"
+        planning_dir.mkdir(parents=True, exist_ok=True)
+        workspace = str(planning_dir)
+        cmd = _build_cli_command("cursor_plan", prompt, {"model": "composer-1.5"}, workspace=workspace)
+        env = dict(os.environ)
+        env.update(getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {})
+        result = subprocess.run(cmd, capture_output=True, timeout=180, env=env, cwd=workspace)
+        stdout = result.stdout.decode("utf-8", errors="ignore")
+        parsed = _parse_llm_json(stdout)
+        if parsed and "steps" in parsed:
+            parsed.setdefault("runtime", runtime)
+            parsed["model"] = "auto"  # Выполнение workflow на auto
+            return parsed
+    except Exception as e:
+        logger.warning(f"Cursor plan workflow generation failed: {e}")
+    return None
+
+
 def _generate_workflow_script(task: str, runtime: str, from_task: bool = False, user_id: int = None, target_server_id: int = None, target_server_name: str = None) -> Dict[str, Any]:
+    # Сначала пробуем Cursor CLI (Composer 1.5, plan mode) — пишет план workflow
+    parsed = _generate_workflow_script_via_cursor(task, runtime, target_server_name=target_server_name)
+    if parsed:
+        return parsed
+
+    # Fallback: внутренний LLM (gemini/grok)
     llm = LLMProvider()
     from app.core.model_config import model_manager
+    model_preference = getattr(model_manager.config, "internal_llm_provider", None) or "gemini"
+    if model_preference not in ("gemini", "grok"):
+        model_preference = "gemini" if (getattr(model_manager.config, "gemini_enabled", True)) else "grok"
 
-    model_preference = model_manager.config.default_provider
-
-    # Определяем тип задачи: SERVER_TASK или CODE_TASK
     is_server_task = target_server_id is not None
 
     if is_server_task:
@@ -344,8 +381,8 @@ Task description:
     if "steps" not in parsed:
         parsed["steps"] = []
 
-    # Сохраняем runtime для workflow (CLI агент: cursor, claude, etc)
     parsed["runtime"] = runtime
+    parsed["model"] = "auto"  # Выполнение workflow на auto
     
     # Ralph режим больше НЕ используется через этот путь
     # Ralph это orchestrator_mode, а не runtime
@@ -1524,7 +1561,7 @@ def _build_cli_command(runtime: str, prompt: str, config: Dict[str, Any], worksp
 
 
 # Сколько строк лога накапливать перед записью в БД (снижает "database is locked" при SQLite)
-_LOG_SAVE_BATCH_SIZE = 10
+_LOG_SAVE_BATCH_SIZE = 25  # больше = меньше записей в БД, меньше lock при SQLite
 
 
 def _get_cursor_cli_extra_env() -> dict:
@@ -1557,13 +1594,25 @@ def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
         venv_python = f"{base_dir}/.venv/Scripts/python.exe"
     mcp_server_script = f"{base_dir}/mcp_server.py"
 
+    mcp_env = {"WEU_USER_ID": str(user_id)}
+    master_password = os.environ.get("MASTER_PASSWORD", "")
+    if master_password:
+        mcp_env["MASTER_PASSWORD"] = master_password
+    for _env_key in ("PATH", "DJANGO_SETTINGS_MODULE", "HOME", "TMPDIR", "TEMP", "TMP"):
+        _val = os.environ.get(_env_key)
+        if _val:
+            mcp_env[_env_key] = _val
+    for _env_key in ("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "DATABASE_URL"):
+        _val = os.environ.get(_env_key)
+        if _val:
+            mcp_env[_env_key] = _val
     servers["weu-servers"] = {
         "type": "stdio",
         "command": venv_python,
-        # -u для unbuffered output
         "args": ["-u", mcp_server_script],
-        "env": {"WEU_USER_ID": str(user_id)},
+        "env": mcp_env,
         "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)",
+        "autoApprove": ["server_execute", "servers_list"],
     }
     cfg["mcpServers"] = servers
     try:
@@ -1572,6 +1621,57 @@ def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
         logger.warning(f"Failed to write MCP config at {cfg_path}: {exc}")
         return ""
     return str(cfg_path)
+
+
+def _write_cursor_mcp_json(workspace: str, mcp_config_path: str) -> None:
+    """Копирует mcp_config.json в .cursor/mcp.json в workspace и в ~/.cursor/mcp.json.
+    Cursor CLI читает MCP из этих мест; без этого server_execute и др. недоступны в headless."""
+    try:
+        cursor_dir = Path(workspace) / ".cursor"
+        cursor_dir.mkdir(parents=True, exist_ok=True)
+        dst = cursor_dir / "mcp.json"
+        shutil.copy2(mcp_config_path, dst)
+        logger.info(f"Cursor MCP config (project) written to {dst}")
+    except Exception as exc:
+        logger.warning(f"Failed to write project .cursor/mcp.json: {exc}")
+    try:
+        home_cursor_dir = Path.home() / ".cursor"
+        home_cursor_dir.mkdir(parents=True, exist_ok=True)
+        global_dst = home_cursor_dir / "mcp.json"
+        shutil.copy2(mcp_config_path, global_dst)
+        logger.info(f"Cursor MCP config (global) written to {global_dst}")
+    except Exception as exc:
+        logger.warning(f"Failed to write global ~/.cursor/mcp.json: {exc}")
+
+
+def _write_cursor_cli_permissions(workspace: str) -> None:
+    """Пишет .cursor/cli.json с permissions.allow для weu-servers MCP.
+    В headless без этого Cursor запрашивает Approve на MCP — вызов отклоняется.
+    Документация: https://cursor.com/docs/cli/reference/permissions"""
+    if not workspace:
+        return
+    try:
+        cursor_dir = Path(workspace) / ".cursor"
+        cursor_dir.mkdir(parents=True, exist_ok=True)
+        cli_json_path = cursor_dir / "cli.json"
+        config = {}
+        if cli_json_path.exists():
+            try:
+                config = json.loads(cli_json_path.read_text(encoding="utf-8") or "{}")
+            except Exception:
+                config = {}
+        permissions = config.get("permissions") or {}
+        allow = list(permissions.get("allow") or [])
+        for token in ("Mcp(weu-servers:*)", "Shell(*)"):
+            if token not in allow:
+                allow.append(token)
+        permissions["allow"] = allow
+        permissions["deny"] = permissions.get("deny") if isinstance(permissions.get("deny"), list) else []
+        config["permissions"] = permissions
+        cli_json_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"Cursor CLI permissions written to {cli_json_path} (allow Mcp, Shell)")
+    except Exception as exc:
+        logger.warning(f"Failed to write .cursor/cli.json permissions: {exc}")
 
 
 def _short_path(path: str, max_len: int = 50) -> str:
@@ -1786,6 +1886,10 @@ def _run_cli_stream(
     if stdin_prompt is not None:
         popen_kw["stdin"] = subprocess.PIPE
         logger.info(f"📥 Codex: промпт будет передан через stdin ({len(stdin_prompt)} символов)")
+    # Cursor/Claude ищут .cursor/mcp.json в текущей директории; cwd=workspace гарантирует загрузку MCP
+    if workspace and os.path.isdir(workspace) and runtime in ("cursor", "claude"):
+        popen_kw["cwd"] = workspace
+        logger.info(f"📂 Запуск CLI с cwd={workspace} (для загрузки .cursor/mcp.json)")
     
     logger.info(f"🚀 Запуск процесса: {cmd[0]}")
     logger.info(f"🔧 Параметры Popen: stdout=PIPE, stderr=STDOUT, text=True, bufsize=1")
@@ -1944,7 +2048,14 @@ def _run_cli_stream(
             run_obj.logs = (run_obj.logs or "") + f"\n[DEBUG] ✅ Первая строка от {cli_label} через {elapsed:.1f} сек\n"
             run_obj.save(update_fields=["logs"])
         
-        if line_stripped.startswith("{"):
+        # Codex выводит plain text, не stream-json — не парсим как JSON
+        if runtime == "codex":
+            if line_stripped:
+                run_obj.logs = (run_obj.logs or "") + line
+                pending_lines += 1
+                dirty_logs = True
+                maybe_flush()
+        elif line_stripped.startswith("{"):
             try:
                 data = json.loads(line_stripped)
                 
@@ -1997,27 +2108,21 @@ def _run_cli_stream(
                 dirty_logs = True
                 maybe_flush()
         else:
-            # Сырой вывод: для Codex всегда пишем в логи (у него нет stream-json)
-            if line_stripped:
-                if runtime == "codex":
-                    run_obj.logs = (run_obj.logs or "") + line
-                    pending_lines += 1
-                    dirty_logs = True
-                    maybe_flush()
-                elif add_output_events:
-                    _append_log_event(
-                        run_obj,
-                        {
-                            "type": "cmd_output",
-                            "title": "Вывод CLI",
-                            "message": line_stripped[:2000],
-                            "step_label": step_label,
-                            "line": line_number,
-                        },
-                    )
-                    pending_events += 1
-                    dirty_events = True
-                    maybe_flush()
+            # Сырой вывод (не JSON) для Cursor/Claude
+            if line_stripped and add_output_events:
+                _append_log_event(
+                    run_obj,
+                    {
+                        "type": "cmd_output",
+                        "title": "Вывод CLI",
+                        "message": line_stripped[:2000],
+                        "step_label": step_label,
+                        "line": line_number,
+                    },
+                )
+                pending_events += 1
+                dirty_events = True
+                maybe_flush()
 
     logger.info(f"⏳ Ожидаем завершения процесса PID={process.pid}")
     print(f"[DEBUG] ⏳ Ожидаем завершения процесса PID={process.pid}", flush=True)
@@ -2122,8 +2227,8 @@ def _resolve_cli_command(runtime: str) -> str:
     env_var = _cli_env_var(runtime)
     logger.info(f"  ENV переменная для {runtime}: {env_var}")
     
-    # Для cursor, claude, codex в Docker/на хосте явно учитываем env var при каждом вызове
-    if runtime in ["cursor", "claude", "codex"]:
+    # Для cursor, cursor_plan, claude, codex в Docker/на хосте явно учитываем env var при каждом вызове
+    if runtime in ["cursor", "cursor_plan", "claude", "codex"]:
         path_from_env = (os.getenv(env_var) or "").strip()
         logger.info(f"  Проверка ENV переменной {env_var}: {path_from_env if path_from_env else 'НЕ УСТАНОВЛЕНА'}")
         
@@ -2197,6 +2302,7 @@ def _resolve_cli_command(runtime: str) -> str:
 def _cli_env_var(runtime: str) -> str:
     return {
         "cursor": "CURSOR_CLI_PATH",
+        "cursor_plan": "CURSOR_CLI_PATH",
         "claude": "CLAUDE_CLI_PATH",
         "codex": "CODEX_CLI_PATH",
         "opencode": "OPENCODE_CLI_PATH",
@@ -2526,6 +2632,9 @@ def _run_steps_with_backend(
                 if mcp_path:
                     extra_env["MCP_CONFIG_PATH"] = mcp_path
                     mcp_config_file = mcp_path  # Для Claude CLI --mcp-config
+                    if runtime == "cursor" and workspace:
+                        _write_cursor_mcp_json(workspace, mcp_path)
+                        _write_cursor_cli_permissions(workspace)
         
         # Передаём целевой сервер в переменные окружения для MCP-инструментов
         if workflow.target_server_id:

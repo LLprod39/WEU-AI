@@ -74,6 +74,7 @@ urlpatterns = [
     # TASKS (existing)
     # ==========================================================================
     path('', views.task_list, name='task_list'),
+    path('board-api/', views.task_board_api, name='task_board_api'),
     path('create/', views.task_create, name='task_create'),
 
     # Notifications

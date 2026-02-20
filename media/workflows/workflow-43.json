@@ -1,0 +1,40 @@
+{
+  "name": "Install Ollama in Docker",
+  "description": "Install Ollama server in Docker on target server using official ollama/ollama image",
+  "runtime": "cursor",
+  "task_type": "server",
+  "target_server": "lunix",
+  "steps": [
+    {
+      "title": "Pull and run Ollama Docker container",
+      "prompt": "Execute via server_execute on server lunix: 1) docker pull ollama/ollama 2) docker run -d --name ollama -v ollama:/root/.ollama -p 11434:11434 --restart unless-stopped ollama/ollama. Verify container is running with docker ps. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Pull and run Ollama Docker container",
+        "description": "Pull and run Ollama Docker container",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: 1) docker pull ollama/ollama 2) docker run -d --name ollama -v ollama:/root/.ollama -p 11434:11434 --restart unless-stopped ollama/ollama. Verify container is running with docker ps. Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-43.json"
+}

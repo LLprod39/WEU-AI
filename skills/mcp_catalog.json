@@ -1,0 +1,52 @@
+[
+  {
+    "id": "filesystem",
+    "name": "filesystem",
+    "description": "File system operations (read, write, list directory)",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+    "env": {},
+    "source_type": "curated",
+    "source_url": "https://github.com/modelcontextprotocol/servers"
+  },
+  {
+    "id": "github",
+    "name": "github",
+    "description": "GitHub repository operations",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": ""},
+    "source_type": "curated",
+    "source_url": "https://github.com/modelcontextprotocol/servers"
+  },
+  {
+    "id": "postgres",
+    "name": "postgres",
+    "description": "PostgreSQL database operations",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/db"],
+    "env": {},
+    "source_type": "curated",
+    "source_url": "https://github.com/modelcontextprotocol/servers"
+  },
+  {
+    "id": "fetch",
+    "name": "fetch",
+    "description": "Fetch URLs and web content",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-fetch"],
+    "env": {},
+    "source_type": "curated",
+    "source_url": "https://github.com/modelcontextprotocol/servers"
+  },
+  {
+    "id": "memory",
+    "name": "memory",
+    "description": "Persistent key-value memory for the agent",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "env": {},
+    "source_type": "curated",
+    "source_url": "https://github.com/modelcontextprotocol/servers"
+  }
+]

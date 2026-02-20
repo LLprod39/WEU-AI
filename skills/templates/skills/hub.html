@@ -1,0 +1,1397 @@
+{% extends 'base.html' %}
+{% block title %}Skills / MCP Hub - WEU AI{% endblock %}
+{% block header_title %}Skills / MCP{% endblock %}
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Главная</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-600" aria-hidden="true">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2" aria-current="page">
+            <span class="font-medium text-white" itemprop="name">Skills / MCP</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.hub-tab-btn{padding:8px 18px;border-radius:10px;font-size:13px;font-weight:500;transition:all .2s;border:1px solid transparent;cursor:pointer;background:transparent;color:rgba(255,255,255,.45)}
+.hub-tab-btn:hover{color:rgba(255,255,255,.7);background:rgba(255,255,255,.04)}
+.hub-tab-btn.active{background:rgba(99,102,241,.15);color:#818cf8;border-color:rgba(99,102,241,.3)}
+.stat-card{position:relative;overflow:hidden;border-radius:14px;border:1px solid rgba(255,255,255,.06);padding:18px 20px;background:linear-gradient(135deg,rgba(255,255,255,.025) 0%,rgba(255,255,255,.005) 100%)}
+.stat-card::after{content:'';position:absolute;top:0;right:0;width:60px;height:60px;border-radius:0 0 0 40px;opacity:.06}
+.stat-card.s-indigo::after{background:#6366f1}.stat-card.s-cyan::after{background:#06b6d4}.stat-card.s-amber::after{background:#f59e0b}.stat-card.s-emerald::after{background:#10b981}
+.section-collapse summary{cursor:pointer;list-style:none;user-select:none}
+.section-collapse summary::-webkit-details-summary{display:none}
+.section-collapse summary .chevron{transition:transform .2s}
+.section-collapse[open] summary .chevron{transform:rotate(90deg)}
+.chat-bubble{max-width:85%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.55;word-break:break-word}
+.chat-bubble.user{background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.2);margin-left:auto;border-bottom-right-radius:4px}
+.chat-bubble.ai{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);margin-right:auto;border-bottom-left-radius:4px}
+.skill-card-active{border-color:rgba(99,102,241,.5)!important;background:rgba(99,102,241,.08)!important}
+.agent-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:11px;background:rgba(99,102,241,.12);color:#a5b4fc;border:1px solid rgba(99,102,241,.2)}
+.agent-chip.bound{background:rgba(34,197,94,.12);color:#86efac;border-color:rgba(34,197,94,.2)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-full min-h-0 flex-1">
+    <!-- Tabs -->
+    <div class="flex items-center gap-1.5 px-5 py-2.5 border-b border-white/[.06] bg-white/[.015] flex-shrink-0">
+        <button type="button" class="hub-tab-btn active" data-tab="overview">
+            <span class="material-icons-round text-sm align-middle mr-1">dashboard</span>Обзор
+        </button>
+        <button type="button" class="hub-tab-btn" data-tab="skills">
+            <span class="material-icons-round text-sm align-middle mr-1">rule_folder</span>Skills
+        </button>
+        <button type="button" class="hub-tab-btn" data-tab="mcp">
+            <span class="material-icons-round text-sm align-middle mr-1">extension</span>MCP
+        </button>
+        <button type="button" class="hub-tab-btn" data-tab="generator">
+            <span class="material-icons-round text-sm align-middle mr-1">auto_fix_high</span>Генератор MCP
+        </button>
+    </div>
+
+    <!-- Tab panels -->
+    <div class="flex-1 min-h-0 overflow-y-auto" id="hub-panels">
+
+        <!-- ========== OVERVIEW TAB ========== -->
+        <div class="hub-panel p-5" data-panel="overview">
+            <div class="max-w-7xl mx-auto space-y-6 animate-fade-in">
+                <!-- Stats -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="stat-card s-indigo">
+                        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Skills</div>
+                        <div class="text-2xl font-bold text-white" id="ov-skills-count">{{ skills_count }}</div>
+                        <div class="text-[11px] text-gray-500 mt-1" id="ov-skills-sub"></div>
+                    </div>
+                    <div class="stat-card s-cyan">
+                        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">MCP Pool</div>
+                        <div class="text-2xl font-bold text-white">{{ mcp_pool_count }}</div>
+                        <div class="text-[11px] text-gray-500 mt-1">Мои MCP-серверы</div>
+                    </div>
+                    <div class="stat-card s-amber">
+                        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Agents</div>
+                        <div class="text-2xl font-bold text-white">{{ agents_count }}</div>
+                        <div class="text-[11px] text-gray-500 mt-1">Активные агенты</div>
+                    </div>
+                    <div class="stat-card s-emerald cursor-pointer hover:border-emerald-500/30 transition-colors" onclick="switchTab('generator')">
+                        <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Быстрое действие</div>
+                        <div class="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                            <span class="material-icons-round text-lg">auto_fix_high</span>Генератор MCP
+                        </div>
+                        <div class="text-[11px] text-gray-500 mt-1">Создать MCP с ИИ</div>
+                    </div>
+                </div>
+                <!-- Quick Actions -->
+                <div class="glass-card rounded-xl p-5 !transform-none">
+                    <h2 class="text-sm font-semibold text-white mb-3">Быстрые действия</h2>
+                    <div class="flex flex-wrap gap-2">
+                        <button class="btn-primary text-xs" onclick="switchTab('skills');setTimeout(()=>document.getElementById('btn-new-skill')?.click(),100)">
+                            <span class="material-icons-round text-sm mr-1">add</span>Создать Skill
+                        </button>
+                        <button class="btn-ghost text-xs" onclick="switchTab('mcp')">
+                            <span class="material-icons-round text-sm mr-1">extension</span>Каталог MCP
+                        </button>
+                        <button class="btn-ghost text-xs" onclick="switchTab('generator')">
+                            <span class="material-icons-round text-sm mr-1">auto_fix_high</span>Генератор MCP
+                        </button>
+                        <button class="btn-ghost text-xs" onclick="switchTab('skills');setTimeout(()=>document.getElementById('btn-skill-store')?.click(),100)">
+                            <span class="material-icons-round text-sm mr-1">store</span>Каталог Skills
+                        </button>
+                    </div>
+                </div>
+                <!-- Recent -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div class="glass-card rounded-xl p-5 !transform-none">
+                        <h2 class="text-sm font-semibold text-white mb-3">Последние Skills</h2>
+                        <div id="ov-recent-skills" class="space-y-2 text-sm"></div>
+                    </div>
+                    <div class="glass-card rounded-xl p-5 !transform-none">
+                        <h2 class="text-sm font-semibold text-white mb-3">Мои MCP</h2>
+                        <div id="ov-recent-mcp" class="space-y-2 text-sm"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== SKILLS TAB ========== -->
+        <div class="hub-panel hidden" data-panel="skills">
+            <div class="h-full flex flex-col lg:flex-row min-h-0">
+                <!-- Skill List -->
+                <div class="w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 border-r border-white/[.06] flex flex-col overflow-hidden">
+                    <div class="p-4 space-y-3 flex-shrink-0">
+                        <div class="flex items-center justify-between gap-2">
+                            <h2 class="text-sm font-semibold text-white">Skills <span id="sk-count" class="text-xs text-gray-500 ml-1">0</span></h2>
+                            <div class="flex gap-1.5">
+                                <button type="button" id="btn-new-skill" class="btn-primary text-xs px-2.5 py-1.5" title="Новый skill">
+                                    <span class="material-icons-round text-sm">add</span>
+                                </button>
+                                <button type="button" id="btn-skill-store" class="btn-ghost text-xs px-2.5 py-1.5" title="Каталог">
+                                    <span class="material-icons-round text-sm">store</span>
+                                </button>
+                                <button type="button" class="btn-ghost text-xs px-2.5 py-1.5" onclick="loadSkills()" title="Обновить">
+                                    <span class="material-icons-round text-sm">refresh</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <span class="material-icons-round text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2 text-base">search</span>
+                            <input id="sk-search" class="input-field w-full pl-8 text-xs" placeholder="Поиск skills...">
+                        </div>
+                    </div>
+                    <div id="sk-list" class="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5"></div>
+                </div>
+                <!-- Skill Editor -->
+                <div class="flex-1 overflow-y-auto p-5">
+                    <div class="max-w-3xl mx-auto space-y-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <h2 class="text-sm font-semibold text-white">Редактор</h2>
+                            <span id="sk-badge" class="hidden text-[11px] px-2 py-0.5 rounded-md bg-primary/15 text-primary-light"></span>
+                        </div>
+                        <!-- AI Helper -->
+                        <details class="section-collapse border border-white/[.06] rounded-xl bg-white/[.02]" id="ai-helper-panel">
+                            <summary class="flex items-center gap-2 p-3.5 text-sm font-medium text-white">
+                                <span class="material-icons-round text-base chevron text-gray-500">chevron_right</span>
+                                <span class="material-icons-round text-base text-sky-400">auto_awesome</span>
+                                Создать с ИИ
+                                <span class="text-[10px] ml-auto px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/20">OpenAI</span>
+                            </summary>
+                            <div class="px-4 pb-4 space-y-3">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Цель / описание</label>
+                                        <textarea id="ai-goal" rows="3" class="input-field w-full text-xs" placeholder="Например: Политики DevOps для прод-серверов"></textarea>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Данные / контекст</label>
+                                        <textarea id="ai-data" rows="3" class="input-field w-full text-xs" placeholder="Список серверов, доступы, ограничения"></textarea>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Ответы на вопросы</label>
+                                    <textarea id="ai-answers" rows="2" class="input-field w-full text-xs" placeholder="Ответы если ИИ задал вопросы"></textarea>
+                                </div>
+                                <div class="flex flex-wrap gap-2 items-center">
+                                    <button type="button" id="btn-ai-questions" class="btn-ghost text-xs">Спросить вопросы</button>
+                                    <button type="button" id="btn-ai-draft" class="btn-primary text-xs">Сгенерировать</button>
+                                    <button type="button" id="btn-ai-apply" class="btn-ghost text-xs" disabled>Применить черновик</button>
+                                    <span id="ai-status" class="text-[11px] text-gray-500 ml-auto"></span>
+                                </div>
+                                <div id="ai-questions-box" class="space-y-2"></div>
+                                <pre id="ai-preview" class="hidden p-3 bg-slate-950/70 rounded-lg text-[11px] text-gray-300 whitespace-pre-wrap max-h-40 overflow-auto border border-white/[.06]"></pre>
+                            </div>
+                        </details>
+                        <!-- Form -->
+                        <form id="skill-form" class="space-y-3">
+                            <input type="hidden" id="sk-id">
+                            <!-- Basic -->
+                            <details class="section-collapse border border-white/[.06] rounded-xl bg-white/[.02]" open>
+                                <summary class="flex items-center gap-2 p-3.5 text-sm font-medium text-white">
+                                    <span class="material-icons-round text-base chevron text-gray-500">chevron_right</span>
+                                    Базовая информация
+                                </summary>
+                                <div class="px-4 pb-4 space-y-3">
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Name</label><input id="sk-name" class="input-field w-full text-xs" required></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Slug</label><input id="sk-slug" class="input-field w-full text-xs" required></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+                                            <select id="sk-status" class="input-field w-full text-xs"><option value="draft">draft</option><option value="staging">staging</option><option value="prod">prod</option></select>
+                                        </div>
+                                    </div>
+                                    <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Описание</label><input id="sk-desc" class="input-field w-full text-xs" placeholder="Кратко: что делает skill"></div>
+                                </div>
+                            </details>
+                            <!-- Server scope -->
+                            <details class="section-collapse border border-white/[.06] rounded-xl bg-white/[.02]">
+                                <summary class="flex items-center gap-2 p-3.5 text-sm font-medium text-white">
+                                    <span class="material-icons-round text-base chevron text-gray-500">chevron_right</span>
+                                    Серверный охват
+                                </summary>
+                                <div class="px-4 pb-4 space-y-3">
+                                    <div class="flex items-center gap-4 text-xs">
+                                        <label class="inline-flex items-center gap-1.5"><input type="radio" name="sk_scope" id="sk-scope-all" value="all" checked> Все сервера</label>
+                                        <label class="inline-flex items-center gap-1.5"><input type="radio" name="sk_scope" id="sk-scope-sel" value="selected"> Выбрать</label>
+                                        <span class="text-gray-500">Выбрано: <span id="sk-srv-cnt">0</span></span>
+                                    </div>
+                                    <div id="sk-srv-list" class="grid grid-cols-2 gap-1.5 max-h-40 overflow-auto hidden"></div>
+                                </div>
+                            </details>
+                            <!-- Instructions -->
+                            <details class="section-collapse border border-white/[.06] rounded-xl bg-white/[.02]" open>
+                                <summary class="flex items-center gap-2 p-3.5 text-sm font-medium text-white">
+                                    <span class="material-icons-round text-base chevron text-gray-500">chevron_right</span>
+                                    Инструкции и правила
+                                </summary>
+                                <div class="px-4 pb-4 space-y-3">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">System prompt</label><textarea id="sk-sysprompt" rows="4" class="input-field w-full text-xs font-mono"></textarea></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Rules</label><textarea id="sk-rules" rows="4" class="input-field w-full text-xs font-mono"></textarea></div>
+                                    </div>
+                                    <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Instructions</label><textarea id="sk-instr" rows="6" class="input-field w-full text-xs font-mono"></textarea></div>
+                                </div>
+                            </details>
+                            <!-- Advanced -->
+                            <details class="section-collapse border border-white/[.06] rounded-xl bg-white/[.02]">
+                                <summary class="flex items-center gap-2 p-3.5 text-sm font-medium text-white">
+                                    <span class="material-icons-round text-base chevron text-gray-500">chevron_right</span>
+                                    Дополнительно
+                                </summary>
+                                <div class="px-4 pb-4 space-y-3">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Tags</label><input id="sk-tags" class="input-field w-full text-xs" placeholder="devops, security"></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Runtimes</label><input id="sk-runtimes" class="input-field w-full text-xs" placeholder="cursor, claude"></div>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Git URL</label><input id="sk-src-url" class="input-field w-full text-xs"></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Ref</label><input id="sk-src-ref" class="input-field w-full text-xs" value="main"></div>
+                                        <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Path</label><input id="sk-src-path" class="input-field w-full text-xs" value="SKILL.md"></div>
+                                    </div>
+                                    <div class="flex flex-wrap gap-4 text-xs p-3 rounded-lg border border-white/[.06] bg-white/[.02]">
+                                        <label class="inline-flex items-center gap-1.5"><input id="sk-aa-chat" type="checkbox"> auto chat</label>
+                                        <label class="inline-flex items-center gap-1.5"><input id="sk-aa-agent" type="checkbox"> auto agent</label>
+                                        <label class="inline-flex items-center gap-1.5"><input id="sk-aa-wf" type="checkbox"> auto workflow</label>
+                                        <label class="inline-flex items-center gap-1.5"><input id="sk-aa-sync" type="checkbox"> auto sync</label>
+                                    </div>
+                                    <!-- Bind to agent -->
+                                    <div class="flex items-center gap-2 text-xs">
+                                        <label class="text-gray-500">Привязать к агенту:</label>
+                                        <select id="sk-bind-agent" class="input-field text-xs flex-1"><option value="">-- выберите --</option></select>
+                                        <button type="button" id="btn-sk-bind" class="btn-ghost text-xs px-2.5 py-1.5">Привязать</button>
+                                        <button type="button" id="btn-sk-unbind" class="btn-ghost text-xs px-2.5 py-1.5 text-rose-400">Отвязать</button>
+                                    </div>
+                                    <div id="sk-bound-agents" class="flex flex-wrap gap-1.5"></div>
+                                </div>
+                            </details>
+                            <!-- Actions -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="submit" class="btn-primary text-xs"><span class="material-icons-round text-sm mr-1">save</span>Сохранить</button>
+                                <button type="button" id="btn-sk-sync" class="btn-ghost text-xs"><span class="material-icons-round text-sm mr-1">sync</span>Sync</button>
+                                <button type="button" id="btn-sk-preview" class="btn-ghost text-xs"><span class="material-icons-round text-sm mr-1">preview</span>Preview</button>
+                                <button type="button" id="btn-sk-del" class="px-3 py-1.5 text-xs rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition-colors"><span class="material-icons-round text-sm mr-1">delete</span>Удалить</button>
+                            </div>
+                        </form>
+                        <pre id="sk-preview-out" class="hidden p-3 bg-slate-950/70 rounded-lg text-[11px] text-gray-300 whitespace-pre-wrap max-h-48 overflow-auto border border-white/[.06]"></pre>
+                        <!-- Shares -->
+                        <div class="border border-white/[.06] rounded-xl p-4 bg-white/[.02]">
+                            <h3 class="text-xs font-semibold text-white mb-3">Доступ (Share)</h3>
+                            <div class="grid grid-cols-4 gap-2 items-center text-xs">
+                                <input id="sk-share-user" class="input-field text-xs" placeholder="username">
+                                <label class="inline-flex items-center gap-1"><input id="sk-share-edit" type="checkbox"> edit</label>
+                                <label class="inline-flex items-center gap-1"><input id="sk-share-manage" type="checkbox"> manage</label>
+                                <button type="button" id="btn-sk-share" class="btn-ghost text-xs">Выдать</button>
+                            </div>
+                            <div id="sk-shares" class="mt-2 space-y-1.5"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Skill Store Modal -->
+            <div id="skill-store-modal" class="fixed inset-0 z-50 hidden">
+                <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('skill-store-modal').classList.add('hidden')"></div>
+                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg max-h-[80vh] flex flex-col rounded-xl bg-bg-elevated border border-white/10 shadow-xl overflow-hidden">
+                    <div class="p-4 border-b border-white/10 flex items-center justify-between gap-2">
+                        <h3 class="text-base font-semibold text-white">Каталог Skills</h3>
+                        <button type="button" id="btn-skill-install-all" class="btn-primary text-xs">Установить все</button>
+                    </div>
+                    <div class="p-4 border-b border-white/10 space-y-2">
+                        <div class="text-[11px] text-gray-500 uppercase">Установить по URL</div>
+                        <input id="store-url" class="input-field w-full text-xs" placeholder="https://github.com/owner/repo">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input id="store-ref" class="input-field text-xs" placeholder="main" value="main">
+                            <input id="store-path" class="input-field text-xs" placeholder="SKILL.md" value="SKILL.md">
+                        </div>
+                        <button type="button" id="btn-store-url" class="btn-primary text-xs">Установить</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4" id="store-catalog-list"></div>
+                    <div class="p-3 border-t border-white/10"><button type="button" class="btn-ghost w-full text-xs" onclick="document.getElementById('skill-store-modal').classList.add('hidden')">Закрыть</button></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== MCP TAB ========== -->
+        <div class="hub-panel hidden" data-panel="mcp">
+            <div class="h-full flex flex-col min-h-0">
+                <!-- Row: List + Editor -->
+                <div class="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+                    <!-- My MCP List -->
+                    <div class="w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 border-r border-white/[.06] flex flex-col overflow-hidden">
+                        <div class="p-4 space-y-3 flex-shrink-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <h2 class="text-sm font-semibold text-white">Мои MCP <span id="mcp-count" class="text-xs text-gray-500 ml-1">0</span></h2>
+                                <div class="flex gap-1.5">
+                                    <button type="button" id="btn-mcp-new" class="btn-primary text-xs px-2.5 py-1.5" title="Новый MCP">
+                                        <span class="material-icons-round text-sm">add</span>
+                                    </button>
+                                    <button type="button" class="btn-ghost text-xs px-2.5 py-1.5" onclick="loadMcpPool()" title="Обновить">
+                                        <span class="material-icons-round text-sm">refresh</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <span class="material-icons-round text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2 text-base">search</span>
+                                <input id="mcp-search" class="input-field w-full pl-8 text-xs" placeholder="Поиск по имени...">
+                            </div>
+                        </div>
+                        <div id="mcp-pool" class="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5"></div>
+                        <p id="mcp-pool-empty" class="text-xs text-gray-500 px-4 pb-4 hidden">Нет MCP. Установите из каталога или создайте новый.</p>
+                    </div>
+                    <!-- MCP Editor -->
+                    <div class="flex-1 overflow-y-auto p-5">
+                        <div class="max-w-2xl mx-auto space-y-4">
+                            <div class="flex items-center justify-between gap-3">
+                                <h2 class="text-sm font-semibold text-white">Настройка MCP</h2>
+                                <span id="mcp-badge" class="hidden text-[11px] px-2 py-0.5 rounded-md bg-primary/15 text-primary-light"></span>
+                            </div>
+                            <p id="mcp-editor-placeholder" class="text-xs text-gray-500 py-4">Выберите MCP слева или нажмите «Новый MCP».</p>
+                            <input type="hidden" id="mcp-edit-id">
+                            <form id="mcp-editor-form" class="space-y-4 hidden">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Name</label><input id="mcp-edit-name" class="input-field w-full text-xs" placeholder="my-server"></div>
+                                    <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Command</label><input id="mcp-edit-cmd" class="input-field w-full text-xs" placeholder="npx"></div>
+                                </div>
+                                <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Args (через запятую)</label><input id="mcp-edit-args" class="input-field w-full text-xs" placeholder="-y, @scope/server"></div>
+                                <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Env (KEY=value, через запятую)</label><input id="mcp-edit-env" class="input-field w-full text-xs" placeholder="API_KEY=xxx, SECRET=yyy"></div>
+                                <div><label class="block text-[11px] text-gray-500 uppercase tracking-wider mb-1.5">Описание</label><input id="mcp-edit-desc" class="input-field w-full text-xs" placeholder="Описание сервера"></div>
+                                <div class="flex gap-2">
+                                    <button type="submit" class="btn-primary text-xs"><span class="material-icons-round text-sm mr-1">save</span>Сохранить</button>
+                                    <button type="button" id="btn-mcp-del" class="px-3 py-1.5 text-xs rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition-colors"><span class="material-icons-round text-sm mr-1">delete</span>Удалить</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <!-- Registry / Catalog section -->
+<style>
+:root{--reg-bg:#09090b;--reg-surf:#111113;--reg-surf2:#18181b;--reg-border:rgba(255,255,255,.06);--reg-border2:rgba(255,255,255,.10);--reg-accent:#6366f1;--reg-accent2:#818cf8;--reg-text:rgba(255,255,255,.88);--reg-muted:rgba(255,255,255,.38);--reg-dim:rgba(255,255,255,.55);--reg-radius:12px;--reg-mono:'JetBrains Mono','Fira Code',ui-monospace,monospace}
+.reg-section{border-top:1px solid var(--reg-border);background:linear-gradient(180deg,rgba(99,102,241,.03) 0%,transparent 60%);flex-shrink:0}
+.reg-subtab-bar{display:flex;align-items:center;gap:4px;padding:14px 20px 0;border-bottom:1px solid var(--reg-border)}
+.reg-stab{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;font-size:12px;font-weight:500;color:var(--reg-muted);cursor:pointer;background:transparent;transition:color .15s,background .15s;position:relative;bottom:-1px}
+.reg-stab:hover{color:var(--reg-dim);background:rgba(255,255,255,.03)}
+.reg-stab.active{color:var(--reg-accent2);background:var(--reg-surf2);border-color:var(--reg-border);border-bottom-color:var(--reg-surf2)}
+.reg-stab .material-icons-round{font-size:15px}
+.reg-panel{display:none;padding:18px 20px 20px}
+.reg-panel.active{display:block}
+.reg-search-row{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.reg-search-wrap{position:relative;flex:1;min-width:200px}
+.reg-search-wrap .material-icons-round{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--reg-muted);pointer-events:none}
+#registry-search-input{width:100%;padding:8px 12px 8px 34px;background:var(--reg-surf2);border:1px solid var(--reg-border2);border-radius:8px;color:var(--reg-text);font-size:12.5px;outline:none;transition:border-color .15s}
+#registry-search-input:focus{border-color:rgba(99,102,241,.5)}
+#registry-search-input::placeholder{color:var(--reg-muted)}
+#btn-registry-search{display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:500;background:var(--reg-accent);color:#fff;border:none;cursor:pointer;transition:background .15s}
+#btn-registry-search:hover{background:#5254cc}
+.reg-count-badge{font-family:var(--reg-mono);font-size:10px;color:var(--reg-muted);white-space:nowrap;align-self:center}
+#registry-grid,#mcp-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.reg-card{background:var(--reg-surf2);border:1px solid var(--reg-border);border-radius:var(--reg-radius);padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .2s,transform .2s,box-shadow .2s;position:relative;overflow:hidden}
+.reg-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(99,102,241,.25),transparent);opacity:0;transition:opacity .2s}
+.reg-card:hover{border-color:rgba(99,102,241,.22);transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.reg-card:hover::before{opacity:1}
+.reg-card-head{display:flex;align-items:flex-start;gap:10px}
+.reg-card-icon{width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid var(--reg-border);background:var(--reg-surf)}
+.reg-card-icon-ph{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(99,102,241,.05));border:1px solid rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;color:rgba(99,102,241,.5);font-size:16px}
+.reg-card-title-wrap{flex:1;min-width:0}
+.reg-card-title{font-size:12.5px;font-weight:600;color:var(--reg-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.reg-card-name{font-family:var(--reg-mono);font-size:10px;color:var(--reg-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reg-card-desc{font-size:11.5px;color:var(--reg-dim);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.reg-card-badges{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.reg-badge{display:inline-flex;align-items:center;gap:3px;font-family:var(--reg-mono);font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px}
+.reg-badge-ver{background:rgba(255,255,255,.06);color:var(--reg-muted)}
+.reg-badge-local{background:rgba(34,211,238,.08);color:#22d3ee;border:1px solid rgba(34,211,238,.15)}
+.reg-badge-remote{background:rgba(245,158,11,.08);color:#f59e0b;border:1px solid rgba(245,158,11,.15)}
+.reg-badge-unk{background:rgba(255,255,255,.05);color:var(--reg-muted)}
+.reg-card-footer{display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:6px;border-top:1px solid var(--reg-border)}
+.reg-card-links{display:flex;gap:4px}
+.reg-card-link{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid var(--reg-border);color:var(--reg-muted);transition:color .15s,background .15s;text-decoration:none}
+.reg-card-link:hover{background:rgba(255,255,255,.08);color:var(--reg-text)}
+.reg-card-link .material-icons-round{font-size:13px}
+.reg-card-link svg{width:13px;height:13px;fill:currentColor}
+.reg-card-install{margin-left:auto;display:flex;align-items:center;gap:4px;padding:5px 11px;border-radius:7px;font-size:11px;font-weight:500;background:rgba(99,102,241,.15);color:var(--reg-accent2);border:1px solid rgba(99,102,241,.2);cursor:pointer;transition:background .15s,border-color .15s}
+.reg-card-install:hover{background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.35)}
+.reg-card-installed-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25)}
+.reg-card-actions{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+.reg-card-btn{display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s;border:1px solid var(--reg-border2);background:rgba(255,255,255,.05);color:var(--reg-dim)}
+.reg-card-btn:hover{background:rgba(255,255,255,.1);color:var(--reg-text)}
+.reg-card-btn.reg-card-btn-danger{border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.08);color:#f87171}
+.reg-card-btn.reg-card-btn-danger:hover{background:rgba(239,68,68,.15)}
+#registry-skeleton{display:none;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.reg-skel{background:var(--reg-surf2);border:1px solid var(--reg-border);border-radius:var(--reg-radius);padding:14px;display:flex;flex-direction:column;gap:10px}
+.reg-skel-l{border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 100%);background-size:200% 100%;animation:skel-sh 1.4s ease-in-out infinite}
+@keyframes skel-sh{to{background-position:-200% 0}}
+#registry-empty{display:none;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;gap:10px;text-align:center}
+.reg-empty-icon{width:48px;height:48px;border-radius:14px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center;color:rgba(99,102,241,.45)}
+.reg-empty-icon .material-icons-round{font-size:24px}
+#registry-empty p{font-size:13px;color:var(--reg-muted);max-width:260px}
+#registry-load-more{display:none;margin:16px auto 0;padding:8px 20px;border-radius:8px;font-size:12px;font-weight:500;background:transparent;border:1px solid var(--reg-border2);color:var(--reg-dim);cursor:pointer;transition:border-color .15s,color .15s}
+#registry-load-more:hover{border-color:rgba(99,102,241,.3);color:var(--reg-accent2)}
+.reg-catalog-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+#mcp-catalog-url{flex:1;min-width:200px;padding:8px 12px;background:var(--reg-surf2);border:1px solid var(--reg-border2);border-radius:8px;color:var(--reg-text);font-size:12.5px;outline:none;transition:border-color .15s}
+#mcp-catalog-url:focus{border-color:rgba(99,102,241,.5)}
+#mcp-catalog-url::placeholder{color:var(--reg-muted)}
+.reg-cat-btn{display:flex;align-items:center;gap:5px;padding:8px 13px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:background .15s}
+#btn-mcp-catalog-fetch{background:rgba(255,255,255,.07);color:var(--reg-dim)}
+#btn-mcp-catalog-fetch:hover{background:rgba(255,255,255,.12)}
+#btn-mcp-install-all{background:var(--reg-accent);color:#fff}
+#btn-mcp-install-all:hover{background:#5254cc}
+.reg-cat-btn .material-icons-round{font-size:15px}
+.reg-source-hint{font-size:11px;color:var(--reg-muted);margin-bottom:12px;display:flex;align-items:center;gap:5px}
+.reg-source-hint .material-icons-round{font-size:13px}
+</style>
+<div class="reg-section">
+  <div class="reg-subtab-bar">
+    <button class="reg-stab active" data-rtab="registry" onclick="switchRegTab('registry',this)">
+      <span class="material-icons-round">travel_explore</span>Реестр MCP
+    </button>
+    <button class="reg-stab" data-rtab="catalog" onclick="switchRegTab('catalog',this)">
+      <span class="material-icons-round">view_list</span>Локальный каталог
+    </button>
+  </div>
+  <div class="reg-panel active" id="reg-panel-registry">
+    <div class="reg-source-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <label class="text-xs text-gray-500">Источник:</label>
+      <select id="registry-source" class="input-field text-xs" style="max-width:220px">
+        <option value="registry">Официальный реестр MCP</option>
+        <option value="local">Локальный каталог</option>
+        <option value="external">Внешний каталог по URL</option>
+      </select>
+      <div id="registry-external-url-wrap" class="hidden" style="flex:1;min-width:180px;gap:8px;align-items:center" data-display="flex">
+        <input type="url" id="registry-external-url" class="input-field text-xs flex-1" placeholder="https://… JSON-каталога">
+        <button type="button" id="btn-registry-external-load" class="btn-primary text-xs"><span class="material-icons-round" style="font-size:14px">download</span> Загрузить</button>
+      </div>
+    </div>
+    <div class="reg-search-row">
+      <div class="reg-search-wrap">
+        <span class="material-icons-round">search</span>
+        <input id="registry-search-input" type="search" placeholder="Поиск по имени, описанию, тегам…" autocomplete="off">
+      </div>
+      <button id="btn-registry-search"><span class="material-icons-round" style="font-size:15px">manage_search</span>Поиск</button>
+      <span class="reg-count-badge" id="reg-count-label"></span>
+    </div>
+    <div id="registry-skeleton">
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:80%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:65%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:60%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:80%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:70%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:55%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:85%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:70%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:55%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:90%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+      <div class="reg-skel"><div class="reg-skel-l" style="height:32px;width:75%"></div><div class="reg-skel-l" style="height:12px;width:100%"></div><div class="reg-skel-l" style="height:12px;width:60%"></div><div class="reg-skel-l" style="height:28px;width:90px"></div></div>
+    </div>
+    <div id="registry-empty">
+      <div class="reg-empty-icon"><span class="material-icons-round">extension_off</span></div>
+      <p id="reg-empty-msg">Начните поиск или загрузите все серверы</p>
+    </div>
+    <div id="registry-grid"></div>
+    <div style="display:flex;justify-content:center">
+      <button id="registry-load-more"><span class="material-icons-round" style="font-size:14px;margin-right:4px;vertical-align:middle">expand_more</span>Загрузить ещё</button>
+    </div>
+  </div>
+  <div class="reg-panel" id="reg-panel-catalog">
+    <div class="reg-source-hint"><span class="material-icons-round">info</span>Локальный JSON-каталог (встроенный или загруженный по URL)</div>
+    <div class="reg-catalog-toolbar">
+      <input type="url" id="mcp-catalog-url" placeholder="URL JSON-каталога (опционально)">
+      <button id="btn-mcp-catalog-fetch" class="reg-cat-btn"><span class="material-icons-round">download</span>Загрузить по URL</button>
+      <button id="btn-mcp-install-all" class="reg-cat-btn"><span class="material-icons-round">download_for_offline</span>Установить все</button>
+    </div>
+    <div id="mcp-catalog"></div>
+    <p id="mcp-catalog-empty" class="text-xs text-gray-500 mt-3 hidden">Каталог пуст.</p>
+  </div>
+</div>
+            </div>
+            <!-- MCP Install Modal -->
+            <div id="mcp-install-modal" class="fixed inset-0 z-50 hidden">
+                <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('mcp-install-modal').classList.add('hidden')"></div>
+                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-xl bg-bg-elevated border border-white/10 p-5 shadow-xl">
+                    <h3 class="text-base font-semibold text-white mb-2">Установить MCP</h3>
+                    <p id="mcp-inst-title" class="text-xs text-gray-400 mb-3"></p>
+                    <div id="mcp-inst-preview" class="rounded-lg bg-white/[.04] border border-white/[.06] p-3 mb-4 text-[11px] font-mono text-gray-400 space-y-1.5 hidden">
+                        <div><span class="text-gray-500">Command:</span> <span id="mcp-inst-prev-cmd"></span></div>
+                        <div><span class="text-gray-500">Args:</span> <span id="mcp-inst-prev-args" class="break-all"></span></div>
+                        <div id="mcp-inst-prev-env-wrap" class="hidden"><span class="text-gray-500">Env:</span> <span id="mcp-inst-prev-env" class="break-all"></span></div>
+                    </div>
+                    <input type="hidden" id="mcp-inst-id">
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="mcp-inst-pool" checked> В Мои MCP</label>
+                        <div>
+                            <label class="block text-[11px] text-gray-500 mb-1">Добавить в агента</label>
+                            <select id="mcp-inst-agent" class="input-field w-full text-xs"><option value="">-- не добавлять --</option></select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button type="button" id="btn-mcp-inst-do" class="btn-primary flex-1 text-xs">Установить</button>
+                        <button type="button" class="btn-ghost text-xs" onclick="document.getElementById('mcp-install-modal').classList.add('hidden')">Отмена</button>
+                    </div>
+                </div>
+            </div>
+            <!-- MCP Install All Modal -->
+            <div id="mcp-install-all-modal" class="fixed inset-0 z-50 hidden">
+                <div class="absolute inset-0 bg-black/60" onclick="document.getElementById('mcp-install-all-modal').classList.add('hidden')"></div>
+                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-xl bg-bg-elevated border border-white/10 p-5 shadow-xl">
+                    <h3 class="text-base font-semibold text-white mb-4">Установить все из каталога</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="mcp-inst-all-pool" checked> В Мои MCP</label>
+                        <div>
+                            <label class="block text-[11px] text-gray-500 mb-1">Добавить в агента</label>
+                            <select id="mcp-inst-all-agent" class="input-field w-full text-xs"><option value="">-- не добавлять --</option></select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button type="button" id="btn-mcp-inst-all-do" class="btn-primary flex-1 text-xs">Установить все</button>
+                        <button type="button" class="btn-ghost text-xs" onclick="document.getElementById('mcp-install-all-modal').classList.add('hidden')">Отмена</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== GENERATOR TAB ========== -->
+        <div class="hub-panel hidden" data-panel="generator">
+            <div class="h-full flex flex-col lg:flex-row min-h-0">
+                <!-- Chat -->
+                <div class="w-full lg:w-1/2 flex flex-col border-r border-white/[.06] overflow-hidden">
+                    <div class="p-4 border-b border-white/[.06] flex-shrink-0">
+                        <div class="flex items-center gap-2">
+                            <span class="material-icons-round text-lg text-primary">auto_fix_high</span>
+                            <h2 class="text-sm font-semibold text-white">Генератор MCP-серверов</h2>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-1">Опишите задачу и прикрепите документацию API. ИИ создаст MCP-сервер.</p>
+                    </div>
+                    <div id="gen-chat" class="flex-1 overflow-y-auto p-4 space-y-3">
+                        <div class="chat-bubble ai">Привет! Опишите, какой MCP-сервер вам нужен. Например: «MCP-сервер для Jira REST API с операциями CRUD для задач» или «MCP для мониторинга Prometheus».</div>
+                    </div>
+                    <div class="p-4 border-t border-white/[.06] space-y-2 flex-shrink-0">
+                        <details class="border border-white/[.06] rounded-lg">
+                            <summary class="text-[11px] text-gray-500 p-2 cursor-pointer">Прикрепить документацию</summary>
+                            <textarea id="gen-docs" rows="4" class="input-field w-full text-xs rounded-none rounded-b-lg border-0 border-t border-white/[.06]" placeholder="Вставьте документацию API, OpenAPI spec или описание сервиса..."></textarea>
+                        </details>
+                        <div class="flex gap-2">
+                            <textarea id="gen-input" rows="2" class="input-field flex-1 text-xs" placeholder="Опишите MCP-сервер..."></textarea>
+                            <button type="button" id="btn-gen-send" class="btn-primary text-xs px-4 self-end"><span class="material-icons-round text-sm">send</span></button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Code preview -->
+                <div class="w-full lg:w-1/2 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-white/[.06] flex items-center justify-between flex-shrink-0">
+                        <h2 class="text-sm font-semibold text-white">Код MCP-сервера</h2>
+                        <div class="flex gap-1.5">
+                            <button type="button" id="btn-gen-edit" class="btn-ghost text-[11px] px-2 py-1" title="Редактировать"><span class="material-icons-round text-sm">edit</span></button>
+                            <button type="button" id="btn-gen-copy" class="btn-ghost text-[11px] px-2 py-1" title="Копировать"><span class="material-icons-round text-sm">content_copy</span></button>
+                        </div>
+                    </div>
+                    <div id="gen-code-view" class="flex-1 overflow-auto p-4">
+                        <pre id="gen-code-pre" class="text-xs font-mono"><code id="gen-code" class="language-python text-gray-500">Код появится после генерации...</code></pre>
+                        <textarea id="gen-code-edit" class="hidden input-field w-full h-full text-xs font-mono resize-none" spellcheck="false"></textarea>
+                    </div>
+                    <div class="p-4 border-t border-white/[.06] space-y-3 flex-shrink-0">
+                        <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <div class="text-[11px] text-gray-500 uppercase mb-1">Requirements</div>
+                                <div id="gen-reqs" class="text-gray-400">-</div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-gray-500 uppercase mb-1">Env vars</div>
+                                <div id="gen-envs" class="text-gray-400">-</div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="btn-gen-save" class="btn-primary text-xs" disabled><span class="material-icons-round text-sm mr-1">save</span>В Мои MCP</button>
+                            <select id="gen-agent-sel" class="input-field text-xs"><option value="">Привязать к агенту...</option></select>
+                            <button type="button" id="btn-gen-bind" class="btn-ghost text-xs" disabled>Привязать</button>
+                            <button type="button" id="btn-gen-dl" class="btn-ghost text-xs" disabled><span class="material-icons-round text-sm mr-1">download</span>.py</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+/* ============ DATA ============ */
+const INIT = {
+    skills: JSON.parse('{{ skills_json|escapejs }}' || '[]'),
+    mcpPool: JSON.parse('{{ mcp_pool_json|escapejs }}' || '[]'),
+    mcpCatalog: JSON.parse('{{ mcp_catalog_json|escapejs }}' || '[]'),
+    skillCatalog: JSON.parse('{{ skill_catalog_json|escapejs }}' || '[]'),
+    agents: JSON.parse('{{ agents_json|escapejs }}' || '[]'),
+    servers: JSON.parse('{{ servers_json|escapejs }}' || '[]'),
+};
+let state = {skills: INIT.skills, currentId: null, search: '', mcpPool: INIT.mcpPool, currentMcpId: null, mcpSearch: '', mcpCatalogDisplay: INIT.mcpCatalog};
+let aiState = {draft: null, questions: []};
+let genState = {history: [], code: '', result: null};
+
+/* ============ UTILS ============ */
+function esc(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function csrf(){const m=document.cookie.match(/csrftoken=([^;]+)/);return m?m[1]:''}
+function toast(msg,ok=true){if(window.showToast)window.showToast(msg,ok?'success':'error')}
+function parseCsv(v){return String(v||'').split(',').map(s=>s.trim()).filter(Boolean)}
+function slugify(v){return String(v||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
+async function api(url,opts={}){
+    const headers={'Content-Type':'application/json','X-CSRFToken':csrf(),...(opts.headers||{})};
+    try{
+        const r=await fetch(url,{...opts,headers});
+        const d=await r.json();
+        if(!r.ok||d.success===false)throw new Error(d.error||`HTTP ${r.status}`);
+        return d;
+    }catch(e){toast(e.message,false);throw e}
+}
+
+/* ============ TABS ============ */
+function maybeLoadRegistry(){
+    const mcpPanel=document.querySelector('[data-panel="mcp"]');
+    if(!mcpPanel||mcpPanel.classList.contains('hidden'))return;
+    const regPanel=document.getElementById('reg-panel-registry');
+    if(!regPanel||!regPanel.classList.contains('active'))return;
+    const grid=document.getElementById('registry-grid');
+    if(grid&&grid.children.length===0&&!regState.loading)searchRegistry(true);
+}
+window.switchTab=function(tab){
+    document.querySelectorAll('.hub-tab-btn').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab)});
+    document.querySelectorAll('.hub-panel').forEach(p=>{p.classList.toggle('hidden',p.dataset.panel!==tab)});
+    if(tab==='mcp')setTimeout(maybeLoadRegistry,0);
+};
+document.querySelectorAll('.hub-tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+
+/* ============ OVERVIEW ============ */
+function renderOverview(){
+    const sk=state.skills;
+    const prod=sk.filter(s=>s.status==='prod').length, staging=sk.filter(s=>s.status==='staging').length, draft=sk.filter(s=>s.status==='draft').length;
+    const sub=document.getElementById('ov-skills-sub');
+    if(sub)sub.textContent=`prod: ${prod}, staging: ${staging}, draft: ${draft}`;
+    document.getElementById('ov-skills-count').textContent=sk.length;
+
+    const skBox=document.getElementById('ov-recent-skills');
+    if(sk.length===0){skBox.innerHTML='<div class="text-xs text-gray-500">Нет skills</div>';return}
+    skBox.innerHTML=sk.slice(0,5).map(s=>{
+        const sc=s.status==='prod'?'bg-emerald-500/20 text-emerald-300':s.status==='staging'?'bg-amber-500/20 text-amber-300':'bg-slate-500/20 text-slate-300';
+        return `<div class="flex items-center justify-between p-2.5 rounded-lg border border-white/[.06] bg-white/[.02] cursor-pointer hover:border-primary/30 transition-colors" onclick="switchTab('skills');setTimeout(()=>selectSkill(${s.id}),50)">
+            <div><div class="text-xs text-white font-medium">${esc(s.name)}</div><div class="text-[10px] text-gray-500">${esc(s.slug)} v${s.version}</div></div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded ${sc}">${esc(s.status)}</span></div>`}).join('');
+
+    const mcpBox=document.getElementById('ov-recent-mcp');
+    if(state.mcpPool.length===0){mcpBox.innerHTML='<div class="text-xs text-gray-500">Нет MCP серверов</div>';return}
+    mcpBox.innerHTML=state.mcpPool.slice(0,5).map(m=>`<div class="flex items-center justify-between p-2.5 rounded-lg border border-white/[.06] bg-white/[.02]">
+        <div><div class="text-xs text-white font-medium">${esc(m.name)}</div><div class="text-[10px] text-gray-500 font-mono">${esc(m.command)} ${(m.args||[]).join(' ')}</div></div></div>`).join('');
+}
+
+/* ============ SKILLS ============ */
+function renderSkillsList(){
+    const wrap=document.getElementById('sk-list');
+    const q=(state.search||'').toLowerCase();
+    const filtered=state.skills.filter(s=>!q||(s.name||'').toLowerCase().includes(q)||(s.slug||'').toLowerCase().includes(q));
+    document.getElementById('sk-count').textContent=filtered.length;
+    if(!filtered.length){wrap.innerHTML='<div class="text-xs text-gray-500 p-3">Нет skills</div>';return}
+    wrap.innerHTML=filtered.map(s=>{
+        const sel=state.currentId===s.id;
+        const sc=s.status==='prod'?'bg-emerald-500/20 text-emerald-300':s.status==='staging'?'bg-amber-500/20 text-amber-300':'bg-slate-500/20 text-slate-300';
+        return `<button type="button" class="w-full text-left p-3 rounded-xl border transition-all ${sel?'skill-card-active border-primary/50':'border-white/[.06] bg-white/[.02] hover:border-primary/30'}" onclick="selectSkill(${s.id})">
+            <div class="flex items-start justify-between gap-2">
+                <div><div class="text-xs font-medium text-white">${esc(s.name)}</div><div class="text-[10px] text-gray-500 mt-0.5">${esc(s.slug)} v${s.version}</div></div>
+                <span class="text-[10px] px-1.5 py-0.5 rounded ${sc} flex-shrink-0">${esc(s.status)}</span>
+            </div></button>`}).join('');
+}
+
+function fillSkillForm(s){
+    state.currentId=s?.id||null;
+    document.getElementById('sk-id').value=state.currentId||'';
+    document.getElementById('sk-name').value=s?.name||'';
+    document.getElementById('sk-slug').value=s?.slug||'';
+    document.getElementById('sk-status').value=s?.status||'draft';
+    document.getElementById('sk-desc').value=s?.description||'';
+    document.getElementById('sk-tags').value=(s?.tags||[]).join(', ');
+    document.getElementById('sk-runtimes').value=(s?.allowed_runtimes||[]).join(', ');
+    document.getElementById('sk-sysprompt').value=s?.system_prompt||'';
+    document.getElementById('sk-rules').value=s?.rules||'';
+    document.getElementById('sk-instr').value=s?.instructions||'';
+    document.getElementById('sk-src-url').value=s?.source_url||'';
+    document.getElementById('sk-src-ref').value=s?.source_ref||'main';
+    document.getElementById('sk-src-path').value=s?.source_path||'SKILL.md';
+    document.getElementById('sk-aa-chat').checked=!!s?.auto_apply_chat;
+    document.getElementById('sk-aa-agent').checked=!!s?.auto_apply_agents;
+    document.getElementById('sk-aa-wf').checked=!!s?.auto_apply_workflows;
+    document.getElementById('sk-aa-sync').checked=!!s?.auto_sync_enabled;
+    const scopeAll=s?.server_scope_all!==false;
+    document.getElementById('sk-scope-all').checked=scopeAll;
+    document.getElementById('sk-scope-sel').checked=!scopeAll;
+    renderServerScope(s?.server_scope_ids||[]);
+    updateSkillBadge(s);
+    renderBoundAgents();
+    renderSkillsList();
+}
+
+function updateSkillBadge(s){
+    const b=document.getElementById('sk-badge');
+    if(!s||!s.name){b.classList.add('hidden');return}
+    b.textContent=`${s.name} v${s.version||''}`;b.classList.remove('hidden');
+}
+
+function renderServerScope(ids){
+    const list=document.getElementById('sk-srv-list');
+    const mode=document.querySelector('input[name=sk_scope]:checked')?.value||'all';
+    list.classList.toggle('hidden',mode==='all');
+    list.innerHTML=INIT.servers.map(srv=>{
+        const checked=ids.includes(srv.id)?'checked':'';
+        return `<label class="flex items-center gap-1.5 p-1.5 rounded-lg border border-white/[.06] bg-white/[.02] text-[11px]"><input type="checkbox" data-srv="${srv.id}" ${checked}> <span class="text-white">${esc(srv.name)}</span> <span class="text-gray-500">(${esc(srv.host||'')})</span></label>`}).join('');
+    updateSrvCount();
+}
+function updateSrvCount(){
+    const mode=document.querySelector('input[name=sk_scope]:checked')?.value||'all';
+    const cnt=mode==='all'?INIT.servers.length:document.querySelectorAll('#sk-srv-list input:checked').length;
+    document.getElementById('sk-srv-cnt').textContent=cnt;
+}
+document.getElementById('sk-scope-all').onchange=()=>{document.getElementById('sk-srv-list').classList.add('hidden');updateSrvCount()};
+document.getElementById('sk-scope-sel').onchange=()=>{document.getElementById('sk-srv-list').classList.remove('hidden');updateSrvCount()};
+document.getElementById('sk-srv-list').addEventListener('change',updateSrvCount);
+
+function getSkillPayload(){
+    const mode=document.querySelector('input[name=sk_scope]:checked')?.value||'all';
+    const srvIds=[...document.querySelectorAll('#sk-srv-list input:checked')].map(i=>Number(i.dataset.srv));
+    return{
+        name:document.getElementById('sk-name').value.trim(),
+        slug:document.getElementById('sk-slug').value.trim(),
+        status:document.getElementById('sk-status').value,
+        description:document.getElementById('sk-desc').value,
+        tags:parseCsv(document.getElementById('sk-tags').value),
+        allowed_runtimes:parseCsv(document.getElementById('sk-runtimes').value),
+        server_scope_all:mode==='all',server_scope_ids:mode==='selected'?srvIds:[],
+        system_prompt:document.getElementById('sk-sysprompt').value,
+        rules:document.getElementById('sk-rules').value,
+        instructions:document.getElementById('sk-instr').value,
+        source_type:document.getElementById('sk-src-url').value.trim()?'git':'manual',
+        source_url:document.getElementById('sk-src-url').value.trim(),
+        source_ref:document.getElementById('sk-src-ref').value.trim(),
+        source_path:document.getElementById('sk-src-path').value.trim(),
+        auto_apply_chat:document.getElementById('sk-aa-chat').checked,
+        auto_apply_agents:document.getElementById('sk-aa-agent').checked,
+        auto_apply_workflows:document.getElementById('sk-aa-wf').checked,
+        auto_sync_enabled:document.getElementById('sk-aa-sync').checked,
+    };
+}
+
+window.selectSkill=async function(id){
+    try{const d=await api(`/skills/api/skills/${id}/`);fillSkillForm(d.skill);loadShares()}catch(e){}
+};
+window.loadSkills=async function(){
+    try{const d=await api('/skills/api/skills/');state.skills=d.skills||[];renderSkillsList();renderOverview()}catch(e){}
+};
+document.getElementById('skill-form').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const payload=getSkillPayload();
+    const id=state.currentId;
+    try{
+        const d=await api(id?`/skills/api/skills/${id}/`:'/skills/api/skills/',{method:id?'PUT':'POST',body:JSON.stringify(payload)});
+        toast('Сохранено');
+        if(!id&&d.skill_id)state.currentId=d.skill_id;
+        await loadSkills();loadShares();
+    }catch(e){}
+});
+document.getElementById('btn-sk-sync').onclick=async()=>{
+    if(!state.currentId){toast('Выберите skill',false);return}
+    try{const d=await api(`/skills/api/skills/${state.currentId}/sync/`,{method:'POST'});toast(d.message||'Sync OK');loadSkills()}catch(e){}
+};
+document.getElementById('btn-sk-del').onclick=async()=>{
+    if(!state.currentId||!confirm('Удалить skill?'))return;
+    try{await api(`/skills/api/skills/${state.currentId}/`,{method:'DELETE'});toast('Удалено');fillSkillForm(null);loadSkills()}catch(e){}
+};
+document.getElementById('btn-sk-preview').onclick=async()=>{
+    const pre=document.getElementById('sk-preview-out');
+    try{
+        const d=await api('/skills/api/context/preview/',{method:'POST',body:JSON.stringify({channel:'chat',skill_ids:state.currentId?[state.currentId]:[]})});
+        pre.textContent=d.text||'';pre.classList.remove('hidden');
+    }catch(e){}
+};
+document.getElementById('btn-new-skill').onclick=()=>{fillSkillForm({status:'draft',source_ref:'main',source_path:'SKILL.md',server_scope_all:true})};
+document.getElementById('sk-search').oninput=e=>{state.search=e.target.value;renderSkillsList()};
+
+/* Skill Store */
+document.getElementById('btn-skill-store').onclick=async()=>{
+    const modal=document.getElementById('skill-store-modal');modal.classList.remove('hidden');
+    const list=document.getElementById('store-catalog-list');
+    list.innerHTML=INIT.skillCatalog.map(i=>`<div class="flex items-center justify-between p-3 rounded-lg border border-white/[.06] bg-white/[.02] mb-2">
+        <div><div class="text-xs font-medium text-white">${esc(i.name||i.id)}</div><div class="text-[10px] text-gray-500">${esc(i.description||'')}</div></div>
+        <button class="btn-primary text-[11px]" onclick="installSkillCatalog('${esc(i.id||i.slug)}')">Установить</button></div>`).join('')||'<div class="text-xs text-gray-500">Каталог пуст</div>';
+};
+document.getElementById('btn-skill-install-all').onclick=async()=>{
+    try{const d=await api('/skills/api/skills/catalog/install-all/',{method:'POST',body:JSON.stringify({})});
+    toast(d.message||'Установлено');document.getElementById('skill-store-modal').classList.add('hidden');loadSkills()}catch(e){}
+};
+window.installSkillCatalog=async function(catId){
+    try{const d=await api('/skills/api/skills/catalog/install/',{method:'POST',body:JSON.stringify({catalog_id:catId})});toast(d.message||'Установлено');document.getElementById('skill-store-modal').classList.add('hidden');loadSkills();if(d.skill_id)selectSkill(d.skill_id)}catch(e){}
+};
+document.getElementById('btn-store-url').onclick=async()=>{
+    const url=document.getElementById('store-url').value.trim();if(!url){toast('Укажите URL',false);return}
+    try{const d=await api('/skills/api/skills/catalog/install/',{method:'POST',body:JSON.stringify({source_url:url,source_ref:document.getElementById('store-ref').value.trim()||'main',source_path:document.getElementById('store-path').value.trim()||'SKILL.md'})});toast(d.message||'Установлено');document.getElementById('skill-store-modal').classList.add('hidden');loadSkills();if(d.skill_id)selectSkill(d.skill_id)}catch(e){}
+};
+
+/* Shares */
+async function loadShares(){
+    const el=document.getElementById('sk-shares');
+    if(!state.currentId){el.innerHTML='<div class="text-[11px] text-gray-500">Сохраните skill для настройки</div>';return}
+    try{
+        const d=await api(`/skills/api/skills/${state.currentId}/shares/`);
+        if(!(d.shares||[]).length){el.innerHTML='<div class="text-[11px] text-gray-500">Нет доступов</div>';return}
+        el.innerHTML=(d.shares||[]).map(sh=>`<div class="flex items-center justify-between p-2 rounded-lg border border-white/[.06] bg-white/[.02] text-[11px]">
+            <span class="text-gray-300">${esc(sh.username)} <span class="text-gray-500">edit=${sh.can_edit?'yes':'no'} manage=${sh.can_manage?'yes':'no'}</span></span>
+            <button class="text-rose-400 hover:text-rose-300" onclick="removeShare(${sh.id})">Remove</button></div>`).join('');
+    }catch(e){el.innerHTML='<div class="text-[11px] text-gray-500">Нет доступа</div>'}
+}
+window.removeShare=async function(shareId){
+    try{await api(`/skills/api/skills/${state.currentId}/shares/${shareId}/`,{method:'DELETE'});loadShares()}catch(e){}
+};
+document.getElementById('btn-sk-share').onclick=async()=>{
+    const u=document.getElementById('sk-share-user').value.trim();if(!u||!state.currentId){toast('Укажите username',false);return}
+    try{await api(`/skills/api/skills/${state.currentId}/shares/`,{method:'POST',body:JSON.stringify({username:u,can_edit:document.getElementById('sk-share-edit').checked,can_manage:document.getElementById('sk-share-manage').checked})});
+    document.getElementById('sk-share-user').value='';toast('Доступ выдан');loadShares()}catch(e){}
+};
+
+/* Bind skill to agent */
+function renderBoundAgents(){
+    const box=document.getElementById('sk-bound-agents');
+    if(!state.currentId){box.innerHTML='';return}
+    const bound=INIT.agents.filter(a=>(a.skill_ids||[]).includes(state.currentId));
+    box.innerHTML=bound.map(a=>`<span class="agent-chip bound">${esc(a.name)}</span>`).join('')||'<span class="text-[11px] text-gray-500">Не привязан</span>';
+}
+document.getElementById('btn-sk-bind').onclick=async()=>{
+    const agentId=document.getElementById('sk-bind-agent').value;if(!agentId||!state.currentId)return;
+    try{const d=await api(`/skills/api/skills/${state.currentId}/bind-agent/`,{method:'POST',body:JSON.stringify({agent_id:Number(agentId)})});
+    toast(d.message);const ag=INIT.agents.find(a=>a.id===Number(agentId));if(ag&&!ag.skill_ids.includes(state.currentId))ag.skill_ids.push(state.currentId);renderBoundAgents()}catch(e){}
+};
+document.getElementById('btn-sk-unbind').onclick=async()=>{
+    const agentId=document.getElementById('sk-bind-agent').value;if(!agentId||!state.currentId)return;
+    try{const d=await api(`/skills/api/skills/${state.currentId}/bind-agent/`,{method:'DELETE',body:JSON.stringify({agent_id:Number(agentId)})});
+    toast(d.message);const ag=INIT.agents.find(a=>a.id===Number(agentId));if(ag)ag.skill_ids=ag.skill_ids.filter(id=>id!==state.currentId);renderBoundAgents()}catch(e){}
+};
+
+/* AI Helper */
+document.getElementById('btn-ai-questions').onclick=()=>runAi('questions');
+document.getElementById('btn-ai-draft').onclick=()=>runAi('draft');
+document.getElementById('btn-ai-apply').onclick=()=>applyAiDraft();
+async function runAi(mode){
+    const st=document.getElementById('ai-status');st.innerHTML='<span class="text-sky-400">ИИ думает...</span>';
+    try{
+        const d=await api('/skills/api/assistant/',{method:'POST',body:JSON.stringify({mode,goal:document.getElementById('ai-goal').value.trim(),data:document.getElementById('ai-data').value.trim(),answers:document.getElementById('ai-answers').value.trim(),existing_skill:getSkillPayload()})});
+        aiState.questions=d.questions||[];aiState.draft=d.draft||null;
+        const qBox=document.getElementById('ai-questions-box');
+        qBox.innerHTML=(aiState.questions||[]).map((q,i)=>`<div class="p-2 rounded-lg bg-white/[.02] border border-white/[.06] text-[11px] text-gray-300">${i+1}. ${esc(q)}</div>`).join('');
+        const pre=document.getElementById('ai-preview');
+        if(aiState.draft){pre.textContent=JSON.stringify(aiState.draft,null,2);pre.classList.remove('hidden')}else{pre.classList.add('hidden')}
+        document.getElementById('btn-ai-apply').disabled=!aiState.draft;
+        st.textContent='Готово';
+    }catch(e){st.innerHTML='<span class="text-rose-400">Ошибка</span>'}
+}
+function applyAiDraft(){
+    if(!aiState.draft)return;const d=aiState.draft;
+    if(d.name)document.getElementById('sk-name').value=d.name;
+    if(d.slug)document.getElementById('sk-slug').value=d.slug;
+    if(d.description)document.getElementById('sk-desc').value=d.description;
+    if(d.system_prompt)document.getElementById('sk-sysprompt').value=d.system_prompt;
+    if(d.rules)document.getElementById('sk-rules').value=d.rules;
+    if(d.instructions)document.getElementById('sk-instr').value=d.instructions;
+    if(d.tags?.length)document.getElementById('sk-tags').value=d.tags.join(', ');
+    if(d.allowed_runtimes?.length)document.getElementById('sk-runtimes').value=d.allowed_runtimes.join(', ');
+    if(!document.getElementById('sk-slug').value&&d.name)document.getElementById('sk-slug').value=slugify(d.name);
+    toast('Черновик применён');
+}
+
+/* ============ MCP ============ */
+function envToStr(env){
+    if(!env||typeof env!=='object')return '';
+    return Object.entries(env).map(([k,v])=>k+'='+(v||'')).join(', ');
+}
+function fillMcpForm(server){
+    state.currentMcpId=server?.id||null;
+    document.getElementById('mcp-edit-id').value=state.currentMcpId||'';
+    document.getElementById('mcp-edit-name').value=server?.name||'';
+    document.getElementById('mcp-edit-cmd').value=server?.command||'';
+    document.getElementById('mcp-edit-args').value=Array.isArray(server?.args)?server.args.join(', '):'';
+    document.getElementById('mcp-edit-env').value=envToStr(server?.env);
+    document.getElementById('mcp-edit-desc').value=server?.description||'';
+    const badge=document.getElementById('mcp-badge');
+    if(server?.name){badge.textContent=server.name;badge.classList.remove('hidden')}else{badge.classList.add('hidden')}
+    document.getElementById('btn-mcp-del').disabled=!state.currentMcpId;
+    const placeholder=document.getElementById('mcp-editor-placeholder');
+    const form=document.getElementById('mcp-editor-form');
+    if(server){placeholder.classList.add('hidden');form.classList.remove('hidden');}else{placeholder.classList.remove('hidden');form.classList.add('hidden');}
+    renderMcpPool();
+}
+function getMcpPayload(){
+    const envStr=document.getElementById('mcp-edit-env').value;
+    const env={};envStr.split(',').forEach(p=>{const[k,...v]=p.split('=');if(k?.trim())env[k.trim()]=v.join('=').trim()});
+    return{
+        name:document.getElementById('mcp-edit-name').value.trim(),
+        command:document.getElementById('mcp-edit-cmd').value.trim(),
+        args:parseCsv(document.getElementById('mcp-edit-args').value),
+        env:env,
+        description:document.getElementById('mcp-edit-desc').value.trim()
+    };
+}
+window.selectMcp=async function(id){
+    if(id==null){fillMcpForm(null);return}
+    try{const d=await api(`/skills/api/mcp/pool/${id}/`);fillMcpForm(d.server)}catch(e){}
+};
+function renderMcpPool(){
+    const wrap=document.getElementById('mcp-pool');
+    const empty=document.getElementById('mcp-pool-empty');
+    const q=(state.mcpSearch||'').toLowerCase();
+    const filtered=state.mcpPool.filter(m=>!q||(m.name||'').toLowerCase().includes(q)||(m.description||'').toLowerCase().includes(q));
+    document.getElementById('mcp-count').textContent=filtered.length;
+    if(!filtered.length){wrap.innerHTML='';empty.classList.remove('hidden');return}
+    empty.classList.add('hidden');
+    wrap.innerHTML=filtered.map(m=>{
+        const sel=state.currentMcpId===m.id;
+        return `<div class="mcp-pool-item flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${sel?'skill-card-active border-primary/50':'border-white/[.06] bg-white/[.02] hover:border-primary/30'}" onclick="selectMcp(${m.id})">
+            <div class="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 text-primary"><span class="material-icons-round text-lg">extension</span></div>
+            <div class="min-w-0 flex-1">
+                <div class="text-xs font-medium text-white">${esc(m.name)}</div>
+                <div class="text-[10px] text-gray-500 font-mono truncate">${esc(m.command)} ${(m.args||[]).join(' ')}</div>
+                ${m.description?`<div class="text-[10px] text-gray-500 mt-0.5 truncate">${esc(m.description)}</div>`:''}
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0" onclick="event.stopPropagation()">
+                <select class="input-field text-[10px] px-2 py-1.5 min-w-0 max-w-[120px]" onchange="mcpAddToAgent(${m.id},this.value);this.selectedIndex=0" title="Добавить в агента"><option value="">В агента</option>${INIT.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>
+                <button type="button" class="p-1.5 rounded-lg text-sky-400 hover:bg-sky-500/15 transition-colors" id="mcp-test-${m.id}" onclick="mcpTest(${m.id})" title="Проверить соединение"><span class="material-icons-round text-sm">wifi_tethering</span></button>
+                <button type="button" class="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 transition-colors" onclick="mcpDelete(${m.id})" title="Удалить"><span class="material-icons-round text-sm">delete_outline</span></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+function renderMcpCatalog(){
+    const catalog=state.mcpCatalogDisplay||[];
+    const el=document.getElementById('mcp-catalog');
+    const emptyEl=document.getElementById('mcp-catalog-empty');
+    if(!catalog.length){el.innerHTML='';if(emptyEl)emptyEl.classList.remove('hidden');return;}
+    if(emptyEl)emptyEl.classList.add('hidden');
+    el.innerHTML=catalog.map(i=>{
+        const title=i.name||i.id||'—';
+        const desc=i.description||'';
+        const catId=String(i.id||i.name||'');
+        return `<div class="reg-card">
+  <div class="reg-card-head"><div class="reg-card-icon-ph"><span class="material-icons-round">extension</span></div>
+    <div class="reg-card-title-wrap"><div class="reg-card-title">${esc(title)}</div></div></div>
+  ${desc?`<div class="reg-card-desc">${esc(desc)}</div>`:''}
+  <div class="reg-card-footer"><div class="reg-card-links"></div>
+    <button class="reg-card-install" onclick="mcpInstallOpen('${esc(catId)}')"><span class="material-icons-round" style="font-size:13px">download</span>Установить</button>
+  </div>
+</div>`;
+    }).join('');
+}
+window.loadMcpPool=async function(){
+    try{const d=await api('/skills/api/mcp/pool/');state.mcpPool=d.servers||[];renderMcpPool();renderOverview();refreshRegistryGrid();}catch(e){}
+};
+window.mcpDelete=async function(id,skipConfirm){
+    const m=(state.mcpPool||[]).find(x=>x.id===id);
+    if(!skipConfirm&&!confirm('Удалить MCP «'+(m?.name||id)+'»?'))return;
+    try{await api(`/skills/api/mcp/pool/${id}/`,{method:'DELETE'});toast('Удалено');if(state.currentMcpId===id)fillMcpForm(null);loadMcpPool()}catch(e){}
+};
+window.mcpAddToAgent=async function(serverId,agentId){
+    if(!agentId)return;
+    try{const d=await api(`/skills/api/mcp/pool/${serverId}/add-to-agent/`,{method:'POST',body:JSON.stringify({agent_id:Number(agentId)})});toast(d.message)}catch(e){}
+};
+window.mcpTest=async function(id){
+    const btn=document.getElementById('mcp-test-'+id);
+    if(!btn)return;
+    const iconEl=btn.querySelector('.material-icons-round');
+    const origIcon='wifi_tethering';
+    // Спиннер
+    iconEl.textContent='sync';
+    iconEl.classList.add('animate-spin');
+    btn.disabled=true;
+    btn.classList.remove('text-emerald-400','text-rose-400','text-amber-400');
+    btn.classList.add('text-sky-400');
+    try{
+        const d=await api(`/skills/api/mcp/pool/${id}/test/`,{method:'POST'});
+        iconEl.classList.remove('animate-spin');
+        if(d.success){
+            iconEl.textContent='check_circle';
+            btn.classList.remove('text-sky-400');btn.classList.add('text-emerald-400');
+            const toolsInfo=d.tools&&d.tools.length?` · ${d.tools.length} инструм.`:'';
+            toast(`✅ ${d.message||'Работает'}${toolsInfo} (${d.latency_ms||0}мс)`,true);
+        }else{
+            iconEl.textContent='error_outline';
+            btn.classList.remove('text-sky-400');
+            btn.classList.add(d.status==='timeout'?'text-amber-400':'text-rose-400');
+            toast(`❌ ${d.message||d.detail||'Ошибка'}`,false);
+        }
+    }catch(e){
+        iconEl.classList.remove('animate-spin');
+        iconEl.textContent='error_outline';
+        btn.classList.remove('text-sky-400');btn.classList.add('text-rose-400');
+        toast('❌ '+e.message,false);
+    }finally{
+        btn.disabled=false;
+        // Сброс через 5 сек
+        setTimeout(()=>{
+            if(!btn)return;
+            const ic=btn.querySelector('.material-icons-round');
+            if(ic)ic.textContent=origIcon;
+            btn.classList.remove('text-emerald-400','text-rose-400','text-amber-400');
+            btn.classList.add('text-sky-400');
+        },5000);
+    }
+};
+window.mcpInstallOpen=function(catId){
+    document.getElementById('mcp-inst-id').value=catId;
+    const modal=document.getElementById('mcp-install-modal');
+    modal._regEntry=null;
+    const catalog=state.mcpCatalogDisplay||INIT.mcpCatalog||[];
+    const entry=catalog.find(i=>(i.id||i.name)===catId);
+    document.getElementById('mcp-inst-title').textContent=entry?(entry.name||entry.id||catId):catId;
+    const prev=document.getElementById('mcp-inst-preview');
+    if(entry&&(entry.command||entry.args?.length)){
+        prev.classList.remove('hidden');
+        document.getElementById('mcp-inst-prev-cmd').textContent=esc(entry.command||'');
+        document.getElementById('mcp-inst-prev-args').textContent=Array.isArray(entry.args)?entry.args.join(' '):'';
+        const envWrap=document.getElementById('mcp-inst-prev-env-wrap');
+        if(entry.env&&Object.keys(entry.env).length>0){envWrap.classList.remove('hidden');document.getElementById('mcp-inst-prev-env').textContent=Object.keys(entry.env).join(', ')+' (задаются при установке)';}
+        else{envWrap.classList.add('hidden');}
+    }else{prev.classList.add('hidden');}
+    const sel=document.getElementById('mcp-inst-agent');
+    sel.innerHTML='<option value="">-- не добавлять --</option>'+INIT.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+    modal.classList.remove('hidden');
+};
+/* btn-mcp-inst-do handler merged below with registry support */
+document.getElementById('btn-mcp-new').onclick=()=>{fillMcpForm(null)};
+document.getElementById('mcp-search').oninput=e=>{state.mcpSearch=e.target.value;renderMcpPool()};
+document.getElementById('mcp-editor-form').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const payload=getMcpPayload();
+    if(!payload.name||!payload.command){toast('Name и Command обязательны',false);return}
+    const id=state.currentMcpId;
+    try{
+        if(id){await api(`/skills/api/mcp/pool/${id}/`,{method:'PUT',body:JSON.stringify(payload)});toast('Сохранено')}
+        else{const d=await api('/skills/api/mcp/pool/',{method:'POST',body:JSON.stringify(payload)});toast('Создано');if(d.server)state.currentMcpId=d.server.id}
+        await loadMcpPool();
+        renderMcpPool();
+    }catch(err){}
+});
+document.getElementById('btn-mcp-del').onclick=async()=>{
+    if(!state.currentMcpId){toast('Выберите MCP для удаления',false);return}
+    mcpDelete(state.currentMcpId);
+};
+
+/* ============ GENERATOR ============ */
+const genChat=document.getElementById('gen-chat');
+function addChatBubble(text,role){
+    const div=document.createElement('div');div.className=`chat-bubble ${role}`;div.textContent=text;
+    genChat.appendChild(div);genChat.scrollTop=genChat.scrollHeight;
+}
+function updateGenCode(result){
+    genState.result=result;genState.code=result.code||'';
+    const codeEl=document.getElementById('gen-code');codeEl.textContent=genState.code;
+    document.getElementById('gen-code-edit').value=genState.code;
+    if(window.hljs)hljs.highlightElement(codeEl);
+    document.getElementById('gen-reqs').textContent=(result.requirements||[]).join(', ')||'-';
+    const envs=result.env_vars||{};
+    document.getElementById('gen-envs').textContent=Object.entries(envs).map(([k,v])=>`${k}: ${v}`).join(', ')||'-';
+    document.getElementById('btn-gen-save').disabled=false;
+    document.getElementById('btn-gen-dl').disabled=false;
+    document.getElementById('btn-gen-bind').disabled=false;
+}
+document.getElementById('btn-gen-send').onclick=async()=>{
+    const msg=document.getElementById('gen-input').value.trim();if(!msg)return;
+    addChatBubble(msg,'user');document.getElementById('gen-input').value='';
+    genState.history.push({role:'user',content:msg});
+    const docs=document.getElementById('gen-docs').value.trim();
+    addChatBubble('Генерирую...','ai');
+    try{
+        const d=await api('/skills/api/mcp/generator/',{method:'POST',body:JSON.stringify({message:msg,documentation:docs,history:genState.history})});
+        genChat.lastChild.textContent=`Готово! Сервер "${d.name}" создан. ${d.description||''}`;
+        genState.history.push({role:'assistant',content:d.description||'Код сгенерирован'});
+        updateGenCode(d);
+    }catch(e){genChat.lastChild.textContent='Ошибка генерации. Попробуйте ещё раз.'}
+};
+document.getElementById('gen-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('btn-gen-send').click()}});
+document.getElementById('btn-gen-edit').onclick=()=>{
+    const pre=document.getElementById('gen-code-pre');const ta=document.getElementById('gen-code-edit');
+    const editing=!ta.classList.contains('hidden');
+    if(editing){genState.code=ta.value;const codeEl=document.getElementById('gen-code');codeEl.textContent=genState.code;if(window.hljs)hljs.highlightElement(codeEl);pre.classList.remove('hidden');ta.classList.add('hidden')}
+    else{ta.value=genState.code;pre.classList.add('hidden');ta.classList.remove('hidden');ta.focus()}
+};
+document.getElementById('btn-gen-copy').onclick=()=>{navigator.clipboard.writeText(genState.code).then(()=>toast('Скопировано'))};
+document.getElementById('btn-gen-save').onclick=async()=>{
+    if(!genState.result)return;const r=genState.result;
+    try{await api('/skills/api/mcp/pool/',{method:'POST',body:JSON.stringify({name:r.name||'generated-mcp',command:r.command||'python',args:r.args||[],env:r.env_vars||{},description:r.description||''})});
+    toast('Сохранено в Мои MCP');loadMcpPool()}catch(e){}
+};
+document.getElementById('btn-gen-dl').onclick=()=>{
+    if(!genState.code)return;
+    const blob=new Blob([genState.code],{type:'text/x-python'});const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=(genState.result?.name||'mcp_server')+'.py';a.click();URL.revokeObjectURL(a.href);
+};
+document.getElementById('btn-gen-bind').onclick=async()=>{
+    const agentId=document.getElementById('gen-agent-sel').value;if(!agentId||!genState.result){toast('Выберите агента',false);return}
+    try{await api('/skills/api/mcp/pool/',{method:'POST',body:JSON.stringify({name:genState.result.name||'generated-mcp',command:genState.result.command||'python',args:genState.result.args||[],env:genState.result.env_vars||{},description:genState.result.description||''})});
+    const pool=await api('/skills/api/mcp/pool/');const srv=(pool.servers||[]).find(s=>s.name===(genState.result.name||'generated-mcp'));
+    if(srv)await api(`/skills/api/mcp/pool/${srv.id}/add-to-agent/`,{method:'POST',body:JSON.stringify({agent_id:Number(agentId)})});
+    toast('Сохранено и привязано');loadMcpPool()}catch(e){}
+};
+
+/* ============ POPULATE AGENT SELECTS ============ */
+function populateAgentSelects(){
+    const opts=INIT.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+    ['sk-bind-agent','gen-agent-sel','mcp-inst-agent','mcp-inst-all-agent'].forEach(id=>{
+        const sel=document.getElementById(id);if(sel)sel.innerHTML=(id.startsWith('mcp-inst')?'<option value="">-- не добавлять --</option>':'<option value="">-- выберите --</option>')+opts;
+    });
+}
+document.getElementById('btn-mcp-install-all').onclick=()=>{
+    const sel=document.getElementById('mcp-inst-all-agent');
+    sel.innerHTML='<option value="">-- не добавлять --</option>'+INIT.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+    document.getElementById('mcp-install-all-modal').classList.remove('hidden');
+};
+document.getElementById('btn-mcp-inst-all-do').onclick=async()=>{
+    const toPool=document.getElementById('mcp-inst-all-pool').checked;
+    const agentId=document.getElementById('mcp-inst-all-agent').value;
+    try{const d=await api('/skills/api/mcp/catalog/install-all/',{method:'POST',body:JSON.stringify({add_to_pool:toPool,agent_id:agentId||null})});
+    toast(d.message||'Установлено');document.getElementById('mcp-install-all-modal').classList.add('hidden');loadMcpPool()}catch(e){}
+};
+/* ---- Catalog (local JSON) ---- */
+document.getElementById('btn-mcp-catalog-fetch').onclick=async()=>{
+    const url=document.getElementById('mcp-catalog-url').value.trim();
+    if(!url){toast('Укажите URL каталога',false);return}
+    try{const d=await api('/skills/api/mcp/catalog/fetch/',{method:'POST',body:JSON.stringify({url})});
+    state.mcpCatalogDisplay=d.catalog||[];renderMcpCatalog();toast('Каталог загружен')}catch(e){}
+};
+
+/* ---- Registry sub-tabs ---- */
+window.switchRegTab = function switchRegTab(id,btn){
+    document.querySelectorAll('.reg-stab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.reg-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('reg-panel-'+id).classList.add('active');
+    if(id==='registry'&&document.getElementById('registry-grid').children.length===0&&!regState.loading)
+        searchRegistry(true);
+}
+
+/* ---- Registry state & functions ---- */
+const regState={query:'',cursor:'',loading:false,total:0,registrySource:'registry',localList:[],externalList:[],registryServers:[]};
+const escR=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ghSvg=`<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+
+function catalogItemToRegistryCard(item){
+    const id=item.id||item.name||'';
+    const name=item.name||item.id||'';
+    return {id,name,title:name,description:item.description||'',install_type:'local',repo_url:item.source_url||'',website_url:'',icon_url:'',version:'',command:item.command||'',args:item.args||[],env:item.env||{}};
+}
+function filterCatalogByQuery(list,q){
+    if(!q)return list;
+    const k=q.toLowerCase();
+    return list.filter(i=>{const n=(i.name||i.id||'').toLowerCase();const d=(i.description||'').toLowerCase();const t=((i.tags||[]).join(' ')).toLowerCase();return n.includes(k)||d.includes(k)||t.includes(k);});
+}
+function getInstalledForCard(s){
+    const key=(s.name||s.id||'').trim().toLowerCase();
+    if(!key)return null;
+    return (state.mcpPool||[]).find(m=>(m.name||'').trim().toLowerCase()===key)||null;
+}
+
+function renderRegistryCard(s,poolServer){
+    const title=s.title||s.name||s.id||'—';
+    const name=s.name||s.id||'';
+    const it=s.install_type||'unknown';
+    const itLabel={local:'local / stdio',remote:'remote / HTTP',unknown:'?'}[it]||it;
+    const itClass={local:'reg-badge-local',remote:'reg-badge-remote',unknown:'reg-badge-unk'}[it]||'reg-badge-unk';
+    const itIcon={local:'computer',remote:'cloud',unknown:'help_outline'}[it]||'help_outline';
+    const iconHtml=s.icon_url
+        ?`<img class="reg-card-icon" src="${escR(s.icon_url)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="reg-card-icon-ph" style="display:none"><span class="material-icons-round">extension</span></div>`
+        :`<div class="reg-card-icon-ph"><span class="material-icons-round">extension</span></div>`;
+    const links=[];
+    if(s.repo_url)links.push(`<a class="reg-card-link" href="${escR(s.repo_url)}" target="_blank" rel="noopener" title="GitHub">${ghSvg}</a>`);
+    if(s.website_url)links.push(`<a class="reg-card-link" href="${escR(s.website_url)}" target="_blank" rel="noopener" title="Website"><span class="material-icons-round">open_in_new</span></a>`);
+    const installed=!!poolServer;
+    let footerBtns='';
+    if(installed){
+        footerBtns=`<span class="reg-card-installed-badge"><span class="material-icons-round" style="font-size:12px">check_circle</span>Установлено</span>
+    <div class="reg-card-actions">
+      <button type="button" class="reg-card-btn" onclick="selectMcp(${poolServer.id});document.getElementById('mcp-editor-form')?.closest('.overflow-y-auto')?.scrollIntoView({behavior:'smooth',block:'start'})" title="Открыть в редакторе"><span class="material-icons-round" style="font-size:12px">settings</span>Настроить</button>
+      <button type="button" class="reg-card-btn reg-card-btn-danger" onclick="if(confirm('Удалить MCP из списка?'))mcpDelete(${poolServer.id})" title="Удалить"><span class="material-icons-round" style="font-size:12px">delete</span>Удалить</button>
+    </div>`;
+    }else{
+        footerBtns=`<button class="reg-card-install" onclick='installFromRegistry(JSON.parse(decodeURIComponent(this.dataset.s)))' data-s="${encodeURIComponent(JSON.stringify(s))}"><span class="material-icons-round" style="font-size:13px">download</span>Установить</button>`;
+    }
+    return `<div class="reg-card" data-reg-name="${escR(name)}">
+  <div class="reg-card-head">${iconHtml}<div class="reg-card-title-wrap"><div class="reg-card-title">${escR(title)}</div>${name!==title?`<div class="reg-card-name">${escR(name)}</div>`:''}</div></div>
+  ${s.description?`<div class="reg-card-desc">${escR(s.description)}</div>`:''}
+  <div class="reg-card-badges">
+    ${s.version?`<span class="reg-badge reg-badge-ver">v${escR(s.version)}</span>`:''}
+    <span class="reg-badge ${itClass}"><span class="material-icons-round" style="font-size:11px">${itIcon}</span>${escR(itLabel)}</span>
+  </div>
+  <div class="reg-card-footer">
+    <div class="reg-card-links">${links.join('')}</div>
+    ${footerBtns}
+  </div>
+</div>`;
+}
+
+function showRegSkeleton(v){const el=document.getElementById('registry-skeleton');el.style.display=v?'grid':'none';}
+function showRegEmpty(msg){const el=document.getElementById('registry-empty');el.style.display=msg!==null?'flex':'none';if(msg)document.getElementById('reg-empty-msg').textContent=msg;}
+function applyRegistryGrid(servers,total,showLoadMore){
+    const grid=document.getElementById('registry-grid');
+    grid.innerHTML=servers.map(s=>renderRegistryCard(s,getInstalledForCard(s))).join('');
+    document.getElementById('reg-count-label').textContent=total>0?total+' серверов':'';
+    document.getElementById('registry-load-more').style.display=showLoadMore?'inline-flex':'none';
+}
+function refreshRegistryGrid(){
+    const src=regState.registrySource;
+    const grid=document.getElementById('registry-grid');
+    if(src==='registry'&&regState.registryServers.length>0){
+        grid.innerHTML=regState.registryServers.map(s=>renderRegistryCard(s,getInstalledForCard(s))).join('');
+        document.getElementById('reg-count-label').textContent=regState.registryServers.length+' серверов';
+        document.getElementById('registry-load-more').style.display=regState.cursor?'inline-flex':'none';
+    }else if(src==='local'&&regState.localList.length>0){
+        const q=document.getElementById('registry-search-input').value.trim();
+        const list=q?filterCatalogByQuery(regState.localList,q):regState.localList;
+        const cards=list.map(catalogItemToRegistryCard);
+        applyRegistryGrid(cards,cards.length,false);
+    }else if(src==='external'&&regState.externalList.length>0){
+        const q=document.getElementById('registry-search-input').value.trim();
+        const list=filterCatalogByQuery(regState.externalList,q);
+        const cards=list.map(catalogItemToRegistryCard);
+        applyRegistryGrid(cards,list.length,false);
+    }
+}
+
+async function searchRegistry(reset=true){
+    const source=regState.registrySource;
+    const q=document.getElementById('registry-search-input').value.trim();
+    if(reset){regState.query=q;regState.cursor='';regState.total=0;regState.registryServers=[];document.getElementById('registry-grid').innerHTML='';document.getElementById('registry-load-more').style.display='none';document.getElementById('reg-count-label').textContent='';}
+
+    if(source==='local'){
+        if(regState.loading)return;
+        regState.loading=true;showRegEmpty(null);showRegSkeleton(true);
+        try{
+            let url='/skills/api/mcp/catalog/?q='+encodeURIComponent(q);
+            const d=await api(url);
+            showRegSkeleton(false);
+            const list=d.catalog||[];
+            regState.localList=list;
+            regState.total=list.length;
+            if(list.length===0)showRegEmpty(q?`По запросу «${q}» ничего не найдено`:'Локальный каталог пуст');
+            else{applyRegistryGrid(list.map(catalogItemToRegistryCard),list.length,false);}
+        }catch(e){showRegSkeleton(false);showRegEmpty('Ошибка: '+e.message);toast('Каталог: '+e.message,false);}
+        finally{regState.loading=false;}
+        return;
+    }
+    if(source==='external'){
+        const list=filterCatalogByQuery(regState.externalList,q);
+        regState.total=list.length;
+        if(list.length===0)showRegEmpty(regState.externalList.length===0?'Загрузите каталог по URL выше':(q?`По запросу «${q}» ничего не найдено`:'Нет записей'));
+        else{showRegEmpty(null);applyRegistryGrid(list.map(catalogItemToRegistryCard),list.length,false);}
+        return;
+    }
+
+    if(regState.loading)return;
+    regState.loading=true;
+    showRegEmpty(null);showRegSkeleton(true);
+    try{
+        let url='/skills/api/mcp/registry/?limit=48';
+        if(regState.query)url+='&q='+encodeURIComponent(regState.query);
+        if(regState.cursor)url+='&cursor='+encodeURIComponent(regState.cursor);
+        const res=await fetch(url,{credentials:'same-origin'});
+        const d=await res.json();
+        showRegSkeleton(false);
+        if(!d.success)throw new Error(d.error||'Ошибка загрузки');
+        const servers=d.servers||[];
+        regState.registryServers=regState.registryServers.concat(servers);
+        regState.total=regState.registryServers.length;
+        regState.cursor=d.next_cursor||'';
+        const grid=document.getElementById('registry-grid');
+        if(servers.length===0&&reset){showRegEmpty(regState.query?`По запросу «${regState.query}» ничего не найдено`:'Нет серверов в реестре');}
+        else{grid.insertAdjacentHTML('beforeend',servers.map(s=>renderRegistryCard(s,getInstalledForCard(s))).join(''));if(regState.total>0)document.getElementById('reg-count-label').textContent=regState.total+' серверов';}
+        document.getElementById('registry-load-more').style.display=regState.cursor?'inline-flex':'none';
+    }catch(e){showRegSkeleton(false);showRegEmpty('Ошибка: '+e.message);toast('Реестр: '+e.message,false);}
+    finally{regState.loading=false;}
+}
+
+function installFromRegistry(s){
+    const modal=document.getElementById('mcp-install-modal');
+    if(!modal)return;
+    document.getElementById('mcp-inst-id').value=s.id||s.name||'';
+    modal._regEntry=s;
+    document.getElementById('mcp-inst-title').textContent=(s.title||s.name||s.id)||'';
+    const prev=document.getElementById('mcp-inst-preview');
+    prev.classList.remove('hidden');
+    document.getElementById('mcp-inst-prev-cmd').textContent=esc(s.command||'');
+    document.getElementById('mcp-inst-prev-args').textContent=Array.isArray(s.args)?s.args.join(' '):'';
+    const envWrap=document.getElementById('mcp-inst-prev-env-wrap');
+    if(s.env&&Object.keys(s.env).length>0){envWrap.classList.remove('hidden');document.getElementById('mcp-inst-prev-env').textContent=Object.entries(s.env).map(([k,v])=>k+'=***').join(', ');}
+    else{envWrap.classList.add('hidden');}
+    const sel=document.getElementById('mcp-inst-agent');
+    if(sel){sel.innerHTML='<option value="">-- не добавлять --</option>'+(state.agents||[]).map(a=>`<option value="${a.id}">${escR(a.name)}</option>`).join('');}
+    modal.classList.remove('hidden');
+}
+window.installFromRegistry = installFromRegistry;
+
+/* Hook install button for registry entries */
+/* Unified install handler: registry entry OR catalog id */
+document.getElementById('btn-mcp-inst-do').addEventListener('click',async function(){
+    const modal=document.getElementById('mcp-install-modal');
+    const catId=document.getElementById('mcp-inst-id').value;
+    const toPool=document.getElementById('mcp-inst-pool')?.checked??true;
+    const agentId=document.getElementById('mcp-inst-agent')?.value||'';
+    const regEntry=modal?._regEntry||null;
+    if(modal)modal._regEntry=null;
+    try{
+        let body;
+        if(regEntry){
+            body={catalog_id:regEntry.id||regEntry.name,add_to_pool:toPool,agent_id:agentId||null,
+                  _entry:{id:regEntry.id,name:regEntry.name||regEntry.title,command:regEntry.command,args:regEntry.args,env:regEntry.env,description:regEntry.description,source_url:regEntry.source_url||regEntry.repo_url||regEntry.website_url||''}};
+        }else{
+            body={catalog_id:catId,add_to_pool:toPool,agent_id:agentId||null};
+        }
+        const d=await api('/skills/api/mcp/catalog/install/',{method:'POST',body:JSON.stringify(body)});
+        if(modal)modal.classList.add('hidden');toast(d.message||'Установлено');loadMcpPool();
+    }catch(err){toast('Ошибка установки: '+err.message,false);}
+});
+
+/* Registry source & search */
+document.getElementById('registry-source').addEventListener('change',function(){
+    regState.registrySource=this.value;
+    const wrap=document.getElementById('registry-external-url-wrap');
+    if(this.value==='external'){wrap.classList.remove('hidden');wrap.style.display='flex';}
+    else{wrap.classList.add('hidden');wrap.style.display='none';}
+    document.getElementById('registry-grid').innerHTML='';
+    document.getElementById('registry-load-more').style.display='none';
+    document.getElementById('reg-count-label').textContent='';
+    showRegEmpty(null);
+    if(this.value==='registry'){regState.cursor='';regState.localList=[];if(!regState.loading)searchRegistry(true);}
+    else if(this.value==='local'){if(!regState.loading)searchRegistry(true);}
+    else if(this.value==='external'){showRegEmpty(regState.externalList.length===0?'Введите URL JSON-каталога и нажмите Загрузить':null);if(regState.externalList.length)searchRegistry(true);}
+});
+document.getElementById('btn-registry-external-load').addEventListener('click',async function(){
+    const url=document.getElementById('registry-external-url').value.trim();
+    if(!url){toast('Укажите URL каталога',false);return}
+    regState.loading=true;showRegSkeleton(true);showRegEmpty(null);
+    try{
+        const d=await api('/skills/api/mcp/catalog/fetch/',{method:'POST',body:JSON.stringify({url})});
+        regState.externalList=d.catalog||[];
+        showRegSkeleton(false);
+        if(regState.externalList.length===0){showRegEmpty('По этому URL каталог пуст');return}
+        searchRegistry(true);
+    }catch(e){showRegSkeleton(false);showRegEmpty('Ошибка: '+e.message);toast(e.message,false);}
+    finally{regState.loading=false;}
+});
+/* Search UI events */
+document.getElementById('registry-search-input').addEventListener('keydown',e=>{if(e.key==='Enter')searchRegistry(true);});
+document.getElementById('btn-registry-search').addEventListener('click',()=>searchRegistry(true));
+let _regDebounce;
+document.getElementById('registry-search-input').addEventListener('input',()=>{clearTimeout(_regDebounce);_regDebounce=setTimeout(()=>searchRegistry(true),520);});
+document.getElementById('registry-load-more').addEventListener('click',()=>{if(regState.registrySource==='registry')searchRegistry(false);});
+
+/* ============ INIT ============ */
+renderOverview();renderSkillsList();renderMcpPool();renderMcpCatalog();populateAgentSelects();
+/* Auto-load registry on first visit to MCP tab */
+document.querySelector('[data-tab="mcp"]')?.addEventListener('click',()=>{
+    const grid=document.getElementById('registry-grid');
+    if(grid&&grid.children.length===0&&!regState.loading)searchRegistry(true);
+},true);
+fillSkillForm({status:'draft',source_ref:'main',source_path:'SKILL.md',server_scope_all:true});
+fillMcpForm(null);
+
+/* URL tab param */
+const urlTab=new URLSearchParams(window.location.search).get('tab');
+if(urlTab&&['overview','skills','mcp','generator'].includes(urlTab))switchTab(urlTab);
+if(urlTab==='mcp')setTimeout(maybeLoadRegistry,80);
+})();
+</script>
+{% endblock %}

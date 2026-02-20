@@ -1,0 +1,165 @@
+{
+  "starting_meta_credits": 220,
+  "default_unlocked_turret_ids": ["turret_basic"],
+  "rare_turret_ids": ["turret_splash", "turret_slow"],
+  "upgrades": [
+    {
+      "id": "grid_bootstrap_1",
+      "name": "Grid Bootstrap I",
+      "description": "Стартовые кредиты в забеге +20.",
+      "cost": 80,
+      "max_level": 1,
+      "effects": [
+        { "type": "starting_credits_flat", "value": 20 }
+      ]
+    },
+    {
+      "id": "grid_bootstrap_2",
+      "name": "Grid Bootstrap II",
+      "description": "Стартовые кредиты в забеге +35.",
+      "cost": 140,
+      "max_level": 1,
+      "requires": ["grid_bootstrap_1"],
+      "effects": [
+        { "type": "starting_credits_flat", "value": 35 }
+      ]
+    },
+    {
+      "id": "resilient_core_1",
+      "name": "Resilient Core I",
+      "description": "База получает +1 жизнь на старте забега.",
+      "cost": 130,
+      "max_level": 1,
+      "effects": [
+        { "type": "base_hp_flat", "value": 1 }
+      ]
+    },
+    {
+      "id": "resilient_core_2",
+      "name": "Resilient Core II",
+      "description": "Дополнительно +1 жизнь на старте забега.",
+      "cost": 220,
+      "max_level": 1,
+      "requires": ["resilient_core_1"],
+      "effects": [
+        { "type": "base_hp_flat", "value": 1 }
+      ]
+    },
+    {
+      "id": "rare_dispatch_1",
+      "name": "Rare Dispatch I",
+      "description": "Шанс редкой турели при покупке +8%.",
+      "cost": 120,
+      "max_level": 1,
+      "effects": [
+        { "type": "rare_turret_chance", "value": 0.08 }
+      ]
+    },
+    {
+      "id": "rare_dispatch_2",
+      "name": "Rare Dispatch II",
+      "description": "Шанс редкой турели при покупке +10%.",
+      "cost": 190,
+      "max_level": 1,
+      "requires": ["rare_dispatch_1"],
+      "effects": [
+        { "type": "rare_turret_chance", "value": 0.1 }
+      ]
+    },
+    {
+      "id": "rare_dispatch_3",
+      "name": "Rare Dispatch III",
+      "description": "Шанс редкой турели при покупке +12%.",
+      "cost": 280,
+      "max_level": 1,
+      "requires": ["rare_dispatch_2"],
+      "effects": [
+        { "type": "rare_turret_chance", "value": 0.12 }
+      ]
+    },
+    {
+      "id": "unlock_splash",
+      "name": "Protocol: Splash",
+      "description": "Открывает турель AoE Node в магазине забега.",
+      "cost": 170,
+      "max_level": 1,
+      "effects": [
+        { "type": "unlock_turret", "value": 1, "target_id": "turret_splash" }
+      ]
+    },
+    {
+      "id": "unlock_slow",
+      "name": "Protocol: Throttle",
+      "description": "Открывает турель Throttle Node в магазине забега.",
+      "cost": 240,
+      "max_level": 1,
+      "requires": ["unlock_splash"],
+      "effects": [
+        { "type": "unlock_turret", "value": 1, "target_id": "turret_slow" }
+      ]
+    },
+    {
+      "id": "credit_yield_1",
+      "name": "Credit Yield I",
+      "description": "Все получаемые в забеге кредиты +6%.",
+      "cost": 160,
+      "max_level": 1,
+      "effects": [
+        { "type": "run_credit_multiplier", "value": 0.06 }
+      ]
+    },
+    {
+      "id": "credit_yield_2",
+      "name": "Credit Yield II",
+      "description": "Все получаемые в забеге кредиты +8%.",
+      "cost": 260,
+      "max_level": 1,
+      "requires": ["credit_yield_1"],
+      "effects": [
+        { "type": "run_credit_multiplier", "value": 0.08 }
+      ]
+    }
+  ],
+  "daily_tasks": [
+    {
+      "id": "daily_merge_6",
+      "name": "Merge Operator",
+      "description": "Сделайте 6 merge за сутки.",
+      "type": "merge_count",
+      "target": 6,
+      "reward_meta_credits": 95
+    },
+    {
+      "id": "daily_wave_4",
+      "name": "Wave Auditor",
+      "description": "Очистите 4 волны за сутки.",
+      "type": "wave_clear_count",
+      "target": 4,
+      "reward_meta_credits": 105
+    },
+    {
+      "id": "daily_kills_28",
+      "name": "Packet Hunter",
+      "description": "Уничтожьте 28 врагов.",
+      "type": "enemy_kill_count",
+      "target": 28,
+      "reward_meta_credits": 100
+    },
+    {
+      "id": "daily_earn_320",
+      "name": "Credit Sweep",
+      "description": "Заработайте 320 кредитов в забегах.",
+      "type": "credits_earn",
+      "target": 320,
+      "reward_meta_credits": 115
+    },
+    {
+      "id": "daily_runs_2",
+      "name": "Shift Duty",
+      "description": "Запустите 2 забега за сутки.",
+      "type": "run_count",
+      "target": 2,
+      "reward_meta_credits": 85
+    }
+  ]
+}

@@ -98,6 +98,7 @@ from agent_hub.views_legacy import (
     _generate_workflow_script,
     _start_workflow_run,
     _write_ralph_yml,
+    _build_ralph_yml_from_steps,
     create_workflow_from_task,
 )
 
@@ -170,5 +171,6 @@ __all__ = [
     "_generate_workflow_script",
     "_start_workflow_run",
     "_write_ralph_yml",
+    "_build_ralph_yml_from_steps",
     "create_workflow_from_task",
 ]

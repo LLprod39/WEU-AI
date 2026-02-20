@@ -1,0 +1,13 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Проверить место на диске"
+    description: "Проверить место на диске"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "Подключись к серверу lunix через server_execute и выполни проверку места на диске (df -h). Выведи результат. Когда закончишь, выведи <promise>STEP_DONE</promise>"

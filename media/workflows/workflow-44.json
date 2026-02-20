@@ -1,0 +1,40 @@
+{
+  "name": "Проверка логов на ошибки",
+  "description": "Проверка сервера lunix на ошибки в системных логах",
+  "runtime": "cursor",
+  "task_type": "server",
+  "target_server": "lunix",
+  "steps": [
+    {
+      "title": "Проверка логов на ошибки",
+      "prompt": "Execute via server_execute on server lunix: проверь системные логи (journalctl -p err, /var/log/syslog, /var/log) на наличие ошибок. Выведи найденные ошибки и краткий отчёт. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Проверка логов на ошибки",
+        "description": "Проверка логов на ошибки",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: проверь системные логи (journalctl -p err, /var/log/syslog, /var/log) на наличие ошибок. Выведи найденные ошибки и краткий отчёт. Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-44.json"
+}

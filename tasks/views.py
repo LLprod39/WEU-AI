@@ -14,6 +14,7 @@ from .models import Task, SubTask, TaskNotification, TaskExecution, TaskShare
 from .notification_triggers import (
     notify_task_assigned,
     notify_task_watching,
+    notify_task_status_changed,
     notify_mentioned_in_comment,
 )
 from .ai import improve_task_description, breakdown_task
@@ -146,6 +147,48 @@ def task_list(request):
 @login_required
 @require_feature('tasks')
 @require_GET
+def task_board_api(request):
+    """API: доска задач по статусам (JSON) для AJAX-обновления без перезагрузки."""
+    from .models import Project, Sprint
+
+    project_id = request.GET.get('project')
+    sprint_id = request.GET.get('sprint')
+
+    user_projects = Project.objects.filter(
+        Q(owner=request.user) | Q(members__user=request.user)
+    ).distinct()
+
+    current_project = None
+    current_sprint = None
+    base_qs = _tasks_queryset_for_user(request.user)
+
+    if project_id:
+        current_project = user_projects.filter(id=project_id).first()
+        if current_project:
+            base_qs = base_qs.filter(project=current_project)
+            sprints = Sprint.objects.filter(project=current_project).order_by('-start_date', '-created_at')
+            if sprint_id:
+                current_sprint = sprints.filter(id=sprint_id).first()
+                if current_sprint:
+                    base_qs = base_qs.filter(sprint=current_sprint)
+
+    limit = 100
+    tasks_todo = list(base_qs.filter(status='TODO').order_by('-created_at').values_list('id', flat=True)[:limit])
+    tasks_in_progress = list(base_qs.filter(status='IN_PROGRESS').order_by('-created_at').values_list('id', flat=True)[:limit])
+    tasks_blocked = list(base_qs.filter(status='BLOCKED').order_by('-created_at').values_list('id', flat=True)[:limit])
+    tasks_done = list(base_qs.filter(status='DONE').order_by('-created_at').values_list('id', flat=True)[:limit])
+
+    return JsonResponse({
+        'TODO': tasks_todo,
+        'IN_PROGRESS': tasks_in_progress,
+        'BLOCKED': tasks_blocked,
+        'DONE': tasks_done,
+    })
+
+
+@login_required
+@require_feature('tasks')
+@require_GET
 def task_detail_api(request, task_id):
     """API: получить задачу по id (JSON)."""
     from .models import TaskComment
@@ -219,6 +262,7 @@ def task_detail_api(request, task_id):
         'due_date': task.due_date.isoformat() if task.due_date else None,
         'assigned_to_ai': task.assigned_to_ai,
         'ai_execution_status': task.ai_execution_status,
+        'ai_execution_report': task.ai_execution_report,
         'created_at': task.created_at.isoformat() if task.created_at else None,
         'progress': task.get_progress_percentage(),
         # New fields
@@ -429,6 +473,7 @@ def task_update_status(request, task_id):
             task.completed_at = timezone.now()
         task.save()
         notify_task_watching(task, request.user, summary=f'Статус изменён на {status}')
+        notify_task_status_changed(task, old_status, status, request.user)
         try:
             from .email_service import TaskEmailService
             TaskEmailService.send_task_status_changed(task, old_status, request.user)

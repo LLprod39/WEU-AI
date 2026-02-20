@@ -4,10 +4,8 @@ Automation and run endpoints for custom agents.
 from __future__ import annotations
 
 import json
-import threading
 from typing import Any, Dict
 
-from asgiref.sync import async_to_sync
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -18,7 +16,6 @@ from core_ui.decorators import require_feature
 from agent_hub.models import CustomAgent
 from app.services.workflow_service import WorkflowService
 from tasks.models import Task
-from tasks.task_executor import TaskExecutor
 
 
 def _parse_json_body(request) -> Dict[str, Any]:
@@ -26,15 +23,6 @@ def _parse_json_body(request) -> Dict[str, Any]:
         return json.loads(request.body or "{}")
     except json.JSONDecodeError:
         return {}
-
-
-def _start_task_executor(task_id: int, user_id: int) -> None:
-    executor = TaskExecutor()
-    thread = threading.Thread(
-        target=lambda: async_to_sync(executor.execute_task)(task_id, user_id)
-    )
-    thread.daemon = True
-    thread.start()
 
 
 @csrf_exempt
@@ -79,7 +67,7 @@ def api_custom_agent_run(request):
         server_id = None
     auto_execute = bool(data.get("auto_execute", True))
     project_path = (data.get("project_path") or "").strip()
-    runtime_override = (data.get("runtime") or "").strip() or None
+    runtime_override = "cursor"  # Всегда cursor: Composer 1.5 пишет план, workflow выполняется на auto
     skill_ids_override = data.get("skill_ids") if isinstance(data.get("skill_ids"), list) else None
     if skill_ids_override is None:
         skill_ids_override = list(custom_agent.skills.values_list("id", flat=True))
@@ -115,12 +103,6 @@ def api_custom_agent_run(request):
         task.server_name_mentioned = server.name
         task.save(update_fields=["target_server", "server_name_mentioned"])
 
-        if auto_execute:
-            _start_task_executor(task.id, request.user.id)
-            return JsonResponse({"success": True, "task_id": task.id, "started": True})
-
-        return JsonResponse({"success": True, "task_id": task.id, "started": False})
-
     if not auto_execute:
         return JsonResponse({"success": True, "task_id": task.id, "started": False})
 
@@ -138,10 +120,18 @@ def api_custom_agent_run(request):
         task.save(update_fields=["ai_execution_status"])
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
+    if not workflow or not run:
+        task.ai_execution_status = "FAILED"
+        task.save(update_fields=["ai_execution_status"])
+        return JsonResponse({
+            "success": False,
+            "error": "Не удалось сгенерировать workflow (LLM не вернул JSON). Включите Gemini или Grok в настройках модели.",
+        }, status=500)
+
     return JsonResponse({
         "success": True,
         "task_id": task.id,
-        "workflow_id": workflow.id if workflow else None,
-        "workflow_run_id": run.id if run else None,
+        "workflow_id": workflow.id,
+        "workflow_run_id": run.id,
         "started": True,
     })

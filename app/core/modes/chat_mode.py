@@ -11,6 +11,7 @@ from typing import AsyncGenerator, List, Dict, Any
 from loguru import logger
 from app.core.modes.base import BaseMode
 from app.core.task_board import build_task_board_payload
+from app.core.server_board import build_server_board_payload
 
 
 # Системные правила для чата (профессиональный стиль)
@@ -171,6 +172,20 @@ class ChatMode(BaseMode):
                             self.orchestrator.history.append({"role": "assistant", "content": final_response})
                         return
 
+                if tool_name == "servers_list" and self._is_server_list_request(message):
+                    server_payload = build_server_board_payload(tool_name, result_str, query=message)
+                    if server_payload:
+                        final_response = "WEU_SERVERS_JSON:" + json.dumps(
+                            server_payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        yield final_response
+                        effective_history.append({"role": "assistant", "content": final_response})
+                        if not initial_history:
+                            self.orchestrator.history.append({"role": "assistant", "content": final_response})
+                        return
+
                 # Формируем финальный ответ с данными инструмента
                 final_prompt = self._build_final_prompt(
                     user_message=message,
@@ -229,6 +244,21 @@ class ChatMode(BaseMode):
             r"дедлайн",
             r"есть задачи",
             r"что по задачам",
+        ]
+        return any(re.search(p, text) for p in patterns)
+
+    @staticmethod
+    def _is_server_list_request(message: str) -> bool:
+        text = (message or "").strip().lower()
+        if not text:
+            return False
+        patterns = [
+            r"сервер",
+            r"какие.*сервер",
+            r"список.*сервер",
+            r"доступн.*сервер",
+            r"есть.*сервер",
+            r"какие у нас.*сервер",
         ]
         return any(re.search(p, text) for p in patterns)
 
@@ -366,6 +396,16 @@ JSON:
 3. Если данных мало — сформулируй короткие уточняющие вопросы.
 4. Не делай общую сводку всех задач.
 Русский язык, без emoji.
+"""
+
+        if tool_name == "servers_list":
+            return f"""Ты получил данные от инструмента servers_list.
+
+ЗАПРОС: {user_message}
+JSON:
+{tool_result}
+
+Дай краткий ответ: перечисли серверы (имя, host:port). Если пользователь спрашивает «какие серверы» — дай список. Русский язык, без emoji.
 """
 
         return f"""Ты получил данные от инструмента {tool_name}. Отформатируй их для пользователя на русском.

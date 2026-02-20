@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet">
 
     <!-- Icons -->
@@ -29,7 +29,7 @@
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        sans: ['DM Sans', 'system-ui', 'sans-serif'],
                         mono: ['JetBrains Mono', 'Consolas', 'monospace'],
                     },
                     colors: {
@@ -190,9 +190,9 @@
                 <span class="material-icons-round text-lg {% if 'agents' in request.path %}text-primary{% endif %}" aria-hidden="true">smart_toy</span>
                 <span class="nav-text">Agents</span>
             </a>
-            <a href="{% url 'skills:skills_page' %}" class="sidebar-link {% if '/skills/' in request.path %}active{% endif %}" aria-label="Skills">
+            <a href="{% url 'skills:skills_page' %}" class="sidebar-link {% if '/skills/' in request.path %}active{% endif %}" aria-label="Skills / MCP">
                 <span class="material-icons-round text-lg {% if '/skills/' in request.path %}text-primary{% endif %}" aria-hidden="true">rule_folder</span>
-                <span class="nav-text">Skills</span>
+                <span class="nav-text">Skills / MCP</span>
             </a>
             {% endif %}
 
@@ -341,7 +341,7 @@
         </header>
 
         <!-- Page Content -->
-        <div class="flex-1 overflow-hidden z-10 relative">
+        <div class="flex-1 min-h-0 flex flex-col overflow-hidden z-10 relative" style="min-height: 0;">
             {% block content %}{% endblock %}
         </div>
     </main>
@@ -842,7 +842,7 @@
             window.addEventListener('scroll', function() { positionDropdown(); }, true);
             window.addEventListener('resize', function() { positionDropdown(); });
             refresh();
-            setInterval(refresh, 15000); // Проверяем уведомления каждые 15 секунд
+            setInterval(refresh, 5000); // AJAX: уведомления каждые 5 сек, чтобы новые появлялись сразу
         }
     });
     </script>

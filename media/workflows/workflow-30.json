@@ -1,0 +1,39 @@
+{
+  "name": "Проверить место на диске",
+  "description": "Проверить место на диске на сервере lunix",
+  "runtime": "cursor",
+  "task_type": "server",
+  "steps": [
+    {
+      "title": "Проверить место на диске",
+      "prompt": "Execute via server_execute on server lunix: run df -h to check disk space usage. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Проверить место на диске",
+        "description": "Проверить место на диске",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: run df -h to check disk space usage. Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-30.json"
+}

@@ -204,6 +204,29 @@ def notify_mentioned_in_comment(task, comment_content, author):
         pass
 
 
+def notify_task_status_changed(task, old_status: str, new_status: str, updated_by):
+    """Уведомление assignee и наблюдателям об изменении статуса задачи."""
+    try:
+        user_ids = set(task.watchers.values_list("id", flat=True))
+        if task.assignee_id:
+            user_ids.add(task.assignee_id)
+        if task.created_by_id:
+            user_ids.add(task.created_by_id)
+        user_ids.discard(updated_by.id)
+        status_display = dict(task.STATUS_CHOICES).get(new_status, new_status)
+        for uid in user_ids:
+            TaskNotification.objects.create(
+                user_id=uid,
+                notification_type="STATUS_CHANGED",
+                task=task,
+                title=f"Статус задачи {task.get_display_id()} изменён",
+                message=f"{updated_by.username}: статус изменён на «{status_display}»",
+                action_url=reverse("tasks:task_list") + (f"?project={task.project_id}" if task.project_id else ""),
+            )
+    except Exception:
+        pass
+
+
 def notify_sprint_completed(sprint):
     """Уведомление участникам проекта о завершении спринта."""
     try:

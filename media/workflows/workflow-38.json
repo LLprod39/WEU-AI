@@ -1,0 +1,40 @@
+{
+  "name": "Проверить место на диске",
+  "description": "Проверить свободное место на диске целевого сервера lunix",
+  "runtime": "cursor",
+  "task_type": "server",
+  "target_server": "lunix",
+  "steps": [
+    {
+      "title": "Проверить место на диске",
+      "prompt": "Выполни на сервере lunix через server_execute команду проверки места на диске (df -h). Покажи результат и выведи <promise>STEP_DONE</promise> когда готово.",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Проверить место на диске",
+        "description": "Проверить место на диске",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Выполни на сервере lunix через server_execute команду проверки места на диске (df -h). Покажи результат и выведи <promise>STEP_DONE</promise> когда готово."
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-38.json"
+}

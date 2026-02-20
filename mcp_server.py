@@ -8,9 +8,21 @@ import json
 import os
 import sys
 
-# Setup Django
+# Путь проекта до любых импортов Django
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'web_ui.settings')
+
+# Если используется PostgreSQL — проверить psycopg2 до django.setup(), иначе Django падает с неочевидной ошибкой
+if os.getenv("POSTGRES_HOST") or os.getenv("POSTGRES_DB"):
+    try:
+        import psycopg2  # noqa: F401
+    except ImportError:
+        err = (
+            "Error loading psycopg2 or psycopg module.\n"
+            "Для PostgreSQL установите драйвер: pip install psycopg2-binary"
+        )
+        print(json.dumps({"error": err}), file=sys.stderr)
+        sys.exit(1)
 
 # Delayed Django import to speed up startup
 _django_ready = False
@@ -18,10 +30,20 @@ _django_ready = False
 
 def _ensure_django():
     global _django_ready
-    if not _django_ready:
+    if _django_ready:
+        return
+    try:
         import django
         django.setup()
         _django_ready = True
+    except RuntimeError as e:
+        if "populate() isn't reentrant" in str(e):
+            print(
+                json.dumps({"error": "Django init failed (reentrant). Install psycopg2-binary: pip install psycopg2-binary"}),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
 
 
 def _get_user_id():

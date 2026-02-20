@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "weu-servers": {
+      "type": "stdio",
+      "command": "/mnt/c/work_ai/agent_projects/web_rA/.venv/bin/python",
+      "args": [
+        "-u",
+        "/mnt/c/work_ai/agent_projects/web_rA/mcp_server.py"
+      ],
+      "env": {
+        "WEU_USER_ID": "1"
+      },
+      "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)"
+    }
+  }
+}

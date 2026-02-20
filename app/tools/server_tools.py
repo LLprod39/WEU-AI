@@ -86,10 +86,11 @@ class ServersListTool(BaseTool):
         rows = list(qs)
         if not rows:
             return "Нет настроенных серверов. Добавь серверы в разделе Servers."
-        lines = ["id | name | host:port"]
-        for r in rows:
-            lines.append(f"{r['id']} | {r['name']} | {r['host']}:{r['port']}")
-        return "\n".join(lines)
+        servers = [
+            {"id": r["id"], "name": r["name"], "host": r["host"], "port": r["port"]}
+            for r in rows
+        ]
+        return {"servers": servers, "total": len(servers)}
 
 
 class ServerExecuteTool(BaseTool):

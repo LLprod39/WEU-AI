@@ -1,0 +1,19 @@
+{
+  "name": "Проверить что есть Docker",
+  "description": "Проверить наличие и работоспособность Docker на сервере lunix",
+  "runtime": "cursor",
+  "task_type": "server",
+  "steps": [
+    {
+      "title": "Проверить Docker",
+      "prompt": "Выполни команду docker --version и docker ps на сервере lunix через server_execute (server_name_or_id=\"lunix\"). Выведи результат. Когда готово выведи <promise>STEP_DONE</promise>",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "skill_ids": [
+    2
+  ],
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-24.json"
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      window.__bootErrors = []; window.__bootRejections = [];
+      window.onerror = function(m,u,l,c,e) { window.__bootErrors.push({m:m,u:u,l:l,c:c,s:e&&e.stack}); return false; };
+      window.onunhandledrejection = function(e) { window.__bootRejections.push({r: e.reason&&(e.reason.message||String(e.reason)), s: e.reason&&e.reason.stack}); };
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataCenter Merge Defense</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (function () {
+        var host = (window.location && window.location.hostname) || '';
+        var isYandex = /yandex\.(ru|com|by|kz|com\.tr)/.test(host) || host.endsWith('.yandex');
+        if (isYandex) {
+          var el = document.createElement('script');
+          el.src = '/sdk.js';
+          el.async = false;
+          document.head.appendChild(el);
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

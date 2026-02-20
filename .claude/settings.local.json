@@ -35,7 +35,12 @@
       "Bash(pip install:*)",
       "Bash(dir \"C:\\\\work_ai\\\\agent_projects\\\\web_rA\\\\core_ui\\\\templates\")",
       "Bash(findstr:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "WebFetch(domain:registry.modelcontextprotocol.io)",
+      "mcp__plugin_playwright_playwright__browser_network_requests",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_wait_for"
     ]
   }
 }

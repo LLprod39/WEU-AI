@@ -64,6 +64,7 @@ class WorkflowService:
             _generate_workflow_script,
             _start_workflow_run,
             _write_ralph_yml,
+            _build_ralph_yml_from_steps,
         )
 
         task_text = f"{task.title}\n\n{task.description or ''}".strip()
@@ -132,6 +133,12 @@ class WorkflowService:
         if selected_skill_ids:
             parsed["skill_ids"] = selected_skill_ids
 
+        # Ralph — оркестратор: генерируем ralph_yml из steps для любого CLI runtime
+        if not parsed.get("ralph_yml") and parsed.get("steps"):
+            ralph_yml = _build_ralph_yml_from_steps(parsed, default_runtime)
+            if ralph_yml:
+                parsed["ralph_yml"] = ralph_yml
+
         # Create workflow
         workflow = AgentWorkflow.objects.create(
             owner=user,
@@ -141,6 +148,7 @@ class WorkflowService:
             script=parsed,
             project_path=project_path,
             target_server=target_server,
+            task=task,
         )
 
         # Log creation

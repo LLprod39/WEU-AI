@@ -201,11 +201,14 @@ python manage.py runserver
 
 | Документ | Описание |
 |---------|----------|
-| [docs/FEATURES.md](docs/FEATURES.md) | Полный список возможностей и фич |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура и компоненты |
-| [docs/QUICK_START_DEVOPS.md](docs/QUICK_START_DEVOPS.md) | Быстрый старт для DevOps |
-| [docs/MODEL_SELECTION.md](docs/MODEL_SELECTION.md) | Выбор и настройка моделей |
-| [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md) | Настройка HTTPS (certbot) |
+| 🌐 **[Веб-документация](http://localhost:9000/docs/ui-guide/)** | Интерактивная документация в браузере (после запуска) |
+| [docs/QUICK_START_DEVOPS.md](docs/QUICK_START_DEVOPS.md) | Быстрый старт — установка за 10 минут |
+| [docs/MODEL_SELECTION.md](docs/MODEL_SELECTION.md) | Выбор и настройка LLM-моделей |
+| [docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md) | Настройка HTTPS: Nginx, Caddy, Traefik |
+| [docs/FEATURES.md](docs/FEATURES.md) | Полный список возможностей платформы |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура, компоненты, data flow |
+| [docs/SKILLS_MCP_HUB.md](docs/SKILLS_MCP_HUB.md) | Подключение MCP-серверов и Skills |
+| [docs/CODEX_AGENT_SETUP.md](docs/CODEX_AGENT_SETUP.md) | Настройка агента Codex |
 
 ---
 

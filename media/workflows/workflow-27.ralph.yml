@@ -1,0 +1,31 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Проверка дискового пространства и основных каталогов логов"
+    description: "Проверка дискового пространства и основных каталогов логов"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "Проверь дисковое пространство (df -h) и основные каталоги логов (/var/log, /tmp). Покажи занятость и доступное место."
+  step_2:
+    name: "Анализ системных логов на ошибки"
+    description: "Анализ системных логов на ошибки"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "Просмотри системные логи (syslog, journalctl, dmesg) и найди записи с уровнем error, critical, fail. Выведи последние ошибки."
+  step_3:
+    name: "Проверка логов приложений и сервисов"
+    description: "Проверка логов приложений и сервисов"
+    triggers: ["step_2.done"]
+    publishes: ["step_3.done"]
+    instructions: "Проверь логи приложений в /var/log (nginx, apache, postgresql и т.п.) на наличие ошибок. Покажи последние проблемные записи."
+  step_4:
+    name: "Сводка и рекомендации"
+    description: "Сводка и рекомендации"
+    triggers: ["step_3.done"]
+    publishes: ["step_4.done"]
+    instructions: "Составь краткую сводку: критические ошибки, предупреждения, состояние дисков. Дай рекомендации по устранению найденных проблем."

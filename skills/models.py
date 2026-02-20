@@ -203,3 +203,58 @@ class SkillSyncLog(models.Model):
 
     def __str__(self) -> str:
         return f"SkillSyncLog(skill={self.skill_id}, success={self.success})"
+
+
+class UserMCPServer(models.Model):
+    """
+    Пул MCP-серверов пользователя («Мои MCP»).
+    Шаблоны для добавления в агентов без ручного ввода command/args.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="user_mcp_servers",
+    )
+    name = models.CharField(max_length=120, help_text="Уникальный идентификатор сервера (например filesystem)")
+    command = models.CharField(max_length=300)
+    args = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Список аргументов команды, например ['-y', '@modelcontextprotocol/server-filesystem', '/workspace']",
+    )
+    env = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Переменные окружения, например {\"GITHUB_PERSONAL_ACCESS_TOKEN\": \"\"}",
+    )
+    description = models.TextField(blank=True, default="")
+    source_url = models.CharField(max_length=600, blank=True, default="", help_text="Откуда установлен (каталог, репо)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="skills_user_mcp_unique_user_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "-updated_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} (user:{self.user_id})"
+
+    def to_agent_config(self) -> dict:
+        """Словарь для подстановки в CustomAgent.mcp_servers."""
+        out = {
+            "enabled": True,
+            "command": self.command,
+            "args": self.args or [],
+            "description": (self.description or "").strip(),
+        }
+        if self.env:
+            out["env"] = dict(self.env)
+        return out

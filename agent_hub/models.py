@@ -144,6 +144,14 @@ class AgentWorkflow(models.Model):
         related_name="workflows",
         help_text="Целевой сервер для выполнения команд (если не указан — агент сам выбирает из доступных)",
     )
+    task = models.ForeignKey(
+        "tasks.Task",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflows",
+        help_text="Задача, из которой создан workflow",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

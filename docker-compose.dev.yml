@@ -1,0 +1,49 @@
+# Отдельный контекст для локальной разработки: только Postgres (+ опционально Redis).
+# Не трогает текущие контейнеры weu-web, weu-celery-worker и т.д.
+#
+# Запуск (из корня проекта):
+#   docker compose -f docker-compose.dev.yml -p weu-dev up -d
+#
+# Postgres будет на порту 5433 (чтобы не конфликтовать с weu-postgres на 5432).
+# В .env для этого контекста задайте: POSTGRES_PORT=5433
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-weu_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-weu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - weu_dev_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weu} -d ${POSTGRES_DB:-weu_platform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=128MB"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - weu_dev_redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  weu_dev_postgres_data:
+  weu_dev_redis_data:

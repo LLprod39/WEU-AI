@@ -17,7 +17,12 @@ docker compose up --build           # Build and run full stack
 docker compose logs -f web          # Follow web container logs
 docker exec weu-web python manage.py migrate  # Run migrations in container
 
-# Local development (Linux/Mac)
+# Local development с PostgreSQL в Docker (рекомендуется: много запросов, без блокировок)
+docker compose up postgres -d             # 1) Сначала поднять только Postgres
+python scripts/setup_postgres_and_migrate.py  # 2) Миграции + админ + перенос из SQLite
+python manage.py runserver                # 3) Запуск (порт 9000 по умолчанию)
+
+# Local development (Linux/Mac) без Docker Postgres
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt           # Mini build (no RAG)
 pip install -r requirements-full.txt      # Full build with RAG

@@ -1,0 +1,57 @@
+{
+  "name": "Disk and Containers Check",
+  "description": "Проверить свободное место на диске и запущенные контейнеры на сервере lunix",
+  "runtime": "cursor",
+  "task_type": "server",
+  "target_server": "lunix",
+  "steps": [
+    {
+      "title": "Проверить свободное место на диске",
+      "prompt": "Execute via server_execute on server lunix: df -h. Show disk usage and free space. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    },
+    {
+      "title": "Проверить запущенные контейнеры",
+      "prompt": "Execute via server_execute on server lunix: docker ps -a (or podman ps -a if docker not available). List running containers. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Проверить свободное место на диске",
+        "description": "Проверить свободное место на диске",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: df -h. Show disk usage and free space. Output <promise>STEP_DONE</promise> when done"
+      },
+      "step_2": {
+        "name": "Проверить запущенные контейнеры",
+        "description": "Проверить запущенные контейнеры",
+        "triggers": [
+          "step_1.done"
+        ],
+        "publishes": [
+          "step_2.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: docker ps -a (or podman ps -a if docker not available). List running containers. Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-25.json"
+}

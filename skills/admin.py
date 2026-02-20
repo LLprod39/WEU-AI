@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from skills.models import Skill, SkillShare, SkillSyncLog
+from skills.models import Skill, SkillShare, SkillSyncLog, UserMCPServer
 
 
 @admin.register(Skill)
@@ -36,3 +36,11 @@ class SkillShareAdmin(admin.ModelAdmin):
     list_filter = ("can_edit", "can_manage")
     search_fields = ("skill__name", "shared_with__username", "shared_by__username")
     autocomplete_fields = ("skill", "shared_with", "shared_by")
+
+
+@admin.register(UserMCPServer)
+class UserMCPServerAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "user", "command", "updated_at")
+    list_filter = ("user",)
+    search_fields = ("name", "command", "description")
+    autocomplete_fields = ("user",)

@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    window.__AGENT_HUB_VERSION__ = 'hub-v6';
+    window.__AGENT_HUB_VERSION__ = 'hub-v9';
 
     var presetData = [];
     var workflowsData = [];
@@ -2112,6 +2112,20 @@
         document.getElementById('agent-editor-title').textContent = agentId ? 'Редактировать агента' : 'Новый агент';
         document.getElementById('agent-editor-all-servers').checked = true;
         document.getElementById('agent-editor-allowed-servers').disabled = true;
+        // Reset wizard to step 1
+        goToStep(1);
+        // Reset avatar
+        document.querySelectorAll('.agent-avatar-opt').forEach(function (o) { o.classList.remove('selected'); });
+        var firstAvatar = document.querySelector('.agent-avatar-opt[data-emoji="🔧"]');
+        if (firstAvatar) firstAvatar.classList.add('selected');
+        var avatarHidden = document.getElementById('agent-editor-avatar');
+        if (avatarHidden) avatarHidden.value = '🔧';
+        // Reset runtime cards — default: claude
+        document.querySelectorAll('.agent-runtime-card').forEach(function (c) { c.classList.remove('selected'); });
+        var defaultCard = document.querySelector('.agent-runtime-card[data-runtime="claude"]');
+        if (defaultCard) defaultCard.classList.add('selected');
+        var runtimeHidden = document.getElementById('agent-editor-runtime');
+        if (runtimeHidden) runtimeHidden.value = 'claude';
 
         if (agentId) {
             fetch('/agents/api/custom-agents/' + agentId + '/')
@@ -2125,7 +2139,12 @@
                     document.getElementById('agent-editor-system-prompt').value = agent.system_prompt || '';
                     document.getElementById('agent-editor-instructions').value = agent.instructions || '';
                     document.getElementById('agent-editor-knowledge-base').value = agent.knowledge_base || '';
-                    document.getElementById('agent-editor-runtime').value = agent.runtime || 'claude';
+                    var rt = agent.runtime || 'claude';
+                    document.getElementById('agent-editor-runtime').value = rt;
+                    // sync runtime cards UI
+                    document.querySelectorAll('.agent-runtime-card').forEach(function (c) {
+                        c.classList.toggle('selected', c.dataset.runtime === rt);
+                    });
                     document.getElementById('agent-editor-model').value = agent.model || 'claude-4.5-sonnet';
                     document.getElementById('agent-editor-orchestrator').value = agent.orchestrator_mode || 'ralph_internal';
                     document.getElementById('agent-editor-max-iterations').value = agent.max_iterations || 10;
@@ -2148,6 +2167,65 @@
         }
     }
     window.openAgentEditor = openAgentEditor;
+
+    // ── Wizard helpers ──────────────────────────────────────────────
+    var _agentWizardStep = 1;
+
+    function goToStep(n) {
+        _agentWizardStep = n;
+        var total = 3;
+        // update step indicators
+        for (var i = 1; i <= total; i++) {
+            var stepEl = document.getElementById('wz-step-' + i);
+            if (!stepEl) continue;
+            stepEl.classList.toggle('active', i === n);
+            stepEl.classList.toggle('done', i < n);
+            var numEl = stepEl.querySelector('.wz-num');
+            if (numEl) numEl.textContent = i < n ? '✓' : String(i);
+        }
+        // update panels
+        for (var j = 1; j <= total; j++) {
+            var panel = document.getElementById('wz-panel-' + j);
+            if (!panel) continue;
+            if (j === n) {
+                panel.style.display = j === 2 ? 'flex' : 'grid';
+                panel.classList.add('active');
+            } else {
+                panel.style.display = 'none';
+                panel.classList.remove('active');
+            }
+        }
+        // update footer buttons
+        var backBtn = document.getElementById('agent-wizard-back');
+        var nextBtn = document.getElementById('agent-wizard-next');
+        var saveBtn = document.getElementById('agent-wizard-save');
+        if (backBtn) backBtn.style.display = n > 1 ? '' : 'none';
+        if (nextBtn) nextBtn.style.display = n < total ? '' : 'none';
+        if (saveBtn) saveBtn.style.display = n === total ? '' : 'none';
+    }
+    window.goToStep = goToStep;
+
+    window.agentWizardNext = function () {
+        if (_agentWizardStep < 3) goToStep(_agentWizardStep + 1);
+    };
+    window.agentWizardBack = function () {
+        if (_agentWizardStep > 1) goToStep(_agentWizardStep - 1);
+    };
+
+    window.selectAgentAvatar = function (el) {
+        document.querySelectorAll('.agent-avatar-opt').forEach(function (o) { o.classList.remove('selected'); });
+        el.classList.add('selected');
+        var hiddenEl = document.getElementById('agent-editor-avatar');
+        if (hiddenEl) hiddenEl.value = el.dataset.emoji || '🤖';
+    };
+
+    window.selectRuntime = function (card) {
+        document.querySelectorAll('.agent-runtime-card').forEach(function (c) { c.classList.remove('selected'); });
+        card.classList.add('selected');
+        var hiddenEl = document.getElementById('agent-editor-runtime');
+        if (hiddenEl) hiddenEl.value = card.dataset.runtime || 'claude';
+    };
+    // ── End wizard helpers ──────────────────────────────────────────
 
     window.applyAssistConfig = function () {
         var taskEl = document.getElementById('agent-assist-task');
@@ -2292,10 +2370,15 @@
         if (!modal) return;
         modal.classList.remove('hidden');
         var resolvedId = agentId || selectedAgentId;
-        if (resolvedId) selectedAgentId = resolvedId;
+        if (!resolvedId && customAgents && customAgents.length > 0) {
+            resolvedId = customAgents[0].id;
+            selectedAgentId = resolvedId;
+        } else if (resolvedId) {
+            selectedAgentId = resolvedId;
+        }
         var agent = customAgents.find(function (a) { return a.id === resolvedId; });
         document.getElementById('agent-run-id').value = resolvedId || '';
-        document.getElementById('agent-run-name').textContent = agent ? ('Agent: ' + agent.name) : 'Agent';
+        document.getElementById('agent-run-name').textContent = agent ? ('Agent: ' + agent.name) : (customAgents && customAgents.length ? 'Agent' : 'Выберите или создайте агента');
         document.getElementById('agent-run-task').value = '';
         document.getElementById('agent-run-auto').checked = true;
     }

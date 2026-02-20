@@ -621,6 +621,7 @@
     });
 
     const TASK_PAYLOAD_PREFIX = 'WEU_TASKS_JSON:';
+    const SERVERS_PAYLOAD_PREFIX = 'WEU_SERVERS_JSON:';
     const TASK_STATUS_ORDER = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED'];
 
     function escapeHtml(value) {
@@ -646,13 +647,32 @@
         return null;
     }
 
+    function parseServerPayloadLine(line) {
+        var trimmed = (line || '').trim();
+        if (!trimmed || trimmed.indexOf(SERVERS_PAYLOAD_PREFIX) !== 0) return null;
+        var rawJson = trimmed.slice(SERVERS_PAYLOAD_PREFIX.length).trim();
+        if (!rawJson) return null;
+        try {
+            var payload = JSON.parse(rawJson);
+            if (payload && payload.type === 'server_board' && Array.isArray(payload.servers)) {
+                return payload;
+            }
+        } catch (e) {}
+        return null;
+    }
+
     function extractTaskPayload(rawText, forcedPayload) {
         var payload = forcedPayload || null;
         var plainLines = [];
         String(rawText || '').split('\n').forEach(function(line) {
-            var parsed = parseTaskPayloadLine(line);
-            if (parsed) {
-                payload = parsed;
+            var taskParsed = parseTaskPayloadLine(line);
+            if (taskParsed) {
+                payload = taskParsed;
+                return;
+            }
+            var serverParsed = parseServerPayloadLine(line);
+            if (serverParsed) {
+                payload = serverParsed;
                 return;
             }
             plainLines.push(line);
@@ -761,6 +781,49 @@
         return html;
     }
 
+    function buildServerBoardHtml(payload, plainText) {
+        var summary = payload.summary || {};
+        var servers = Array.isArray(payload.servers) ? payload.servers : [];
+        var total = summary.total != null ? summary.total : servers.length;
+
+        var html = '<section class="chat-server-board">';
+        html += '<header class="chat-server-board-summary">';
+        html += '<h3 class="chat-server-board-title">Список доступных серверов</h3>';
+        html += '<div class="chat-server-board-counters">';
+        html += '<span class="chat-server-counter">Всего: <strong>' + escapeHtml(total) + '</strong></span>';
+        html += '</div>';
+        html += '</header>';
+        html += '<p class="chat-server-board-subtitle">Вот текущий список серверов, доступный всем уровням: <a href="/servers/" class="chat-server-board-link">Admin, User</a></p>';
+        html += '<div class="chat-server-cards">';
+        servers.forEach(function(srv) {
+            var sid = srv.id;
+            var name = srv.name || 'Сервер #' + sid;
+            var hostPort = srv.host_port || (srv.host + ':' + (srv.port || 22));
+            var terminalUrl = (srv.actions && srv.actions.terminal) || ('/servers/' + sid + '/terminal/');
+            var detailsUrl = (srv.actions && srv.actions.details) || '/servers/';
+            html += '<article class="chat-server-card" data-server-id="' + escapeHtml(sid) + '">';
+            html += '<div class="chat-server-card-head">';
+            html += '<span class="chat-server-card-badge">#' + escapeHtml(sid) + '</span>';
+            html += '</div>';
+            html += '<h5 class="chat-server-card-title">' + escapeHtml(name) + '</h5>';
+            html += '<div class="chat-server-card-meta mono-data">' + escapeHtml(hostPort) + '</div>';
+            html += '<div class="chat-server-card-actions">';
+            html += '<a href="' + escapeHtml(terminalUrl) + '" class="chat-server-btn chat-server-btn-primary" target="_blank" rel="noopener"><span class="material-icons-round" aria-hidden="true">terminal</span>Подключиться</a>';
+            html += '<a href="' + escapeHtml(detailsUrl) + '" class="chat-server-btn" target="_blank" rel="noopener"><span class="material-icons-round" aria-hidden="true">visibility</span>Серверы</a>';
+            html += '</div>';
+            html += '</article>';
+        });
+        html += '</div>';
+        if (!servers.length) {
+            html += '<p class="chat-server-empty">Серверы не найдены. Добавьте серверы в разделе <a href="/servers/">Servers</a>.</p>';
+        }
+        if (plainText) {
+            html += '<div class="chat-server-note">' + (typeof marked !== 'undefined' ? marked.parse(plainText) : escapeHtml(plainText)) + '</div>';
+        }
+        html += '</section>';
+        return html;
+    }
+
     function attachTaskBoardActions(container) {
         if (!container || container.dataset.taskActionsBound === '1') return;
         container.addEventListener('click', function(e) {
@@ -798,13 +861,21 @@
         if (!contentDiv) return;
         var parsed = extractTaskPayload(rawText, forcedPayload);
         if (parsed.payload) {
+            if (parsed.payload.type === 'server_board') {
+                contentDiv.classList.add('chat-msg-bubble--server-board');
+                contentDiv.classList.remove('chat-msg-bubble--task-board');
+                contentDiv.innerHTML = buildServerBoardHtml(parsed.payload, parsed.text);
+                return;
+            }
             contentDiv.classList.add('chat-msg-bubble--task-board');
+            contentDiv.classList.remove('chat-msg-bubble--server-board');
             contentDiv.innerHTML = buildTaskBoardHtml(parsed.payload, parsed.text);
             attachTaskBoardActions(contentDiv);
             return;
         }
 
         contentDiv.classList.remove('chat-msg-bubble--task-board');
+        contentDiv.classList.remove('chat-msg-bubble--server-board');
         contentDiv.innerHTML = (typeof marked !== 'undefined' ? marked.parse(parsed.text || '') : (parsed.text || ''));
         if (typeof hljs !== 'undefined') {
             contentDiv.querySelectorAll('pre code').forEach(function(block) { hljs.highlightElement(block); });
