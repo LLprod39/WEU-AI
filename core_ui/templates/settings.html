@@ -146,6 +146,63 @@
                         </div>
                     </div>
 
+                    <!-- API Providers toggles -->
+                    <div class="border-t border-white/5 pt-5 space-y-3">
+                        <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Включить API провайдеры</p>
+
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <span class="material-icons-round text-sky-400" style="font-size:18px">bubble_chart</span>
+                                <div>
+                                    <span class="text-sm font-medium text-white">Google Gemini</span>
+                                    <p class="text-xs text-gray-500">GEMINI_API_KEY в .env</p>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="gemini-enabled" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <span class="material-icons-round text-gray-400" style="font-size:18px">smart_toy</span>
+                                <div>
+                                    <span class="text-sm font-medium text-white">xAI Grok</span>
+                                    <p class="text-xs text-gray-500">GROK_API_KEY в .env</p>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="grok-enabled" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gray-400"></div>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 rounded-xl" style="background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.15)">
+                            <div class="flex items-center gap-3">
+                                <span class="material-icons-round text-purple-400" style="font-size:18px">psychology</span>
+                                <div>
+                                    <span class="text-sm font-medium text-white">Anthropic Claude</span>
+                                    <p class="text-xs text-gray-500">ANTHROPIC_API_KEY в .env</p>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="claude-enabled" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+                            </label>
+                        </div>
+
+                        <!-- Claude model selector (visible only when Claude enabled) -->
+                        <div id="claude-model-row" class="hidden pl-2">
+                            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="chat-model-claude">Модель Claude</label>
+                            <select id="chat-model-claude" class="input-field w-full md:max-w-xs">
+                                <option value="claude-opus-4-6">claude-opus-4-6 (Opus · мощная)</option>
+                                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (Sonnet · баланс)</option>
+                                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (Haiku · быстрая)</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="internal-llm-provider">LLM для генерации workflow</label>
                         <select id="internal-llm-provider" class="input-field w-full md:max-w-xs" aria-label="Провайдер для генерации workflow">
@@ -593,6 +650,41 @@
                 localStorage.setItem('weu_allow_model_selection', allowModelSelection.checked ? '1' : '0');
             }
 
+            // API Provider toggles
+            const geminiEnabled = document.getElementById('gemini-enabled');
+            if (geminiEnabled) geminiEnabled.checked = !!cfg.gemini_enabled;
+            const grokEnabled = document.getElementById('grok-enabled');
+            if (grokEnabled) grokEnabled.checked = !!cfg.grok_enabled;
+            const claudeEnabled = document.getElementById('claude-enabled');
+            if (claudeEnabled) {
+                claudeEnabled.checked = !!cfg.claude_enabled;
+                const claudeRow = document.getElementById('claude-model-row');
+                if (claudeRow) claudeRow.classList.toggle('hidden', !cfg.claude_enabled);
+                claudeEnabled.addEventListener('change', function() {
+                    if (claudeRow) claudeRow.classList.toggle('hidden', !this.checked);
+                    // Auto-switch internal LLM provider when enabling Claude
+                    const internalLlmSel = document.getElementById('internal-llm-provider');
+                    if (internalLlmSel && this.checked) {
+                        internalLlmSel.value = 'claude';
+                    }
+                });
+            }
+            // Also: when disabling grok, auto-switch internal provider if it was grok
+            const grokEnabledEl = document.getElementById('grok-enabled');
+            if (grokEnabledEl) {
+                grokEnabledEl.addEventListener('change', function() {
+                    const internalLlmSel = document.getElementById('internal-llm-provider');
+                    if (!this.checked && internalLlmSel && internalLlmSel.value === 'grok') {
+                        const claudeEl = document.getElementById('claude-enabled');
+                        const geminiEl = document.getElementById('gemini-enabled');
+                        if (claudeEl && claudeEl.checked) internalLlmSel.value = 'claude';
+                        else if (geminiEl && geminiEl.checked) internalLlmSel.value = 'gemini';
+                    }
+                });
+            }
+            const chatModelClaude = document.getElementById('chat-model-claude');
+            if (chatModelClaude && cfg.chat_model_claude) chatModelClaude.value = cfg.chat_model_claude;
+
             // LLM для внутренних задач
             const internalLlm = document.getElementById('internal-llm-provider');
             if (internalLlm) internalLlm.value = cfg.internal_llm_provider || 'grok';
@@ -745,7 +837,11 @@
             internal_llm_provider: (document.getElementById('internal-llm-provider') && document.getElementById('internal-llm-provider').value) || 'grok',
             default_orchestrator_mode: (document.getElementById('default-orchestrator-mode') && document.getElementById('default-orchestrator-mode').value) || 'ralph_internal',
             delegate_ui: (document.getElementById('delegate-ui') && document.getElementById('delegate-ui').value) || 'chat',
-            allow_model_selection: document.getElementById('allow-model-selection') ? document.getElementById('allow-model-selection').checked : false
+            allow_model_selection: document.getElementById('allow-model-selection') ? document.getElementById('allow-model-selection').checked : false,
+            gemini_enabled: document.getElementById('gemini-enabled') ? document.getElementById('gemini-enabled').checked : false,
+            grok_enabled: document.getElementById('grok-enabled') ? document.getElementById('grok-enabled').checked : true,
+            claude_enabled: document.getElementById('claude-enabled') ? document.getElementById('claude-enabled').checked : false,
+            chat_model_claude: (document.getElementById('chat-model-claude') && document.getElementById('chat-model-claude').value) || 'claude-sonnet-4-6',
         };
         // Сохраняем в localStorage для agent_hub.js
         localStorage.setItem('weu_allow_model_selection', payload.allow_model_selection ? '1' : '0');

@@ -52,12 +52,14 @@ class LLMProvider:
     def __init__(self):
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.grok_api_key = os.getenv("GROK_API_KEY")
-        
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+
         # Set keys in model manager
-        model_manager.set_api_keys(self.gemini_api_key, self.grok_api_key)
-        
-        # Lazy initialization of Gemini client (only when enabled)
+        model_manager.set_api_keys(self.gemini_api_key, self.grok_api_key, self.anthropic_api_key)
+
+        # Lazy initialization of clients
         self._gemini_client = None
+        self._anthropic_client = None
 
     def _get_gemini_client(self):
         """Lazy load Gemini client only when enabled"""
@@ -79,14 +81,32 @@ class LLMProvider:
         """Property for backward compatibility"""
         return self._get_gemini_client()
 
+    def _get_anthropic_client(self):
+        """Lazy load Anthropic client only when enabled"""
+        if not model_manager.config.claude_enabled:
+            return None
+        if self._anthropic_client is None and self.anthropic_api_key:
+            try:
+                import anthropic
+                self._anthropic_client = anthropic.AsyncAnthropic(api_key=self.anthropic_api_key)
+                logger.info("Configured Anthropic client")
+            except Exception as e:
+                logger.error(f"Failed to configure Anthropic: {e}")
+                self._anthropic_client = None
+        return self._anthropic_client
+
     def set_api_key(self, model: str, key: str):
         if model == "gemini":
             self.gemini_api_key = key
             model_manager.set_api_keys(gemini_key=key)
-            self._gemini_client = None  # Reset client to reinitialize
+            self._gemini_client = None
         elif model == "grok":
             self.grok_api_key = key
             model_manager.set_api_keys(grok_key=key)
+        elif model == "claude":
+            self.anthropic_api_key = key
+            model_manager.set_api_keys(anthropic_key=key)
+            self._anthropic_client = None
 
     async def stream_chat(self, prompt: str, model: str = "gemini", specific_model: str = None) -> AsyncGenerator[str, None]:
         """
@@ -97,10 +117,34 @@ class LLMProvider:
             model: Provider name (auto/gemini/grok). При «auto» используется internal_llm_provider из config.
             specific_model: Specific model to use (overrides config)
         """
-        # «auto» = Cursor CLI для чата, но для внутренних вызовов используем internal_llm_provider
+        # «auto» = используем internal_llm_provider, с автоматическим fallback на первый включённый
         if model == "auto" or not model:
-            model = model_manager.config.internal_llm_provider or "grok"
-            logger.info(f"Using internal_llm_provider: {model}")
+            preferred = model_manager.config.internal_llm_provider or "grok"
+            # Check if preferred provider is actually enabled; if not — pick first available
+            def _enabled(p: str) -> bool:
+                if p == "grok":
+                    return model_manager.config.grok_enabled and bool(self.grok_api_key)
+                if p == "gemini":
+                    return model_manager.config.gemini_enabled and bool(self.gemini_api_key)
+                if p == "claude":
+                    return model_manager.config.claude_enabled and bool(self.anthropic_api_key)
+                return False
+
+            if _enabled(preferred):
+                model = preferred
+            else:
+                # Fallback: pick first enabled provider
+                for candidate in ("claude", "grok", "gemini"):
+                    if _enabled(candidate):
+                        model = candidate
+                        logger.warning(
+                            f"internal_llm_provider '{preferred}' is disabled/unconfigured, "
+                            f"falling back to '{model}'"
+                        )
+                        break
+                else:
+                    model = preferred  # Will fail with proper error message below
+            logger.info(f"Using internal_llm_provider: {model} (preferred: {preferred})")
         logger.info(f"Streaming chat from {model} with prompt: {prompt[:50]}...")
         
         if model == "gemini":
@@ -219,5 +263,40 @@ class LLMProvider:
                         yield f"Error calling Grok: {str(e)}"
                         return
         
+        elif model == "claude":
+            if not model_manager.config.claude_enabled:
+                yield "Error: Claude API disabled. Enable in settings."
+                return
+
+            client = self._get_anthropic_client()
+            if not client:
+                yield "Error: Anthropic API Key not configured."
+                return
+
+            target_model = specific_model or model_manager.get_chat_model("claude")
+            logger.info(f"Using Claude model: {target_model}")
+            max_attempts = 3
+
+            for attempt in range(max_attempts):
+                try:
+                    import anthropic as _anthropic_pkg
+                    async with client.messages.stream(
+                        model=target_model,
+                        max_tokens=8192,
+                        messages=[{"role": "user", "content": prompt}],
+                    ) as stream:
+                        async for text in stream.text_stream:
+                            yield text
+                    return
+                except Exception as e:
+                    if _is_retryable_error(e) and attempt < max_attempts - 1:
+                        yield "[Повтор попытки...]"
+                        delay = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"Claude Error: {e}")
+                        yield f"Error calling Claude: {str(e)}"
+                        return
+
         else:
             yield f"Unknown model: {model}"

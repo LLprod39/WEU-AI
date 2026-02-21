@@ -16,10 +16,12 @@ class ModelConfig(BaseModel):
     # API providers (optional, disabled by default)
     gemini_enabled: bool = False
     grok_enabled: bool = True  # Fallback for internal calls
-    
+    claude_enabled: bool = False
+
     # Chat models
     chat_model_gemini: str = "models/gemini-3-flash-preview"
     chat_model_grok: str = "grok-3"
+    chat_model_claude: str = "claude-sonnet-4-6"
     
     # RAG/Embedding models
     rag_model: str = "models/text-embedding-004"  # Gemini embedding
@@ -59,20 +61,24 @@ class ModelConfig(BaseModel):
 
 class ModelManager:
     """Manages available models and configurations"""
-    
+
     def __init__(self):
         self.config = ModelConfig()
         self.available_gemini_models: List[str] = []
         self.available_grok_models: List[str] = []
+        self.available_claude_models: List[str] = []
         self.gemini_api_key: Optional[str] = None
         self.grok_api_key: Optional[str] = None
+        self.anthropic_api_key: Optional[str] = None
     
-    def set_api_keys(self, gemini_key: Optional[str] = None, grok_key: Optional[str] = None):
+    def set_api_keys(self, gemini_key: Optional[str] = None, grok_key: Optional[str] = None, anthropic_key: Optional[str] = None):
         """Set API keys"""
         if gemini_key:
             self.gemini_api_key = gemini_key
         if grok_key:
             self.grok_api_key = grok_key
+        if anthropic_key:
+            self.anthropic_api_key = anthropic_key
     
     async def fetch_available_gemini_models(self) -> List[str]:
         """
@@ -171,21 +177,25 @@ class ModelManager:
             await self.fetch_available_grok_models()
     
     def get_chat_model(self, provider: Optional[str] = None) -> str:
-        """Get configured chat model for provider. «auto» даёт chat_model_gemini (fallback для внутренних вызовов)."""
+        """Get configured chat model for provider."""
         provider = provider or self.config.default_provider
         if provider == "auto":
-            provider = "gemini"
+            provider = self.config.internal_llm_provider or "grok"
         if provider == "gemini":
             return self.config.chat_model_gemini
+        if provider == "claude":
+            return self.config.chat_model_claude
         return self.config.chat_model_grok
 
     def get_agent_model(self, provider: Optional[str] = None) -> str:
-        """Get configured agent model for provider. «auto» даёт agent_model_gemini (fallback)."""
+        """Get configured agent model for provider."""
         provider = provider or self.config.default_provider
         if provider == "auto":
-            provider = "gemini"
+            provider = self.config.internal_llm_provider or "grok"
         if provider == "gemini":
             return self.config.agent_model_gemini
+        if provider == "claude":
+            return self.config.chat_model_claude
         return self.config.agent_model_grok
     
     def get_rag_model(self) -> str:
@@ -222,23 +232,36 @@ class ModelManager:
         
         return False
     
+    def _get_default_claude_models(self) -> List[str]:
+        """Default Anthropic Claude models list"""
+        return [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
+        ]
+
     def get_available_models(self, provider: str) -> List[str]:
         """Get list of available models for provider"""
         if provider == "gemini":
             if not self.available_gemini_models:
                 return self._get_default_gemini_models()
             return self.available_gemini_models
-        else:
-            if not self.available_grok_models:
-                return self._get_default_grok_models()
-            return self.available_grok_models
-    
+        if provider == "claude":
+            if not self.available_claude_models:
+                return self._get_default_claude_models()
+            return self.available_claude_models
+        if not self.available_grok_models:
+            return self._get_default_grok_models()
+        return self.available_grok_models
+
     def is_provider_enabled(self, provider: str) -> bool:
         """Check if API provider is enabled"""
         if provider == "gemini":
             return self.config.gemini_enabled
         elif provider == "grok":
             return self.config.grok_enabled
+        elif provider == "claude":
+            return self.config.claude_enabled
         # CLI providers always enabled if binary available
         return True
 

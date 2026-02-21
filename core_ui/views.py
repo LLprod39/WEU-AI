@@ -1315,8 +1315,10 @@ def api_settings(request):
                     'ralph_completion_promise': getattr(c, 'ralph_completion_promise', 'COMPLETE') or 'COMPLETE',
                     'gemini_enabled': getattr(c, 'gemini_enabled', False),
                     'grok_enabled': getattr(c, 'grok_enabled', True),
+                    'claude_enabled': getattr(c, 'claude_enabled', False),
                     'chat_model_gemini': c.chat_model_gemini,
                     'chat_model_grok': c.chat_model_grok,
+                    'chat_model_claude': getattr(c, 'chat_model_claude', 'claude-sonnet-4-6'),
                     'rag_model': c.rag_model,
                     'agent_model_gemini': c.agent_model_gemini,
                     'agent_model_grok': c.agent_model_grok,
@@ -1331,6 +1333,7 @@ def api_settings(request):
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
                     'grok_set': bool(os.getenv('GROK_API_KEY')),
                     'anthropic_set': bool(os.getenv('ANTHROPIC_API_KEY')),
+                    'claude_set': bool(os.getenv('ANTHROPIC_API_KEY')),
                     'cursor_set': bool(os.getenv('CURSOR_API_KEY')),
                     'codex_set': bool(os.getenv('CODEX_API_KEY') or os.getenv('OPENAI_API_KEY')),
                 },
@@ -1351,6 +1354,8 @@ def api_settings(request):
                 'allow_model_selection',  # Разрешить выбор моделей в workflow
                 'gemini_enabled',  # Включение/отключение Gemini API
                 'grok_enabled',    # Включение/отключение Grok API
+                'claude_enabled',  # Включение/отключение Claude API
+                'chat_model_claude',   # Выбранная модель Claude
                 'default_orchestrator_mode',  # react | ralph_internal | ralph_cli
                 'ralph_max_iterations',
                 'ralph_completion_promise',
