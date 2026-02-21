@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Документация — WEU AI Platform</title>
+    <meta name="description" content="Документация WEU AI: установка, конфигурация и работа с агентами, серверами, задачами и базой знаний.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:        #050507;
+            --bg-s:      #09090b;
+            --bg-e:      #111113;
+            --bg-c:      #0f0f11;
+            --border:    rgba(255,255,255,0.07);
+            --border-m:  rgba(255,255,255,0.11);
+            --primary:   #6366f1;
+            --primary-h: #4f46e5;
+            --primary-l: #818cf8;
+            --primary-m: rgba(99,102,241,0.15);
+            --accent:    #06b6d4;
+            --success:   #22c55e;
+            --success-m: rgba(34,197,94,0.12);
+            --warning:   #f59e0b;
+            --warning-m: rgba(245,158,11,0.12);
+            --t1: #fafafa;
+            --t2: #a1a1aa;
+            --t3: #71717a;
+            --t4: #3f3f46;
+            --sans: 'DM Sans', system-ui, sans-serif;
+            --mono: 'JetBrains Mono', Consolas, monospace;
+            --sidebar-w: 260px;
+            --header-h:  56px;
+        }
+
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--t1);
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        /* ── Header ── */
+        .doc-header {
+            position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+            z-index: 100;
+            background: rgba(5,5,7,0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 20px; gap: 16px;
+        }
+        .dh-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--t1); min-width: var(--sidebar-w); }
+        .dh-logo-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--primary-m); border: 1px solid rgba(99,102,241,0.25); display: flex; align-items: center; justify-content: center; }
+        .dh-logo-icon .material-icons-round { font-size: 16px; color: var(--primary-l); }
+        .dh-logo-name { font-weight: 700; font-size: 15px; }
+        .dh-logo-badge { font-size: 10px; color: var(--t3); font-family: var(--mono); padding: 2px 6px; background: var(--bg-e); border-radius: 4px; border: 1px solid var(--border); }
+        .dh-search {
+            flex: 1; max-width: 360px;
+            display: flex; align-items: center; gap: 8px;
+            background: var(--bg-e); border: 1px solid var(--border); border-radius: 8px;
+            padding: 7px 12px; cursor: pointer; transition: border-color .2s;
+        }
+        .dh-search:hover { border-color: var(--border-m); }
+        .dh-search .material-icons-round { font-size: 16px; color: var(--t3); }
+        .dh-search-text { font-size: 13px; color: var(--t3); flex: 1; }
+        .dh-search-kbd { font-family: var(--mono); font-size: 10px; color: var(--t4); background: var(--bg-c); border: 1px solid var(--border); border-radius: 4px; padding: 2px 5px; }
+        .dh-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+        .dh-link { text-decoration: none; font-size: 13px; color: var(--t3); padding: 6px 12px; border-radius: 7px; transition: all .18s; display: flex; align-items: center; gap: 5px; }
+        .dh-link:hover { color: var(--t1); background: rgba(255,255,255,0.04); }
+        .dh-link .material-icons-round { font-size: 16px; }
+        .btn-login { background: var(--primary-m); color: var(--primary-l) !important; border: 1px solid rgba(99,102,241,0.22); }
+        .btn-login:hover { background: rgba(99,102,241,0.22) !important; }
+
+        /* ── Sidebar ── */
+        .doc-layout { display: flex; padding-top: var(--header-h); min-height: 100vh; }
+        .doc-sidebar {
+            position: fixed; top: var(--header-h); left: 0; bottom: 0;
+            width: var(--sidebar-w);
+            overflow-y: auto; overflow-x: hidden;
+            border-right: 1px solid var(--border);
+            background: rgba(9,9,11,0.6);
+            padding: 20px 12px 40px;
+            scrollbar-width: thin; scrollbar-color: var(--t4) transparent;
+        }
+        .doc-sidebar::-webkit-scrollbar { width: 4px; }
+        .doc-sidebar::-webkit-scrollbar-thumb { background: var(--t4); border-radius: 2px; }
+        .nav-group { margin-bottom: 24px; }
+        .nav-group-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--t4); padding: 0 8px; margin-bottom: 6px; }
+        .nav-item { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--t2); font-size: 13.5px; padding: 6px 10px; border-radius: 7px; transition: all .15s; margin-bottom: 1px; }
+        .nav-item .material-icons-round { font-size: 16px; color: var(--t4); flex-shrink: 0; transition: color .15s; }
+        .nav-item:hover { color: var(--t1); background: rgba(255,255,255,0.04); }
+        .nav-item:hover .material-icons-round { color: var(--t2); }
+        .nav-item.active { color: var(--primary-l); background: var(--primary-m); }
+        .nav-item.active .material-icons-round { color: var(--primary-l); }
+        .nav-sub { padding-left: 18px; }
+        .nav-sub .nav-item { font-size: 13px; padding: 5px 10px; }
+
+        /* ── Content ── */
+        .doc-content { margin-left: var(--sidebar-w); flex: 1; max-width: 900px; padding: 48px 56px 80px; }
+        @media(max-width: 1024px) { .doc-content { padding: 40px 32px 80px; } }
+        @media(max-width: 768px) {
+            .doc-sidebar { display: none; }
+            .doc-content { margin-left: 0; padding: 28px 20px 80px; }
+        }
+
+        /* Typography */
+        .doc-section { display: none; }
+        .doc-section.active { display: block; }
+        .doc-tag { font-size: 11px; font-family: var(--mono); color: var(--primary-l); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; display: block; }
+        .doc-h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 700; line-height: 1.15; letter-spacing: -.025em; margin-bottom: 14px; }
+        .doc-h1 span { background: linear-gradient(135deg, var(--primary-l), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .doc-lead { font-size: 17px; line-height: 1.7; color: var(--t2); margin-bottom: 36px; max-width: 680px; }
+        h2.doc-h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 48px 0 16px; color: var(--t1); }
+        h3.doc-h3 { font-size: 16px; font-weight: 600; margin: 32px 0 12px; color: var(--t1); }
+        p.doc-p { font-size: 15px; line-height: 1.75; color: var(--t2); margin-bottom: 16px; }
+        ul.doc-ul, ol.doc-ol { padding-left: 20px; margin-bottom: 16px; }
+        ul.doc-ul li, ol.doc-ol li { font-size: 15px; line-height: 1.75; color: var(--t2); margin-bottom: 6px; }
+        ul.doc-ul li strong, ol.doc-ol li strong { color: var(--t1); font-weight: 600; }
+        a.doc-link { color: var(--primary-l); text-decoration: underline; text-underline-offset: 3px; }
+        a.doc-link:hover { color: var(--t1); }
+
+        .divider { height: 1px; background: var(--border); margin: 40px 0; }
+
+        /* Code */
+        pre.code-block, code.inline-code {
+            font-family: var(--mono);
+        }
+        code.inline-code {
+            font-size: 13px; background: var(--bg-e); border: 1px solid var(--border);
+            border-radius: 5px; padding: 1px 6px; color: var(--accent);
+        }
+        pre.code-block {
+            background: var(--bg-c); border: 1px solid var(--border);
+            border-radius: 10px; padding: 18px 20px; font-size: 13px; line-height: 1.65;
+            color: #a1a1aa; overflow-x: auto; margin: 16px 0; position: relative;
+        }
+        pre.code-block .cmd { color: var(--accent); }
+        pre.code-block .comment { color: var(--t4); }
+        pre.code-block .val { color: #86efac; }
+        pre.code-block .key { color: var(--primary-l); }
+        .code-label { font-size: 11px; font-family: var(--mono); color: var(--t4); margin-bottom: -8px; }
+
+        /* Callouts */
+        .callout {
+            display: flex; gap: 12px; padding: 14px 16px;
+            border-radius: 10px; border: 1px solid; margin: 20px 0; font-size: 14px; line-height: 1.65;
+        }
+        .callout .material-icons-round { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+        .callout-info { background: var(--primary-m); border-color: rgba(99,102,241,0.25); color: #c7d2fe; }
+        .callout-info .material-icons-round { color: var(--primary-l); }
+        .callout-warn { background: var(--warning-m); border-color: rgba(245,158,11,0.25); color: #fde68a; }
+        .callout-warn .material-icons-round { color: var(--warning); }
+        .callout-ok { background: var(--success-m); border-color: rgba(34,197,94,0.2); color: #bbf7d0; }
+        .callout-ok .material-icons-round { color: var(--success); }
+
+        /* Steps */
+        .steps { margin: 24px 0; }
+        .step { display: flex; gap: 16px; margin-bottom: 28px; }
+        .step-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--primary-m); border: 1px solid rgba(99,102,241,0.25); color: var(--primary-l); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+        .step-body h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--t1); }
+        .step-body p { font-size: 14px; color: var(--t2); line-height: 1.65; margin-bottom: 8px; }
+
+        /* Tabs */
+        .tab-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+        .tab-btn { font-size: 13.5px; color: var(--t3); padding: 8px 16px; border-radius: 6px 6px 0 0; cursor: pointer; border: none; background: none; transition: all .15s; font-family: var(--sans); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+        .tab-btn:hover { color: var(--t1); background: rgba(255,255,255,0.03); }
+        .tab-btn.active { color: var(--primary-l); border-bottom-color: var(--primary); }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        /* Feature Grid */
+        .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 20px 0; }
+        .feat-card {
+            background: var(--bg-c); border: 1px solid var(--border);
+            border-radius: 10px; padding: 16px 18px;
+            transition: border-color .2s;
+        }
+        .feat-card:hover { border-color: var(--border-m); }
+        .feat-card-icon { font-size: 20px; color: var(--primary-l); margin-bottom: 8px; }
+        .feat-card-icon .material-icons-round { font-size: 20px; }
+        .feat-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .feat-card p { font-size: 12.5px; color: var(--t3); line-height: 1.55; }
+
+        /* Table */
+        .doc-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+        .doc-table th { text-align: left; padding: 8px 14px; color: var(--t3); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); font-weight: 600; }
+        .doc-table td { padding: 11px 14px; color: var(--t2); border-bottom: 1px solid var(--border); vertical-align: top; }
+        .doc-table tr:last-child td { border-bottom: none; }
+        .doc-table td strong { color: var(--t1); }
+        .doc-table code { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--bg-e); padding: 1px 5px; border-radius: 4px; }
+
+        /* Arch diagram */
+        .arch-box {
+            background: var(--bg-c); border: 1px solid var(--border);
+            border-radius: 12px; padding: 24px; margin: 20px 0; overflow-x: auto;
+        }
+        .arch-box pre { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.8; color: var(--t2); }
+        .arch-box pre .hl { color: var(--primary-l); font-weight: 600; }
+        .arch-box pre .hl2 { color: var(--accent); }
+        .arch-box pre .hl3 { color: var(--success); }
+
+        /* Screenshot mockup */
+        .mock-browser {
+            border-radius: 10px; overflow: hidden;
+            border: 1px solid var(--border-m);
+            background: var(--bg-c); margin: 20px 0;
+        }
+        .mock-topbar { background: var(--bg-e); padding: 10px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+        .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .mock-dot.r { background: #ef4444; } .mock-dot.y { background: #f59e0b; } .mock-dot.g { background: #22c55e; }
+        .mock-url { flex: 1; background: var(--bg-c); border-radius: 5px; padding: 4px 10px; font-family: var(--mono); font-size: 11px; color: var(--t3); border: 1px solid var(--border); text-align: center; max-width: 320px; margin: 0 auto; }
+        .mock-body { padding: 0; min-height: 200px; }
+
+        /* Env var highlight */
+        .env-key { color: var(--accent); }
+        .env-val { color: #86efac; }
+        .env-comment { color: var(--t4); }
+
+        /* ToC on right */
+        .toc-aside { position: fixed; top: var(--header-h); right: 0; width: 200px; padding: 32px 16px; overflow-y: auto; border-left: 1px solid var(--border); }
+        @media(max-width: 1280px) { .toc-aside { display: none; } }
+        .toc-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--t4); margin-bottom: 10px; }
+        .toc-link { display: block; font-size: 12px; color: var(--t3); text-decoration: none; padding: 3px 0; transition: color .15s; line-height: 1.5; }
+        .toc-link:hover { color: var(--t1); }
+        .toc-link.active { color: var(--primary-l); }
+        .toc-link-sub { padding-left: 12px; font-size: 11.5px; }
+
+        /* Breadcrumb */
+        .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t4); margin-bottom: 28px; }
+        .breadcrumb .material-icons-round { font-size: 14px; }
+        .breadcrumb a { color: var(--t3); text-decoration: none; }
+        .breadcrumb a:hover { color: var(--t1); }
+
+        /* Next/Prev buttons */
+        .doc-nav-btns { display: flex; gap: 12px; margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .doc-nav-btn { flex: 1; min-width: 200px; text-decoration: none; background: var(--bg-c); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; transition: all .2s; display: flex; flex-direction: column; gap: 4px; }
+        .doc-nav-btn:hover { border-color: var(--border-m); background: var(--bg-e); }
+        .doc-nav-btn-label { font-size: 11px; color: var(--t4); font-family: var(--mono); }
+        .doc-nav-btn-title { font-size: 14px; font-weight: 600; color: var(--t1); }
+        .doc-nav-btn.next { text-align: right; }
+
+        /* Badge */
+        .badge { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; }
+        .badge-purple { background: var(--primary-m); color: var(--primary-l); border: 1px solid rgba(99,102,241,0.22); }
+        .badge-cyan { background: rgba(6,182,212,0.12); color: #67e8f9; border: 1px solid rgba(6,182,212,0.2); }
+        .badge-green { background: var(--success-m); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
+        .badge-yellow { background: var(--warning-m); color: #fde68a; border: 1px solid rgba(245,158,11,0.2); }
+
+        /* Check list */
+        .check-list { list-style: none; padding: 0; margin: 16px 0; }
+        .check-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 1.65; color: var(--t2); margin-bottom: 10px; }
+        .check-list li .material-icons-round { font-size: 18px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
+
+        /* --- Mobile sidebar toggle button --- */
+        #sidebar-toggle { display: none; }
+        @media(max-width: 768px) {
+            #sidebar-toggle {
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+                border-radius: 8px; width: 38px; height: 38px;
+                cursor: pointer; color: var(--t2);
+                flex-shrink: 0; transition: all .18s;
+            }
+            #sidebar-toggle:hover { background: rgba(255,255,255,0.07); color: var(--t1); }
+            #sidebar-toggle .material-icons-round { font-size: 20px; }
+        }
+
+        /* --- Mobile sidebar drawer --- */
+        .mob-sb-overlay {
+            display: none;
+            position: fixed; inset: 0; z-index: 200;
+        }
+        .mob-sb-overlay.open { display: block; }
+        .mob-sb-bg {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .mob-sb-panel {
+            position: absolute; top: 0; left: 0; bottom: 0;
+            width: min(300px, 88vw);
+            background: var(--bg-s);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            transform: translateX(-100%);
+            transition: transform .28s cubic-bezier(.4,0,.2,1);
+            overflow-y: auto;
+        }
+        .mob-sb-overlay.open .mob-sb-panel { transform: translateX(0); }
+        .mob-sb-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; background: var(--bg-s); z-index: 1;
+        }
+        .mob-sb-close {
+            width: 34px; height: 34px; border-radius: 8px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--t3); flex-shrink: 0;
+        }
+        .mob-sb-close .material-icons-round { font-size: 18px; }
+        .mob-sb-content { padding: 16px 12px 32px; }
+
+        /* --- Responsive header --- */
+        @media(max-width: 768px) {
+            .dh-logo { min-width: auto; }
+            .dh-logo-badge { display: none; }
+            .dh-search { display: none; }
+            .dh-right .dh-link:not(.btn-login) { display: none; }
+            .doc-content { padding: 28px 18px 80px; }
+            .doc-h1 { font-size: clamp(24px, 7vw, 36px); }
+            .doc-lead { font-size: 15px; }
+        }
+        @media(max-width: 480px) {
+            .doc-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+            .tab-bar::-webkit-scrollbar { display: none; }
+            pre.code-block { font-size: 12px; padding: 14px 14px; }
+            .feat-grid { grid-template-columns: 1fr; }
+            .doc-nav-btns { flex-direction: column; }
+            .doc-nav-btn { min-width: auto; }
+            h2.doc-h2 { font-size: 18px; }
+        }
+
+        /* Touch improvements */
+        @media(hover: none) {
+            .nav-item:hover { color: var(--t2); background: none; }
+            .nav-item:hover .material-icons-round { color: var(--t4); }
+            .nav-item.active:hover { color: var(--primary-l); background: var(--primary-m); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="doc-header">
+    <a href="../../index.html" class="dh-logo">
+        <div class="dh-logo-icon"><span class="material-icons-round">auto_awesome</span></div>
+        <span class="dh-logo-name">WEU AI</span>
+        <span class="dh-logo-badge">docs</span>
+    </a>
+
+    <div class="dh-search" onclick="focusSearch()">
+        <span class="material-icons-round">search</span>
+        <span class="dh-search-text">Поиск по документации…</span>
+        <span class="dh-search-kbd">Ctrl K</span>
+    </div>
+
+    <div class="dh-right">
+        <a href="../../index.html" class="dh-link"><span class="material-icons-round">home</span><span class="htxt">Главная</span></a>
+        <a href="#" class="dh-link btn-login"><span class="material-icons-round">login</span> Войти</a>
+    </div>
+    <button id="sidebar-toggle" onclick="toggleSidebar()"><span class="material-icons-round">menu</span></button>
+</header>
+
+<!-- ══ MOBILE SIDEBAR OVERLAY ══ -->
+<div class="mob-sb-overlay" id="mobSbOverlay">
+    <div class="mob-sb-bg" onclick="closeMobSidebar()"></div>
+    <nav class="mob-sb-panel" id="mobSbPanel">
+        <div class="mob-sb-header">
+            <a href="../../index.html" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--t1);">
+                <div class="dh-logo-icon"><span class="material-icons-round">auto_awesome</span></div>
+                <span style="font-weight:700;font-size:15px;">WEU AI</span>
+                <span style="font-size:10px;color:var(--t3);font-family:var(--mono);padding:2px 6px;background:var(--bg-e);border-radius:4px;border:1px solid var(--border);">docs</span>
+            </a>
+            <button class="mob-sb-close" onclick="closeMobSidebar()" aria-label="Закрыть">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="mob-sb-content" id="mobSbContent">
+            <!-- Filled by JS from desktop sidebar -->
+        </div>
+    </nav>
+</div>
+
+<div class="doc-layout">
+
+    <!-- Sidebar -->
+    <nav class="doc-sidebar" id="docSidebar">
+        <div class="nav-group">
+            <div class="nav-group-title">Начало работы</div>
+            <a href="#" class="nav-item active" data-section="intro" onclick="showSection('intro', this)">
+                <span class="material-icons-round">rocket_launch</span> Введение
+            </a>
+            <a href="#" class="nav-item" data-section="install" onclick="showSection('install', this)">
+                <span class="material-icons-round">download</span> Установка
+            </a>
+            <a href="#" class="nav-item" data-section="config" onclick="showSection('config', this)">
+                <span class="material-icons-round">tune</span> Конфигурация
+            </a>
+            <a href="#" class="nav-item" data-section="first-run" onclick="showSection('first-run', this)">
+                <span class="material-icons-round">play_circle</span> Первый запуск
+            </a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">Возможности</div>
+            <a href="#" class="nav-item" data-section="chat" onclick="showSection('chat', this)">
+                <span class="material-icons-round">chat</span> Чат с ИИ
+            </a>
+            <a href="#" class="nav-item" data-section="agents" onclick="showSection('agents', this)">
+                <span class="material-icons-round">smart_toy</span> Агенты и воркфлоу
+            </a>
+            <a href="#" class="nav-item" data-section="servers" onclick="showSection('servers', this)">
+                <span class="material-icons-round">dns</span> Серверы и SSH
+            </a>
+            <a href="#" class="nav-item" data-section="tasks" onclick="showSection('tasks', this)">
+                <span class="material-icons-round">task_alt</span> Задачи
+            </a>
+            <a href="#" class="nav-item" data-section="rag" onclick="showSection('rag', this)">
+                <span class="material-icons-round">library_books</span> База знаний (RAG)
+            </a>
+            <a href="#" class="nav-item" data-section="mcp" onclick="showSection('mcp', this)">
+                <span class="material-icons-round">extension</span> Skills / MCP
+            </a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">Справочник</div>
+            <a href="#" class="nav-item" data-section="arch" onclick="showSection('arch', this)">
+                <span class="material-icons-round">account_tree</span> Архитектура
+            </a>
+            <a href="#" class="nav-item" data-section="envvars" onclick="showSection('envvars', this)">
+                <span class="material-icons-round">code</span> Переменные окружения
+            </a>
+            <a href="#" class="nav-item" data-section="security" onclick="showSection('security', this)">
+                <span class="material-icons-round">shield</span> Безопасность
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="doc-content">
+
+        <!-- ══════════════════ INTRO ══════════════════ -->
+        <section class="doc-section active" id="section-intro">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Документация</span>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Введение</span>
+            </div>
+            <span class="doc-tag">Начало работы</span>
+            <h1 class="doc-h1">Добро пожаловать в <span>WEU AI</span></h1>
+            <p class="doc-lead">WEU AI — веб-платформа для DevOps-команд. В одном интерфейсе доступны агенты, SSH-серверы, задачи и база знаний.</p>
+
+            <div class="callout callout-ok">
+                <span class="material-icons-round">check_circle</span>
+                <div><strong>Платформа работает в браузере.</strong> Дополнительные desktop-клиенты не требуются; достаточно один раз развернуть окружение.</div>
+            </div>
+
+            <div class="feat-grid">
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">chat</span></div>
+                    <h4>Чат с ИИ</h4>
+                    <p>Gemini и Grok. Стриминг ответов, загрузка файлов, история сессий.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">smart_toy</span></div>
+                    <h4>Агенты</h4>
+                    <p>Ralph, Cursor, Claude Code, ReAct. Создавай воркфлоу, запускай по расписанию.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">dns</span></div>
+                    <h4>Серверы / SSH</h4>
+                    <p>Браузерный xterm.js-терминал, мульти-вкладки, AES-256 шифрование паролей.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">task_alt</span></div>
+                    <h4>Задачи</h4>
+                    <p>Jira-подобный трекер. Проекты, спринты, AI-анализ, делегирование ИИ.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">library_books</span></div>
+                    <h4>База знаний</h4>
+                    <p>RAG на Qdrant. Загружай документы — ИИ использует их при ответах.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-card-icon"><span class="material-icons-round">extension</span></div>
+                    <h4>MCP / Skills</h4>
+                    <p>Подключай внешние инструменты через Model Context Protocol.</p>
+                </div>
+            </div>
+
+            <h2 class="doc-h2">Стек технологий</h2>
+            <table class="doc-table">
+                <thead><tr><th>Компонент</th><th>Технология</th><th>Описание</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Backend</strong></td><td><code>Django 5.2 + Daphne</code></td><td>ASGI-сервер для WebSocket и HTTP/2</td></tr>
+                    <tr><td><strong>База данных</strong></td><td><code>SQLite / PostgreSQL</code></td><td>SQLite для dev, Postgres для prod</td></tr>
+                    <tr><td><strong>Vector DB</strong></td><td><code>Qdrant</code></td><td>Семантический поиск для RAG</td></tr>
+                    <tr><td><strong>Кэш / очередь</strong></td><td><code>Redis</code></td><td>Опционально для сессий и задач</td></tr>
+                    <tr><td><strong>Frontend</strong></td><td><code>Django Templates + JS</code></td><td>Нет SPA-фреймворков, vanilla JS</td></tr>
+                    <tr><td><strong>Терминал</strong></td><td><code>xterm.js + WebSocket</code></td><td>SSH в браузере через Channels</td></tr>
+                    <tr><td><strong>LLM</strong></td><td><code>Gemini / Grok API</code></td><td>Переключение провайдеров в UI</td></tr>
+                </tbody>
+            </table>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn next" onclick="showSection('install', document.querySelector('[data-section=install]'))">
+                    <span class="doc-nav-btn-label">Следующий раздел →</span>
+                    <span class="doc-nav-btn-title">Установка</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ INSTALL ══════════════════ -->
+        <section class="doc-section" id="section-install">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <a href="#" onclick="showSection('intro', document.querySelector('[data-section=intro]'))">Документация</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Установка</span>
+            </div>
+            <span class="doc-tag">Начало работы</span>
+            <h1 class="doc-h1">Установка <span>WEU AI</span></h1>
+            <p class="doc-lead">Три способа запустить платформу: Docker (рекомендуется), локально с PostgreSQL в Docker, или полностью локально без Docker.</p>
+
+            <div class="callout callout-info">
+                <span class="material-icons-round">info</span>
+                <div><strong>Порт по умолчанию:</strong> <code class="inline-code">9000</code>. Меняется через переменную <code class="inline-code">DJANGO_PORT</code> в <code class="inline-code">.env</code>.</div>
+            </div>
+
+            <!-- Tab bar -->
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="showTab('install', 'docker', this)">🐳 Docker (рекомендуется)</button>
+                <button class="tab-btn" onclick="showTab('install', 'local-pg', this)">🗄 Локально + PG в Docker</button>
+                <button class="tab-btn" onclick="showTab('install', 'local-sqlite', this)">🐍 Полностью локально</button>
+            </div>
+
+            <!-- Docker tab -->
+            <div class="tab-pane active" id="install-docker">
+                <h3 class="doc-h3">Требования</h3>
+                <ul class="check-list">
+                    <li><span class="material-icons-round">check_circle</span> Docker Desktop 24+ или Docker Engine 24+</li>
+                    <li><span class="material-icons-round">check_circle</span> Docker Compose v2 (встроен в Docker Desktop)</li>
+                    <li><span class="material-icons-round">check_circle</span> API-ключ Gemini или Grok</li>
+                    <li><span class="material-icons-round">check_circle</span> 2 GB свободного места</li>
+                </ul>
+
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">1</div>
+                        <div class="step-body">
+                            <h4>Клонируй репозиторий</h4>
+                            <p>Склонируй проект в удобную директорию.</p>
+                            <pre class="code-block"><span class="cmd">git clone</span> https://github.com/your-org/web_rA.git
+<span class="cmd">cd</span> web_rA</pre>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-num">2</div>
+                        <div class="step-body">
+                            <h4>Создай файл окружения</h4>
+                            <p>Скопируй пример и заполни обязательные переменные.</p>
+                            <pre class="code-block"><span class="cmd">cp</span> .env.example .env
+<span class="cmd">nano</span> .env   <span class="comment"># или любой текстовый редактор</span></pre>
+                            <p>Минимальный <code class="inline-code">.env</code>:</p>
+                            <pre class="code-block"><span class="env-comment"># Минимальная конфигурация</span>
+<span class="env-key">GEMINI_API_KEY</span>=<span class="env-val">ваш_ключ_gemini</span>
+<span class="env-key">SECRET_KEY</span>=<span class="env-val">случайная_строка_50+_символов</span>
+<span class="env-key">MASTER_PASSWORD</span>=<span class="env-val">пароль_для_расшифровки_серверных_кредов</span>
+<span class="env-key">POSTGRES_DB</span>=<span class="env-val">weu_ai</span>
+<span class="env-key">POSTGRES_USER</span>=<span class="env-val">weu</span>
+<span class="env-key">POSTGRES_PASSWORD</span>=<span class="env-val">сложный_пароль</span></pre>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-num">3</div>
+                        <div class="step-body">
+                            <h4>Собери и запусти</h4>
+                            <p>Docker Compose поднимет web, postgres, qdrant и redis.</p>
+                            <pre class="code-block"><span class="cmd">docker compose up --build</span>
+
+<span class="comment"># Или в фоне:</span>
+<span class="cmd">docker compose up --build -d</span>
+<span class="cmd">docker compose logs -f web</span></pre>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-num">4</div>
+                        <div class="step-body">
+                            <h4>Создай администратора</h4>
+                            <p>После первого запуска создай суперпользователя.</p>
+                            <pre class="code-block"><span class="cmd">docker exec -it</span> weu-web python manage.py createsuperuser</pre>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-num">5</div>
+                        <div class="step-body">
+                            <h4>Открой браузер</h4>
+                            <p>Открой <strong>http://localhost:9000/welcome/</strong> и выполни вход.</p>
+                            <div class="mock-browser">
+                                <div class="mock-topbar">
+                                    <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
+                                    <div class="mock-url">http://localhost:9000/welcome/</div>
+                                </div>
+                                <div class="mock-body" style="padding:20px; background:#09090b;">
+                                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                                        <div style="width:28px;height:28px;border-radius:7px;background:rgba(99,102,241,.2);display:flex;align-items:center;justify-content:center;font-size:14px;">✨</div>
+                                        <span style="font-weight:700;font-size:14px;color:#fafafa;">WEU AI</span>
+                                        <div style="margin-left:auto;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border-radius:7px;padding:5px 14px;font-size:12px;font-weight:600;">Войти →</div>
+                                    </div>
+                                    <div style="font-size:22px;font-weight:700;color:#fafafa;line-height:1.2;margin-bottom:8px;">Веб-платформа для<br><span style="color:#818cf8;">DevOps-задач.</span></div>
+                                    <div style="font-size:12px;color:#71717a;">Запускай агентов, управляй серверами...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="callout callout-ok">
+                    <span class="material-icons-round">check_circle</span>
+                    <div>Платформа запущена. Далее настрой параметры моделей и агентов в разделе <strong>Конфигурация</strong>.</div>
+                </div>
+            </div>
+
+            <!-- Local + PG tab -->
+            <div class="tab-pane" id="install-local-pg">
+                <h3 class="doc-h3">Требования</h3>
+                <ul class="check-list">
+                    <li><span class="material-icons-round">check_circle</span> Python 3.10+</li>
+                    <li><span class="material-icons-round">check_circle</span> Docker (только для PostgreSQL)</li>
+                    <li><span class="material-icons-round">check_circle</span> API-ключ Gemini или Grok</li>
+                </ul>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">1</div>
+                        <div class="step-body">
+                            <h4>Подними только PostgreSQL</h4>
+                            <pre class="code-block"><span class="cmd">docker compose up</span> postgres -d</pre>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">2</div>
+                        <div class="step-body">
+                            <h4>Создай виртуальное окружение и установи зависимости</h4>
+                            <pre class="code-block"><span class="comment"># Windows</span>
+python -m venv venv && venv\Scripts\activate
+
+<span class="comment"># Linux / macOS</span>
+python -m venv venv && <span class="cmd">source</span> venv/bin/activate
+
+<span class="cmd">pip install</span> -r requirements.txt        <span class="comment"># mini build</span>
+<span class="comment"># или</span>
+<span class="cmd">pip install</span> -r requirements-full.txt   <span class="comment"># full build с RAG</span></pre>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">3</div>
+                        <div class="step-body">
+                            <h4>Настрой .env и выполни миграции</h4>
+                            <pre class="code-block"><span class="cmd">cp</span> .env.example .env
+<span class="comment"># Заполни GEMINI_API_KEY, POSTGRES_HOST=localhost, POSTGRES_PORT=5432 и т.д.</span>
+
+python scripts/setup_postgres_and_migrate.py
+<span class="comment"># Скрипт создаст таблицы + суперпользователя</span></pre>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">4</div>
+                        <div class="step-body">
+                            <h4>Запусти сервер</h4>
+                            <pre class="code-block">python manage.py runserver
+<span class="comment"># → http://127.0.0.1:9000/welcome/</span></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fully local tab -->
+            <div class="tab-pane" id="install-local-sqlite">
+                <h3 class="doc-h3">Требования</h3>
+                <ul class="check-list">
+                    <li><span class="material-icons-round">check_circle</span> Python 3.10+</li>
+                    <li><span class="material-icons-round">check_circle</span> API-ключ Gemini или Grok</li>
+                    <li><span class="material-icons-round">check_circle</span> Без Docker, без баз данных — SQLite встроен</li>
+                </ul>
+                <div class="callout callout-warn">
+                    <span class="material-icons-round">warning</span>
+                    <div><strong>Только для разработки.</strong> SQLite не подходит для производственного использования с несколькими пользователями.</div>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">1</div>
+                        <div class="step-body">
+                            <h4>Клон, venv, зависимости</h4>
+                            <pre class="code-block">git clone https://github.com/your-org/web_rA.git && cd web_rA
+python -m venv venv && venv\Scripts\activate  <span class="comment"># Windows</span>
+pip install -r requirements.txt</pre>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">2</div>
+                        <div class="step-body">
+                            <h4>Минимальный .env</h4>
+                            <pre class="code-block"><span class="env-key">GEMINI_API_KEY</span>=<span class="env-val">ваш_ключ</span>
+<span class="env-key">SECRET_KEY</span>=<span class="env-val">любая_длинная_строка</span>
+<span class="env-key">MASTER_PASSWORD</span>=<span class="env-val">ваш_мастер_пароль</span>
+<span class="env-comment"># POSTGRES_HOST не задан → будет SQLite</span></pre>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">3</div>
+                        <div class="step-body">
+                            <h4>Миграции и запуск</h4>
+                            <pre class="code-block">python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+<span class="comment"># → http://127.0.0.1:9000/welcome/</span></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('intro', document.querySelector('[data-section=intro]'))">
+                    <span class="doc-nav-btn-label">← Назад</span>
+                    <span class="doc-nav-btn-title">Введение</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('config', document.querySelector('[data-section=config]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span>
+                    <span class="doc-nav-btn-title">Конфигурация</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ CONFIG ══════════════════ -->
+        <section class="doc-section" id="section-config">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <a href="#" onclick="showSection('intro', document.querySelector('[data-section=intro]'))">Документация</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Конфигурация</span>
+            </div>
+            <span class="doc-tag">Начало работы</span>
+            <h1 class="doc-h1"><span>Конфигурация</span> платформы</h1>
+            <p class="doc-lead">Настройка через файл <code class="inline-code">.env</code> и <code class="inline-code">.model_config.json</code>. Все параметры опциональны, кроме API-ключа и SECRET_KEY.</p>
+
+            <h2 class="doc-h2">Файл .env — все переменные</h2>
+            <pre class="code-block"><span class="env-comment"># ════════ LLM ════════</span>
+<span class="env-key">GEMINI_API_KEY</span>=<span class="env-val">AIza...</span>         <span class="env-comment"># Google Gemini</span>
+<span class="env-key">GROK_API_KEY</span>=<span class="env-val">xai-...</span>           <span class="env-comment"># xAI Grok (опционально)</span>
+
+<span class="env-comment"># ════════ Django ════════</span>
+<span class="env-key">SECRET_KEY</span>=<span class="env-val">django-insecure-...</span>  <span class="env-comment"># обязательно для prod</span>
+<span class="env-key">DEBUG</span>=<span class="env-val">0</span>                          <span class="env-comment"># 1 в dev, 0 в prod</span>
+<span class="env-key">ALLOWED_HOSTS</span>=<span class="env-val">yourdomain.com,localhost</span>
+<span class="env-key">DJANGO_PORT</span>=<span class="env-val">9000</span>                 <span class="env-comment"># порт по умолчанию</span>
+
+<span class="env-comment"># ════════ PostgreSQL ════════</span>
+<span class="env-key">POSTGRES_HOST</span>=<span class="env-val">localhost</span>
+<span class="env-key">POSTGRES_PORT</span>=<span class="env-val">5432</span>
+<span class="env-key">POSTGRES_DB</span>=<span class="env-val">weu_ai</span>
+<span class="env-key">POSTGRES_USER</span>=<span class="env-val">weu</span>
+<span class="env-key">POSTGRES_PASSWORD</span>=<span class="env-val">...</span>
+
+<span class="env-comment"># ════════ Qdrant (RAG) ════════</span>
+<span class="env-key">QDRANT_URL</span>=<span class="env-val">http://localhost:6333</span> <span class="env-comment"># если не задан — InMemory</span>
+
+<span class="env-comment"># ════════ Безопасность ════════</span>
+<span class="env-key">MASTER_PASSWORD</span>=<span class="env-val">...</span>              <span class="env-comment"># расшифровка SSH-кредов</span>
+
+<span class="env-comment"># ════════ Сборка ════════</span>
+<span class="env-key">WEU_BUILD</span>=<span class="env-val">mini</span>                   <span class="env-comment"># mini | full (с PyTorch)</span></pre>
+
+            <h2 class="doc-h2">Конфигурация моделей (.model_config.json)</h2>
+            <p class="doc-p">Файл в корне проекта. Изменяется через UI (<strong>Настройки → Модели</strong>) или вручную.</p>
+            <pre class="code-block">{
+  <span class="key">"chat_model_gemini"</span>:  <span class="val">"gemini-2.0-flash-exp"</span>,
+  <span class="key">"agent_model_gemini"</span>: <span class="val">"gemini-2.0-flash-exp"</span>,
+  <span class="key">"rag_model_gemini"</span>:   <span class="val">"gemini-1.5-flash"</span>,
+  <span class="key">"chat_model_grok"</span>:    <span class="val">"grok-beta"</span>,
+  <span class="key">"agent_model_grok"</span>:   <span class="val">"grok-beta"</span>,
+  <span class="key">"default_provider"</span>:   <span class="val">"gemini"</span>
+}</pre>
+
+            <div class="callout callout-info">
+                <span class="material-icons-round">info</span>
+                <div>Модель агентов Cursor всегда принудительно <code class="inline-code">auto</code> и не изменяется через UI — это ограничение Cursor CLI.</div>
+            </div>
+
+            <h2 class="doc-h2">Настройки в UI</h2>
+            <table class="doc-table">
+                <thead><tr><th>Раздел</th><th>Путь в UI</th><th>Описание</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Модели</strong></td><td><code>Настройки → Модели</code></td><td>Chat / Agent / RAG модели для каждого провайдера</td></tr>
+                    <tr><td><strong>Доступ</strong></td><td><code>Настройки → Пользователи</code></td><td>Создание пользователей, группы, права</td></tr>
+                    <tr><td><strong>Серверы</strong></td><td><code>Серверы → Добавить</code></td><td>Хост, порт, логин, пароль (шифруется AES-256)</td></tr>
+                    <tr><td><strong>Агенты</strong></td><td><code>Агенты → Создать</code></td><td>Профиль, runtime, системный промпт, MCP-серверы</td></tr>
+                    <tr><td><strong>RAG</strong></td><td><code>База знаний → Загрузить</code></td><td>PDF, TXT, MD — загружаются в Qdrant</td></tr>
+                </tbody>
+            </table>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('install', document.querySelector('[data-section=install]'))">
+                    <span class="doc-nav-btn-label">← Назад</span>
+                    <span class="doc-nav-btn-title">Установка</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('first-run', document.querySelector('[data-section=first-run]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span>
+                    <span class="doc-nav-btn-title">Первый запуск</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ FIRST RUN ══════════════════ -->
+        <section class="doc-section" id="section-first-run">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Первый запуск</span>
+            </div>
+            <span class="doc-tag">Начало работы</span>
+            <h1 class="doc-h1">Первый <span>запуск</span></h1>
+            <p class="doc-lead">Ниже приведена базовая последовательность действий после установки платформы.</p>
+
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h4>Войдите под учётной записью администратора</h4>
+                        <p>Открой <strong>http://localhost:9000/login/</strong> и войди с данными суперпользователя, созданного при установке.</p>
+                        <div class="mock-browser">
+                            <div class="mock-topbar"><div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div><div class="mock-url">localhost:9000/login/</div></div>
+                            <div class="mock-body" style="padding:24px;background:#09090b;display:flex;flex-direction:column;align-items:center;gap:12px;">
+                                <div style="font-size:14px;font-weight:700;color:#fafafa;margin-bottom:4px;">Вход в WEU AI</div>
+                                <div style="width:240px;background:#111113;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 12px;font-size:12px;color:#71717a;">Имя пользователя</div>
+                                <div style="width:240px;background:#111113;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 12px;font-size:12px;color:#71717a;">Пароль</div>
+                                <div style="width:240px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;color:#fff;text-align:center;">Войти</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h4>Настрой модели ИИ</h4>
+                        <p>Открой <strong>Настройки → Модели</strong>, проверь корректность API-ключа и выполните тестовый запрос в чате.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h4>Добавь первый сервер</h4>
+                        <p>Открой <strong>Серверы → Добавить сервер</strong>, укажи хост, порт, имя пользователя и пароль (или SSH-ключ). Учётные данные шифруются автоматически.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <h4>Запусти первый агент</h4>
+                        <p>Открой <strong>Агенты → Создать</strong>, выбери runtime <strong>Ralph</strong>, укажи задачу (например, <em>"Проверь свободное место на дисках"</em>) и запусти выполнение.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('config', document.querySelector('[data-section=config]'))">
+                    <span class="doc-nav-btn-label">← Назад</span>
+                    <span class="doc-nav-btn-title">Конфигурация</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('chat', document.querySelector('[data-section=chat]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span>
+                    <span class="doc-nav-btn-title">Чат с ИИ</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ CHAT ══════════════════ -->
+        <section class="doc-section" id="section-chat">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Чат с ИИ</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">Чат <span>с ИИ</span></h1>
+            <p class="doc-lead">Основной интерфейс взаимодействия с ИИ: несколько сессий, загрузка файлов, потоковый вывод и режим Orchestrator.</p>
+
+            <div class="mock-browser">
+                <div class="mock-topbar"><div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div><div class="mock-url">localhost:9000/chat/</div></div>
+                <div class="mock-body" style="background:#09090b;display:flex;height:260px;">
+                    <div style="width:180px;border-right:1px solid rgba(255,255,255,0.07);padding:12px;flex-shrink:0;">
+                        <div style="font-size:10px;color:#52525b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding:0 4px;">Сессии чата</div>
+                        <div style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.2);border-radius:6px;padding:7px 9px;margin-bottom:4px;">
+                            <div style="font-size:12px;color:#818cf8;font-weight:600;">Текущая сессия</div>
+                            <div style="font-size:10px;color:#52525b;margin-top:2px;">сегодня 14:22</div>
+                        </div>
+                        <div style="border-radius:6px;padding:7px 9px;margin-bottom:4px;">
+                            <div style="font-size:12px;color:#a1a1aa;">Проверка серверов</div>
+                            <div style="font-size:10px;color:#52525b;">вчера</div>
+                        </div>
+                        <div style="margin-top:auto;padding-top:8px;">
+                            <div style="border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:6px 9px;font-size:11px;color:#71717a;text-align:center;cursor:pointer;">+ Новый чат</div>
+                        </div>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;padding:12px;">
+                        <div style="flex:1;overflow:auto;">
+                            <div style="background:rgba(99,102,241,.1);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#c7d2fe;max-width:80%;margin-left:auto;">Проверь свободное место на сервере lunix</div>
+                            <div style="background:#111113;border-radius:8px;padding:10px 12px;font-size:12px;color:#a1a1aa;max-width:90%;">
+                                🔍 <strong style="color:#fafafa;">Проверяю место на сервере lunix…</strong><br>
+                                <span style="color:#22c55e;">✓</span> Подключился по SSH<br>
+                                <span style="color:#22c55e;">✓</span> df -h выполнен: /dev/sda1 — 68% (32 GB / 47 GB свободно)
+                            </div>
+                        </div>
+                        <div style="border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 12px;font-size:12px;color:#52525b;margin-top:10px;display:flex;gap:8px;align-items:center;">
+                            <span>Напиши сообщение…</span>
+                            <div style="margin-left:auto;width:26px;height:26px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;">↑</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="doc-h2">Возможности чата</h2>
+            <table class="doc-table">
+                <thead><tr><th>Функция</th><th>Описание</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Мульти-провайдер</strong></td><td>Переключение Gemini / Grok без перезагрузки страницы</td></tr>
+                    <tr><td><strong>Выбор модели</strong></td><td>Список моделей обновляется при смене провайдера</td></tr>
+                    <tr><td><strong>RAG-режим</strong></td><td>Тумблер "База знаний" подключает документы из Qdrant к контексту ответа</td></tr>
+                    <tr><td><strong>Стриминг</strong></td><td>Ответ появляется посимвольно в реальном времени</td></tr>
+                    <tr><td><strong>Загрузка файлов</strong></td><td>PDF, TXT, изображения — передаются в контекст LLM</td></tr>
+                    <tr><td><strong>Несколько сессий</strong></td><td>Список сессий в боковой панели, история сообщений</td></tr>
+                    <tr><td><strong>Режим Orchestrator</strong></td><td><code>/orchestrator/</code> — ReAct с визуализацией каждого шага</td></tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-info">
+                <span class="material-icons-round">info</span>
+                <div>В режиме <strong>Orchestrator</strong> (<code class="inline-code">/orchestrator/</code>) выполняется ReAct-цикл: планирование, вызов инструмента (SSH, поиск, задачи), анализ результата и следующий шаг. Ход выполнения отображается в интерфейсе.</div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('first-run', document.querySelector('[data-section=first-run]'))">
+                    <span class="doc-nav-btn-label">← Назад</span>
+                    <span class="doc-nav-btn-title">Первый запуск</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('agents', document.querySelector('[data-section=agents]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span>
+                    <span class="doc-nav-btn-title">Агенты и воркфлоу</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ AGENTS ══════════════════ -->
+        <section class="doc-section" id="section-agents">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Агенты и воркфлоу</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">Агенты и <span>воркфлоу</span></h1>
+            <p class="doc-lead">Раздел предназначен для настройки workflow: выбор runtime, запуск шагов и просмотр логов в реальном времени. Каждый агент работает в изолированном процессе.</p>
+
+            <h2 class="doc-h2">Типы агентов (runtime)</h2>
+            <table class="doc-table">
+                <thead><tr><th>Runtime</th><th>Тип</th><th>Когда использовать</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge badge-purple">Ralph</span></td>
+                        <td>Итеративный LLM</td>
+                        <td>DevOps задачи с несколькими шагами: проверка серверов, анализ логов, деплой</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-cyan">Cursor</span></td>
+                        <td>CLI (Cursor AI)</td>
+                        <td>Задачи с изменением кода, рефакторинг, написание скриптов</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-green">Claude Code</span></td>
+                        <td>CLI (Anthropic)</td>
+                        <td>Сложные задачи с файловой системой, MCP-инструменты</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-yellow">ReAct</span></td>
+                        <td>Внутренний</td>
+                        <td>Цепочка инструментов (SSH + поиск + задачи) с прозрачным логом</td>
+                    </tr>
+                    <tr>
+                        <td>Simple / Complex</td>
+                        <td>Внутренний</td>
+                        <td>Одиночные запросы к LLM без инструментов</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2 class="doc-h2">Воркфлоу</h2>
+            <p class="doc-p">Воркфлоу — это именованная последовательность шагов. Каждый шаг — отдельный промпт или команда. Запускаются вручную, по webhook или из задачи.</p>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body"><h4>Создайте workflow</h4><p>Откройте: Агенты → Создать workflow, затем выберите профиль агента и runtime.</p></div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body"><h4>Добавьте шаги</h4><p>Каждый шаг задаётся как промпт или команда. Шаги выполняются последовательно, результат предыдущего шага доступен следующему.</p></div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body"><h4>Запустите выполнение</h4><p>Кнопка ▶ Play запускает workflow; логи отображаются в реальном времени. Выполнение можно остановить в любой момент.</p></div>
+                </div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('chat', document.querySelector('[data-section=chat]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Чат с ИИ</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('servers', document.querySelector('[data-section=servers]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Серверы и SSH</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ SERVERS ══════════════════ -->
+        <section class="doc-section" id="section-servers">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Серверы и SSH</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">Серверы <span>и SSH</span></h1>
+            <p class="doc-lead">Раздел для управления SSH-серверами: браузерный терминал xterm.js, работа с несколькими вкладками и шифрование учётных данных.</p>
+
+            <ul class="check-list">
+                <li><span class="material-icons-round">check_circle</span><strong>Браузерный терминал</strong> — xterm.js через WebSocket, полная совместимость</li>
+                <li><span class="material-icons-round">check_circle</span><strong>Несколько вкладок</strong> — открывай несколько серверов одновременно</li>
+                <li><span class="material-icons-round">check_circle</span><strong>AES-256 шифрование</strong> — пароли расшифровываются только в момент подключения</li>
+                <li><span class="material-icons-round">check_circle</span><strong>Доступ агентов</strong> — агент может подключаться по SSH и выполнять команды в рамках сценария</li>
+                <li><span class="material-icons-round">check_circle</span><strong>Фильтрация опасных команд</strong> — <code class="inline-code">rm -rf</code>, <code class="inline-code">mkfs</code>, <code class="inline-code">shutdown</code> блокируются</li>
+                <li><span class="material-icons-round">check_circle</span><strong>Группировка по тегам</strong> — prod / dev / staging, фильтрация в списке</li>
+            </ul>
+
+            <h2 class="doc-h2">Добавление сервера</h2>
+            <div class="steps">
+                <div class="step"><div class="step-num">1</div><div class="step-body"><h4>Серверы → Добавить</h4><p>Заполни: имя, хост, порт (22), логин, пароль или приватный ключ.</p></div></div>
+                <div class="step"><div class="step-num">2</div><div class="step-body"><h4>Проверьте соединение</h4><p>Кнопка "Тест соединения" выполняет проверку SSH без хранения пароля в открытом виде.</p></div></div>
+                <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Откройте терминал</h4><p>Кнопка "Terminal" рядом с сервером открывает вкладку с браузерным терминалом.</p></div></div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('agents', document.querySelector('[data-section=agents]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Агенты</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('tasks', document.querySelector('[data-section=tasks]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Задачи</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ TASKS ══════════════════ -->
+        <section class="doc-section" id="section-tasks">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Задачи</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">Задачи и <span>проекты</span></h1>
+            <p class="doc-lead">Встроенный трекер задач: проекты, спринты, команды и Kanban-доска. Задачи можно связывать с агентами для автоматизированного выполнения.</p>
+
+            <h2 class="doc-h2">Структура</h2>
+            <div class="arch-box">
+                <pre><span class="hl">Проект</span> (WEU, DEV, OPS…)
+  └─ <span class="hl2">Спринт</span> (активный / завершённый / бэклог)
+       └─ <span class="hl">Epic</span> → <span class="hl2">Story</span> → <span class="hl3">Task</span>
+            ├─ Assignee (пользователь или ИИ)
+            ├─ Assigned Team
+            ├─ Метки, приоритет, оценка
+            └─ Связанный воркфлоу агента</pre>
+            </div>
+
+            <h2 class="doc-h2">ИИ-функции в задачах</h2>
+            <table class="doc-table">
+                <thead><tr><th>Функция</th><th>Описание</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Умный анализ</strong></td><td>ИИ извлекает упоминания серверов и оценивает возможность автоматического выполнения задачи</td></tr>
+                    <tr><td><strong>Подзадачи от ИИ</strong></td><td>Кнопка "Разбить на подзадачи" формирует список шагов с оценкой трудозатрат</td></tr>
+                    <tr><td><strong>Делегирование ИИ</strong></td><td>Задачу можно назначить агенту для запуска workflow и получения отчёта по результату</td></tr>
+                    <tr><td><strong>Улучшение описания</strong></td><td>ИИ помогает привести формулировку задачи к более структурированному виду</td></tr>
+                    <tr><td><strong>Jira-интеграция</strong></td><td>Синхронизация с внешними Jira-проектами</td></tr>
+                </tbody>
+            </table>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('servers', document.querySelector('[data-section=servers]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Серверы</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('rag', document.querySelector('[data-section=rag]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">База знаний</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ RAG ══════════════════ -->
+        <section class="doc-section" id="section-rag">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>База знаний (RAG)</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">База <span>знаний (RAG)</span></h1>
+            <p class="doc-lead">Раздел для загрузки runbook, регламентов и инфраструктурной документации. Релевантные фрагменты автоматически добавляются в контекст ответа.</p>
+
+            <table class="doc-table">
+                <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>Vector DB</strong></td><td>Qdrant (внешний) или InMemory (fallback без docker)</td></tr>
+                    <tr><td><strong>Форматы</strong></td><td>PDF, TXT, MD, DOCX</td></tr>
+                    <tr><td><strong>Mini build</strong></td><td>Лёгкая индексация без PyTorch</td></tr>
+                    <tr><td><strong>Full build</strong></td><td>sentence-transformers, локальные эмбеддинги</td></tr>
+                    <tr><td><strong>Включение в чате</strong></td><td>Тумблер "RAG" в интерфейсе чата</td></tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-warn">
+                <span class="material-icons-round">warning</span>
+                <div>Без запущенного Qdrant база знаний работает в режиме <strong>InMemory</strong>; данные не сохраняются после перезапуска. Для постоянного хранения рекомендуется запуск Qdrant в отдельном сервисе.</div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('tasks', document.querySelector('[data-section=tasks]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Задачи</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('mcp', document.querySelector('[data-section=mcp]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Skills / MCP</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ MCP ══════════════════ -->
+        <section class="doc-section" id="section-mcp">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Skills / MCP</span>
+            </div>
+            <span class="doc-tag">Возможности</span>
+            <h1 class="doc-h1">Skills <span>и MCP</span></h1>
+            <p class="doc-lead">Model Context Protocol (MCP) — стандарт подключения внешних инструментов к ИИ. Через него агенты получают доступ к сторонним API, базам данных и сервисам.</p>
+
+            <p class="doc-p">В разделе <strong>Skills / MCP</strong> находится каталог доступных серверов. Подключённые MCP-серверы автоматически добавляют свои инструменты в пул агента.</p>
+
+            <h2 class="doc-h2">Встроенный MCP-сервер</h2>
+            <p class="doc-p">В платформу входит встроенный MCP-сервер (<code class="inline-code">mcp_server.py</code>), который предоставляет агентам Claude Code доступ к следующим инструментам:</p>
+            <ul class="doc-ul">
+                <li><strong>server_execute</strong> — выполнение команд на SSH-серверах пользователя</li>
+                <li><strong>servers_list</strong> — список зарегистрированных серверов</li>
+            </ul>
+
+            <div class="callout callout-info">
+                <span class="material-icons-round">info</span>
+                <div>Конфигурация MCP для агента формируется при запуске. Подключённые MCP-серверы автоматически добавляют доступные инструменты в пул агента.</div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('rag', document.querySelector('[data-section=rag]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">База знаний</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('arch', document.querySelector('[data-section=arch]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Архитектура</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ ARCHITECTURE ══════════════════ -->
+        <section class="doc-section" id="section-arch">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Архитектура</span>
+            </div>
+            <span class="doc-tag">Справочник</span>
+            <h1 class="doc-h1"><span>Архитектура</span> платформы</h1>
+            <p class="doc-lead">WEU AI построен на Django ASGI с модульной архитектурой. Компоненты можно конфигурировать и развивать независимо.</p>
+
+            <div class="arch-box">
+                <pre>
+<span class="hl">Пользователь (браузер)</span>
+       │  HTTP / WebSocket
+       ▼
+<span class="hl2">Django ASGI (Daphne)</span>  ←  ALLOWED_HOSTS, CORS
+       │
+       ├─ <span class="hl">Чат / Orchestrator</span>  →  UnifiedOrchestrator
+       │         │                    ├─ LLM Provider (Gemini/Grok)
+       │         │                    ├─ Tool Manager
+       │         │                    └─ RAG Engine (Qdrant/InMemory)
+       │         │
+       ├─ <span class="hl">Агенты Hub</span>  →  CLI Runtime
+       │                      ├─ Ralph (internal LLM loop)
+       │                      ├─ Cursor CLI  (subprocess)
+       │                      └─ Claude Code CLI (subprocess)
+       │
+       ├─ <span class="hl3">Серверы SSH</span>  →  Channels WebSocket → xterm.js
+       │
+       └─ <span class="hl">Задачи / RAG / Пароли</span>  →  Django ORM → Postgres/SQLite
+</pre>
+            </div>
+
+            <h2 class="doc-h2">Структура директорий</h2>
+            <pre class="code-block">web_rA/
+├── <span class="key">app/</span>                   <span class="comment"># Core AI/orchestration layer</span>
+│   ├── agents/           <span class="comment"># Agent implementations</span>
+│   ├── core/             <span class="comment"># LLM, orchestrator, model config</span>
+│   ├── rag/              <span class="comment"># RAG engine (Qdrant / InMemory)</span>
+│   ├── tools/            <span class="comment"># SSH, filesystem, web tools</span>
+│   └── mcp/              <span class="comment"># MCP client</span>
+├── <span class="key">core_ui/</span>              <span class="comment"># Main web interface</span>
+│   ├── templates/        <span class="comment"># HTML-шаблоны</span>
+│   └── static/           <span class="comment"># CSS, JS, images</span>
+├── <span class="key">agent_hub/</span>            <span class="comment"># Agent profiles, workflows, logs</span>
+├── <span class="key">tasks/</span>                <span class="comment"># Task management + Jira integration</span>
+├── <span class="key">servers/</span>              <span class="comment"># SSH server management</span>
+├── <span class="key">passwords/</span>            <span class="comment"># Password manager (AES-256)</span>
+├── <span class="key">web_ui/</span>               <span class="comment"># Django project settings</span>
+├── <span class="key">mcp_server.py</span>         <span class="comment"># Standalone MCP server для Claude Code</span>
+└── <span class="key">manage.py</span></pre>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('mcp', document.querySelector('[data-section=mcp]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Skills / MCP</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('envvars', document.querySelector('[data-section=envvars]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Переменные окружения</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ ENV VARS ══════════════════ -->
+        <section class="doc-section" id="section-envvars">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Переменные окружения</span>
+            </div>
+            <span class="doc-tag">Справочник</span>
+            <h1 class="doc-h1">Переменные <span>окружения</span></h1>
+            <p class="doc-lead">Справочник переменных окружения из файла <code class="inline-code">.env</code>.</p>
+
+            <table class="doc-table">
+                <thead><tr><th>Переменная</th><th>Обязательно</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+                <tbody>
+                    <tr><td><code>GEMINI_API_KEY</code></td><td><span class="badge badge-purple">Да*</span></td><td>—</td><td>Google Gemini API ключ. *Нужен хотя бы один из двух</td></tr>
+                    <tr><td><code>GROK_API_KEY</code></td><td><span class="badge badge-cyan">Нет</span></td><td>—</td><td>xAI Grok API ключ</td></tr>
+                    <tr><td><code>SECRET_KEY</code></td><td><span class="badge badge-purple">Да</span></td><td>—</td><td>Django secret key. В prod — случайная строка 50+ символов</td></tr>
+                    <tr><td><code>DEBUG</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>0</code></td><td>1 для разработки, 0 для production</td></tr>
+                    <tr><td><code>ALLOWED_HOSTS</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>localhost,127.0.0.1</code></td><td>Разрешённые хосты через запятую</td></tr>
+                    <tr><td><code>DJANGO_PORT</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>9000</code></td><td>Порт Daphne ASGI-сервера</td></tr>
+                    <tr><td><code>MASTER_PASSWORD</code></td><td><span class="badge badge-purple">Да</span></td><td>—</td><td>Мастер-пароль для расшифровки SSH-кредов (AES-256)</td></tr>
+                    <tr><td><code>POSTGRES_HOST</code></td><td><span class="badge badge-cyan">Нет</span></td><td>SQLite</td><td>Хост PostgreSQL. Если не задан — используется SQLite</td></tr>
+                    <tr><td><code>POSTGRES_PORT</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>5432</code></td><td>Порт PostgreSQL</td></tr>
+                    <tr><td><code>POSTGRES_DB</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>weu_ai</code></td><td>Имя базы данных</td></tr>
+                    <tr><td><code>POSTGRES_USER</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>weu</code></td><td>Пользователь PostgreSQL</td></tr>
+                    <tr><td><code>POSTGRES_PASSWORD</code></td><td><span class="badge badge-cyan">Нет</span></td><td>—</td><td>Пароль PostgreSQL</td></tr>
+                    <tr><td><code>QDRANT_URL</code></td><td><span class="badge badge-cyan">Нет</span></td><td>InMemory</td><td>URL Qdrant: <code>http://localhost:6333</code></td></tr>
+                    <tr><td><code>WEU_BUILD</code></td><td><span class="badge badge-cyan">Нет</span></td><td><code>mini</code></td><td><code>mini</code> — без PyTorch, <code>full</code> — с sentence-transformers</td></tr>
+                    <tr><td><code>CURSOR_API_KEY</code></td><td><span class="badge badge-cyan">Нет</span></td><td>—</td><td>Cursor headless API ключ (только для Cursor-агентов)</td></tr>
+                </tbody>
+            </table>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('arch', document.querySelector('[data-section=arch]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Архитектура</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('security', document.querySelector('[data-section=security]'))">
+                    <span class="doc-nav-btn-label">Следующий →</span><span class="doc-nav-btn-title">Безопасность</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- ══════════════════ SECURITY ══════════════════ -->
+        <section class="doc-section" id="section-security">
+            <div class="breadcrumb">
+                <a href="../../index.html">WEU AI</a>
+                <span class="material-icons-round">chevron_right</span>
+                <span>Безопасность</span>
+            </div>
+            <span class="doc-tag">Справочник</span>
+            <h1 class="doc-h1"><span>Безопасность</span></h1>
+            <p class="doc-lead">Раздел описывает механизмы безопасности платформы: шифрование данных, фильтрацию опасных команд и модель разграничения доступа.</p>
+
+            <h2 class="doc-h2">Шифрование данных</h2>
+            <ul class="check-list">
+                <li><span class="material-icons-round">check_circle</span>Пароли и SSH-ключи серверов шифруются <strong>AES-256</strong> с использованием <code class="inline-code">MASTER_PASSWORD</code></li>
+                <li><span class="material-icons-round">check_circle</span>Расшифровка происходит только в момент подключения — в RAM, нигде не сохраняется открытым текстом</li>
+                <li><span class="material-icons-round">check_circle</span>MASTER_PASSWORD никогда не хранится в БД — только в переменной окружения</li>
+            </ul>
+
+            <h2 class="doc-h2">Блокировка опасных команд</h2>
+            <p class="doc-p">Перед выполнением SSH-команд применяется проверка по списку опасных паттернов (<code class="inline-code">app/tools/safety.py</code>). Ниже приведены примеры блокируемых команд:</p>
+            <pre class="code-block"><span class="comment"># Заблокированные паттерны:</span>
+rm -rf /           <span class="comment"># удаление корня</span>
+mkfs               <span class="comment"># форматирование диска</span>
+dd if=             <span class="comment"># прямая запись на диск</span>
+shutdown / reboot  <span class="comment"># остановка системы</span>
+systemctl stop/disable/mask  <span class="comment"># остановка сервисов</span>
+truncate -s 0      <span class="comment"># обнуление файлов</span></pre>
+
+            <h2 class="doc-h2">Изоляция данных</h2>
+            <ul class="check-list">
+                <li><span class="material-icons-round">check_circle</span>Данные (серверы, задачи, пароли) изолируются по пользователям на уровне Django ORM</li>
+                <li><span class="material-icons-round">check_circle</span>Каждый запуск агента логируется: исполнитель, время, входные данные и результат</li>
+                <li><span class="material-icons-round">check_circle</span>Права на серверы, воркфлоу и задачи управляются через группы и разрешения Django</li>
+            </ul>
+
+            <div class="callout callout-warn">
+                <span class="material-icons-round">warning</span>
+                <div><strong>Рекомендации для production:</strong> установите <code class="inline-code">DEBUG=0</code>, используйте уникальный <code class="inline-code">SECRET_KEY</code>, PostgreSQL и HTTPS (см. <code class="inline-code">docs/HTTPS_SETUP.md</code>), а также ограничьте <code class="inline-code">ALLOWED_HOSTS</code>.</div>
+            </div>
+
+            <div class="doc-nav-btns">
+                <a href="#" class="doc-nav-btn" onclick="showSection('envvars', document.querySelector('[data-section=envvars]'))">
+                    <span class="doc-nav-btn-label">← Назад</span><span class="doc-nav-btn-title">Переменные окружения</span>
+                </a>
+                <a href="#" class="doc-nav-btn next" onclick="showSection('intro', document.querySelector('[data-section=intro]'))">
+                    <span class="doc-nav-btn-label">↑ Начало</span><span class="doc-nav-btn-title">Введение</span>
+                </a>
+            </div>
+        </section>
+
+    </main>
+</div><!-- /doc-layout -->
+
+<script>
+function showSection(id, navEl) {
+    document.querySelectorAll('.doc-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const sec = document.getElementById('section-' + id);
+    if (sec) sec.classList.add('active');
+    // Always activate the desktop sidebar item for this section
+    const desktopNavEl = document.querySelector('#docSidebar [data-section="' + id + '"]');
+    if (desktopNavEl) desktopNavEl.classList.add('active');
+    else if (navEl) navEl.classList.add('active');
+    window.scrollTo(0, 0);
+    closeMobSidebar();
+    syncMobActiveState(id);
+    return false;
+}
+
+function showTab(group, tabId, btn) {
+    // Hide panes in this group
+    const prefix = group + '-';
+    document.querySelectorAll('[id^="' + prefix + '"]').forEach(p => p.classList.remove('active'));
+    document.getElementById(prefix + tabId).classList.add('active');
+    // Update buttons
+    btn.closest('.tab-bar').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+function toggleSidebar() {
+    openMobSidebar();
+}
+
+function openMobSidebar() {
+    // Copy desktop sidebar content into mobile panel on first open
+    const mobContent = document.getElementById('mobSbContent');
+    if (!mobContent.hasChildNodes()) {
+        mobContent.innerHTML = document.getElementById('docSidebar').innerHTML;
+        // Wire up mobile nav items to also close the overlay
+        mobContent.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => closeMobSidebar());
+        });
+    }
+    document.getElementById('mobSbOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMobSidebar() {
+    document.getElementById('mobSbOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function focusSearch() {
+    // Placeholder for search
+}
+
+// Sync active state to mobile sidebar
+function syncMobActiveState(id) {
+    const mobContent = document.getElementById('mobSbContent');
+    if (mobContent.hasChildNodes()) {
+        mobContent.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        const mobEl = mobContent.querySelector('[data-section="' + id + '"]');
+        if (mobEl) mobEl.classList.add('active');
+    }
+}
+
+// Handle hash navigation
+window.addEventListener('load', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+        const navEl = document.querySelector('[data-section="' + hash + '"]');
+        if (navEl) showSection(hash, navEl);
+    }
+});
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMobSidebar(); });
+</script>
+</body>
+</html>
