@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WEU AI — ИИ-платформа для DevOps</title>
-    <meta name="description" content="Запускай агентов, управляй серверами по SSH, автоматизируй рутину и отслеживай задачи — всё через браузер.">
+    <meta name="description" content="WEU AI объединяет агентов, SSH-доступ, задачи и базу знаний в едином веб-интерфейсе.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -360,8 +360,26 @@
         @media(min-width:640px){ .vid-grid { grid-template-columns:1fr 1fr; } }
         .vid-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; transition:all .25s; }
         .vid-card:hover { border-color:var(--border-md); transform:translateY(-3px); box-shadow:0 20px 50px -15px rgba(0,0,0,0.45); }
-        .vid-wrap { position:relative; aspect-ratio:16/10; background:var(--bg-elevated); overflow:hidden; }
+        .vid-wrap { position:relative; aspect-ratio:16/10; background:var(--bg-elevated); overflow:hidden; cursor:pointer; }
         .vid-wrap video { width:100%; height:100%; object-fit:cover; display:block; }
+        .vid-wrap::after {
+            content:'';
+            position:absolute; inset:0;
+            background:linear-gradient(to top, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0) 45%);
+            opacity:.7; transition:opacity .2s;
+        }
+        .vid-card:hover .vid-wrap::after { opacity:.95; }
+        .vid-zoom {
+            position:absolute; top:10px; right:10px;
+            width:32px; height:32px; border-radius:10px;
+            display:flex; align-items:center; justify-content:center;
+            background:rgba(5,5,7,0.62); border:1px solid rgba(255,255,255,0.12);
+            color:var(--t1); z-index:2; backdrop-filter:blur(8px);
+            -webkit-backdrop-filter:blur(8px);
+            opacity:.85; transition:all .2s;
+        }
+        .vid-zoom .material-icons-round { font-size:18px; }
+        .vid-card:hover .vid-zoom { opacity:1; transform:translateY(-1px); }
         .vid-fb { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--t4); }
         .vid-fb .material-icons-round { font-size:32px; opacity:.3; }
         .vid-fb span { font-size:13px; opacity:.5; }
@@ -373,6 +391,59 @@
         .tc { background:var(--accent-m); color:var(--accent); }
         .ts { background:var(--success-m); color:var(--success); }
         .tw { background:var(--warning-m); color:var(--warning); }
+        .vid-modal {
+            position:fixed; inset:0; z-index:300;
+            display:none; align-items:center; justify-content:center;
+            padding:28px;
+        }
+        .vid-modal.open { display:flex; }
+        .vid-modal-bg {
+            position:absolute; inset:0;
+            background:rgba(3,4,7,0.82);
+            backdrop-filter:blur(8px);
+            -webkit-backdrop-filter:blur(8px);
+        }
+        .vid-modal-panel {
+            position:relative; z-index:1;
+            width:min(1180px,96vw);
+            border-radius:16px;
+            border:1px solid var(--border-md);
+            overflow:hidden;
+            box-shadow:0 32px 120px rgba(0,0,0,0.58);
+        }
+        .vid-modal-head {
+            display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
+            padding:14px 16px;
+            border-bottom:1px solid var(--border);
+            background:rgba(17,17,19,0.72);
+        }
+        .vid-modal-title { font-size:15px; font-weight:600; color:var(--t1); line-height:1.35; }
+        .vid-modal-sub { font-size:12px; color:var(--t3); margin-top:2px; line-height:1.4; }
+        .vid-modal-close {
+            width:36px; height:36px; border-radius:10px;
+            border:1px solid var(--border); background:rgba(255,255,255,0.03);
+            color:var(--t2); cursor:pointer;
+            display:flex; align-items:center; justify-content:center; flex-shrink:0;
+            transition:all .18s;
+        }
+        .vid-modal-close:hover { color:var(--t1); background:rgba(255,255,255,0.08); border-color:var(--border-md); }
+        .vid-modal-close .material-icons-round { font-size:20px; }
+        .vid-modal-stage {
+            position:relative;
+            width:100%; aspect-ratio:16/9;
+            background:#07080b;
+        }
+        .vid-modal-stage video {
+            width:100%; height:100%;
+            object-fit:contain; display:block;
+            background:#07080b;
+        }
+        @media(max-width:768px){
+            .vid-modal { padding:12px; }
+            .vid-modal-panel { width:100%; border-radius:14px; }
+            .vid-modal-head { padding:12px; }
+            .vid-modal-title { font-size:14px; }
+        }
 
         /* ── Trust ── */
         .trust-sec { padding:72px 0; }
@@ -546,10 +617,6 @@
                 <span class="material-icons-round">menu_book</span>
                 <span class="htxt">Docs</span>
             </a>
-            <a href="{% url 'login' %}" class="btn-cta">
-                <span class="htxt">Войти</span>
-                <span class="material-icons-round">arrow_forward</span>
-            </a>
         </nav>
         <button class="mob-menu-btn" onclick="openMobMenu()" aria-label="Меню">
             <span class="material-icons-round">menu</span>
@@ -584,10 +651,6 @@
                 О платформе
             </a>
         </div>
-        <a href="{% url 'login' %}" class="mob-nav-cta">
-            <span class="material-icons-round">login</span>
-            Войти в платформу
-        </a>
     </div>
 </div>
 
@@ -604,7 +667,7 @@
         </h1>
 
         <p class="hero-sub r rd2">
-            Запускай ИИ-агентов, управляй серверами по SSH, отслеживай задачи и автоматизируй рутину — всё прямо в браузере. Каждое действие логируется и контролируется тобой.
+            WEU AI объединяет запуск ИИ-агентов, работу с SSH-серверами, управление задачами и базой знаний в едином веб-интерфейсе. Все действия фиксируются в журнале.
         </p>
 
         <div class="hero-acts r rd3">
@@ -681,8 +744,8 @@
                     <div class="mock-content">
                         <div class="mock-page-header">
                             <div class="mock-page-tag">Agent Hub</div>
-                            <div class="mock-page-title">Делегируй рутину AI — сфокусируйся на важном</div>
-                            <div class="mock-page-sub">Создавай воркфлоу, выбирай runtime, запускай по триггеру</div>
+                            <div class="mock-page-title">Автоматизация типовых операций и контроль выполнения</div>
+                            <div class="mock-page-sub">Создание workflow, выбор runtime и запуск по триггеру</div>
                         </div>
                         <div class="mock-stats">
                             <div class="mock-stat"><div class="mock-stat-n">1</div><div class="mock-stat-l">Агенты</div></div>
@@ -724,9 +787,9 @@
         <div class="about-grid">
             <div>
                 <span class="s-label r">О платформе</span>
-                <h2 class="s-title r rd1">Не просто чат.<br><span class="grad">Всё в одном окне.</span></h2>
+                <h2 class="s-title r rd1">Единая рабочая среда.<br><span class="grad">Для DevOps-команд.</span></h2>
                 <p class="about-txt r rd2">
-                    WEU AI — это <strong>веб-приложение</strong> для DevOps-команд. Открываешь браузер — и у тебя сразу чат с ИИ, список агентов, таск-трекер, SSH-терминалы и база знаний. <strong>ИИ видит твои серверы и задачи</strong>, умеет подключаться по SSH, запускать сценарии и формировать отчёты. Никакой установки CLI — только браузер.
+                    WEU AI — <strong>веб-приложение</strong> для DevOps-команд. В одном интерфейсе доступны чат с ИИ, агенты, таск-трекер, SSH-терминалы и база знаний. Агенты используют контекст серверов и задач, выполняют сценарии и формируют отчёты. Работа ведётся через браузер.
                 </p>
                 <div class="stats r rd3">
                     <div><div class="stat-n">5+</div><div class="stat-l">Типов агентов</div></div>
@@ -741,21 +804,21 @@
                         <div class="who-icon wi-p"><span class="material-icons-round">engineering</span></div>
                         <div>
                             <div class="who-role">DevOps / SRE</div>
-                            <div class="who-desc">Агент сам соберёт логи, предложит фикс и откроет SSH-сессию. Ты только смотришь и подтверждаешь нужные шаги.</div>
+                            <div class="who-desc">Агенты помогают с операционными задачами: сбор логов, первичный анализ и выполнение проверок через SSH с подтверждением критичных действий.</div>
                         </div>
                     </li>
                     <li class="who-item r rd2">
                         <div class="who-icon wi-c"><span class="material-icons-round">admin_panel_settings</span></div>
                         <div>
                             <div class="who-role">Системные администраторы</div>
-                            <div class="who-desc">Все сервера в одном месте. История действий, зашифрованные пароли, воспроизводимые сценарии.</div>
+                            <div class="who-desc">Централизованное управление серверами, журнал действий и шифрование учётных данных в одном интерфейсе.</div>
                         </div>
                     </li>
                     <li class="who-item r rd3">
                         <div class="who-icon wi-s"><span class="material-icons-round">groups</span></div>
                         <div>
                             <div class="who-role">Тимлиды</div>
-                            <div class="who-desc">Плейбуки, логи, роли. Стандартизируй процессы и всегда знай, кто что запустил и с каким результатом.</div>
+                            <div class="who-desc">Единые workflow, роли и прозрачная история запусков помогают стандартизировать процессы команды.</div>
                         </div>
                     </li>
                 </ul>
@@ -768,44 +831,44 @@
 <section class="feat-sec sep">
     <div class="wrap">
         <span class="s-label r">Возможности</span>
-        <h2 class="s-title r rd1">Всё что нужно.<br><span class="grad">Ничего лишнего.</span></h2>
-        <p class="s-desc r rd2">Шесть ключевых модулей. Каждый — решение конкретной проблемы, без абстракций.</p>
+        <h2 class="s-title r rd1">Ключевые модули.<br><span class="grad">Для ежедневной работы.</span></h2>
+        <p class="s-desc r rd2">Шесть основных модулей платформы для инфраструктурных и командных процессов.</p>
 
         <div class="feat-grid">
             <div class="feat-card r">
                 <div class="feat-icon fi-p"><span class="material-icons-round">chat</span></div>
                 <h3>Чат с ИИ</h3>
-                <p>Задаёшь вопрос в браузере, получаешь ответ с планом. ИИ знает про твои серверы, задачи, историю работы — не нужно объяснять контекст с нуля.</p>
+                <p>Рабочий чат с контекстом серверов, задач и истории сессий. Поддерживаются разные провайдеры моделей и потоковый вывод ответа.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> Gemini, Grok — выбор провайдера</div>
             </div>
             <div class="feat-card r rd1">
                 <div class="feat-icon fi-c"><span class="material-icons-round">account_tree</span></div>
                 <h3>Агенты и воркфлоу</h3>
-                <p>Описываешь задачу — агент строит шаги, запускает их и формирует отчёт. Реальные кейсы: деплой Docker, проверка дисков, очистка логов, бэкапы.</p>
+                <p>Workflow с пошаговым выполнением и журналом результатов. Подходит для деплоя, проверок инфраструктуры и повторяемых операций.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> Ralph, Cursor, Claude Code, ReAct</div>
             </div>
             <div class="feat-card r rd2">
                 <div class="feat-icon fi-w"><span class="material-icons-round">dns</span></div>
                 <h3>Серверы и SSH</h3>
-                <p>Все SSH-подключения в одном месте. Полноценный браузерный терминал (xterm.js), мульти-вкладки, зашифрованные пароли — подключаешься в два клика.</p>
+                <p>Управление SSH-подключениями в одном разделе: браузерный терминал xterm.js, вкладки и защищённое хранение учётных данных.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> AES-256 шифрование учётных данных</div>
             </div>
             <div class="feat-card r rd3">
                 <div class="feat-icon fi-s"><span class="material-icons-round">task_alt</span></div>
                 <h3>Таски и проекты</h3>
-                <p>Встроенный трекер: проекты, спринты, подзадачи, метки. Задачи связаны с агентами — настроил один раз, дальше запускается автоматически.</p>
+                <p>Трекер проектов и задач: проекты, спринты, подзадачи и связи с агентами для автоматизированного исполнения.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> Интеграция с Jira</div>
             </div>
             <div class="feat-card r rd4">
                 <div class="feat-icon fi-p"><span class="material-icons-round">library_books</span></div>
                 <h3>База знаний (RAG)</h3>
-                <p>Загружаешь runbook'и, регламенты, документацию — ИИ подтягивает нужные фрагменты при ответах. Актуальный контекст без copy-paste.</p>
+                <p>Документы и регламенты подключаются к ответам через RAG, чтобы модель использовала релевантный контекст.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> Qdrant vector search</div>
             </div>
             <div class="feat-card r rd5">
                 <div class="feat-icon fi-c"><span class="material-icons-round">visibility</span></div>
-                <h3>Контроль, не слепая вера</h3>
-                <p>Видишь каждый шаг агента в реальном времени. Можешь подтвердить или остановить. Опасные системные команды блокируются автоматически.</p>
+                <h3>Контролируемое выполнение</h3>
+                <p>Каждое действие агента отображается в интерфейсе. Выполнение можно остановить, а опасные системные команды блокируются до запуска.</p>
                 <div class="feat-foot"><span class="material-icons-round">bolt</span> rm -rf, mkfs, dd — заблокированы</div>
             </div>
         </div>
@@ -816,12 +879,13 @@
 <section class="vid-sec sep" id="demo">
     <div class="wrap">
         <span class="s-label r">Демо</span>
-        <h2 class="s-title r rd1">Реальные сценарии.<br><span class="grad">Без воды.</span></h2>
-        <p class="s-desc r rd2">Четыре записи — четыре настоящих кейса из интерфейса платформы.</p>
+        <h2 class="s-title r rd1">Рабочие сценарии.<br><span class="grad">В интерфейсе платформы.</span></h2>
+        <p class="s-desc r rd2">Четыре коротких записи с типовыми сценариями использования.</p>
 
         <div class="vid-grid">
             <div class="vid-card r">
                 <div class="vid-wrap">
+                    <div class="vid-zoom"><span class="material-icons-round">open_in_full</span></div>
                     <video autoplay muted loop playsinline preload="auto">
                         <source src="{% url 'landing_video' 'agent.mp4' %}" type="video/mp4">
                         <source src="{% url 'landing_video' 'agent.mkv' %}" type="video/x-matroska">
@@ -835,6 +899,7 @@
             </div>
             <div class="vid-card r rd1">
                 <div class="vid-wrap">
+                    <div class="vid-zoom"><span class="material-icons-round">open_in_full</span></div>
                     <video autoplay muted loop playsinline preload="auto">
                         <source src="{% url 'landing_video' 'mcp.mp4' %}" type="video/mp4">
                         <source src="{% url 'landing_video' 'mcp.mkv' %}" type="video/x-matroska">
@@ -848,6 +913,7 @@
             </div>
             <div class="vid-card r rd2">
                 <div class="vid-wrap">
+                    <div class="vid-zoom"><span class="material-icons-round">open_in_full</span></div>
                     <video autoplay muted loop playsinline preload="auto">
                         <source src="{% url 'landing_video' 'server.mp4' %}" type="video/mp4">
                         <source src="{% url 'landing_video' 'server.mkv' %}" type="video/x-matroska">
@@ -861,6 +927,7 @@
             </div>
             <div class="vid-card r rd3">
                 <div class="vid-wrap">
+                    <div class="vid-zoom"><span class="material-icons-round">open_in_full</span></div>
                     <video autoplay muted loop playsinline preload="auto">
                         <source src="{% url 'landing_video' 'task.mp4' %}" type="video/mp4">
                         <source src="{% url 'landing_video' 'task.mkv' %}" type="video/x-matroska">
@@ -884,14 +951,14 @@
                 <div class="trust-icon fi-s"><span class="material-icons-round">lock</span></div>
                 <div>
                     <h4>Шифрование данных</h4>
-                    <p>Пароли и ключи серверов зашифрованы AES-256. Расшифровка — только в момент подключения, нигде не хранятся открыто.</p>
+                    <p>Пароли и ключи серверов шифруются AES-256. Расшифровка выполняется только во время подключения.</p>
                 </div>
             </div>
             <div class="trust-card r rd1">
                 <div class="trust-icon fi-w"><span class="material-icons-round">history</span></div>
                 <div>
                     <h4>Полный аудит</h4>
-                    <p>Каждый запуск агента записывается: кто, когда, что выполнял, какой результат. Ничего не теряется, всё прозрачно.</p>
+                    <p>Каждый запуск агента журналируется: исполнитель, время, выполненные действия и результат.</p>
                 </div>
             </div>
             <div class="trust-card r rd2">
@@ -908,11 +975,11 @@
 <!-- ══ CTA ══ -->
 <section class="cta-sec sep">
     <div class="wrap">
-        <span class="s-label r">Готов?</span>
+        <span class="s-label r">Начало работы</span>
         <h2 class="s-title r rd1" style="max-width:440px;margin-left:auto;margin-right:auto;text-align:center;">
-            Попробуй сам.<br><span class="grad">Бесплатно.</span>
+            Разверните платформу.<br><span class="grad">И оцените в работе.</span>
         </h2>
-        <p class="s-desc r rd2">Разверни локально или на сервере. Подключи свои серверы, настрой агентов — и работай.</p>
+        <p class="s-desc r rd2">Платформу можно развернуть локально или на сервере, подключить инфраструктуру и настроить агентов для рабочей среды.</p>
         <div class="cta-acts r rd3">
             <a href="https://github.com/LLprod39/WEU-AI" target="_blank" rel="noopener noreferrer" class="btn-primary">
                 Начать работу
@@ -937,6 +1004,22 @@
     </div>
 </footer>
 
+<div class="vid-modal" id="vidModal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="vid-modal-bg" data-close-video-modal></div>
+    <div class="vid-modal-panel glass">
+        <div class="vid-modal-head">
+            <div>
+                <div class="vid-modal-title" id="vidModalTitle">Видео</div>
+                <div class="vid-modal-sub" id="vidModalSub">Демонстрация сценария</div>
+            </div>
+            <button class="vid-modal-close" id="vidModalClose" aria-label="Закрыть видео">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="vid-modal-stage" id="vidModalStage"></div>
+    </div>
+</div>
+
 <script>
 (function(){
     /* scroll reveal */
@@ -957,6 +1040,78 @@
         srcs.forEach(function(s){ s.addEventListener('error', function(){ if(++fails >= srcs.length) showFb(); }); });
         v.addEventListener('error', showFb);
     });
+
+    /* video modal */
+    var vidModal = document.getElementById('vidModal');
+    var vidModalStage = document.getElementById('vidModalStage');
+    var vidModalTitle = document.getElementById('vidModalTitle');
+    var vidModalSub = document.getElementById('vidModalSub');
+
+    function restoreBodyScrollIfNeeded() {
+        var drawer = document.getElementById('mobDrawer');
+        if (!drawer || !drawer.classList.contains('open')) {
+            document.body.style.overflow = '';
+        }
+    }
+
+    function closeVideoModal() {
+        if (!vidModal.classList.contains('open')) return;
+        vidModal.classList.remove('open');
+        vidModal.setAttribute('aria-hidden', 'true');
+        vidModalStage.innerHTML = '';
+        restoreBodyScrollIfNeeded();
+    }
+
+    function openVideoModal(card) {
+        var sourceVideo = card.querySelector('.vid-wrap video');
+        if (!sourceVideo || sourceVideo.style.display === 'none') return;
+
+        var modalVideo = sourceVideo.cloneNode(true);
+        modalVideo.removeAttribute('controls');
+        modalVideo.setAttribute('autoplay', '');
+        modalVideo.setAttribute('muted', '');
+        modalVideo.setAttribute('loop', '');
+        modalVideo.setAttribute('playsinline', '');
+        modalVideo.preload = 'auto';
+        modalVideo.muted = true;
+
+        vidModalStage.innerHTML = '';
+        vidModalStage.appendChild(modalVideo);
+
+        var titleEl = card.querySelector('.vid-info h4');
+        var subEl = card.querySelector('.vid-info p');
+        vidModalTitle.textContent = titleEl ? titleEl.textContent.trim() : 'Видео';
+        vidModalSub.textContent = subEl ? subEl.textContent.trim() : 'Демонстрация сценария';
+
+        vidModal.classList.add('open');
+        vidModal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+
+        var playPromise = modalVideo.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(function(){});
+        }
+    }
+
+    document.querySelectorAll('.vid-card').forEach(function(card){
+        var wrap = card.querySelector('.vid-wrap');
+        if (!wrap) return;
+        wrap.setAttribute('role', 'button');
+        wrap.setAttribute('tabindex', '0');
+        wrap.addEventListener('click', function(){ openVideoModal(card); });
+        wrap.addEventListener('keydown', function(e){
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openVideoModal(card);
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-close-video-modal]').forEach(function(el){
+        el.addEventListener('click', closeVideoModal);
+    });
+    document.getElementById('vidModalClose').addEventListener('click', closeVideoModal);
+    window.closeVideoModal = closeVideoModal;
 })();
 
 /* Mobile drawer */
@@ -971,6 +1126,7 @@ function closeMobMenu(){
     document.body.style.overflow='';
 }
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeMobMenu(); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape' && window.closeVideoModal) window.closeVideoModal(); });
 </script>
 </body>
 </html>

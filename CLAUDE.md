@@ -40,9 +40,21 @@ python manage.py runserver
 python manage.py makemigrations <app_name>
 python manage.py migrate
 
-# Run tests (Django test framework)
-python manage.py test <app_name>          # Run tests for specific app
-python manage.py test                     # Run all tests
+# Tests (pytest)
+pytest                                    # Run all tests
+pytest tests/test_safety.py               # Run specific test file
+pytest -k "test_blocked_commands"         # Run tests matching pattern
+pytest --tb=long -v                       # Verbose output with full tracebacks
+
+# Linting and formatting (ruff)
+ruff check .                              # Check for linting errors
+ruff check . --fix                        # Auto-fix linting errors
+ruff format .                             # Format code
+
+# Pre-commit hooks
+pip install pre-commit
+pre-commit install                        # Install hooks
+pre-commit run --all-files                # Run all hooks manually
 ```
 
 ## Build Variants
@@ -91,9 +103,10 @@ app/                    # Core AI/orchestration layer
 core_ui/               # Main web interface (views, templates, static)
 agent_hub/             # Agent profiles, workflows, execution logs
 tasks/                 # Task management with AI analysis and Jira integration
-servers/               # SSH server management
+servers/               # SSH server management, WebSocket terminal
 passwords/             # Password manager (AES-256 encryption)
-web_ui/                # Django project settings
+skills/                # MCP servers hub, skill catalog
+web_ui/                # Django project settings, URLs, ASGI config
 ```
 
 ## Key Configuration
@@ -124,7 +137,7 @@ web_ui/                # Django project settings
 - **SQLite**: Default for local development (no config needed)
 - **PostgreSQL**: Production (set `POSTGRES_HOST` in `.env`)
 
-Django apps with models: `core_ui`, `agent_hub`, `tasks`, `servers`, `passwords`
+Django apps with models: `core_ui`, `agent_hub`, `tasks`, `servers`, `passwords`, `skills`
 
 ## Cursor CLI Integration
 
@@ -167,6 +180,15 @@ Headless mode requires specific flags in `CLI_RUNTIME_CONFIG["claude"]["args"]`:
 - **SSH connections**: Credentials stored encrypted, decrypted at runtime for server connections
 - **Tool execution**: Commands validated against dangerous patterns before SSH execution
 - **User isolation**: Data scoped by user ID (servers, passwords, tasks)
+
+## Testing
+
+Tests use pytest with pytest-django. Key fixtures in `conftest.py`:
+- `user`, `admin_user`, `staff_user` - Test users with different permission levels
+- `authenticated_client`, `admin_client` - Pre-authenticated Django test clients
+- `task`, `server`, `agent_profile`, `workflow` - Model fixtures
+
+Configuration in `pyproject.toml` under `[tool.pytest.ini_options]`.
 
 ## Documentation
 

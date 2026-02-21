@@ -12,7 +12,7 @@
             <span class="text-gray-700">/</span>
         </li>
         <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center" aria-current="page">
-            <span class="font-medium text-white truncate max-w-[200px]" itemprop="name">{{ server.name }}</span>
+            <span class="font-medium text-white truncate max-w-[200px]" itemprop="name" id="breadcrumb-server-name">{{ server.name }}</span>
             <meta itemprop="position" content="2">
         </li>
     </ol>
@@ -23,735 +23,829 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
 
 <style>
-    /* Terminal Command Center */
-    .terminal-container {
-        display: flex;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    /* Terminal Panel */
-    .terminal-panel {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        background: #09090b;
-    }
-
-    .terminal-header {
-        background: linear-gradient(180deg, rgba(17, 17, 19, 0.95) 0%, rgba(9, 9, 11, 0.98) 100%);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        flex-shrink: 0;
-    }
-
-    .terminal-body {
-        flex: 1;
-        min-height: 0;
-        position: relative;
-    }
-
-    #ssh-terminal {
-        height: 100%;
-        width: 100%;
-    }
-
-    /* Connection status indicator */
-    .status-indicator {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 8px;
-        font-size: 12px;
-        font-family: 'JetBrains Mono', monospace;
-        transition: all 0.3s ease;
-    }
-
-    .status-indicator.disconnected {
-        background: rgba(107, 114, 128, 0.15);
-        border: 1px solid rgba(107, 114, 128, 0.2);
-        color: #9ca3af;
-    }
-
-    .status-indicator.connecting {
-        background: rgba(245, 158, 11, 0.15);
-        border: 1px solid rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
-    }
-
-    .status-indicator.connected {
-        background: rgba(16, 185, 129, 0.15);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        color: #34d399;
-    }
-
-    .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: currentColor;
-    }
-
-    .status-indicator.connected .status-dot {
-        animation: pulse-dot 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-dot {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.5; transform: scale(1.2); }
-    }
-
-    /* Latency indicator */
-    .latency-badge {
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        background: rgba(255,255,255,0.05);
-        color: #6b7280;
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    .latency-badge.good { color: #34d399; }
-    .latency-badge.medium { color: #fbbf24; }
-    .latency-badge.poor { color: #f87171; }
-
-    /* Recording indicator */
-    .recording-indicator {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 6px;
-        background: rgba(239, 68, 68, 0.15);
-        border: 1px solid rgba(239, 68, 68, 0.2);
-        font-size: 11px;
-        color: #f87171;
-    }
-
-    .recording-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #ef4444;
-        animation: blink 1s ease-in-out infinite;
-    }
-
-    @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
-    }
-
-    /* AI Panel */
-    .ai-panel {
-        width: 420px;
-        min-width: 320px;
-        max-width: 900px;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        background: rgba(17, 17, 19, 0.6);
-        border-left: 1px solid rgba(255,255,255,0.06);
-        transition: transform 0.3s ease;
-        flex-shrink: 0;
-        position: relative;
-    }
-
-    .ai-panel.collapsed {
-        width: 0 !important;
-        min-width: 0;
-        transform: translateX(100%);
-        border-left: none;
-    }
-
-    .ai-panel-resizer {
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 6px;
-        cursor: col-resize;
-        z-index: 10;
-        background: transparent;
-    }
-    .ai-panel-resizer:hover,
-    .ai-panel-resizer:active {
-        background: rgba(99, 102, 241, 0.3);
-    }
-    .ai-panel.collapsed .ai-panel-resizer { display: none; }
-
-    .ai-panel-header {
-        padding: 16px 20px;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        background: rgba(255,255,255,0.02);
-        flex-shrink: 0;
-    }
-
-    .ai-messages {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        -webkit-overflow-scrolling: touch;
-    }
-    .ai-messages > * {
-        min-width: 0;
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-
-    .ai-input-area {
-        padding: 16px;
-        border-top: 1px solid rgba(255,255,255,0.06);
-        background: rgba(255,255,255,0.02);
-        flex-shrink: 0;
-    }
-
-    /* Quick Commands */
-    .quick-commands {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 12px;
-    }
-
-    .quick-cmd {
-        padding: 6px 12px;
-        border-radius: 6px;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #9ca3af;
-        font-size: 11px;
-        font-family: 'JetBrains Mono', monospace;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .quick-cmd:hover {
-        background: rgba(99, 102, 241, 0.15);
-        border-color: rgba(99, 102, 241, 0.3);
-        color: #a5b4fc;
-    }
-
-    /* Message bubbles */
-    .msg-user {
-        align-self: flex-end;
-        background: rgba(99, 102, 241, 0.2);
-        border: 1px solid rgba(99, 102, 241, 0.3);
-        border-radius: 16px 16px 4px 16px;
-        padding: 10px 14px;
-        max-width: 100%;
-        color: #e0e7ff;
-        font-size: 13px;
-        line-height: 1.5;
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-
-    .msg-assistant {
-        align-self: flex-start;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 16px 16px 16px 4px;
-        padding: 10px 14px;
-        max-width: 100%;
-        color: #d1d5db;
-        font-size: 13px;
-        line-height: 1.5;
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-
-    .msg-report {
-        border-left: 3px solid rgba(99, 102, 241, 0.6);
-        padding: 0;
-        min-width: 0;
-        max-width: 100%;
-    }
-    .msg-report .report-title {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 10px 14px;
-        background: rgba(99, 102, 241, 0.1);
-        font-size: 12px;
-        font-weight: 600;
-        color: #a5b4fc;
-    }
-    .msg-report .report-body {
-        padding: 12px 14px;
-        font-size: 13px;
-        line-height: 1.5;
-        color: #d1d5db;
-        overflow-wrap: break-word;
-        word-break: break-word;
-        min-width: 0;
-    }
-    .msg-report .report-body table {
-        width: 100%;
-        table-layout: fixed;
-        border-collapse: collapse;
-        margin: 10px 0;
-        font-size: 12px;
-        border-radius: 8px;
-        overflow: hidden;
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    .msg-report .report-body th,
-    .msg-report .report-body td {
-        padding: 8px 12px;
-        text-align: left;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-    .msg-report .report-body th {
-        background: rgba(99, 102, 241, 0.2);
-        color: #a5b4fc;
-        font-weight: 600;
-    }
-    .msg-report .report-body tr:nth-child(even) { background: rgba(255,255,255,0.03); }
-    .msg-report .report-body tr:hover { background: rgba(255,255,255,0.05); }
-    .msg-report .report-body ul, .msg-report .report-body ol {
-        margin: 8px 0;
-        padding-left: 20px;
-    }
-    .msg-report .report-body li { margin: 4px 0; }
-    .msg-report .report-body strong { color: #e5e7eb; font-weight: 600; }
-    .msg-report .report-body p { margin: 8px 0; }
-    .msg-report .report-body p:first-child { margin-top: 0; }
-    .msg-report .report-body p:last-child { margin-bottom: 0; }
-    .msg-report .report-body code {
-        background: rgba(0,0,0,0.3);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 12px;
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-
-    .msg-system {
-        align-self: center;
-        background: rgba(245, 158, 11, 0.1);
-        border: 1px solid rgba(245, 158, 11, 0.2);
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 11px;
-        color: #fbbf24;
-        text-align: center;
-    }
-
-    /* Command Card */
-    .cmd-card {
-        background: rgba(9, 9, 11, 0.6);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        overflow: hidden;
-        margin: 8px 0;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .cmd-card-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 14px;
-        background: rgba(255,255,255,0.03);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .cmd-card-body {
-        padding: 12px 14px;
-    }
-
-    .cmd-code {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        color: #e5e7eb;
-        background: rgba(0,0,0,0.3);
-        padding: 10px 12px;
-        border-radius: 8px;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-    }
-
-    .cmd-status {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 10px;
-        padding: 3px 8px;
-        border-radius: 4px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .cmd-status.pending {
-        background: rgba(107, 114, 128, 0.2);
-        color: #9ca3af;
-    }
-
-    .cmd-status.pending_confirm {
-        background: rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
-    }
-
-    .cmd-status.running {
-        background: rgba(99, 102, 241, 0.2);
-        color: #a5b4fc;
-    }
-
-    .cmd-status.done {
-        background: rgba(16, 185, 129, 0.2);
-        color: #34d399;
-    }
-
-    .cmd-status.skipped {
-        background: rgba(107, 114, 128, 0.2);
-        color: #6b7280;
-    }
-
-    .cmd-status.error {
-        background: rgba(239, 68, 68, 0.2);
-        color: #f87171;
-    }
-
-    .cmd-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 10px;
-    }
-
-    .cmd-btn {
-        padding: 6px 14px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .cmd-btn-confirm {
-        background: rgba(16, 185, 129, 0.2);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #34d399;
-    }
-
-    .cmd-btn-confirm:hover {
-        background: rgba(16, 185, 129, 0.3);
-    }
-
-    .cmd-btn-skip {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #9ca3af;
-    }
-
-    .cmd-btn-skip:hover {
-        background: rgba(255,255,255,0.1);
-    }
-
-    .cmd-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    /* Input styling */
-    .ai-textarea {
-        width: 100%;
-        background: rgba(9, 9, 11, 0.8);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 12px 14px;
-        color: white;
-        font-size: 13px;
-        resize: none;
-        transition: all 0.2s ease;
-        line-height: 1.5;
-    }
-
-    .ai-textarea:focus {
-        outline: none;
-        border-color: rgba(99, 102, 241, 0.4);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    .ai-textarea::placeholder {
-        color: #4b5563;
-    }
-
-    /* Connection controls */
-    .conn-input {
-        background: rgba(9, 9, 11, 0.8);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 8px;
-        padding: 10px 12px;
-        color: white;
-        font-size: 13px;
-        transition: all 0.2s ease;
-        width: 100%;
-    }
-
-    .conn-input:focus {
-        outline: none;
-        border-color: rgba(99, 102, 241, 0.4);
-    }
-
-    .conn-input::placeholder {
-        color: #4b5563;
-    }
-
-    .conn-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 10px 16px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        white-space: nowrap;
-    }
-
-    .conn-btn-primary {
-        background: #6366f1;
-        color: white;
-    }
-
-    .conn-btn-primary:hover:not(:disabled) {
-        background: #4f46e5;
-    }
-
-    .conn-btn-primary:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .conn-btn-secondary {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #d1d5db;
-    }
-
-    .conn-btn-secondary:hover {
-        background: rgba(255,255,255,0.1);
-    }
-
-    /* Toggle AI panel button */
-    .toggle-ai-btn {
-        position: absolute;
-        right: 16px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
-        background: rgba(99, 102, 241, 0.2);
-        border: 1px solid rgba(99, 102, 241, 0.3);
-        color: #a5b4fc;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        z-index: 10;
-    }
-
-    .toggle-ai-btn:hover {
-        background: rgba(99, 102, 241, 0.3);
-    }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-        .terminal-container {
-            flex-direction: column;
-        }
-
-        .ai-panel {
-            width: 100%;
-            height: 50%;
-            border-left: none;
-            border-top: 1px solid rgba(255,255,255,0.06);
-        }
-
-        .ai-panel.collapsed {
-            height: 0;
-            transform: translateY(100%);
-        }
-
-        .terminal-panel {
-            height: 50%;
-        }
-    }
-
-    /* Scrollbar styling */
-    .ai-messages::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .ai-messages::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    .ai-messages::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.1);
-        border-radius: 3px;
-    }
-
-    .ai-messages::-webkit-scrollbar-thumb:hover {
-        background: rgba(255,255,255,0.2);
-    }
+/* ═══════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════ */
+.terminal-root { display:flex; flex-direction:column; height:100%; overflow:hidden; }
+
+/* Tab Bar */
+.tab-bar { display:flex; align-items:center; background:rgba(9,9,11,0.95); border-bottom:1px solid rgba(255,255,255,0.06); min-height:44px; flex-shrink:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+.tab-bar::-webkit-scrollbar { display:none; }
+.tab-item { display:flex; align-items:center; gap:8px; padding:0 16px; height:44px; cursor:pointer; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.04); color:#6b7280; font-size:13px; transition:all .15s; position:relative; flex-shrink:0; user-select:none; }
+.tab-item:hover { background:rgba(255,255,255,0.04); color:#d1d5db; }
+.tab-item.active { color:white; background:rgba(99,102,241,0.08); }
+.tab-item.active::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; background:linear-gradient(90deg,#6366f1,#06b6d4); }
+.tab-status-dot { width:6px; height:6px; border-radius:50%; background:#374151; flex-shrink:0; }
+.tab-status-dot.connected { background:#10b981; animation:tdot 2s infinite; }
+.tab-status-dot.connecting { background:#f59e0b; }
+.tab-status-dot.error { background:#ef4444; }
+@keyframes tdot { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.4)} 50%{box-shadow:0 0 0 4px rgba(16,185,129,0)} }
+.tab-close { display:flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; color:#4b5563; font-size:14px; transition:all .1s; }
+.tab-close:hover { background:rgba(239,68,68,.2); color:#f87171; }
+.tab-add-btn { display:flex; align-items:center; justify-content:center; width:44px; height:44px; color:#4b5563; cursor:pointer; transition:all .15s; flex-shrink:0; }
+.tab-add-btn:hover { color:#a5b4fc; background:rgba(99,102,241,.1); }
+
+/* Add server dropdown */
+.add-server-dropdown { position:fixed; background:rgba(17,17,21,.98); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:8px; min-width:220px; max-height:320px; overflow-y:auto; z-index:1000; box-shadow:0 12px 40px rgba(0,0,0,.5); display:none; }
+.add-server-dropdown.open { display:block; }
+.add-server-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; color:#d1d5db; font-size:13px; transition:all .1s; }
+.add-server-item:hover { background:rgba(99,102,241,.15); color:white; }
+.add-server-item .item-host { font-family:monospace; font-size:11px; color:#6b7280; }
+
+/* Work area */
+.terminal-workarea { flex:1; display:flex; min-height:0; position:relative; }
+.terminal-panel { flex:1; display:flex; flex-direction:column; min-width:0; background:#09090b; }
+
+/* Mini toolbar */
+.terminal-toolbar { display:flex; align-items:center; justify-content:space-between; padding:0 12px; height:40px; background:rgba(17,17,21,.9); border-bottom:1px solid rgba(255,255,255,.04); flex-shrink:0; }
+.terminal-toolbar-left,.terminal-toolbar-right { display:flex; align-items:center; gap:6px; }
+.status-pill { display:flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:11px; font-family:'JetBrains Mono',monospace; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); color:#6b7280; transition:all .2s; }
+.status-pill.connected { background:rgba(16,185,129,.1); border-color:rgba(16,185,129,.2); color:#34d399; }
+.status-pill.connecting { background:rgba(245,158,11,.1); border-color:rgba(245,158,11,.2); color:#fbbf24; }
+.status-dot-sm { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.status-pill.connected .status-dot-sm { animation:tdot 2s infinite; }
+.toolbar-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; color:#6b7280; cursor:pointer; transition:all .15s; font-size:18px; }
+.toolbar-btn:hover { background:rgba(255,255,255,.08); color:#d1d5db; }
+.toolbar-btn.ai-active { color:#a5b4fc; background:rgba(99,102,241,.15); box-shadow:0 0 12px rgba(99,102,241,.2); }
+
+/* Credentials panel */
+.creds-panel { padding:10px 12px; background:rgba(9,9,11,.95); border-bottom:1px solid rgba(255,255,255,.06); display:none; gap:8px; align-items:center; flex-wrap:wrap; }
+.creds-panel.open { display:flex; }
+.cred-input { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:7px; padding:6px 10px; color:white; font-size:12px; font-family:'JetBrains Mono',monospace; width:180px; transition:all .15s; }
+.cred-input:focus { outline:none; border-color:rgba(99,102,241,.4); }
+.cred-input::placeholder { color:#2d2d35; }
+.cred-connect-btn { display:flex; align-items:center; gap:5px; padding:6px 14px; background:#6366f1; color:white; border-radius:7px; font-size:12px; font-weight:500; cursor:pointer; transition:all .15s; }
+.cred-connect-btn:hover { background:#4f46e5; }
+.cred-disconnect-btn { display:flex; align-items:center; gap:5px; padding:6px 10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#9ca3af; border-radius:7px; font-size:12px; cursor:pointer; transition:all .15s; }
+.cred-disconnect-btn:hover { background:rgba(239,68,68,.15); color:#f87171; border-color:rgba(239,68,68,.2); }
+
+.terminal-body { flex:1; min-height:0; position:relative; }
+#ssh-terminal { height:100%; width:100%; }
+.float-ai-btn { position:absolute; right:12px; top:12px; width:36px; height:36px; border-radius:10px; background:rgba(99,102,241,.15); border:1px solid rgba(99,102,241,.25); color:#a5b4fc; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:5; transition:all .2s; backdrop-filter:blur(8px); }
+.float-ai-btn:hover { background:rgba(99,102,241,.3); box-shadow:0 0 16px rgba(99,102,241,.3); }
+
+/* AI Panel resizer */
+.ai-panel-resizer { position:absolute; left:0; top:0; bottom:0; width:5px; cursor:col-resize; z-index:10; }
+.ai-panel-resizer:hover,.ai-panel-resizer:active { background:rgba(99,102,241,.25); }
+.ai-panel.collapsed .ai-panel-resizer { display:none; }
+
+/* ═══════════════════════════════════════════════
+   AI PANEL — REDESIGN
+═══════════════════════════════════════════════ */
+.ai-panel {
+    width: 440px;
+    min-width: 340px;
+    max-width: 900px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: linear-gradient(180deg, #0c0c12 0%, #090910 100%);
+    border-left: 1px solid rgba(99,102,241,.15);
+    box-shadow: -8px 0 32px rgba(0,0,0,.4);
+    transition: width .25s ease, min-width .25s ease;
+    flex-shrink: 0;
+    position: relative;
+}
+.ai-panel.collapsed { width:0!important; min-width:0; border-left:none; overflow:hidden; box-shadow:none; }
+
+/* Header */
+.aip-header {
+    padding: 16px 18px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    background: rgba(255,255,255,.015);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.aip-header-left { display:flex; align-items:center; gap:12px; min-width:0; }
+
+.aip-avatar-wrap { position:relative; flex-shrink:0; }
+.aip-avatar {
+    width: 38px; height: 38px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: white;
+    box-shadow: 0 4px 16px rgba(99,102,241,.4);
+}
+.aip-avatar-pulse {
+    position: absolute;
+    inset: -3px;
+    border-radius: 15px;
+    border: 2px solid transparent;
+    transition: all .3s;
+}
+.aip-avatar-pulse.thinking {
+    border-color: rgba(99,102,241,.6);
+    animation: avatarPulse 1.5s ease-in-out infinite;
+}
+@keyframes avatarPulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(99,102,241,.4); }
+    50% { box-shadow:0 0 0 6px rgba(99,102,241,0); }
+}
+.aip-title { font-size:14px; font-weight:600; color:white; }
+.aip-subtitle { font-size:11px; color:#4b5563; margin-top:1px; font-family:'JetBrains Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.aip-subtitle.connected { color:#34d399; }
+
+.aip-header-right { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.aip-hbtn { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:7px; color:#4b5563; cursor:pointer; transition:all .15s; font-size:17px; }
+.aip-hbtn:hover { background:rgba(255,255,255,.07); color:#9ca3af; }
+
+/* Messages area */
+.aip-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+}
+.aip-messages::-webkit-scrollbar { width:5px; }
+.aip-messages::-webkit-scrollbar-track { background:transparent; }
+.aip-messages::-webkit-scrollbar-thumb { background:rgba(99,102,241,.2); border-radius:3px; }
+.aip-messages::-webkit-scrollbar-thumb:hover { background:rgba(99,102,241,.4); }
+
+/* Welcome screen */
+.aip-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px 16px 8px;
+    animation: fadeUp .4s ease;
+    flex-shrink: 0;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+
+.aip-welcome-icon {
+    width: 64px; height: 64px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(79,70,229,.3) 0%, rgba(6,182,212,.3) 100%);
+    border: 1px solid rgba(99,102,241,.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; color: #a5b4fc;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 32px rgba(99,102,241,.2);
+}
+.aip-welcome h3 { font-size:16px; font-weight:600; color:white; margin-bottom:8px; }
+.aip-welcome p { font-size:12px; color:#6b7280; line-height:1.6; max-width:280px; margin-bottom:20px; }
+
+.aip-suggest-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:320px; }
+.aip-suggest {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 10px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 12px;
+    color: #9ca3af;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: inherit;
+    text-align: center;
+}
+.aip-suggest .material-icons-round { font-size:20px; color:#6366f1; }
+.aip-suggest:hover { background:rgba(99,102,241,.1); border-color:rgba(99,102,241,.3); color:white; transform:translateY(-2px); box-shadow:0 4px 16px rgba(99,102,241,.15); }
+.aip-suggest:hover .material-icons-round { color:#a5b4fc; }
+
+/* Message rows */
+.aip-msg-row {
+    display: flex;
+    gap: 10px;
+    padding: 2px 0;
+    animation: msgIn .2s ease;
+    flex-shrink: 0;          /* prevent squishing when many messages */
+}
+@keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+.aip-msg-row.user { flex-direction:row-reverse; }
+.aip-msg-row.system { justify-content:center; }
+
+.aip-msg-avatar {
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0; margin-top: 2px;
+}
+.aip-msg-avatar.ai { background:linear-gradient(135deg,#4f46e5,#06b6d4); color:white; box-shadow:0 2px 8px rgba(99,102,241,.3); }
+.aip-msg-avatar.user { background:linear-gradient(135deg,#7c3aed,#6366f1); color:white; }
+
+.aip-msg-body { display:flex; flex-direction:column; max-width:calc(100% - 36px); min-width:0; gap:2px; }
+.aip-msg-row.user .aip-msg-body { align-items:flex-end; }
+
+.aip-msg-time { font-size:10px; color:#374151; padding:0 4px; }
+
+.aip-bubble {
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    position: relative;
+}
+.aip-bubble.ai {
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 4px 16px 16px 16px;
+    color: #d1d5db;
+}
+.aip-bubble.user {
+    background: linear-gradient(135deg, rgba(99,102,241,.25), rgba(79,70,229,.2));
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 16px 4px 16px 16px;
+    color: #e0e7ff;
+}
+.aip-bubble.system-msg {
+    background: rgba(245,158,11,.07);
+    border: 1px solid rgba(245,158,11,.15);
+    border-radius: 10px;
+    color: #d97706;
+    font-size: 11px;
+    padding: 6px 14px;
+}
+
+/* Markdown inside bubbles */
+.aip-bubble p { margin:0 0 6px; }
+.aip-bubble p:last-child { margin:0; }
+.aip-bubble ul,.aip-bubble ol { margin:6px 0; padding-left:18px; }
+.aip-bubble li { margin:3px 0; }
+.aip-bubble strong { color:#f9fafb; font-weight:600; }
+.aip-bubble em { color:#c7d2fe; }
+.aip-bubble h1,.aip-bubble h2,.aip-bubble h3 { color:white; margin:10px 0 6px; font-size:13px; font-weight:700; }
+.aip-bubble h1::before { content:'# '; color:#6366f1; }
+.aip-bubble h2::before { content:'## '; color:#6366f1; }
+.aip-bubble h3::before { content:'### '; color:#6366f1; }
+
+/* Inline code */
+.aip-bubble code:not(.block-code) {
+    background: rgba(99,102,241,.15);
+    border: 1px solid rgba(99,102,241,.2);
+    color: #a5b4fc;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+}
+
+/* Code blocks inside bubbles */
+.aip-code-block {
+    position: relative;
+    background: rgba(0,0,0,.5);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    margin: 8px 0;
+    overflow: hidden;
+}
+.aip-code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px 6px;
+    background: rgba(255,255,255,.03);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.aip-code-lang { font-size:10px; color:#4b5563; font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:.05em; }
+.aip-copy-btn {
+    font-size:10px; color:#6b7280; cursor:pointer; padding:2px 8px;
+    border:1px solid rgba(255,255,255,.08); border-radius:4px;
+    background:rgba(255,255,255,.04); transition:all .15s; font-family:inherit;
+}
+.aip-copy-btn:hover { color:#a5b4fc; border-color:rgba(99,102,241,.3); background:rgba(99,102,241,.1); }
+.aip-copy-btn.copied { color:#34d399; border-color:rgba(16,185,129,.3); }
+.aip-code-block pre {
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #e5e7eb;
+    margin: 0;
+}
+.aip-code-block pre::-webkit-scrollbar { height:4px; }
+.aip-code-block pre::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1); border-radius:2px; }
+
+/* Tables */
+.aip-bubble table { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+.aip-bubble th { background:rgba(99,102,241,.15); color:#a5b4fc; padding:6px 10px; text-align:left; font-weight:600; border-bottom:1px solid rgba(99,102,241,.2); }
+.aip-bubble td { padding:5px 10px; border-bottom:1px solid rgba(255,255,255,.05); color:#d1d5db; }
+.aip-bubble tr:last-child td { border-bottom:none; }
+.aip-bubble tr:nth-child(even) td { background:rgba(255,255,255,.02); }
+
+/* Report block — enterprise */
+.aip-report {
+    overflow: hidden;
+    animation: msgIn .25s ease;
+    width: 100%;
+    flex-shrink: 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.07);
+    background: rgba(15,15,20,.9);
+}
+/* status variants */
+.aip-report.rep-ok    { border-color: rgba(16,185,129,.25); border-left: 3px solid #10b981; }
+.aip-report.rep-warning { border-color: rgba(245,158,11,.22); border-left: 3px solid #f59e0b; }
+.aip-report.rep-error { border-color: rgba(239,68,68,.25); border-left: 3px solid #ef4444; }
+
+.aip-report-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+}
+.aip-report.rep-ok    .aip-report-header { background: rgba(16,185,129,.06); color:#34d399; }
+.aip-report.rep-warning .aip-report-header { background: rgba(245,158,11,.06); color:#fbbf24; }
+.aip-report.rep-error .aip-report-header { background: rgba(239,68,68,.06); color:#f87171; }
+
+.aip-report-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600;
+    letter-spacing:.06em; text-transform:uppercase;
+}
+.aip-report.rep-ok    .aip-report-badge { background:rgba(16,185,129,.15); color:#34d399; border:1px solid rgba(16,185,129,.25); }
+.aip-report.rep-warning .aip-report-badge { background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.22); }
+.aip-report.rep-error .aip-report-badge { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); }
+
+.aip-report-body {
+    padding: 14px 16px;
+    font-size: 13px; line-height: 1.65; color: #d1d5db;
+}
+
+/* Report generating animation */
+.aip-report-gen {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, rgba(99,102,241,.06) 0%, rgba(6,182,212,.04) 100%);
+    border: 1px solid rgba(99,102,241,.18);
+    border-left: 3px solid #6366f1;
+    border-radius: 4px 14px 14px 4px;
+    animation: msgIn .3s ease;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+.aip-report-gen::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(99,102,241,.08) 50%, transparent 100%);
+    animation: rgSweep 2s ease-in-out infinite;
+}
+@keyframes rgSweep { 0%{left:-100%} 100%{left:200%} }
+
+.aip-rg-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(99,102,241,.2), rgba(6,182,212,.15));
+    border: 1px solid rgba(99,102,241,.3);
+    display: flex; align-items: center; justify-content: center;
+    color: #a5b4fc; font-size: 20px;
+    flex-shrink: 0;
+    animation: rgIconPulse 2s ease-in-out infinite;
+}
+@keyframes rgIconPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,.4); transform: scale(1); }
+    50% { box-shadow: 0 0 0 8px rgba(99,102,241,0); transform: scale(1.05); }
+}
+.aip-rg-text { flex: 1; min-width: 0; }
+.aip-rg-title { font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px; }
+.aip-rg-sub {
+    font-size: 11px; color: #6b7280; font-family: 'JetBrains Mono', monospace;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    transition: opacity .2s ease;
+}
+.aip-rg-dots { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+.aip-rg-dots span {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #06b6d4);
+    animation: thinkDot 1.4s ease-in-out infinite;
+}
+.aip-rg-dots span:nth-child(2) { animation-delay: .2s; }
+.aip-rg-dots span:nth-child(3) { animation-delay: .4s; }
+
+/* Thinking indicator */
+.aip-thinking {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    animation: msgIn .2s ease;
+    flex-shrink: 0;
+}
+.aip-thinking.hidden { display:none; }
+.aip-thinking-bubble {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 4px 14px 14px 14px;
+}
+.aip-thinking-bubble span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: linear-gradient(135deg,#6366f1,#06b6d4);
+    animation: thinkDot 1.4s ease-in-out infinite;
+    display: inline-block;
+}
+.aip-thinking-bubble span:nth-child(2) { animation-delay:.2s; }
+.aip-thinking-bubble span:nth-child(3) { animation-delay:.4s; }
+@keyframes thinkDot { 0%,60%,100%{transform:scale(.6);opacity:.3} 30%{transform:scale(1);opacity:1} }
+
+/* Command Cards */
+.aip-cmd-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(9,9,11,.8);
+    animation: msgIn .2s ease;
+    width: 100%;
+    transition: border-color .2s;
+    flex-shrink: 0;          /* prevent squishing */
+}
+.aip-cmd-card:hover { border-color: rgba(255,255,255,.12); }
+
+.aip-cmd-card.status-pending { border-left:3px solid #6b7280; }
+.aip-cmd-card.status-pending_confirm { border-left:3px solid #f59e0b; }
+.aip-cmd-card.status-running { border-left:3px solid #6366f1; }
+.aip-cmd-card.status-done { border-left:3px solid #10b981; }
+.aip-cmd-card.status-error { border-left:3px solid #ef4444; }
+.aip-cmd-card.status-skipped { border-left:3px solid #374151; opacity:.7; }
+
+.aip-cmd-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px 8px 10px;
+    background: rgba(255,255,255,.025);
+    border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.aip-cmd-header-left { display:flex; align-items:center; gap:8px; }
+.aip-cmd-num { font-size:10px; color:#4b5563; font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:.06em; }
+.aip-cmd-icon { font-size:15px; color:#6b7280; }
+
+.aip-cmd-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; padding: 3px 8px; border-radius: 20px;
+    font-weight: 600; letter-spacing:.04em; text-transform:uppercase;
+}
+.aip-cmd-badge.pending { background:rgba(107,114,128,.15); color:#9ca3af; border:1px solid rgba(107,114,128,.2); }
+.aip-cmd-badge.pending_confirm { background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.25); animation:badgePulse 2s infinite; }
+.aip-cmd-badge.running { background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.25); animation:badgePulse 1.5s infinite; }
+.aip-cmd-badge.done { background:rgba(16,185,129,.12); color:#34d399; border:1px solid rgba(16,185,129,.22); }
+.aip-cmd-badge.captured { background:rgba(6,182,212,.12); color:#22d3ee; border:1px solid rgba(6,182,212,.22); }
+.aip-cmd-badge.error { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); }
+.aip-cmd-badge.skipped { background:rgba(107,114,128,.1); color:#6b7280; border:1px solid rgba(107,114,128,.15); }
+@keyframes badgePulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+.aip-cmd-card.status-captured { border-left:3px solid #06b6d4; }
+.aip-cmd-streaming-note { display:flex; align-items:center; gap:5px; margin-top:6px; font-size:10px; color:#0e7490; padding:4px 8px; background:rgba(6,182,212,.06); border-radius:5px; border:1px solid rgba(6,182,212,.12); }
+
+/* Stop button */
+.aip-stop-btn { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:7px; cursor:pointer; transition:all .15s; }
+.aip-stop-btn:hover { background:rgba(239,68,68,.15); }
+
+/* Report block — content styles */
+.aip-report-header { cursor:pointer; user-select:none; transition:filter .12s; }
+.aip-report-header:hover { filter:brightness(1.15); }
+.aip-report-header-title { flex:1; }
+.aip-report-body table { width:100%; border-collapse:collapse; font-size:12px; margin:10px 0; border-radius:6px; overflow:hidden; }
+.aip-report-body th { background:rgba(255,255,255,.06); color:#9ca3af; padding:7px 11px; text-align:left; font-weight:600; font-size:10px; letter-spacing:.05em; text-transform:uppercase; border-bottom:1px solid rgba(255,255,255,.07); }
+.aip-report-body td { padding:6px 11px; border-bottom:1px solid rgba(255,255,255,.04); color:#d1d5db; vertical-align:top; }
+.aip-report-body tr:last-child td { border-bottom:none; }
+.aip-report-body tr:hover td { background:rgba(255,255,255,.025); }
+.aip-report-body p { margin:5px 0 7px; }
+.aip-report-body ul,.aip-report-body ol { margin:6px 0; padding-left:18px; }
+.aip-report-body li { margin:4px 0; line-height:1.55; }
+.aip-report-body strong,.aip-report-body b { color:#f9fafb; font-weight:600; }
+.aip-report-body em { color:#a5b4fc; font-style:normal; }
+.aip-report-body code { background:rgba(255,255,255,.06); color:#e2e8f0; padding:1px 6px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:11px; border:1px solid rgba(255,255,255,.08); }
+.aip-report-body pre { background:rgba(0,0,0,.5); padding:10px 14px; border-radius:8px; overflow-x:auto; font-size:11px; margin:8px 0; border:1px solid rgba(255,255,255,.07); line-height:1.6; }
+.aip-report-body hr { border:none; border-top:1px solid rgba(255,255,255,.07); margin:10px 0; }
+.aip-report-meta { display:flex; align-items:center; gap:8px; font-size:10px; color:#6b7280; padding:6px 16px 8px; border-top:1px solid rgba(255,255,255,.05); }
+
+.aip-cmd-body { padding:10px 12px; }
+.aip-cmd-code-wrap { position:relative; }
+.aip-cmd-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #e5e7eb;
+    background: rgba(0,0,0,.4);
+    padding: 9px 36px 9px 11px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+    border: 1px solid rgba(255,255,255,.06);
+}
+.aip-cmd-copy {
+    position: absolute; right: 6px; top: 6px;
+    padding: 2px 6px; background: rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.08); border-radius:4px;
+    font-size:10px; color:#6b7280; cursor:pointer; transition:all .15s;
+    font-family:inherit;
+}
+.aip-cmd-copy:hover { color:#a5b4fc; border-color:rgba(99,102,241,.3); }
+.aip-cmd-why { font-size:11px; color:#4b5563; margin-top:7px; line-height:1.5; display:flex; align-items:flex-start; gap:5px; }
+.aip-cmd-why .material-icons-round { font-size:13px; color:#4f46e5; flex-shrink:0; margin-top:1px; }
+
+.aip-cmd-danger-warn { display:flex; align-items:center; gap:6px; margin-top:8px; padding:6px 10px; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.15); border-radius:7px; font-size:11px; color:#d97706; }
+.aip-cmd-danger-warn .material-icons-round { font-size:14px; }
+
+.aip-cmd-actions { display:flex; gap:8px; margin-top:10px; }
+.aip-confirm-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 16px;
+    background: linear-gradient(135deg, rgba(16,185,129,.2), rgba(5,150,105,.15));
+    border: 1px solid rgba(16,185,129,.35);
+    border-radius: 8px;
+    color: #34d399; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .2s; font-family:inherit;
+}
+.aip-confirm-btn:hover { background:linear-gradient(135deg,rgba(16,185,129,.3),rgba(5,150,105,.25)); box-shadow:0 4px 16px rgba(16,185,129,.2); transform:translateY(-1px); }
+.aip-confirm-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+.aip-skip-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px;
+    color: #9ca3af; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all .2s; font-family:inherit;
+}
+.aip-skip-btn:hover { background:rgba(239,68,68,.1); color:#f87171; border-color:rgba(239,68,68,.2); }
+.aip-skip-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+/* Progress bar for running command */
+.aip-cmd-progress { height:2px; background:rgba(255,255,255,.06); margin-top:8px; border-radius:1px; overflow:hidden; }
+.aip-cmd-progress-bar { height:100%; background:linear-gradient(90deg,#6366f1,#06b6d4); border-radius:1px; animation:cmdProgress 2s ease-in-out infinite; }
+@keyframes cmdProgress { 0%{width:0;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0;margin-left:100%} }
+
+/* Jump to bottom button */
+.aip-jump-btn {
+    position: absolute;
+    bottom: 8px; right: 14px;
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 12px;
+    background: rgba(17,17,21,.9);
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 20px;
+    color: #a5b4fc; font-size: 12px;
+    cursor: pointer; transition: all .2s;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+    animation: fadeUp .2s ease;
+}
+.aip-jump-btn:hover { background:rgba(99,102,241,.15); box-shadow:0 4px 20px rgba(99,102,241,.3); }
+.aip-jump-btn.hidden { display:none; }
+
+/* Input area */
+.aip-input-area {
+    padding: 14px;
+    border-top: 1px solid rgba(255,255,255,.05);
+    background: rgba(255,255,255,.01);
+    flex-shrink: 0;
+}
+
+/* Quick command chips */
+.aip-quick-scroll {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-bottom: 12px;
+    padding-bottom: 2px;
+}
+.aip-quick-scroll::-webkit-scrollbar { display:none; }
+.aip-quick-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 20px;
+    color: #9ca3af; font-size: 11px; font-family: inherit;
+    cursor: pointer; transition: all .15s; white-space: nowrap; flex-shrink: 0;
+}
+.aip-quick-chip .material-icons-round { font-size:13px; }
+.aip-quick-chip:hover { background:rgba(99,102,241,.12); border-color:rgba(99,102,241,.25); color:#a5b4fc; transform:translateY(-1px); }
+
+/* Input wrapper */
+.aip-input-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: rgba(9,9,11,.8);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 14px;
+    padding: 4px 4px 4px 14px;
+    transition: all .2s;
+}
+.aip-input-wrap:focus-within {
+    border-color: rgba(99,102,241,.4);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+}
+.aip-textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: white;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: none;
+    font-family: inherit;
+    padding: 8px 0;
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: none;
+}
+.aip-textarea::-webkit-scrollbar { display:none; }
+.aip-textarea::placeholder { color:#2d2d3d; }
+.aip-send-btn {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 18px;
+    cursor: pointer; transition: all .2s;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(99,102,241,.4);
+}
+.aip-send-btn:hover { background:linear-gradient(135deg,#7c3aed,#6366f1); box-shadow:0 4px 16px rgba(99,102,241,.5); transform:scale(1.05); }
+.aip-send-btn.sending { animation:sendPulse .5s ease; }
+@keyframes sendPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(0.9)} }
+
+.aip-input-hint { font-size:10px; color:#1f2937; margin-top:8px; text-align:center; letter-spacing:.02em; }
+
+/* Mobile */
+@media (max-width:768px) {
+    .ai-panel { width:100%!important; min-width:0; max-width:100%; height:45%; border-left:none; border-top:1px solid rgba(99,102,241,.15); }
+    .ai-panel.collapsed { height:0; }
+}
 </style>
 
-<div class="terminal-container">
-    <!-- Terminal Panel -->
-    <div class="terminal-panel">
-        <!-- Terminal Header -->
-        <div class="terminal-header">
-            <div class="px-5 py-4 flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <a href="{% url 'servers:server_list' %}" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                        <span class="material-icons-round text-lg">arrow_back</span>
-                    </a>
-                    <div>
-                        <div class="flex items-center gap-3">
-                            <h1 class="text-white font-semibold">{{ server.name }}</h1>
-                            {% if server.corporate_context %}
-                            <span class="px-2 py-0.5 rounded text-[10px] bg-primary/20 text-primary border border-primary/30 flex items-center gap-1">
-                                <span class="material-icons-round text-xs">psychology</span>
-                                AI Context
-                            </span>
-                            {% endif %}
-                        </div>
-                        <div class="text-xs text-gray-500 font-mono mt-0.5">{{ server.host }}:{{ server.port }} • {{ server.username }}</div>
-                    </div>
-                </div>
+<div class="terminal-root">
 
-                <div class="flex items-center gap-3">
-                    <!-- Recording indicator (hidden by default) -->
-                    <div id="recording-indicator" class="recording-indicator hidden">
-                        <span class="recording-dot"></span>
-                        <span>Recording</span>
-                    </div>
-
-                    <!-- Latency -->
-                    <div id="latency-badge" class="latency-badge hidden">-- ms</div>
-
-                    <!-- Status -->
-                    <div id="status-indicator" class="status-indicator disconnected">
-                        <span class="status-dot"></span>
-                        <span id="status-text">Disconnected</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Connection Controls -->
-            <div class="px-5 pb-4">
-                <div class="flex items-end gap-4">
-                    <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[11px] font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Master Password</label>
-                            <input type="password" id="terminal-master-password" placeholder="For encrypted credentials"
-                                   class="conn-input font-mono">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-medium text-gray-500 mb-1.5 uppercase tracking-wider">Password / Passphrase</label>
-                            <input type="password" id="terminal-password" placeholder="Direct password (optional)"
-                                   class="conn-input font-mono">
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <button type="button" id="connect-btn" onclick="connectTerminal()" class="conn-btn conn-btn-primary">
-                            <span class="material-icons-round text-lg">link</span>
-                            Connect
-                        </button>
-                        <button type="button" onclick="disconnectTerminal()" class="conn-btn conn-btn-secondary">
-                            <span class="material-icons-round text-lg">link_off</span>
-                        </button>
-                        <button type="button" onclick="clearTerminal()" class="conn-btn conn-btn-secondary" title="Clear terminal">
-                            <span class="material-icons-round text-lg">delete_sweep</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Terminal Body -->
-        <div class="terminal-body relative">
-            <div id="ssh-terminal"></div>
-            <button type="button" id="toggle-ai-btn" class="toggle-ai-btn" onclick="toggleAiPanel()" title="Toggle AI Assistant">
-                <span class="material-icons-round text-lg">psychology</span>
-            </button>
-        </div>
+    <!-- ── Tab Bar ── -->
+    <div class="tab-bar" id="tab-bar">
+        <button class="tab-add-btn" id="tab-add-btn" onclick="toggleAddServerDropdown(event)" title="Open another server">
+            <span class="material-icons-round" style="font-size:20px">add</span>
+        </button>
     </div>
 
-    <!-- AI Panel -->
-    <div id="ai-panel" class="ai-panel">
-        <div id="ai-panel-resizer" class="ai-panel-resizer" title="Тяните, чтобы изменить ширину"></div>
-        <div class="ai-panel-header">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
-                        <span class="material-icons-round text-primary text-lg">smart_toy</span>
+    <!-- Add-server dropdown -->
+    <div class="add-server-dropdown" id="add-server-dropdown">
+        <div style="padding:4px 8px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Open server in new tab</div>
+        {% for s in all_servers %}
+        <div class="add-server-item" onclick="openServerTab({{ s.id }},'{{ s.name|escapejs }}','{{ s.host|escapejs }}',{{ s.port }},'{{ s.username|escapejs }}')">
+            <span class="material-icons-round" style="font-size:16px;color:#6b7280">dns</span>
+            <div><div>{{ s.name }}</div><div class="item-host">{{ s.username }}@{{ s.host }}:{{ s.port }}</div></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- ── Work Area ── -->
+    <div class="terminal-workarea">
+
+        <!-- Terminal Panel -->
+        <div class="terminal-panel">
+            <div class="terminal-toolbar">
+                <div class="terminal-toolbar-left">
+                    <a href="{% url 'servers:server_list' %}" class="toolbar-btn" title="Back"><span class="material-icons-round" style="font-size:18px">arrow_back</span></a>
+                    <div id="status-pill" class="status-pill">
+                        <span class="status-dot-sm"></span>
+                        <span id="status-text">Disconnected</span>
                     </div>
-                    <div>
-                        <h2 class="text-white font-semibold text-sm">AI Assistant</h2>
-                        <p class="text-[11px] text-gray-500">Dangerous commands require confirmation</p>
+                    <div id="latency-badge" class="hidden" style="font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,.04);padding:3px 7px;border-radius:5px;"></div>
+                </div>
+                <div class="terminal-toolbar-right">
+                    <button class="toolbar-btn" onclick="toggleCredsPanel()" title="Credentials"><span class="material-icons-round" style="font-size:18px">key</span></button>
+                    <button class="toolbar-btn" onclick="clearTerminal()" title="Clear"><span class="material-icons-round" style="font-size:18px">delete_sweep</span></button>
+                    <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window"><span class="material-icons-round" style="font-size:18px">open_in_new</span></button>
+                    <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant"><span class="material-icons-round" style="font-size:18px">psychology</span></button>
+                </div>
+            </div>
+
+            <div class="creds-panel" id="creds-panel">
+                <input type="password" id="terminal-master-password" placeholder="Master password" class="cred-input">
+                <input type="password" id="terminal-password" placeholder="Password / passphrase" class="cred-input">
+                <button onclick="manualConnect()" class="cred-connect-btn"><span class="material-icons-round" style="font-size:15px">link</span>Connect</button>
+                <button onclick="disconnectTerminal()" class="cred-disconnect-btn"><span class="material-icons-round" style="font-size:15px">link_off</span></button>
+            </div>
+
+            <div class="terminal-body">
+                <div id="ssh-terminal"></div>
+                <button class="float-ai-btn" id="float-ai-btn" onclick="toggleAiPanel()" style="display:none" title="AI Assistant">
+                    <span class="material-icons-round" style="font-size:18px">psychology</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ AI PANEL ═══ -->
+        <div id="ai-panel" class="ai-panel">
+            <div id="ai-panel-resizer" class="ai-panel-resizer"></div>
+
+            <!-- Header -->
+            <div class="aip-header">
+                <div class="aip-header-left">
+                    <div class="aip-avatar-wrap">
+                        <div class="aip-avatar">
+                            <span class="material-icons-round" style="font-size:20px">smart_toy</span>
+                        </div>
+                        <div class="aip-avatar-pulse" id="aip-avatar-pulse"></div>
+                    </div>
+                    <div style="min-width:0">
+                        <div class="aip-title">AI Assistant</div>
+                        <div class="aip-subtitle" id="aip-subtitle">Connect to start session</div>
                     </div>
                 </div>
-                <button type="button" onclick="toggleAiPanel()" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors md:hidden">
-                    <span class="material-icons-round text-lg">close</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Messages -->
-        <div id="ai-messages" class="ai-messages">
-            <div class="msg-system">
-                <span class="material-icons-round text-sm align-middle mr-1">info</span>
-                Connect to server to start AI assistance
-            </div>
-        </div>
-
-        <!-- Input Area -->
-        <div class="ai-input-area">
-            <!-- Quick Commands -->
-            <div class="quick-commands">
-                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check disk space')">
-                    <span class="material-icons-round text-xs mr-1 align-middle">storage</span>Disk
-                </button>
-                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check memory usage')">
-                    <span class="material-icons-round text-xs mr-1 align-middle">memory</span>Memory
-                </button>
-                <button type="button" class="quick-cmd" onclick="sendQuickCommand('show system logs')">
-                    <span class="material-icons-round text-xs mr-1 align-middle">article</span>Logs
-                </button>
-                <button type="button" class="quick-cmd" onclick="sendQuickCommand('list running processes')">
-                    <span class="material-icons-round text-xs mr-1 align-middle">list</span>Processes
-                </button>
-                <button type="button" class="quick-cmd" onclick="sendQuickCommand('check network connections')">
-                    <span class="material-icons-round text-xs mr-1 align-middle">lan</span>Network
-                </button>
+                <div class="aip-header-right">
+                    <button class="aip-hbtn aip-stop-btn" id="aip-stop-btn" onclick="stopAi()" title="Stop AI" style="display:none"><span class="material-icons-round" style="font-size:17px;color:#ef4444">stop_circle</span></button>
+                    <button class="aip-hbtn" onclick="clearAiChat()" title="Clear conversation"><span class="material-icons-round" style="font-size:17px">cleaning_services</span></button>
+                    <button class="aip-hbtn" onclick="toggleAiPanel()" title="Close"><span class="material-icons-round" style="font-size:17px">close</span></button>
+                </div>
             </div>
 
-            <div class="flex flex-col gap-3">
-                <textarea id="ai-input" rows="3" placeholder="Describe what you need... (e.g., 'check disk space and clean up temp files')"
-                          class="ai-textarea" onkeydown="handleAiKeydown(event)"></textarea>
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] text-gray-500">Press Ctrl+Enter to send</span>
-                    <button type="button" onclick="sendAiMessage()" class="conn-btn conn-btn-primary">
-                        <span class="material-icons-round text-lg">send</span>
-                        Send
+            <!-- Messages -->
+            <div id="ai-messages" class="aip-messages" onscroll="handleAiScroll()">
+                <!-- Welcome -->
+                <div id="ai-welcome" class="aip-welcome">
+                    <div class="aip-welcome-icon">
+                        <span class="material-icons-round">smart_toy</span>
+                    </div>
+                    <h3>Ready to assist</h3>
+                    <p>Ask me to check server health, analyze logs, manage services, or run any command safely.</p>
+                    <div class="aip-suggest-grid">
+                        <button class="aip-suggest" onclick="quickSend('check disk space and show largest directories')">
+                            <span class="material-icons-round">storage</span>Disk usage
+                        </button>
+                        <button class="aip-suggest" onclick="quickSend('show CPU and memory usage, top processes')">
+                            <span class="material-icons-round">memory</span>Resources
+                        </button>
+                        <button class="aip-suggest" onclick="quickSend('show recent system errors and warnings from logs')">
+                            <span class="material-icons-round">article</span>Error logs
+                        </button>
+                        <button class="aip-suggest" onclick="quickSend('list running services and check which are down')">
+                            <span class="material-icons-round">settings_applications</span>Services
+                        </button>
+                        <button class="aip-suggest" onclick="quickSend('check network connections, open ports and firewall rules')">
+                            <span class="material-icons-round">lan</span>Network
+                        </button>
+                        <button class="aip-suggest" onclick="quickSend('show docker containers and their status')">
+                            <span class="material-icons-round">view_in_ar</span>Docker
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Thinking indicator (moved to end by JS) -->
+                <div id="ai-thinking" class="aip-thinking hidden">
+                    <div class="aip-msg-avatar ai"><span class="material-icons-round" style="font-size:14px">smart_toy</span></div>
+                    <div class="aip-thinking-bubble"><span></span><span></span><span></span></div>
+                </div>
+            </div>
+
+            <!-- Jump to bottom -->
+            <div style="position:relative">
+                <button id="aip-jump-btn" class="aip-jump-btn hidden" onclick="aiScrollToBottom()">
+                    <span class="material-icons-round" style="font-size:15px">arrow_downward</span>
+                    New message
+                </button>
+            </div>
+
+            <!-- Input area -->
+            <div class="aip-input-area">
+                <div class="aip-quick-scroll">
+                    <button class="aip-quick-chip" onclick="quickSend('check disk space')"><span class="material-icons-round">storage</span>Disk</button>
+                    <button class="aip-quick-chip" onclick="quickSend('check memory and CPU')"><span class="material-icons-round">memory</span>Memory</button>
+                    <button class="aip-quick-chip" onclick="quickSend('show system logs and errors')"><span class="material-icons-round">article</span>Logs</button>
+                    <button class="aip-quick-chip" onclick="quickSend('list running processes by CPU')"><span class="material-icons-round">list</span>Processes</button>
+                    <button class="aip-quick-chip" onclick="quickSend('check network and open ports')"><span class="material-icons-round">lan</span>Network</button>
+                    <button class="aip-quick-chip" onclick="quickSend('show docker containers')"><span class="material-icons-round">view_in_ar</span>Docker</button>
+                    <button class="aip-quick-chip" onclick="quickSend('check SSL certificates')"><span class="material-icons-round">verified_user</span>SSL</button>
+                    <button class="aip-quick-chip" onclick="quickSend('check nginx/apache status')"><span class="material-icons-round">http</span>Web</button>
+                    <button class="aip-quick-chip" onclick="quickSend('show cron jobs')"><span class="material-icons-round">schedule</span>Cron</button>
+                </div>
+                <div class="aip-input-wrap">
+                    <textarea id="ai-input" class="aip-textarea" rows="1"
+                        placeholder="Ask anything… e.g. why is my site slow?"
+                        onkeydown="handleAiKeydown(event)"
+                        oninput="autoResizeAi(this)"></textarea>
+                    <button id="aip-send-btn" class="aip-send-btn" onclick="sendAiMessage()" title="Send (Ctrl+Enter)">
+                        <span class="material-icons-round" style="font-size:18px" id="aip-send-icon">send</span>
                     </button>
                 </div>
+                <div class="aip-input-hint">Ctrl+Enter to send · Dangerous commands require confirmation</div>
             </div>
         </div>
     </div>
@@ -762,501 +856,587 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
-const serverId = {{ server.id }};
-const serverName = '{{ server.name|escapejs }}';
+// ── Server data ───────────────────────────────────────────────────────────────
+const INITIAL_SERVER_ID   = {{ server.id }};
+const INITIAL_SERVER_NAME = '{{ server.name|escapejs }}';
+const INITIAL_SERVER_HOST = '{{ server.host|escapejs }}';
+const INITIAL_SERVER_PORT = {{ server.port }};
+const INITIAL_SERVER_USER = '{{ server.username|escapejs }}';
 
-let socket = null;
-let terminal = null;
-let fitAddon = null;
-let resizeObserver = null;
-let connected = false;
-let aiCommandEls = {};
-let pingInterval = null;
-let lastPingTime = null;
+// ── Tab state ─────────────────────────────────────────────────────────────────
+const tabs = {};
+let activeTabId = null;
+let tabCounter = 0;
 
-// Escape HTML
-function escapeHtml(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+function genId() { return 't' + (++tabCounter); }
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function getCookie(n) {
+    let v=null; document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith(n+'='))v=decodeURIComponent(c.slice(n.length+1));});
+    return v;
+}
+function fmtTime() {
+    const d=new Date(); return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
 }
 
-// Status management
-function setStatus(status) {
-    const indicator = document.getElementById('status-indicator');
-    const text = document.getElementById('status-text');
-    const btn = document.getElementById('connect-btn');
+// ── Marked config ─────────────────────────────────────────────────────────────
+if (typeof marked !== 'undefined') {
+    const renderer = new marked.Renderer();
+    renderer.code = function(code, lang) {
+        const l = lang || 'shell';
+        const id = 'cb-' + Math.random().toString(36).slice(2);
+        return `<div class="aip-code-block">
+            <div class="aip-code-header">
+                <span class="aip-code-lang">${esc(l)}</span>
+                <button class="aip-copy-btn" onclick="copyCode(this,'${id}')">Copy</button>
+            </div>
+            <pre id="${id}"><code class="block-code">${esc(code)}</code></pre>
+        </div>`;
+    };
+    renderer.codespan = function(code) {
+        return `<code>${esc(code)}</code>`;
+    };
+    marked.setOptions({ renderer, breaks: true, gfm: true });
+}
 
-    indicator.className = 'status-indicator ' + status;
-    text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-
-    if (btn) {
-        btn.disabled = (status === 'connecting' || status === 'connected');
+function renderMd(text) {
+    if (typeof marked !== 'undefined') {
+        try {
+            const html = marked.parse(text || '');
+            return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'');
+        } catch { return '<pre>' + esc(text) + '</pre>'; }
     }
-
-    // Update latency visibility
-    const latencyBadge = document.getElementById('latency-badge');
-    if (latencyBadge) {
-        latencyBadge.classList.toggle('hidden', status !== 'connected');
-    }
+    return '<div style="white-space:pre-wrap">' + esc(text) + '</div>';
 }
 
-// Latency measurement
-function updateLatency(ms) {
-    const badge = document.getElementById('latency-badge');
-    if (!badge) return;
-
-    badge.textContent = ms + ' ms';
-    badge.className = 'latency-badge';
-
-    if (ms < 100) badge.classList.add('good');
-    else if (ms < 300) badge.classList.add('medium');
-    else badge.classList.add('poor');
-}
-
-// Terminal initialization
-function initTerminal() {
-    const el = document.getElementById('ssh-terminal');
+function copyCode(btn, preId) {
+    const el = document.getElementById(preId);
     if (!el) return;
+    navigator.clipboard.writeText(el.textContent || '').then(() => {
+        btn.textContent = 'Copied!'; btn.classList.add('copied');
+        setTimeout(() => { btn.textContent='Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+}
 
-    // Cleanup
-    try { if (resizeObserver) resizeObserver.disconnect(); } catch (e) {}
-    try { if (terminal) terminal.dispose(); } catch (e) {}
-    terminal = null;
-    fitAddon = null;
+// ── Tab UI ────────────────────────────────────────────────────────────────────
+function renderTabs() {
+    const bar = document.getElementById('tab-bar');
+    const addBtn = document.getElementById('tab-add-btn');
+    bar.querySelectorAll('.tab-item').forEach(e=>e.remove());
+    Object.values(tabs).forEach(tab => {
+        const el = document.createElement('div');
+        el.className = 'tab-item' + (tab.id===activeTabId?' active':'');
+        el.innerHTML = `<span class="tab-status-dot ${tab.connected?'connected':''}" id="tdot-${tab.id}"></span>
+            <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(tab.name)}</span>
+            <span class="tab-close" onclick="event.stopPropagation();closeTab('${tab.id}')"><span class="material-icons-round" style="font-size:14px">close</span></span>`;
+        el.addEventListener('click', ()=>switchTab(tab.id));
+        bar.insertBefore(el, addBtn);
+    });
+}
+
+function setTabStatus(tid, status) {
+    const dot = document.getElementById('tdot-'+tid);
+    if (dot) dot.className = 'tab-status-dot' + (status==='connected'?' connected':status==='connecting'?' connecting':status==='error'?' error':'');
+    if (tid===activeTabId) updateStatusPill(status);
+}
+
+function updateStatusPill(status) {
+    const pill = document.getElementById('status-pill');
+    const txt  = document.getElementById('status-text');
+    const lat  = document.getElementById('latency-badge');
+    if (!pill) return;
+    pill.className = 'status-pill ' + (status==='connected'?'connected':status==='connecting'?'connecting':'');
+    txt.textContent = status.charAt(0).toUpperCase()+status.slice(1);
+    lat?.classList.toggle('hidden', status!=='connected');
+
+    // Update AI header subtitle
+    if (activeTabId && tabs[activeTabId]) {
+        const tab = tabs[activeTabId];
+        const sub = document.getElementById('aip-subtitle');
+        if (sub) {
+            if (status==='connected') { sub.textContent=tab.username+'@'+tab.host; sub.className='aip-subtitle connected'; }
+            else { sub.textContent='Connect to start session'; sub.className='aip-subtitle'; }
+        }
+    }
+}
+
+// ── Tab operations ────────────────────────────────────────────────────────────
+function createTab(sid, name, host, port, user) {
+    const id = genId();
+    tabs[id] = { id, sid, name, host, port, user, socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null };
+    return id;
+}
+
+function switchTab(tid) {
+    if (!tabs[tid]) return;
+    activeTabId = tid;
+    renderTabs();
+    const el = document.getElementById('ssh-terminal');
     el.innerHTML = '';
-
-    if (typeof Terminal === 'undefined') {
-        el.innerHTML = '<div class="p-6 text-red-400">Failed to load xterm.js</div>';
-        return;
-    }
-
-    terminal = new Terminal({
-        cursorBlink: true,
-        scrollback: 10000,
-        fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
-        fontSize: 14,
-        lineHeight: 1.3,
-        letterSpacing: 0,
-        theme: {
-            background: '#09090b',
-            foreground: '#e5e7eb',
-            cursor: '#6366f1',
-            cursorAccent: '#09090b',
-            selection: 'rgba(99, 102, 241, 0.3)',
-            black: '#09090b',
-            red: '#f87171',
-            green: '#34d399',
-            yellow: '#fbbf24',
-            blue: '#60a5fa',
-            magenta: '#c084fc',
-            cyan: '#22d3ee',
-            white: '#e5e7eb',
-            brightBlack: '#4b5563',
-            brightRed: '#fca5a5',
-            brightGreen: '#6ee7b7',
-            brightYellow: '#fde047',
-            brightBlue: '#93c5fd',
-            brightMagenta: '#d8b4fe',
-            brightCyan: '#67e8f9',
-            brightWhite: '#f9fafb'
-        }
-    });
-
-    if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
-        fitAddon = new FitAddon.FitAddon();
-        terminal.loadAddon(fitAddon);
-    }
-
-    terminal.open(el);
-    terminal.focus();
-
-    terminal.writeln('\x1b[38;5;243m╔══════════════════════════════════════════════════════════════╗');
-    terminal.writeln('\x1b[38;5;243m║\x1b[0m  \x1b[1;38;5;99mWEU\x1b[0m SSH Terminal                                            \x1b[38;5;243m║');
-    terminal.writeln('\x1b[38;5;243m║\x1b[0m  Server: \x1b[1m' + serverName.substring(0, 50).padEnd(50) + '\x1b[0m \x1b[38;5;243m║');
-    terminal.writeln('\x1b[38;5;243m╚══════════════════════════════════════════════════════════════╝\x1b[0m');
-    terminal.writeln('');
-    terminal.writeln('\x1b[38;5;243mPress Connect to establish SSH session...\x1b[0m');
-    terminal.writeln('');
-
-    terminal.onData(function(data) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'input', data: data }));
-        }
-    });
-
-    // Resize observer
-    if (window.ResizeObserver) {
-        resizeObserver = new ResizeObserver(fitAndNotify);
-        resizeObserver.observe(el);
-    } else {
-        window.addEventListener('resize', fitAndNotify);
-    }
-
-    setTimeout(fitAndNotify, 100);
+    const tab = tabs[tid];
+    if (tab.terminal) { tab.terminal.open(el); tab.terminal.focus(); setTimeout(()=>{try{tab.fitAddon?.fit();}catch{}},50); }
+    updateStatusPill(tab.connected?'connected':'disconnected');
+    document.getElementById('breadcrumb-server-name').textContent = tab.name;
 }
 
-function fitAndNotify() {
-    if (!terminal || !fitAddon) return;
-    try { fitAddon.fit(); } catch (e) {}
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
-    }
+function closeTab(tid) {
+    const tab=tabs[tid]; if (!tab) return;
+    clearInterval(tab.pingInterval);
+    try{tab.socket?.close();}catch{}
+    try{tab.terminal?.dispose();}catch{}
+    delete tabs[tid];
+    const ids=Object.keys(tabs);
+    if (activeTabId===tid) { activeTabId=null; document.getElementById('ssh-terminal').innerHTML=''; if(ids.length)switchTab(ids[ids.length-1]); }
+    renderTabs();
 }
 
-// WebSocket connection
-function connectTerminal() {
-    if (!terminal) initTerminal();
-    if (!terminal) return;
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+function openServerTab(sid, name, host, port, user) {
+    closeAddServerDropdown();
+    const tid = createTab(sid, name, host, port, user);
+    renderTabs(); switchTab(tid); connectTab(tid);
+}
 
-    const wsProto = (window.location.protocol === 'https:') ? 'wss' : 'ws';
-    const url = wsProto + '://' + window.location.host + '/ws/servers/' + serverId + '/terminal/';
-    socket = new WebSocket(url);
+// ── Add-server dropdown ───────────────────────────────────────────────────────
+function toggleAddServerDropdown(e) {
+    e.stopPropagation();
+    const dd=document.getElementById('add-server-dropdown'), btn=document.getElementById('tab-add-btn');
+    if (dd.classList.contains('open')) { closeAddServerDropdown(); return; }
+    const r=btn.getBoundingClientRect(); dd.style.top=(r.bottom+4)+'px'; dd.style.left=r.left+'px';
+    dd.classList.add('open');
+}
+function closeAddServerDropdown() { document.getElementById('add-server-dropdown').classList.remove('open'); }
+document.addEventListener('click', e=>{ if(!e.target.closest('#add-server-dropdown')&&!e.target.closest('#tab-add-btn'))closeAddServerDropdown(); });
 
-    setStatus('connecting');
+// ── Terminal ──────────────────────────────────────────────────────────────────
+function initTabTerminal(tid) {
+    const tab=tabs[tid]; if (!tab||typeof Terminal==='undefined') return;
+    const el=document.getElementById('ssh-terminal'); el.innerHTML='';
+    try{tab.fitAddon?.dispose?.();tab.terminal?.dispose();}catch{}
 
-    socket.onopen = function() {
-        connected = true;
-        fitAndNotify();
+    tab.terminal = new Terminal({
+        cursorBlink:true, scrollback:10000,
+        fontFamily:'JetBrains Mono, Consolas, Monaco, monospace', fontSize:14, lineHeight:1.3,
+        theme:{ background:'#09090b', foreground:'#e5e7eb', cursor:'#6366f1', cursorAccent:'#09090b', selection:'rgba(99,102,241,0.3)',
+            black:'#09090b', red:'#f87171', green:'#34d399', yellow:'#fbbf24', blue:'#60a5fa', magenta:'#c084fc', cyan:'#22d3ee', white:'#e5e7eb',
+            brightBlack:'#4b5563', brightRed:'#fca5a5', brightGreen:'#6ee7b7', brightYellow:'#fde047', brightBlue:'#93c5fd', brightMagenta:'#d8b4fe', brightCyan:'#67e8f9', brightWhite:'#f9fafb' }
+    });
+    if (typeof FitAddon!=='undefined'&&FitAddon.FitAddon) { tab.fitAddon=new FitAddon.FitAddon(); tab.terminal.loadAddon(tab.fitAddon); }
+    tab.terminal.open(el); tab.terminal.focus();
+    tab.terminal.writeln('\x1b[38;5;243m╔══════════════════════════════════════════════╗');
+    tab.terminal.writeln('\x1b[38;5;243m║\x1b[0m  \x1b[1;38;5;99mWEU\x1b[0m \x1b[38;5;243m·\x1b[0m ' + (tab.name).substring(0,38).padEnd(38) + ' \x1b[38;5;243m║');
+    tab.terminal.writeln('\x1b[38;5;243m║\x1b[0m  ' + (tab.user+'@'+tab.host+':'+tab.port).substring(0,38).padEnd(38) + '  \x1b[38;5;243m╟');
+    tab.terminal.writeln('\x1b[38;5;243m╚══════════════════════════════════════════════╝\x1b[0m\r\n');
+    tab.terminal.onData(d=>{ if(tab.socket?.readyState===WebSocket.OPEN) tab.socket.send(JSON.stringify({type:'input',data:d})); });
+    if (!window._ro) { window._ro=new ResizeObserver(fitActive); window._ro.observe(el); }
+    setTimeout(fitActive,80);
+}
 
-        const masterPassword = document.getElementById('terminal-master-password').value || '';
-        const password = document.getElementById('terminal-password').value || '';
+function fitActive() {
+    if (!activeTabId) return;
+    const tab=tabs[activeTabId]; if(!tab?.fitAddon) return;
+    try{tab.fitAddon.fit();}catch{}
+    if(tab.socket?.readyState===WebSocket.OPEN) tab.socket.send(JSON.stringify({type:'resize',cols:tab.terminal.cols,rows:tab.terminal.rows}));
+}
 
-        socket.send(JSON.stringify({
-            type: 'connect',
-            master_password: masterPassword,
-            password: password,
-            cols: terminal.cols,
-            rows: terminal.rows,
-            term_type: 'xterm-256color'
-        }));
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectTab(tid, mp='', pw='') {
+    const tab=tabs[tid]; if(!tab) return;
+    if(!tab.terminal) initTabTerminal(tid);
+    if(tab.socket?.readyState===WebSocket.OPEN||tab.socket?.readyState===WebSocket.CONNECTING) return;
+    const proto=location.protocol==='https:'?'wss':'ws';
+    tab.socket = new WebSocket(proto+'://'+location.host+'/ws/servers/'+tab.sid+'/terminal/');
+    setTabStatus(tid,'connecting');
 
-        // Start ping for latency
-        lastPingTime = Date.now();
-        pingInterval = setInterval(function() {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                lastPingTime = Date.now();
-                socket.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 5000);
+    tab.socket.onopen = ()=>{
+        if(mp) fetch('/servers/api/master-password/set/', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify({master_password:mp}) }).catch(()=>{});
+        tab.socket.send(JSON.stringify({type:'connect',master_password:mp,password:pw,cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
+        tab.lastPing=Date.now();
+        tab.pingInterval=setInterval(()=>{ if(tab.socket?.readyState===WebSocket.OPEN){tab.lastPing=Date.now();tab.socket.send(JSON.stringify({type:'ping'}));} },5000);
     };
 
-    socket.onmessage = function(ev) {
-        let msg;
-        try { msg = JSON.parse(ev.data); } catch (e) { return; }
-        if (!msg || !msg.type) return;
-
-        switch (msg.type) {
-            case 'output':
-                if (msg.data != null) terminal.write(msg.data);
-                break;
+    tab.socket.onmessage = ev=>{
+        let msg; try{msg=JSON.parse(ev.data);}catch{return;}
+        switch(msg.type){
+            case 'output': tab.terminal?.write(msg.data||''); break;
             case 'pong':
-                if (lastPingTime) updateLatency(Date.now() - lastPingTime);
+                if(tid===activeTabId&&tab.lastPing){const ms=Date.now()-tab.lastPing;const b=document.getElementById('latency-badge');if(b){b.textContent=ms+'ms';b.classList.remove('hidden');}}
                 break;
-            case 'status':
-                setStatus(msg.status || 'disconnected');
-                break;
-            case 'error':
-                setStatus('disconnected');
-                terminal.writeln('\r\n\x1b[1;31m[Error]\x1b[0m ' + (msg.message || 'Unknown error'));
-                break;
-            case 'exit':
-                terminal.writeln('\r\n\x1b[38;5;243m[Session ended] exit=' + (msg.exit_status != null ? msg.exit_status : '—') + '\x1b[0m');
-                break;
+            case 'status': tab.connected=(msg.status==='connected'); setTabStatus(tid,msg.status||'disconnected'); break;
+            case 'error': tab.connected=false; setTabStatus(tid,'error'); tab.terminal?.writeln('\r\n\x1b[1;31m[Error]\x1b[0m '+esc(msg.message||'')); if(tid===activeTabId&&/пароль|password|пасфраз|secret|мастер/i.test(msg.message||'')) document.getElementById('creds-panel')?.classList.add('open'); break;
+            case 'exit': tab.connected=false; setTabStatus(tid,'disconnected'); tab.terminal?.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m'); break;
             case 'ai_status':
-                // Handle AI status
+                if(tid!==activeTabId)break;
+                if(msg.status==='thinking'){ showThinking(); setAiRunning(true); }
+                else if(msg.status==='running'){ hideThinking(); setAiRunning(true); }
+                else if(msg.status==='waiting_confirm'){ hideThinking(); setAiRunning(true); }
+                else if(msg.status==='generating_report'){ hideThinking(); showReportGenerating(); setAiRunning(true); }
+                else if(msg.status==='idle'){ hideThinking(); hideReportGenerating(); setAiRunning(false); }
                 break;
-            case 'ai_response':
-                handleAiResponse(msg);
-                break;
-            case 'ai_command_status':
-                updateCommandStatus(msg);
-                break;
-            case 'ai_report':
-                handleAiReport(msg);
-                break;
-            case 'ai_error':
-                appendMessage('system', msg.message || 'AI Error');
-                break;
+            case 'ai_response': if(tid===activeTabId) handleAiResponse(msg); break;
+            case 'ai_command_status': if(tid===activeTabId) updateCommandStatus(msg); break;
+            case 'ai_report': if(tid===activeTabId) handleAiReport(msg); break;
+            case 'ai_error': if(tid===activeTabId){hideThinking();setAiRunning(false);appendMsg('system','⚠ '+(msg.message||'AI Error'));} break;
         }
     };
-
-    socket.onclose = function() {
-        connected = false;
-        setStatus('disconnected');
-        clearInterval(pingInterval);
-    };
-
-    socket.onerror = function() {
-        connected = false;
-        setStatus('disconnected');
-        terminal.writeln('\r\n\x1b[1;31m[WebSocket Error]\x1b[0m');
-        clearInterval(pingInterval);
-    };
+    tab.socket.onclose = ()=>{ tab.connected=false; clearInterval(tab.pingInterval); setTabStatus(tid,'disconnected'); hideThinking(); setAiRunning(false); };
+    tab.socket.onerror = ()=>{ tab.connected=false; setTabStatus(tid,'error'); hideThinking(); setAiRunning(false); };
 }
 
 function disconnectTerminal() {
-    connected = false;
-    clearInterval(pingInterval);
-    try {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'disconnect' }));
-        }
-    } catch (e) {}
-    try { if (socket) socket.close(); } catch (e) {}
-    socket = null;
-    setStatus('disconnected');
+    if(!activeTabId)return; const tab=tabs[activeTabId]; if(!tab)return;
+    clearInterval(tab.pingInterval);
+    try{tab.socket?.send(JSON.stringify({type:'disconnect'}));}catch{}
+    try{tab.socket?.close();}catch{}
+    tab.socket=null; tab.connected=false; setTabStatus(activeTabId,'disconnected');
 }
 
-function clearTerminal() {
-    if (terminal) terminal.clear();
+function manualConnect() {
+    if(!activeTabId)return;
+    const tab=tabs[activeTabId]; if(!tab)return;
+    const mp=document.getElementById('terminal-master-password').value||'', pw=document.getElementById('terminal-password').value||'';
+    if(tab.socket&&(tab.socket.readyState===WebSocket.OPEN||tab.socket.readyState===WebSocket.CONNECTING)&&!tab.connected){ disconnectTerminal(); setTimeout(()=>connectTab(activeTabId,mp,pw),50); return; }
+    connectTab(activeTabId,mp,pw);
 }
 
-// AI Panel
+function clearTerminal() { if(activeTabId) tabs[activeTabId]?.terminal?.clear(); }
+function openMinimalWindow() {
+    if(!activeTabId)return; const tab=tabs[activeTabId];
+    const w=1200,h=800;
+    window.open('/servers/'+tab.sid+'/terminal/minimal/','terminal_'+tab.sid,'width='+w+',height='+h+',left='+((screen.width-w)/2)+',top='+((screen.height-h)/2)+',menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+}
+
+function toggleCredsPanel() { document.getElementById('creds-panel').classList.toggle('open'); }
+
+// ── AI Panel toggle ───────────────────────────────────────────────────────────
 function toggleAiPanel() {
-    const panel = document.getElementById('ai-panel');
-    const btn = document.getElementById('toggle-ai-btn');
+    const panel=document.getElementById('ai-panel'), floatBtn=document.getElementById('float-ai-btn'), toolBtn=document.getElementById('ai-toggle-btn');
     panel.classList.toggle('collapsed');
-    btn.style.display = panel.classList.contains('collapsed') ? 'flex' : 'none';
+    const c=panel.classList.contains('collapsed');
+    floatBtn.style.display=c?'flex':'none';
+    toolBtn.classList.toggle('ai-active',!c);
+    setTimeout(fitActive,280);
 }
 
-// AI panel resize (drag left edge)
-(function initAiPanelResizer() {
-    const panel = document.getElementById('ai-panel');
-    const resizer = document.getElementById('ai-panel-resizer');
-    if (!panel || !resizer) return;
-    const MIN_W = 320, MAX_W = 900;
-    function getSavedWidth() {
-        try {
-            var w = parseInt(localStorage.getItem('weu_ai_panel_width'), 10);
-            return (w >= MIN_W && w <= MAX_W) ? w : 420;
-        } catch (e) { return 420; }
-    }
-    function setWidth(w) {
-        w = Math.max(MIN_W, Math.min(MAX_W, w));
-        panel.style.width = w + 'px';
-        try { localStorage.setItem('weu_ai_panel_width', String(w)); } catch (e) {}
-    }
-    setWidth(getSavedWidth());
-    resizer.addEventListener('mousedown', function(e) {
-        if (e.button !== 0 || panel.classList.contains('collapsed')) return;
-        e.preventDefault();
-        var startX = e.clientX, startW = panel.offsetWidth;
-        function onMove(e) {
-            var w = startW + (startX - e.clientX);
-            setWidth(w);
-        }
-        function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        }
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+// AI panel resizer
+(function(){
+    const p=document.getElementById('ai-panel'), r=document.getElementById('ai-panel-resizer'); if(!p||!r)return;
+    const MIN=340,MAX=900;
+    function gw(){try{const w=parseInt(localStorage.getItem('weu_ai_w'),10);return w>=MIN&&w<=MAX?w:440;}catch{return 440;}}
+    function sw(w){w=Math.max(MIN,Math.min(MAX,w));p.style.width=w+'px';try{localStorage.setItem('weu_ai_w',w);}catch{}}
+    sw(gw());
+    r.addEventListener('mousedown',e=>{
+        if(e.button!==0||p.classList.contains('collapsed'))return; e.preventDefault();
+        const sx=e.clientX,sw2=p.offsetWidth;
+        const mv=e2=>sw(sw2+(sx-e2.clientX));
+        const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);document.body.style.cursor='';document.body.style.userSelect='';};
+        document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+        document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
     });
 })();
 
-function appendMessage(role, text) {
-    const container = document.getElementById('ai-messages');
-    if (!container) return;
+// ── AI messages ───────────────────────────────────────────────────────────────
+let aiCommandEls = {};
+let userScrolledUp = false;
 
-    const div = document.createElement('div');
-    div.className = 'msg-' + role;
-    div.innerHTML = '<div style="white-space: pre-wrap;">' + escapeHtml(text) + '</div>';
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+function aiScrollToBottom() {
+    const c=document.getElementById('ai-messages'); if(!c)return;
+    c.scrollTop=c.scrollHeight;
+    document.getElementById('aip-jump-btn')?.classList.add('hidden');
+    userScrolledUp=false;
 }
 
-function renderReportBody(text) {
-    if (!text) return '';
-    if (typeof marked !== 'undefined') {
-        var html = marked.parse(text);
-        return (html || '').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+function handleAiScroll() {
+    const c=document.getElementById('ai-messages'); if(!c)return;
+    const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 60;
+    userScrolledUp = !atBottom;
+    document.getElementById('aip-jump-btn')?.classList.toggle('hidden', atBottom);
+}
+
+function hideWelcome() { const w=document.getElementById('ai-welcome'); if(w)w.style.display='none'; }
+
+function showThinking() {
+    const t=document.getElementById('ai-thinking'); if(!t)return;
+    t.classList.remove('hidden');
+    const c=document.getElementById('ai-messages'); c.appendChild(t);
+    document.getElementById('aip-avatar-pulse')?.classList.add('thinking');
+    if(!userScrolledUp)aiScrollToBottom();
+}
+function hideThinking() {
+    document.getElementById('ai-thinking')?.classList.add('hidden');
+    document.getElementById('aip-avatar-pulse')?.classList.remove('thinking');
+}
+
+// ── Report generating animation ───────────────────────────────────────────────
+const _RG_PHASES = [
+    'Анализирую вывод команд...',
+    'Выявляю проблемы и аномалии...',
+    'Формирую рекомендации...',
+    'Составляю итоговый отчёт...',
+    'Проверяю метрики...',
+];
+let _rgPhaseTimer = null;
+
+function showReportGenerating() {
+    hideReportGenerating();
+    const c = document.getElementById('ai-messages'); if (!c) return;
+    const d = document.createElement('div');
+    d.id = 'ai-report-gen';
+    d.className = 'aip-report-gen';
+    d.innerHTML = `
+        <div class="aip-rg-icon"><span class="material-icons-round">edit_note</span></div>
+        <div class="aip-rg-text">
+            <div class="aip-rg-title">Пишу отчёт</div>
+            <div class="aip-rg-sub" id="aip-rg-sub">${_RG_PHASES[0]}</div>
+        </div>
+        <div class="aip-rg-dots"><span></span><span></span><span></span></div>`;
+    c.insertBefore(d, document.getElementById('ai-thinking'));
+    // Cycle through phases
+    let i = 1;
+    _rgPhaseTimer = setInterval(() => {
+        const el = document.getElementById('aip-rg-sub');
+        if (el) { el.style.opacity = '0'; setTimeout(() => { el.textContent = _RG_PHASES[i % _RG_PHASES.length]; el.style.opacity = '1'; i++; }, 200); }
+    }, 2000);
+    if (!userScrolledUp) aiScrollToBottom();
+}
+
+function hideReportGenerating() {
+    if (_rgPhaseTimer) { clearInterval(_rgPhaseTimer); _rgPhaseTimer = null; }
+    document.getElementById('ai-report-gen')?.remove();
+}
+
+function appendMsg(role, text) {
+    const c=document.getElementById('ai-messages'); if(!c)return;
+    hideWelcome();
+
+    if (role==='system') {
+        const d=document.createElement('div');
+        d.className='aip-msg-row system';
+        d.innerHTML=`<div class="aip-bubble system-msg"><span class="material-icons-round" style="font-size:13px;vertical-align:middle;margin-right:4px">info</span>${esc(text)}</div>`;
+        c.insertBefore(d,document.getElementById('ai-thinking'));
+    } else if (role==='user') {
+        const d=document.createElement('div');
+        d.className='aip-msg-row user';
+        d.innerHTML=`<div class="aip-msg-body">
+            <div class="aip-bubble user">${esc(text)}</div>
+            <div class="aip-msg-time">${fmtTime()}</div>
+        </div>
+        <div class="aip-msg-avatar user"><span class="material-icons-round" style="font-size:13px">person</span></div>`;
+        c.insertBefore(d,document.getElementById('ai-thinking'));
+    } else {
+        const d=document.createElement('div');
+        d.className='aip-msg-row ai';
+        d.innerHTML=`<div class="aip-msg-avatar ai"><span class="material-icons-round" style="font-size:13px">smart_toy</span></div>
+        <div class="aip-msg-body">
+            <div class="aip-bubble ai">${renderMd(text)}</div>
+            <div class="aip-msg-time">${fmtTime()}</div>
+        </div>`;
+        c.insertBefore(d,document.getElementById('ai-thinking'));
     }
-    return '<div style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+    if(!userScrolledUp)aiScrollToBottom();
 }
 
 function handleAiReport(msg) {
-    const container = document.getElementById('ai-messages');
-    if (!container || !msg.report) return;
-    const block = document.createElement('div');
-    block.className = 'msg-assistant msg-report';
-    block.innerHTML = '<div class="report-title"><span class="material-icons-round text-sm">summarize</span> Отчёт</div><div class="report-body">' + renderReportBody(msg.report) + '</div>';
-    container.appendChild(block);
-    container.scrollTop = container.scrollHeight;
+    hideThinking();
+    hideReportGenerating();
+    setAiRunning(false);
+    const c=document.getElementById('ai-messages'); if(!c||!msg.report)return;
+    const st = msg.status || 'ok';
+    const stMap = {
+        ok:      {cls:'rep-ok',      icon:'check_circle',  badge:'OK',      label:'Выполнено'},
+        warning: {cls:'rep-warning', icon:'warning_amber', badge:'WARNING', label:'Предупреждение'},
+        error:   {cls:'rep-error',   icon:'error_outline', badge:'ERROR',   label:'Ошибки'},
+    };
+    const s = stMap[st] || stMap.ok;
+    const d=document.createElement('div');
+    d.className=`aip-report ${s.cls}`;
+    const bodyId='rep-body-'+Date.now();
+    d.innerHTML=`
+        <div class="aip-report-header" onclick="toggleReport('${bodyId}')">
+            <span class="material-icons-round" style="font-size:15px">${s.icon}</span>
+            <span class="aip-report-header-title">${s.label}</span>
+            <span class="aip-report-badge">${s.badge}</span>
+            <span class="material-icons-round" style="font-size:14px;opacity:.5;margin-left:6px;transition:transform .2s" id="rep-chevron-${bodyId}">expand_less</span>
+        </div>
+        <div class="aip-report-body" id="${bodyId}">${renderMd(msg.report)}</div>
+        <div class="aip-report-meta">
+            <span class="material-icons-round" style="font-size:12px">schedule</span>
+            <span>${fmtTime()}</span>
+        </div>`;
+    c.insertBefore(d,document.getElementById('ai-thinking'));
+    if(!userScrolledUp)aiScrollToBottom();
+}
+
+function toggleReport(bodyId) {
+    const body=document.getElementById(bodyId); if(!body)return;
+    const chev=document.getElementById('rep-chevron-'+bodyId);
+    const hidden=body.style.display==='none';
+    body.style.display=hidden?'':'none';
+    if(chev)chev.style.transform=hidden?'':'rotate(180deg)';
 }
 
 function handleAiResponse(msg) {
-    if (msg.assistant_text) {
-        appendMessage('assistant', msg.assistant_text);
-    }
-
-    if (!Array.isArray(msg.commands) || !msg.commands.length) return;
-
-    const container = document.getElementById('ai-messages');
-
-    msg.commands.forEach(function(c) {
-        const id = c.id;
-        if (!id) return;
-
-        const card = document.createElement('div');
-        card.className = 'cmd-card';
-        card.id = 'cmd-card-' + id;
-
-        const reason = c.reason ? ' <span class="text-amber-400">(' + escapeHtml(c.reason) + ')</span>' : '';
-        const why = c.why ? '<div class="text-xs text-gray-500 mt-2">' + escapeHtml(c.why) + '</div>' : '';
-
-        card.innerHTML = `
-            <div class="cmd-card-header">
-                <div class="flex items-center gap-2">
-                    <span class="material-icons-round text-sm text-gray-500">terminal</span>
-                    <span class="text-xs text-gray-400">Command #${escapeHtml(id)}${reason}</span>
-                </div>
-                <span id="cmd-status-${id}" class="cmd-status ${c.requires_confirm ? 'pending_confirm' : 'pending'}">${c.requires_confirm ? 'Needs Confirm' : 'Pending'}</span>
-            </div>
-            <div class="cmd-card-body">
-                <div class="cmd-code">${escapeHtml(c.cmd || '')}</div>
-                ${why}
-                <div id="cmd-actions-${id}" class="cmd-actions"></div>
-            </div>
-        `;
-
-        container.appendChild(card);
-        container.scrollTop = container.scrollHeight;
-
-        aiCommandEls[id] = {
-            card: card,
-            statusEl: card.querySelector('#cmd-status-' + id),
-            actionsEl: card.querySelector('#cmd-actions-' + id)
-        };
-
-        if (c.requires_confirm) {
-            renderConfirmButtons(id);
+    hideThinking();
+    // mode=answer or mode=ask: just show the text, no commands
+    if(!msg.commands || !msg.commands.length) {
+        if(msg.assistant_text) appendMsg('assistant', msg.assistant_text);
+        if(msg.mode==='ask') {
+            // subtle "awaiting answer" indicator already visible via message
         }
+        setAiRunning(false);
+        return;
+    }
+    // mode=execute: show assistant text + command cards
+    if(msg.assistant_text) appendMsg('assistant', msg.assistant_text);
+    const c=document.getElementById('ai-messages');
+    msg.commands.forEach(cmd=>{
+        const id=cmd.id; if(!id)return;
+        const isDanger=cmd.requires_confirm;
+        const isStream=!!cmd.streaming;
+        const card=document.createElement('div');
+        card.className='aip-cmd-card status-'+(isDanger?'pending_confirm':'pending');
+        card.id='cmd-card-'+id;
+        card.innerHTML=`
+            <div class="aip-cmd-header">
+                <div class="aip-cmd-header-left">
+                    <span class="material-icons-round aip-cmd-icon">${isStream?'stream':'terminal'}</span>
+                    <span class="aip-cmd-num">Команда #${esc(String(id))}</span>
+                </div>
+                <span id="cmd-badge-${id}" class="aip-cmd-badge ${isDanger?'pending_confirm':'pending'}">
+                    ${isDanger?'⚠ Подтвердить':'В очереди'}
+                </span>
+            </div>
+            <div class="aip-cmd-body">
+                <div class="aip-cmd-code-wrap">
+                    <div class="aip-cmd-code">${esc(cmd.cmd||'')}</div>
+                    <button class="aip-cmd-copy" onclick="copyCmd(this,'cmd-card-${id}')">Copy</button>
+                </div>
+                ${cmd.why?`<div class="aip-cmd-why"><span class="material-icons-round">info</span>${esc(cmd.why)}</div>`:''}
+                ${isStream?`<div class="aip-cmd-streaming-note"><span class="material-icons-round" style="font-size:12px">timer</span>Стриминг-команда — вывод захватится за 8 с, затем прервётся автоматически</div>`:''}
+                ${isDanger?`<div class="aip-cmd-danger-warn"><span class="material-icons-round">warning</span>Требует подтверждения перед выполнением</div>`:''}
+                <div id="cmd-actions-${id}" class="aip-cmd-actions"></div>
+                <div id="cmd-progress-${id}" class="aip-cmd-progress hidden"><div class="aip-cmd-progress-bar"></div></div>
+            </div>`;
+        c.insertBefore(card, document.getElementById('ai-thinking'));
+        aiCommandEls[id]={ badgeEl:card.querySelector('#cmd-badge-'+id), actionsEl:card.querySelector('#cmd-actions-'+id), progressEl:card.querySelector('#cmd-progress-'+id), card, streaming:isStream };
+        if(isDanger)renderConfirmButtons(id);
+        if(!userScrolledUp)aiScrollToBottom();
     });
+}
+
+function copyCmd(btn, cardId) {
+    const card=document.getElementById(cardId); if(!card)return;
+    const code=card.querySelector('.aip-cmd-code'); if(!code)return;
+    navigator.clipboard.writeText(code.textContent||'').then(()=>{ btn.textContent='Copied!'; setTimeout(()=>{btn.textContent='Copy';},2000); });
 }
 
 function renderConfirmButtons(id) {
-    const entry = aiCommandEls[id];
-    if (!entry || !entry.actionsEl) return;
-
-    entry.actionsEl.innerHTML = '';
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'cmd-btn cmd-btn-confirm';
-    confirmBtn.innerHTML = '<span class="material-icons-round text-sm mr-1">check</span>Confirm';
-    confirmBtn.onclick = function() { confirmCommand(id); };
-
-    const skipBtn = document.createElement('button');
-    skipBtn.type = 'button';
-    skipBtn.className = 'cmd-btn cmd-btn-skip';
-    skipBtn.innerHTML = '<span class="material-icons-round text-sm mr-1">skip_next</span>Skip';
-    skipBtn.onclick = function() { cancelCommand(id); };
-
-    entry.actionsEl.appendChild(confirmBtn);
-    entry.actionsEl.appendChild(skipBtn);
+    const e=aiCommandEls[id]; if(!e?.actionsEl)return;
+    e.actionsEl.innerHTML='';
+    const ok=document.createElement('button'); ok.type='button'; ok.className='aip-confirm-btn';
+    ok.innerHTML='<span class="material-icons-round" style="font-size:15px">check_circle</span>Run Command';
+    ok.onclick=()=>confirmCommand(id);
+    const sk=document.createElement('button'); sk.type='button'; sk.className='aip-skip-btn';
+    sk.innerHTML='<span class="material-icons-round" style="font-size:15px">skip_next</span>Skip';
+    sk.onclick=()=>cancelCommand(id);
+    e.actionsEl.append(ok,sk);
 }
 
 function updateCommandStatus(msg) {
-    const id = msg.id;
-    const entry = aiCommandEls[id];
-    if (!entry) return;
+    const e=aiCommandEls[msg.id]; if(!e)return;
 
-    const statusEl = entry.statusEl;
-    if (statusEl) {
-        let statusText = msg.status;
-        let statusClass = msg.status;
-
-        if (msg.status === 'done' && msg.exit_code != null) {
-            statusText = 'Done (exit=' + msg.exit_code + ')';
-            statusClass = msg.exit_code === 0 ? 'done' : 'error';
-        }
-
-        statusEl.textContent = statusText;
-        statusEl.className = 'cmd-status ' + statusClass;
+    let text=msg.status, cls=msg.status;
+    if(msg.status==='done'&&msg.exit_code!=null){
+        if(msg.exit_code===0){ text='✓ Выполнено'; cls='done'; }
+        else if(msg.exit_code===130&&(e.streaming||msg.streaming)){ text='⏹ Захвачено'; cls='captured'; }
+        else { text='✗ Ошибка (exit='+msg.exit_code+')'; cls='error'; }
     }
+    if(msg.status==='running'){ text='● Выполняется'; }
+    if(msg.status==='skipped'){ text='Пропущено'; }
+    if(msg.status==='confirmed'){ text='● Выполняется'; cls='running'; }
 
-    if (['running', 'done', 'skipped', 'confirmed'].includes(msg.status)) {
-        const buttons = entry.actionsEl?.querySelectorAll('button');
-        buttons?.forEach(btn => {
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-        });
+    if(e.badgeEl){ e.badgeEl.textContent=text; e.badgeEl.className='aip-cmd-badge '+cls; }
+    if(e.card){ e.card.className='aip-cmd-card status-'+cls; }
+    if(e.progressEl){ e.progressEl.classList.toggle('hidden',msg.status!=='running'&&msg.status!=='confirmed'); }
+
+    if(['running','done','skipped','confirmed'].includes(msg.status))
+        e.actionsEl?.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});
+}
+
+function confirmCommand(id) { if(activeTabId) tabs[activeTabId]?.socket?.send(JSON.stringify({type:'ai_confirm',id})); }
+function cancelCommand(id)  { if(activeTabId) tabs[activeTabId]?.socket?.send(JSON.stringify({type:'ai_cancel',id})); }
+
+// ── AI running state ──────────────────────────────────────────────────────────
+function setAiRunning(running) {
+    const btn=document.getElementById('aip-stop-btn'); if(btn)btn.style.display=running?'flex':'none';
+    const sub=document.getElementById('aip-subtitle');
+    const tab=activeTabId?tabs[activeTabId]:null;
+    if(sub&&tab){
+        if(running){ sub.textContent='Выполняется...'; sub.className='aip-subtitle'; sub.style.color='#a5b4fc'; }
+        else if(tab.connected){ sub.textContent=tab.user+'@'+tab.host; sub.className='aip-subtitle connected'; sub.style.color=''; }
+        else { sub.textContent='Подключитесь для работы'; sub.className='aip-subtitle'; sub.style.color=''; }
     }
 }
 
-function confirmCommand(id) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'ai_confirm', id: id }));
-    }
+function stopAi() {
+    if(activeTabId&&tabs[activeTabId]?.socket?.readyState===WebSocket.OPEN)
+        tabs[activeTabId].socket.send(JSON.stringify({type:'ai_stop'}));
+    hideThinking();
+    setAiRunning(false);
+    appendMsg('system','ИИ остановлен');
 }
 
-function cancelCommand(id) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'ai_cancel', id: id }));
-    }
+// ── Input ─────────────────────────────────────────────────────────────────────
+function autoResizeAi(el) {
+    el.style.height='auto';
+    el.style.height=Math.min(el.scrollHeight,120)+'px';
 }
 
 function sendAiMessage() {
-    const input = document.getElementById('ai-input');
-    const text = (input.value || '').trim();
-    if (!text) return;
-
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-        if (window.showToast) window.showToast('Connect to server first', 'warning');
-        else alert('Connect to server first');
+    const input=document.getElementById('ai-input');
+    const text=(input.value||'').trim(); if(!text)return;
+    if(!activeTabId||!tabs[activeTabId]?.socket||tabs[activeTabId].socket.readyState!==WebSocket.OPEN){
+        if(window.showToast)window.showToast('Connect to server first','warning');
+        else appendMsg('system','Connect to server first');
         return;
     }
-
-    appendMessage('user', text);
-    input.value = '';
-    socket.send(JSON.stringify({ type: 'ai_request', message: text }));
+    hideWelcome();
+    appendMsg('user',text);
+    input.value=''; input.style.height='auto';
+    showThinking();
+    setAiRunning(true);
+    const btn=document.getElementById('aip-send-btn'); btn.classList.add('sending');
+    setTimeout(()=>btn.classList.remove('sending'),300);
+    tabs[activeTabId].socket.send(JSON.stringify({type:'ai_request',message:text}));
 }
 
-function sendQuickCommand(cmd) {
-    const input = document.getElementById('ai-input');
-    input.value = cmd;
-    sendAiMessage();
-}
+function quickSend(cmd) { document.getElementById('ai-input').value=cmd; sendAiMessage(); }
+function sendQuickCommand(cmd) { quickSend(cmd); }
 
 function handleAiKeydown(e) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        sendAiMessage();
-    }
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendAiMessage();}
 }
 
-// Init
-document.addEventListener('DOMContentLoaded', function() {
-    initTerminal();
-
-    // Focus terminal on click
-    document.getElementById('ssh-terminal')?.addEventListener('click', function() {
-        if (terminal) terminal.focus();
+function clearAiChat() {
+    aiCommandEls={};
+    const c=document.getElementById('ai-messages'); if(!c)return;
+    // Remove all messages except welcome and thinking
+    Array.from(c.children).forEach(ch=>{
+        if(ch.id!=='ai-welcome'&&ch.id!=='ai-thinking') ch.remove();
     });
+    const w=document.getElementById('ai-welcome'); if(w)w.style.display='';
+    hideThinking();
+}
 
-    // Keyboard shortcuts
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            if (!document.getElementById('ai-panel').classList.contains('collapsed')) {
-                // Don't close AI panel on escape, just blur input
-                document.activeElement?.blur();
-            }
-        }
-    });
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+    const tid=createTab(INITIAL_SERVER_ID,INITIAL_SERVER_NAME,INITIAL_SERVER_HOST,INITIAL_SERVER_PORT,INITIAL_SERVER_USER);
+    activeTabId=tid; renderTabs(); initTabTerminal(tid); connectTab(tid);
+    document.getElementById('ssh-terminal')?.addEventListener('click',()=>{ if(activeTabId)tabs[activeTabId]?.terminal?.focus(); });
 });
 
-// Cleanup on page leave
-window.addEventListener('beforeunload', function() {
-    disconnectTerminal();
-});
+window.addEventListener('beforeunload',()=>Object.values(tabs).forEach(t=>{try{t.socket?.close();}catch{}}));
 </script>
 {% endblock %}

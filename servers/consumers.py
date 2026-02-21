@@ -29,6 +29,24 @@ class _TermSize:
 
 _WEUAI_MARKER_PREFIX = "__WEUAI_EXIT_"
 
+# Regex to detect commands that produce infinite/continuous output or need user input
+_STREAMING_CMD_RE = re.compile(
+    r"(?:"
+    r"\btail\s+.*-[a-zA-Z]*[fF]\b"                              # tail -f / -F / -fq
+    r"|\btail\s+--follow\b"
+    r"|\bjournalctl\s+.*(?:-[a-zA-Z]*[fF]\b|--follow\b)"        # journalctl -f/-fu/--follow
+    r"|\bdocker\s+logs?\s+.*(?:-[a-zA-Z]*[fF]\b|--follow\b)"   # docker logs -f/--follow
+    r"|\bkubectl\s+logs?\s+.*-[a-zA-Z]*[fF]\b"                  # kubectl logs -f
+    r"|\bpodman\s+logs?\s+.*(?:-[a-zA-Z]*[fF]\b|--follow\b)"
+    r"|\bwatch\s+"                                               # watch anything
+    r"|\btcpdump\b"
+    r"|\bstrace\b"
+    r"|\bping\s+(?!.*-c\s*\d)"                                   # ping without -c count
+    r")",
+    re.IGNORECASE,
+)
+_INTERACTIVE_CMDS = {"top", "htop", "iotop", "iftop", "nethogs", "vim", "vi", "nano", "less", "more", "man", "pstree", "glances"}
+
 
 class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -42,7 +60,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "ai_status", status: "thinking"|"running"|"waiting_confirm"|"idle", ...}
           {type: "ai_response", assistant_text: str, commands: [{id, cmd, why, requires_confirm, reason}]}
           {type: "ai_command_status", id: int, status: "running"|"done"|"skipped", exit_code?, reason?}
-          {type: "ai_report", report: str}
+          {type: "ai_report", report: str, status: "ok"|"warning"|"error"}
           {type: "ai_error", message: "<text>"}
       - client -> server:
           {type: "connect", master_password?, password?, cols?, rows?, term_type?}
@@ -76,6 +94,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     _ai_user_message: str
 
     _terminal_tail: str
+    _ai_history: list[dict]
+    _unavailable_cmds: set[str]   # commands that returned exit=127 (not found) this session
 
     _marker_suppress: dict[str, bool]
     _marker_line_buf: dict[str, str]
@@ -100,6 +120,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_active_output = ""
         self._ai_user_message = ""
         self._terminal_tail = ""
+        self._ai_history = []
+        self._unavailable_cmds: set[str] = set()
         self._marker_suppress = {"stdout": False, "stderr": False}
         self._marker_line_buf = {"stdout": "", "stderr": ""}
 
@@ -157,6 +179,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         if msg_type == "ai_cancel":
             await self._handle_ai_cancel(content or {})
             return
+        if msg_type == "ai_stop":
+            await self._cancel_ai()
+            await self.send_json({"type": "ai_status", "status": "idle"})
+            return
         if msg_type == "ping":
             await self.send_json({"type": "pong"})
             return
@@ -176,6 +202,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "status", "status": "connecting"})
 
             master_password = (content.get("master_password") or "").strip()
+            # Auto-connect: if master_password not provided, try to get from session
+            if not master_password:
+                master_password = await self._get_session_master_password()
             plain_password = (content.get("password") or "").strip()
             term_type = (content.get("term_type") or "xterm-256color").strip() or "xterm-256color"
             term_size = self._parse_term_size(content)
@@ -215,7 +244,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
                 if self.server.auth_method == "password":
                     if not secret:
-                        raise ValueError("Требуется пароль (password auth)")
+                        raise ValueError(
+                            "Для входа по паролю укажите в панели учётных данных терминала: "
+                            "мастер-пароль (если пароль сервера сохранён зашифрованным) или пароль сервера, затем нажмите Connect."
+                        )
                     connect_kwargs["password"] = secret
                 elif self.server.auth_method == "key":
                     if not (self.server.key_path or "").strip():
@@ -225,7 +257,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     if not (self.server.key_path or "").strip():
                         raise ValueError("Не указан путь к SSH ключу (key+password auth)")
                     if not secret:
-                        raise ValueError("Требуется пароль/пасфраза для SSH ключа")
+                        raise ValueError(
+                            "Для ключа с пасфразой укажите в панели учётных данных: "
+                            "мастер-пароль или пасфразу ключа, затем нажмите Connect."
+                        )
                     connect_kwargs["client_keys"] = [self.server.key_path]
                     # For encrypted private keys, AsyncSSH expects passphrase
                     connect_kwargs["passphrase"] = secret
@@ -317,11 +352,13 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
         async with self._ai_lock:
             await self._cancel_ai_locked()
-            # reset counters
             self._ai_plan = []
             self._ai_plan_index = 0
             self._ai_next_id = 1
             self._ai_user_message = msg
+
+        # Save user message to history
+        self._add_to_history("user", msg)
         await self.send_json({"type": "ai_status", "status": "thinking"})
 
         try:
@@ -330,14 +367,31 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 user_message=msg,
                 rules_context=rules_context,
                 terminal_tail=(self._terminal_tail or "")[-2000:],
+                history=list(self._ai_history),
+                unavailable_cmds=set(getattr(self, "_unavailable_cmds", set())),
             )
         except Exception as e:
             await self.send_json({"type": "ai_error", "message": str(e)})
             await self.send_json({"type": "ai_status", "status": "idle"})
             return
 
+        mode = str(plan_obj.get("mode") or "execute").lower().strip()
         assistant_text = str(plan_obj.get("assistant_text") or "").strip()
         commands_raw = plan_obj.get("commands") or []
+
+        # --- answer / ask mode: just reply, no commands needed ---
+        if mode in ("answer", "ask"):
+            self._add_to_history("assistant", assistant_text or "(ответ)")
+            await self.send_json({
+                "type": "ai_response",
+                "mode": mode,
+                "assistant_text": assistant_text,
+                "commands": [],
+            })
+            await self.send_json({"type": "ai_status", "status": "idle"})
+            return
+
+        # --- execute mode ---
         commands: list[dict[str, str]] = []
         if isinstance(commands_raw, list):
             for it in commands_raw:
@@ -359,6 +413,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             next_id += 1
             reason = self._compute_confirm_reason(cmd, forbidden_patterns)
             requires_confirm = bool(reason)
+            is_stream = self._is_streaming_command(cmd)
             plan_items.append(
                 {
                     "id": item_id,
@@ -367,6 +422,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     "requires_confirm": requires_confirm,
                     "reason": reason,
                     "status": "pending",
+                    "streaming": is_stream,
                 }
             )
 
@@ -376,9 +432,15 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             self._ai_next_id = next_id
             self._ai_forbidden_patterns = forbidden_patterns or []
 
-        await self.send_json({"type": "ai_response", "assistant_text": assistant_text, "commands": plan_items})
+        await self.send_json({
+            "type": "ai_response",
+            "mode": "execute",
+            "assistant_text": assistant_text,
+            "commands": plan_items,
+        })
 
         if not plan_items:
+            self._add_to_history("assistant", assistant_text or "Команды не нужны")
             await self.send_json({"type": "ai_status", "status": "idle"})
             return
 
@@ -441,6 +503,15 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             async with self._ai_lock:
                 self._ai_task = asyncio.create_task(self._ai_process_queue())
 
+    def _add_to_history(self, role: str, text: str) -> None:
+        """Append a message to the conversation history (max 20 entries)."""
+        entry = {"role": role, "text": (text or "")[:800]}
+        if not hasattr(self, "_ai_history"):
+            self._ai_history = []
+        self._ai_history.append(entry)
+        if len(self._ai_history) > 20:
+            self._ai_history = self._ai_history[-20:]
+
     async def _ai_process_queue(self):
         """
         Execute queued AI commands sequentially.
@@ -495,6 +566,15 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     exit_code=exit_code,
                 )
 
+                # Track unavailable commands (exit=127 = "command not found")
+                if exit_code == 127:
+                    # Extract the base command name (first word, strip pipeline/flags)
+                    base_cmd = cmd.strip().split()[0].split("/")[-1] if cmd.strip() else ""
+                    if base_cmd:
+                        if not hasattr(self, "_unavailable_cmds"):
+                            self._unavailable_cmds = set()
+                        self._unavailable_cmds.add(base_cmd)
+
                 async with self._ai_lock:
                     if self._ai_plan_index < len(self._ai_plan) and int(self._ai_plan[self._ai_plan_index].get("id") or 0) == item_id:
                         self._ai_plan[self._ai_plan_index]["status"] = "done"
@@ -502,7 +582,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         self._ai_plan[self._ai_plan_index]["output_snippet"] = output_snippet or ""
                         self._ai_plan_index += 1
 
-                await self.send_json({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code})
+                is_stream = bool(item.get("streaming", False))
+                await self.send_json({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code, "streaming": is_stream})
 
             # После выполнения всех команд — сформировать отчёт по выводу (анализ логов, проблем и т.д.)
             if send_idle:
@@ -513,7 +594,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     {
                         "cmd": str(it.get("cmd") or "").strip(),
                         "exit_code": it.get("exit_code"),
-                        "output": (str(it.get("output_snippet") or "").strip())[:2000],
+                        "output": (str(it.get("output_snippet") or "").strip())[:4000],
                     }
                     for it in plan_snapshot
                     if str(it.get("status") or "") == "done"
@@ -523,6 +604,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     report = ""
                     if done_with_output:
                         try:
+                            await self.send_json({"type": "ai_status", "status": "generating_report"})
                             report = (await self._ai_make_report(user_msg, done_with_output)).strip()
                         except Exception as e:
                             logger.warning("AI report generation failed: %s", e)
@@ -535,7 +617,27 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         else:
                             report = "Команды выполнены. Коды выхода: " + ", ".join(str(c) for c in codes) + ". Вывод в консоли слева. Для анализа проверьте вывод вручную."
                     if report:
-                        await self.send_json({"type": "ai_report", "report": report})
+                        # Compute overall status from exit codes for color-coding on frontend
+                        codes = [x.get("exit_code") for x in done_items]
+                        non_captured = [c for c in codes if c != 130]
+                        if non_captured and all(c == 0 for c in non_captured if c is not None):
+                            rep_status = "ok"
+                        elif any(c not in (None, 0, 130) for c in codes):
+                            # If majority succeeded (>= half), downgrade to warning not error
+                            ok_count = sum(1 for c in codes if c in (0, 130))
+                            rep_status = "error" if ok_count < len(codes) / 2 else "warning"
+                        else:
+                            rep_status = "warning"
+                        await self.send_json({"type": "ai_report", "report": report, "status": rep_status})
+                        # Save structured execution summary to history (for next planning call)
+                        exec_summary_parts = []
+                        for it in done_items:
+                            c = it.get("exit_code")
+                            mark = "✓" if c == 0 else ("⏹" if c == 130 else f"✗(exit={c})")
+                            exec_summary_parts.append(f"  {mark} {it['cmd']}")
+                        exec_summary = "Выполнено:\n" + "\n".join(exec_summary_parts)
+                        self._add_to_history("assistant", exec_summary)
+                        self._add_to_history("assistant", f"[Отчёт]\n{report[:400]}")
 
         except asyncio.CancelledError:
             raise
@@ -555,6 +657,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     async def _ai_execute_command(self, cmd: str, cmd_id: int) -> tuple[int, str]:
         """
         Type and execute a command in the interactive PTY and wait for an internal marker.
+        For streaming/interactive commands: auto-interrupts with Ctrl+C after 8 s.
         Returns (exit_code, output_snippet).
         """
         if not self._ssh_proc:
@@ -564,11 +667,12 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         if not clean_cmd:
             return -1, ""
 
-        # Basic hard limits
         if "\n" in clean_cmd or "\r" in clean_cmd:
             raise ValueError("Команда должна быть однострочной")
         if len(clean_cmd) > 400:
             raise ValueError("Команда слишком длинная")
+
+        is_streaming = self._is_streaming_command(clean_cmd)
 
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[int] = loop.create_future()
@@ -587,22 +691,64 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         )
         self._ssh_proc.stdin.write(marker_cmd + "\n")
 
+        # For streaming commands: schedule Ctrl+C after 8 s to allow output capture
+        interrupt_task: Optional[asyncio.Task] = None
+        if is_streaming:
+            interrupt_task = asyncio.create_task(self._interrupt_streaming_after(8.0))
+
         exit_code = -1
+        timeout = 30 if is_streaming else 180
         try:
-            exit_code = int(await asyncio.wait_for(fut, timeout=180))
+            exit_code = int(await asyncio.wait_for(fut, timeout=timeout))
         except asyncio.TimeoutError:
-            raise TimeoutError("Timeout waiting for command completion marker")
+            if is_streaming:
+                # Force Ctrl+C as last resort
+                try:
+                    if self._ssh_proc:
+                        self._ssh_proc.stdin.write("\x03")
+                except Exception:
+                    pass
+                exit_code = 130
+            else:
+                raise TimeoutError("Timeout waiting for command completion marker")
         finally:
+            # Always cancel the interrupt task if still pending
+            if interrupt_task and not interrupt_task.done():
+                interrupt_task.cancel()
+                try:
+                    await interrupt_task
+                except asyncio.CancelledError:
+                    pass
             async with self._ai_lock:
                 self._ai_exit_futures.pop(cmd_id, None)
-                # _ai_active_cmd_id пока не сбрасываем — оставляем на время задержки для сбора буферизованного вывода
 
-        # Небольшая задержка, чтобы буферизованный вывод (напр. journalctl) успел прийти в _ai_active_output
+        # Short delay so buffered output arrives in _ai_active_output
         await asyncio.sleep(0.4)
-        output_snippet = (self._ai_active_output or "")[-2000:]
+        output_snippet = (self._ai_active_output or "")[-6000:]
         async with self._ai_lock:
             self._ai_active_cmd_id = None
         return exit_code, output_snippet
+
+    async def _interrupt_streaming_after(self, delay: float) -> None:
+        """Send Ctrl+C after `delay` seconds to interrupt a streaming command."""
+        await asyncio.sleep(delay)
+        if self._ssh_proc:
+            try:
+                self._ssh_proc.stdin.write("\x03")
+            except Exception:
+                pass
+
+    @staticmethod
+    def _is_streaming_command(cmd: str) -> bool:
+        """Return True if cmd would produce continuous output or need user input."""
+        c = (cmd or "").strip()
+        if not c:
+            return False
+        if _STREAMING_CMD_RE.search(c):
+            return True
+        # Check bare interactive command names
+        cmd_name = c.split()[0].split("/")[-1].lower()
+        return cmd_name in _INTERACTIVE_CMDS
 
     async def _ai_type_text(self, text: str):
         if not self._ssh_proc or not text:
@@ -613,33 +759,93 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             self._ssh_proc.stdin.write(text[i : i + step])
             await asyncio.sleep(delay)
 
-    async def _ai_plan_commands(self, user_message: str, rules_context: str, terminal_tail: str) -> dict[str, Any]:
+    async def _ai_plan_commands(
+        self,
+        user_message: str,
+        rules_context: str,
+        terminal_tail: str,
+        history: list[dict] | None = None,
+        unavailable_cmds: set[str] | None = None,
+    ) -> dict[str, Any]:
         """
-        Ask internal LLM to return a strict JSON with assistant_text + commands[].
+        Ask internal LLM to decide mode and return JSON:
+          mode=answer → just reply, no commands
+          mode=ask    → ask a clarifying question
+          mode=execute → run commands on the server
         """
         from app.core.llm import LLMProvider
 
-        prompt = f"""Ты DevOps/SSH ассистент.
+        # Build history context (exclude last entry = current user message)
+        history_lines: list[str] = []
+        for h in (history or [])[:-1]:
+            role = str(h.get("role") or "user")
+            text = str(h.get("text") or "")[:600]
+            prefix = "Пользователь" if role == "user" else "Ассистент"
+            history_lines.append(f"[{prefix}]: {text}")
+        history_text = "\n".join(history_lines) if history_lines else "(начало диалога)"
 
-ПРАВИЛА:
-- Отвечай ТОЛЬКО валидным JSON (без markdown, без пояснений вне JSON).
-- Предлагай только команды для Linux shell.
-- Сначала безопасные проверки (df, free, uptime, systemctl status, tail).
-- Не предлагай разрушительные команды. Если без них нельзя — предложи безопасную диагностику и остановись.
+        # Build unavailable tools warning
+        unavail = sorted(unavailable_cmds or set())
+        unavail_block = ""
+        if unavail:
+            tools_list = ", ".join(f"`{t}`" for t in unavail)
+            unavail_block = f"""
+═══ НЕДОСТУПНЫЕ ИНСТРУМЕНТЫ (НЕ ИСПОЛЬЗОВАТЬ) ═══
+На этом сервере НЕ установлены (exit=127 при попытке): {tools_list}
+→ Используй ТОЛЬКО доступные альтернативы:
+   • вместо `netstat` → `ss`
+   • вместо `ufw` → `iptables` (если есть права) или просто сообщи что не установлен
+   • вместо `ifconfig` → `ip addr`
+   • вместо `service` → `systemctl`
+"""
 
-ФОРМАТ JSON:
+        prompt = f"""Ты умный DevOps/SSH ассистент в составе платформы управления серверами.
+Ты ведёшь диалог с пользователем и имеешь доступ к SSH-терминалу сервера.
+
+═══ ТВОЯ ЗАДАЧА ═══
+Самостоятельно решить, что делать с запросом пользователя, выбрав один из режимов:
+  • mode=answer  — ответить, объяснить, проконсультировать (БЕЗ команд)
+  • mode=execute — выполнить команды на сервере
+  • mode=ask     — задать уточняющий вопрос пользователю
+
+═══ ПРАВИЛА ВЫБОРА РЕЖИМА ═══
+→ Общие вопросы, "что такое X", "как работает Y", теория → mode=answer
+→ Приветствия, благодарности, короткие реплики → mode=answer (кратко)
+→ Нужно что-то проверить/сделать/настроить на сервере → mode=execute
+→ Пользователь хочет одновременно объяснения и действий → mode=execute (объяснение в assistant_text)
+→ Запрос слишком неоднозначен, нужна конкретика → mode=ask
+{unavail_block}
+═══ КРИТИЧЕСКИЕ ПРАВИЛА ДЛЯ КОМАНД (только mode=execute) ═══
+1. НИКОГДА не используй команды с бесконечным выводом — они зависнут:
+   ✗ tail -f   → ✓ tail -n 100
+   ✗ journalctl -f   → ✓ journalctl -n 100 --no-pager
+   ✗ docker logs -f  → ✓ docker logs --tail=100
+   ✗ watch cmd       → ✓ разовая команда
+   ✗ top/htop        → ✓ ps aux --sort=-%cpu | head -20
+   ✗ ping host       → ✓ ping -c 4 host
+2. Используй --no-pager для journalctl, systemctl show, git log и т.д.
+3. Максимум 6 команд. Начинай с диагностики, потом действия.
+4. Разрушительные команды (rm -rf, drop, truncate) — только если явно попросили + нужно подтверждение.
+5. Для редактирования файлов: используй sed -i, awk, tee или heredoc (cat > file << 'EOF').
+
+═══ ФОРМАТ ОТВЕТА (ТОЛЬКО JSON, без markdown вокруг) ═══
 {{
-  "assistant_text": "...",
-  "commands": [{{"cmd": "...", "why": "..."}}]
+  "mode": "answer" | "execute" | "ask",
+  "assistant_text": "текст пользователю (Markdown, всегда заполнен)",
+  "commands": [{{"cmd": "команда", "why": "зачем эта команда"}}]
 }}
+Поле commands — только для mode=execute. Для остальных режимов — [].
 
-КОНТЕКСТ СЕРВЕРА/ПОЛИТИКИ:
-{rules_context}
+═══ КОНТЕКСТ СЕРВЕРА/ПОЛИТИКИ ═══
+{rules_context or "(нет)"}
 
-ПОСЛЕДНИЙ ВЫВОД ТЕРМИНАЛА (может быть пустым):
-{terminal_tail}
+═══ ИСТОРИЯ ДИАЛОГА ═══
+{history_text}
 
-ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
+═══ ПОСЛЕДНИЙ ВЫВОД ТЕРМИНАЛА ═══
+{terminal_tail or "(пусто)"}
+
+═══ ТЕКУЩИЙ ЗАПРОС ПОЛЬЗОВАТЕЛЯ ═══
 {user_message}
 
 Верни только JSON."""
@@ -663,42 +869,74 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         """
         from app.core.llm import LLMProvider
 
+        # Build a summary header (makes it easy for the LLM to reference commands by exact text)
+        summary_lines = []
+        for i, row in enumerate(commands_with_output[:10], 1):
+            cmd_text = str(row.get("cmd") or "").strip() or f"cmd_{i}"
+            code = row.get("exit_code")
+            mark = "OK" if code == 0 else ("CAPTURED" if code == 130 else f"FAIL(exit={code})")
+            summary_lines.append(f"  {i}. [{mark}] {cmd_text}")
+        summary = "\n".join(summary_lines)
+
+        # Detailed blocks — use COMMAND:/EXIT_CODE:/OUTPUT: labels, no brackets that confuse the LLM
         parts = []
         for i, row in enumerate(commands_with_output[:10], 1):
-            cmd = row.get("cmd") or ""
+            cmd_text = str(row.get("cmd") or "").strip() or f"cmd_{i}"
             code = row.get("exit_code")
-            out = (row.get("output") or "").strip()
-            if not out:
-                out = "(пустой вывод)"
-            parts.append(f"Команда {i}: {cmd}\nКод выхода: {code}\nВывод:\n{out[:1500]}")
+            out = (str(row.get("output") or "")).strip() or "(no output)"
+            parts.append(
+                f"COMMAND: {cmd_text}\n"
+                f"EXIT_CODE: {code}\n"
+                f"OUTPUT:\n{out[:1200]}"
+            )
         context = "\n\n---\n\n".join(parts)
 
-        prompt = f"""Ты DevOps-ассистент. По выводу выполненных команд нужно дать короткий наглядный отчёт.
+        prompt = f"""Ты старший DevOps-инженер. Напиши отчёт по результатам выполнения команд.
 
-ПРАВИЛА:
-- Отвечай кратко: 2–6 пунктов или одна компактная таблица, без воды.
-- Используй Markdown для наглядности:
-  - Таблицы для метрик (например: | Метрика | Значение | Статус |)
-  - Списки через - или 1. для перечисления проблем или пунктов
-  - **жирный** для акцента (важные цифры, статус)
-  - Эмодзи уместно: ✅ норма, ⚠️ внимание, ❌ ошибка, 📊 для блоков с цифрами
-- Если проблем нет — один короткий блок с ✅ и ключевыми показателями.
-- Если есть проблемы — таблица или список: что не так и где.
-- Без заголовка "Отчёт" и без лишнего вступления — сразу по делу.
+Список выполненных команд:
+{summary}
 
-ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
-{user_message[:500]}
+ПРАВИЛА ДЛИНЫ:
+- Если вывод содержит список объектов (контейнеры, образы, процессы, файлы, порты, пользователи) — покажи ПОЛНЫЙ список в таблице. Не обрезай.
+- Если вывод короткий или числовой — будь кратким (до 15 строк).
+- Цель: отчёт должен содержать всю полезную информацию из вывода, но без воды.
+
+СТРУКТУРА (только актуальные секции):
+**Статус**: ✅ OK / ⚠️ Предупреждение / ❌ Ошибка + одна фраза-итог.
+
+**Контейнеры / Образы / Процессы / Порты** (нужный заголовок):
+Таблица со ВСЕМИ найденными объектами. Колонки подбери по содержимому.
+Для docker ps: Имя | Образ | Статус | Порты
+Для docker images: Репозиторий | Тег | Размер | Создан
+Для процессов: PID | Команда | CPU% | MEM%
+Для портов: Протокол | Адрес | Порт | Сервис (если известен)
+
+**Проблемы** (если есть):
+Список ≤3 пунктов. Формат: `точная-команда` — что случилось — последствие.
+Команда exit=127 = "не установлена" (не критическая ошибка). Не пиши "ошибка сервера".
+Если основные команды выполнились — Статус ✅ OK, отсутствие утилит упомяни только в Проблемах.
+
+**Действия** (только если есть реальные проблемы): ≤2 конкретных команды.
+
+ПРИМЕР формата Проблем:
+- `ufw status verbose` — утилита не установлена (exit 127) — рекомендуется `apt install ufw`
+- `iptables -L -v -n` — требуются права root (exit 4) — выполни с sudo
+
+Начинай сразу с **Статус**. Без заголовка "Отчёт:" и преамбулы.
+Ссылайся на команды по ТОЧНОМУ тексту из списка выше (в обратных кавычках).
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ: {user_message[:300]}
 
 ВЫВОД КОМАНД:
-{context[:12000]}
+{context[:8000]}
 
-Наглядный краткий отчёт (Markdown, таблицы/списки):"""
+Отчёт:"""
 
         llm = LLMProvider()
         out = ""
         async for chunk in llm.stream_chat(prompt, model="auto"):
             out += chunk
-            if len(out) > 4000:
+            if len(out) > 12000:
                 break
         return (out or "").strip()
 
@@ -935,6 +1173,18 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             value = str(v if v is not None else "").replace("\n", " ").replace("\r", " ").strip()
             exports.append(f"export {key}={value}")
         return "; ".join(exports)
+
+    async def _get_session_master_password(self) -> str:
+        """Get master password from session for auto-connect."""
+        session = self.scope.get("session")
+        if not session:
+            return ""
+        try:
+            # Use database_sync_to_async for safe session access
+            mp = await database_sync_to_async(lambda: session.get("_mp", ""))()
+            return (mp or "").strip()
+        except Exception:
+            return ""
 
     @database_sync_to_async
     def _user_can_servers(self, user_id: int) -> bool:

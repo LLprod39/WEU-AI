@@ -298,91 +298,13 @@
 
     <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
 
+    <!-- Кнопка открытия меню на мобильных (когда верхний хедер скрыт) -->
+    <button type="button" id="mobile-menu-btn" class="mobile-menu-btn fixed top-4 left-4 z-[100] p-2 rounded-xl bg-bg-surface border border-white/10 shadow-lg text-white hover:bg-white/10 md:hidden" aria-label="Открыть меню" aria-expanded="false" aria-controls="sidebar">
+        <span class="material-icons-round text-xl">menu</span>
+    </button>
+
     <!-- Main Content -->
     <main id="main-content" class="flex-1 flex flex-col relative overflow-hidden" tabindex="-1">
-
-        <!-- Header -->
-        <header
-            class="border-b border-white/5 glass-sm flex items-center justify-between px-6 z-30 relative transition-base" style="height: var(--header-height);">
-            <div class="flex items-center gap-3 min-w-0 flex-1">
-                <button class="mobile-menu-btn" id="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar"><i class="material-icons-round" aria-hidden="true">menu</i></button>
-                {% block breadcrumbs %}
-                <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
-                    <ol class="flex items-center gap-2 list-none flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
-                        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
-                            <a href="{% url 'index' %}" class="text-gray-500 hover:text-white transition-colors truncate" itemprop="item"><span itemprop="name">Home</span></a>
-                            <meta itemprop="position" content="1">
-                            <span class="text-gray-600" aria-hidden="true">/</span>
-                        </li>
-                        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2 truncate" aria-current="page">
-                            <span class="font-medium text-white truncate" itemprop="name">{% block header_title %}Dashboard{% endblock %}</span>
-                            <meta itemprop="position" content="2">
-                        </li>
-                    </ol>
-                </nav>
-                {% endblock %}
-            </div>
-
-            <div class="flex items-center gap-2 flex-shrink-0">
-                {% if user.is_authenticated and user_can_tasks %}
-                <div class="relative" id="task-notifications-wrap">
-                    <button type="button" id="task-notifications-bell" class="header-quick-action relative" aria-label="Уведомления задач" title="Уведомления: задачи, делегирование ИИ" aria-expanded="false" aria-haspopup="true" aria-controls="task-notifications-dropdown">
-                        <span class="material-icons-round text-lg" aria-hidden="true">notifications</span>
-                        <span id="task-notifications-badge" class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white px-1 hidden" aria-live="polite">0</span>
-                    </button>
-                    <div id="task-notifications-dropdown" class="hidden absolute right-0 top-full mt-2 z-[9999] rounded-2xl border border-white/10 bg-bg-surface shadow-2xl overflow-hidden" style="width: 384px;" role="menu" aria-label="Список уведомлений">
-                        <!-- Header -->
-                        <div class="px-4 py-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <span class="material-icons-round text-primary text-lg">notifications_active</span>
-                                <span class="font-semibold text-white text-sm">Уведомления</span>
-                            </div>
-                            <button type="button" id="task-notifications-mark-all" class="text-xs text-primary hover:text-primary/80 transition-colors hidden">Прочитать все</button>
-                        </div>
-                        <!-- List with scroll -->
-                        <div id="task-notifications-scroll" class="max-h-80 overflow-y-auto overscroll-contain">
-                            <div id="task-notifications-list" class="divide-y divide-white/5"></div>
-                        </div>
-                        <!-- Empty state -->
-                        <div id="task-notifications-empty" class="px-6 py-10 text-center hidden">
-                            <span class="material-icons-round text-4xl text-gray-600 mb-2 block">notifications_off</span>
-                            <p class="text-sm text-gray-500">Нет непрочитанных уведомлений</p>
-                        </div>
-                        <!-- Footer -->
-                        <div class="px-4 py-2 border-t border-white/10 bg-white/[0.02]">
-                            <a href="{% url 'tasks:task_list' %}" class="text-xs text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-1">
-                                <span class="material-icons-round text-sm">list_alt</span>
-                                Все задачи
-                            </a>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-                <a href="#" id="help-trigger" class="header-quick-action" aria-label="Help: articles and repeat tour" title="Справка: статьи и повтор тура" onclick="toggleHelpPanel(); return false;">
-                    <span class="material-icons-round text-lg" aria-hidden="true">help_outline</span>
-                    <span class="hidden sm:inline text-xs">Help</span>
-                </a>
-                <a href="https://github.com/your-org/web_rA/issues" target="_blank" rel="noopener noreferrer" class="header-quick-action" aria-label="Feedback" title="Feedback">
-                    <span class="material-icons-round text-lg" aria-hidden="true">feedback</span>
-                    <span class="hidden sm:inline text-xs">Feedback</span>
-                </a>
-                <a href="#" class="header-quick-action" id="header-status-link" aria-label="System status" title="Status" onclick="return false;">
-                    <span id="connection-status" class="status-badge status-online inline-flex items-center gap-1.5">
-                        <span class="status-dot" aria-hidden="true"></span>
-                        <span>Status</span>
-                    </span>
-                </a>
-                <div id="header-model-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-xs {% if user_can_settings %}cursor-pointer hover:bg-white/10{% endif %} transition-colors"
-                    {% if user_can_settings %}role="button" tabindex="0" aria-label="Текущая модель, перейти в настройки"
-                    onclick="var u=document.getElementById('header-model-badge'); if(u&&u.dataset.href){ window.location.href=u.dataset.href; } else { window.location.href='{% url 'settings' %}'; }"
-                    onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); var u=document.getElementById('header-model-badge'); if(u&&u.dataset.href) window.location.href=u.dataset.href; else window.location.href='{% url 'settings' %}'; }"
-                    data-href="{% url 'settings' %}"{% else %}role="status" aria-label="Текущая модель"{% endif %}>
-                    <span class="material-icons-round text-sm text-primary" aria-hidden="true">memory</span>
-                    <span id="header-current-model" class="text-gray-300 font-medium truncate max-w-[140px]">—</span>
-                    <span class="material-icons-round text-xs text-gray-500" aria-hidden="true">settings</span>
-                </div>
-            </div>
-        </header>
 
         <!-- Page Content -->
         <div class="flex-1 min-h-0 flex flex-col overflow-hidden z-10 relative" style="min-height: 0;">

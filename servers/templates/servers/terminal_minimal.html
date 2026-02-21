@@ -1,0 +1,918 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ server.name }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body {
+            height: 100%;
+            background: #09090b;
+            color: #e5e7eb;
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #09090b;
+        }
+
+        /* ── Tab Bar ─────────────────────────────────────── */
+        .tab-bar {
+            display: flex;
+            align-items: center;
+            background: #111115;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            height: 40px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+            flex-shrink: 0;
+            -webkit-app-region: drag;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+
+        .tab-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 0 14px;
+            height: 40px;
+            cursor: pointer;
+            white-space: nowrap;
+            border-right: 1px solid rgba(255,255,255,0.04);
+            color: #6b7280;
+            font-size: 12px;
+            position: relative;
+            flex-shrink: 0;
+            user-select: none;
+            transition: all 0.12s;
+            -webkit-app-region: no-drag;
+        }
+        .tab-item:hover { background: rgba(255,255,255,0.04); color: #d1d5db; }
+        .tab-item.active { color: white; background: rgba(99,102,241,0.08); }
+        .tab-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 2px;
+            background: #6366f1;
+        }
+
+        .tab-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #374151; flex-shrink: 0;
+            transition: all 0.2s;
+        }
+        .tab-dot.connected { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.5); }
+        .tab-dot.connecting { background: #f59e0b; animation: blink .8s infinite; }
+
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+        .tab-close {
+            display: flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; border-radius: 3px;
+            font-size: 12px; color: #4b5563;
+            transition: all 0.1s; flex-shrink: 0;
+        }
+        .tab-close:hover { background: rgba(239,68,68,0.25); color: #f87171; }
+
+        .tab-add {
+            display: flex; align-items: center; justify-content: center;
+            width: 40px; height: 40px;
+            color: #4b5563; cursor: pointer;
+            transition: all 0.12s; flex-shrink: 0;
+            -webkit-app-region: no-drag;
+        }
+        .tab-add:hover { color: #a5b4fc; background: rgba(99,102,241,0.1); }
+
+        /* ── Toolbar ─────────────────────────────────────── */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            height: 36px;
+            background: rgba(17,17,21,0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            flex-shrink: 0;
+        }
+
+        .toolbar-left { display: flex; align-items: center; gap: 6px; }
+        .toolbar-right { display: flex; align-items: center; gap: 4px; }
+
+        .status-chip {
+            display: flex; align-items: center; gap: 5px;
+            padding: 3px 8px; border-radius: 5px;
+            font-size: 10px; font-family: 'JetBrains Mono', monospace;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: #6b7280; transition: all 0.2s;
+        }
+        .status-chip.connected { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.2); color: #34d399; }
+        .status-chip.connecting { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); color: #fbbf24; }
+        .status-dot-sm { width:5px; height:5px; border-radius:50%; background:currentColor; }
+        .status-chip.connected .status-dot-sm { animation: blink 2s infinite; }
+
+        .tbtn {
+            display: flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; border-radius: 5px;
+            color: #6b7280; cursor: pointer; transition: all 0.12s;
+            font-size: 16px;
+        }
+        .tbtn:hover { background: rgba(255,255,255,0.08); color: #d1d5db; }
+        .tbtn.ai-on { color: #a5b4fc; background: rgba(99,102,241,0.15); }
+
+        /* ── Credentials row ─────────────────────────────── */
+        .creds-row {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: #0d0d10;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .creds-row.open { display: flex; }
+
+        .cred-input {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 5px;
+            padding: 5px 9px;
+            color: white;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            width: 160px; transition: all 0.12s;
+        }
+        .cred-input:focus { outline: none; border-color: rgba(99,102,241,0.4); }
+        .cred-input::placeholder { color: #2d2d35; }
+
+        .cred-btn-connect {
+            display: flex; align-items: center; gap: 4px;
+            padding: 5px 12px; background: #6366f1; color: white;
+            border-radius: 5px; font-size: 12px; font-weight: 500;
+            cursor: pointer; transition: all 0.12s;
+        }
+        .cred-btn-connect:hover { background: #4f46e5; }
+        .cred-btn-disc {
+            display: flex; align-items: center; gap: 4px;
+            padding: 5px 9px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #9ca3af; border-radius: 5px; font-size: 12px;
+            cursor: pointer; transition: all 0.12s;
+        }
+        .cred-btn-disc:hover { background: rgba(239,68,68,0.12); color: #f87171; border-color: rgba(239,68,68,0.2); }
+
+        /* ── Main area ───────────────────────────────────── */
+        .main {
+            flex: 1; display: flex; min-height: 0;
+        }
+
+        .term-wrap {
+            flex: 1; position: relative; min-width: 0;
+        }
+        #terminal { height: 100%; width: 100%; }
+
+        /* ── AI Panel ────────────────────────────────────── */
+        .ai-panel {
+            width: 380px; min-width: 300px; max-width: 600px;
+            display: flex; flex-direction: column;
+            background: linear-gradient(180deg,#0c0c12 0%,#090910 100%);
+            border-left: 1px solid rgba(99,102,241,.15);
+            box-shadow: -6px 0 24px rgba(0,0,0,.4);
+            position: relative;
+        }
+        .ai-panel.collapsed { width:0!important; min-width:0; border-left:none; overflow:hidden; box-shadow:none; }
+        .ai-resizer { position:absolute; left:0; top:0; bottom:0; width:5px; cursor:col-resize; z-index:5; }
+        .ai-resizer:hover,.ai-resizer:active { background:rgba(99,102,241,.25); }
+        .ai-panel.collapsed .ai-resizer { display:none; }
+
+        /* Header */
+        .ai-header { padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; background:rgba(255,255,255,.01); }
+        .ai-hdr-left { display:flex; align-items:center; gap:10px; min-width:0; }
+        .ai-av { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#4f46e5,#06b6d4); display:flex; align-items:center; justify-content:center; font-size:16px; color:white; box-shadow:0 3px 12px rgba(99,102,241,.35); flex-shrink:0; }
+        .ai-hdr-info { min-width:0; }
+        .ai-hdr-title { font-size:12px; font-weight:600; color:white; }
+        .ai-hdr-sub { font-size:10px; color:#4b5563; font-family:'JetBrains Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .ai-hdr-sub.on { color:#34d399; }
+        .ai-av-pulse { position:absolute; inset:-2px; border-radius:12px; border:2px solid transparent; pointer-events:none; }
+        .ai-av-pulse.go { border-color:rgba(99,102,241,.5); animation:avp 1.5s infinite; }
+        @keyframes avp { 0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,.4)}50%{box-shadow:0 0 0 5px rgba(99,102,241,0)} }
+        .ai-av-wrap { position:relative; }
+
+        /* Messages */
+        .ai-msgs { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; min-height:0; scroll-behavior:smooth; }
+        .ai-msgs::-webkit-scrollbar { width:4px; }
+        .ai-msgs::-webkit-scrollbar-thumb { background:rgba(99,102,241,.2); border-radius:2px; }
+
+        /* Welcome */
+        .ai-welcome { display:flex; flex-direction:column; align-items:center; text-align:center; padding:16px 12px 8px; flex-shrink:0; }
+        .ai-welcome-icon { width:52px; height:52px; border-radius:16px; background:linear-gradient(135deg,rgba(79,70,229,.25),rgba(6,182,212,.25)); border:1px solid rgba(99,102,241,.25); display:flex; align-items:center; justify-content:center; font-size:26px; color:#a5b4fc; margin-bottom:12px; box-shadow:0 6px 24px rgba(99,102,241,.15); }
+        .ai-welcome h4 { font-size:13px; font-weight:600; color:white; margin-bottom:6px; }
+        .ai-welcome p { font-size:11px; color:#6b7280; line-height:1.6; max-width:240px; margin-bottom:14px; }
+        .ai-sug-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; width:100%; }
+        .ai-sug { display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 8px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:10px; color:#9ca3af; font-size:10px; cursor:pointer; transition:all .2s; font-family:inherit; }
+        .ai-sug .material-icons-round { font-size:16px; color:#6366f1; }
+        .ai-sug:hover { background:rgba(99,102,241,.1); border-color:rgba(99,102,241,.25); color:white; transform:translateY(-1px); }
+
+        /* Message rows */
+        .ai-row { display:flex; gap:8px; padding:2px 0; animation:mi .2s ease; flex-shrink:0; }
+        .ai-row.user { flex-direction:row-reverse; }
+        .ai-row.sys { justify-content:center; }
+        @keyframes mi { from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)} }
+        .ai-av-sm { width:22px; height:22px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; margin-top:2px; }
+        .ai-av-sm.ai { background:linear-gradient(135deg,#4f46e5,#06b6d4); color:white; }
+        .ai-av-sm.user { background:linear-gradient(135deg,#7c3aed,#6366f1); color:white; }
+        .ai-body { display:flex; flex-direction:column; max-width:calc(100% - 30px); min-width:0; gap:2px; }
+        .ai-row.user .ai-body { align-items:flex-end; }
+        .ai-time { font-size:9px; color:#1f2937; padding:0 3px; }
+        .ai-bub { padding:8px 11px; font-size:12px; line-height:1.6; word-break:break-word; overflow-wrap:break-word; max-width:100%; }
+        .ai-bub.ai { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:3px 12px 12px 12px; color:#d1d5db; }
+        .ai-bub.user { background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(79,70,229,.18)); border:1px solid rgba(99,102,241,.28); border-radius:12px 3px 12px 12px; color:#e0e7ff; }
+        .ai-bub.sys { background:rgba(245,158,11,.07); border:1px solid rgba(245,158,11,.14); border-radius:8px; color:#d97706; font-size:11px; padding:5px 10px; }
+        .ai-bub p { margin:0 0 5px; } .ai-bub p:last-child{margin:0;} .ai-bub ul,.ai-bub ol{margin:5px 0;padding-left:16px;} .ai-bub li{margin:2px 0;}
+        .ai-bub strong{color:#f9fafb;font-weight:600;} .ai-bub code:not(.bc){background:rgba(99,102,241,.14);border:1px solid rgba(99,102,241,.2);color:#a5b4fc;padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px;}
+        .ai-cb { position:relative; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.07); border-radius:8px; margin:6px 0; overflow:hidden; }
+        .ai-cb-hdr { display:flex; align-items:center; justify-content:space-between; padding:5px 10px; background:rgba(255,255,255,.03); border-bottom:1px solid rgba(255,255,255,.05); }
+        .ai-cb-lang { font-size:9px; color:#4b5563; font-family:'JetBrains Mono',monospace; text-transform:uppercase; }
+        .ai-cb-copy { font-size:9px; color:#6b7280; cursor:pointer; padding:2px 7px; border:1px solid rgba(255,255,255,.07); border-radius:3px; background:rgba(255,255,255,.03); font-family:inherit; }
+        .ai-cb-copy:hover { color:#a5b4fc; border-color:rgba(99,102,241,.3); }
+        .ai-cb pre { padding:10px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#e5e7eb; overflow-x:auto; margin:0; }
+
+        /* Report generating */
+        .rg-card { display:flex; align-items:center; gap:10px; padding:12px 14px; background:linear-gradient(135deg,rgba(99,102,241,.06),rgba(6,182,212,.04)); border:1px solid rgba(99,102,241,.18); border-left:3px solid #6366f1; border-radius:3px 12px 12px 3px; animation:mi .3s ease; flex-shrink:0; position:relative; overflow:hidden; }
+        .rg-card::after { content:''; position:absolute; top:0; left:-100%; bottom:0; width:60%; background:linear-gradient(90deg,transparent,rgba(99,102,241,.07),transparent); animation:rgSwp 2s ease-in-out infinite; }
+        @keyframes rgSwp { 0%{left:-60%} 100%{left:150%} }
+        .rg-ico { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(6,182,212,.15)); border:1px solid rgba(99,102,241,.3); display:flex; align-items:center; justify-content:center; color:#a5b4fc; font-size:17px; flex-shrink:0; animation:rgP 2s ease-in-out infinite; }
+        @keyframes rgP{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,.4)}50%{box-shadow:0 0 0 6px rgba(99,102,241,0)}}
+        .rg-txt { flex:1; min-width:0; }
+        .rg-title { font-size:12px; font-weight:600; color:#e5e7eb; margin-bottom:2px; }
+        .rg-sub { font-size:10px; color:#6b7280; font-family:'JetBrains Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .2s; }
+        .rg-dots { display:flex; gap:4px; align-items:center; flex-shrink:0; }
+        .rg-dots span { width:6px; height:6px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#06b6d4); animation:td 1.4s ease-in-out infinite; }
+        .rg-dots span:nth-child(2){animation-delay:.2s} .rg-dots span:nth-child(3){animation-delay:.4s}
+
+        /* Thinking */
+        .ai-thinking { display:flex; align-items:center; gap:8px; padding:4px 0; animation:mi .2s ease; flex-shrink:0; }
+        .ai-thinking.hidden { display:none; }
+        .ai-think-bub { display:flex; align-items:center; gap:4px; padding:8px 12px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:3px 12px 12px 12px; }
+        .ai-think-bub span { width:5px; height:5px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#06b6d4); animation:td 1.4s ease-in-out infinite; display:inline-block; }
+        .ai-think-bub span:nth-child(2){animation-delay:.2s} .ai-think-bub span:nth-child(3){animation-delay:.4s}
+        @keyframes td{0%,60%,100%{transform:scale(.5);opacity:.3}30%{transform:scale(1);opacity:1}}
+
+        /* Footer */
+        .ai-foot { padding:10px; border-top:1px solid rgba(255,255,255,.05); background:rgba(255,255,255,.01); flex-shrink:0; }
+        .quick-row { display:flex; gap:5px; overflow-x:auto; scrollbar-width:none; margin-bottom:8px; padding-bottom:1px; }
+        .quick-row::-webkit-scrollbar{display:none;}
+        .qbtn { display:inline-flex; align-items:center; gap:4px; padding:4px 9px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:15px; color:#9ca3af; font-size:10px; font-family:inherit; cursor:pointer; transition:all .15s; white-space:nowrap; flex-shrink:0; }
+        .qbtn .material-icons-round { font-size:12px; }
+        .qbtn:hover { background:rgba(99,102,241,.12); border-color:rgba(99,102,241,.25); color:#a5b4fc; }
+        .ai-inp-wrap { display:flex; align-items:flex-end; gap:6px; background:rgba(9,9,11,.8); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:3px 3px 3px 11px; transition:all .2s; }
+        .ai-inp-wrap:focus-within { border-color:rgba(99,102,241,.4); box-shadow:0 0 0 2px rgba(99,102,241,.1); }
+        .ai-textarea { flex:1; background:transparent; border:none; outline:none; color:white; font-size:12px; line-height:1.6; resize:none; font-family:inherit; padding:6px 0; max-height:90px; overflow-y:auto; scrollbar-width:none; }
+        .ai-textarea::-webkit-scrollbar{display:none;}
+        .ai-textarea::placeholder{color:#1f2937;}
+        .send-btn { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#4f46e5); display:flex; align-items:center; justify-content:center; color:white; font-size:16px; cursor:pointer; transition:all .2s; flex-shrink:0; box-shadow:0 2px 8px rgba(99,102,241,.35); }
+        .send-btn:hover { background:linear-gradient(135deg,#7c3aed,#6366f1); box-shadow:0 4px 14px rgba(99,102,241,.45); transform:scale(1.05); }
+        .ai-hint { font-size:9px; color:#1f2937; margin-top:6px; text-align:center; }
+
+        /* cmd cards */
+        .cmd-card { background:rgba(9,9,11,.8); border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; transition:border-color .2s; flex-shrink:0; }
+        .cmd-card.status-pending_confirm { border-left:3px solid #f59e0b; }
+        .cmd-card.status-running { border-left:3px solid #6366f1; }
+        .cmd-card.status-done { border-left:3px solid #10b981; }
+        .cmd-card.status-error { border-left:3px solid #ef4444; }
+        .cmd-hdr { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:rgba(255,255,255,.025); border-bottom:1px solid rgba(255,255,255,.05); }
+        .cmd-body { padding:8px 10px; }
+        .cmd-code { font-family:'JetBrains Mono',monospace; font-size:11px; color:#e5e7eb; background:rgba(0,0,0,.4); padding:7px 9px; border-radius:7px; white-space:pre-wrap; word-break:break-all; border:1px solid rgba(255,255,255,.05); }
+        .cs { font-size:9px; padding:3px 7px; border-radius:10px; font-weight:600; text-transform:uppercase; }
+        .cs.pending { background:rgba(107,114,128,.15); color:#9ca3af; border:1px solid rgba(107,114,128,.2); }
+        .cs.pending_confirm { background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.25); animation:bp 2s infinite; }
+        .cs.running { background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.25); animation:bp 1.5s infinite; }
+        .cs.done { background:rgba(16,185,129,.12); color:#34d399; border:1px solid rgba(16,185,129,.22); }
+        .cs.error { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); }
+        .cs.skipped { background:rgba(107,114,128,.1); color:#6b7280; }
+        .cs.captured { background:rgba(6,182,212,.12); color:#22d3ee; border:1px solid rgba(6,182,212,.22); }
+        @keyframes bp { 0%,100%{opacity:1}50%{opacity:.6} }
+        .cmd-card.status-captured { border-left:2px solid #06b6d4; }
+        /* Report card — enterprise */
+        .ai-rep { overflow:hidden; border-radius:8px; border:1px solid rgba(255,255,255,.07); background:rgba(15,15,20,.9); width:100%; flex-shrink:0; animation:msgIn .2s ease; }
+        .ai-rep.rep-ok    { border-color:rgba(16,185,129,.25); border-left:3px solid #10b981; }
+        .ai-rep.rep-warning { border-color:rgba(245,158,11,.22); border-left:3px solid #f59e0b; }
+        .ai-rep.rep-error { border-color:rgba(239,68,68,.25); border-left:3px solid #ef4444; }
+        .ai-rep-hdr { display:flex; align-items:center; gap:8px; padding:8px 11px; border-bottom:1px solid rgba(255,255,255,.06); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; cursor:pointer; user-select:none; transition:filter .12s; }
+        .ai-rep.rep-ok    .ai-rep-hdr { background:rgba(16,185,129,.06); color:#34d399; }
+        .ai-rep.rep-warning .ai-rep-hdr { background:rgba(245,158,11,.06); color:#fbbf24; }
+        .ai-rep.rep-error .ai-rep-hdr { background:rgba(239,68,68,.06); color:#f87171; }
+        .ai-rep-hdr:hover { filter:brightness(1.15); }
+        .ai-rep-badge { display:inline-flex; align-items:center; padding:2px 7px; border-radius:20px; font-size:9px; font-weight:700; letter-spacing:.06em; }
+        .ai-rep.rep-ok    .ai-rep-badge { background:rgba(16,185,129,.15); color:#34d399; border:1px solid rgba(16,185,129,.25); }
+        .ai-rep.rep-warning .ai-rep-badge { background:rgba(245,158,11,.12); color:#fbbf24; border:1px solid rgba(245,158,11,.22); }
+        .ai-rep.rep-error .ai-rep-badge { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); }
+        .ai-rep-body { padding:10px 12px; font-size:12px; line-height:1.6; color:#d1d5db; }
+        .ai-rep-body table { width:100%; border-collapse:collapse; font-size:11px; margin:6px 0; border-radius:5px; overflow:hidden; }
+        .ai-rep-body th { background:rgba(255,255,255,.06); color:#9ca3af; padding:5px 8px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.05em; text-transform:uppercase; border-bottom:1px solid rgba(255,255,255,.07); }
+        .ai-rep-body td { padding:5px 8px; border-bottom:1px solid rgba(255,255,255,.04); color:#d1d5db; vertical-align:top; }
+        .ai-rep-body tr:last-child td { border-bottom:none; }
+        .ai-rep-body tr:hover td { background:rgba(255,255,255,.025); }
+        .ai-rep-body p { margin:3px 0 5px; }
+        .ai-rep-body ul,.ai-rep-body ol { margin:4px 0; padding-left:14px; }
+        .ai-rep-body li { margin:3px 0; line-height:1.5; }
+        .ai-rep-body strong,.ai-rep-body b { color:#f9fafb; font-weight:600; }
+        .ai-rep-body code { background:rgba(255,255,255,.06); color:#e2e8f0; padding:1px 5px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:10px; border:1px solid rgba(255,255,255,.08); }
+        .ai-rep-body pre { background:rgba(0,0,0,.5); padding:8px 11px; border-radius:7px; overflow-x:auto; font-size:10px; margin:6px 0; border:1px solid rgba(255,255,255,.07); }
+        .ai-rep-body hr { border:none; border-top:1px solid rgba(255,255,255,.06); margin:8px 0; }
+        .ai-rep-meta { display:flex; align-items:center; gap:6px; font-size:10px; color:#6b7280; padding:5px 12px 7px; border-top:1px solid rgba(255,255,255,.05); }
+        .cmd-warn { display:flex; align-items:center; gap:5px; margin-top:6px; padding:5px 8px; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.15); border-radius:6px; font-size:10px; color:#d97706; }
+        .cmd-acts { display:flex; gap:6px; margin-top:8px; }
+        .cb { padding:5px 12px; border-radius:7px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px; font-family:inherit; }
+        .cb-ok { background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(5,150,105,.15)); border:1px solid rgba(16,185,129,.35); color:#34d399; }
+        .cb-ok:hover { background:linear-gradient(135deg,rgba(16,185,129,.3),rgba(5,150,105,.25)); }
+        .cb-sk { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); color:#9ca3af; }
+        .cb-sk:hover { background:rgba(239,68,68,.1); color:#f87171; border-color:rgba(239,68,68,.2); }
+        .cb:disabled { opacity:.4; cursor:not-allowed; }
+        .cmd-prog { height:2px; background:rgba(255,255,255,.05); margin-top:6px; border-radius:1px; overflow:hidden; }
+        .cmd-prog-bar { height:100%; background:linear-gradient(90deg,#6366f1,#06b6d4); animation:cp 2s ease-in-out infinite; }
+        @keyframes cp { 0%{width:0;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0;margin-left:100%} }
+
+        /* Add-server dropdown */
+        .srv-dropdown {
+            position: fixed;
+            background: rgba(17,17,21,0.98);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 6px;
+            min-width: 200px; max-height: 280px; overflow-y: auto;
+            z-index: 2000; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+            display: none;
+        }
+        .srv-dropdown.open { display: block; }
+        .srv-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; border-radius: 6px;
+            cursor: pointer; font-size: 12px; color: #d1d5db; transition: all 0.1s;
+        }
+        .srv-item:hover { background: rgba(99,102,241,0.14); color: white; }
+        .srv-item-host { font-family: monospace; font-size: 10px; color: #6b7280; }
+    </style>
+</head>
+<body>
+<div class="app">
+
+    <!-- Tab Bar -->
+    <div class="tab-bar" id="tab-bar">
+        <div class="tab-add" id="tab-add" onclick="toggleSrvDropdown(event)" title="Add server tab">
+            <span class="material-icons-round" style="font-size:18px">add</span>
+        </div>
+    </div>
+
+    <!-- Server add dropdown -->
+    <div class="srv-dropdown" id="srv-dropdown">
+        <div style="padding:3px 6px 6px;font-size:10px;color:#4b5563;text-transform:uppercase;letter-spacing:.06em">Open server</div>
+        {% for s in all_servers %}
+        <div class="srv-item" onclick="openServerTab({{ s.id }},'{{ s.name|escapejs }}','{{ s.host|escapejs }}',{{ s.port }},'{{ s.username|escapejs }}')">
+            <span class="material-icons-round" style="font-size:14px;color:#4b5563">dns</span>
+            <div>
+                <div>{{ s.name }}</div>
+                <div class="srv-item-host">{{ s.username }}@{{ s.host }}:{{ s.port }}</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not all_servers %}
+        <div style="padding:10px;font-size:11px;color:#4b5563;text-align:center">No other servers</div>
+        {% endif %}
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="status-chip" id="status-chip">
+                <span class="status-dot-sm"></span>
+                <span id="status-txt">Disconnected</span>
+            </div>
+            <div id="lat-badge" style="display:none;font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,0.04);padding:2px 6px;border-radius:4px;"></div>
+        </div>
+        <div class="toolbar-right">
+            <button class="tbtn" onclick="toggleCredsRow()" title="Credentials">
+                <span class="material-icons-round" style="font-size:16px">key</span>
+            </button>
+            <button class="tbtn" onclick="clearTerm()" title="Clear">
+                <span class="material-icons-round" style="font-size:16px">delete_sweep</span>
+            </button>
+            <button class="tbtn" id="ai-tbtn" onclick="toggleAI()" title="AI">
+                <span class="material-icons-round" style="font-size:16px">psychology</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Credentials row -->
+    <div class="creds-row" id="creds-row">
+        <input type="password" id="mp-input" placeholder="Master password" class="cred-input">
+        <input type="password" id="pw-input" placeholder="Password / passphrase" class="cred-input">
+        <button class="cred-btn-connect" onclick="manualConnect()">
+            <span class="material-icons-round" style="font-size:13px">link</span>Connect
+        </button>
+        <button class="cred-btn-disc" onclick="disconnectActive()">
+            <span class="material-icons-round" style="font-size:13px">link_off</span>
+        </button>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <div class="term-wrap">
+            <div id="terminal"></div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="ai-panel collapsed" id="ai-panel">
+            <div class="ai-resizer" id="ai-resizer"></div>
+
+            <!-- Header -->
+            <div class="ai-header">
+                <div class="ai-hdr-left">
+                    <div class="ai-av-wrap" style="position:relative">
+                        <div class="ai-av"><span class="material-icons-round" style="font-size:16px">smart_toy</span></div>
+                        <div class="ai-av-pulse" id="ai-av-pulse"></div>
+                    </div>
+                    <div class="ai-hdr-info">
+                        <div class="ai-hdr-title">AI Assistant</div>
+                        <div class="ai-hdr-sub" id="ai-hdr-sub">Connect to start</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:3px">
+                    <button class="tbtn" id="ai-stop-btn-m" onclick="stopAIM()" title="Остановить" style="display:none"><span class="material-icons-round" style="font-size:14px;color:#ef4444">stop_circle</span></button>
+                    <button class="tbtn" onclick="clearAIChat()" title="Очистить"><span class="material-icons-round" style="font-size:14px">cleaning_services</span></button>
+                    <button class="tbtn" onclick="toggleAI()"><span class="material-icons-round" style="font-size:14px">close</span></button>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="ai-msgs" id="ai-msgs">
+                <div id="ai-welcome" class="ai-welcome">
+                    <div class="ai-welcome-icon"><span class="material-icons-round">smart_toy</span></div>
+                    <h4>AI Assistant</h4>
+                    <p>Ask me to check server health, manage services, or analyze issues.</p>
+                    <div class="ai-sug-grid">
+                        <button class="ai-sug" onclick="sendQ('check disk space')"><span class="material-icons-round">storage</span>Disk</button>
+                        <button class="ai-sug" onclick="sendQ('check memory and CPU')"><span class="material-icons-round">memory</span>Resources</button>
+                        <button class="ai-sug" onclick="sendQ('show error logs')"><span class="material-icons-round">article</span>Logs</button>
+                        <button class="ai-sug" onclick="sendQ('list services status')"><span class="material-icons-round">settings_applications</span>Services</button>
+                    </div>
+                </div>
+                <div id="ai-thinking" class="ai-thinking hidden">
+                    <div class="ai-av-sm ai"><span class="material-icons-round" style="font-size:11px">smart_toy</span></div>
+                    <div class="ai-think-bub"><span></span><span></span><span></span></div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="ai-foot">
+                <div class="quick-row">
+                    <button class="qbtn" onclick="sendQ('check disk space')"><span class="material-icons-round">storage</span>Disk</button>
+                    <button class="qbtn" onclick="sendQ('check memory')"><span class="material-icons-round">memory</span>Memory</button>
+                    <button class="qbtn" onclick="sendQ('show logs')"><span class="material-icons-round">article</span>Logs</button>
+                    <button class="qbtn" onclick="sendQ('list processes')"><span class="material-icons-round">list</span>Procs</button>
+                    <button class="qbtn" onclick="sendQ('show docker containers')"><span class="material-icons-round">view_in_ar</span>Docker</button>
+                    <button class="qbtn" onclick="sendQ('check network ports')"><span class="material-icons-round">lan</span>Net</button>
+                </div>
+                <div class="ai-inp-wrap">
+                    <textarea class="ai-textarea" id="ai-input" rows="1" placeholder="Ask anything…" oninput="aiAutoResize(this)"></textarea>
+                    <button class="send-btn" onclick="sendAI()" title="Ctrl+Enter">
+                        <span class="material-icons-round" style="font-size:15px">send</span>
+                    </button>
+                </div>
+                <div class="ai-hint">Ctrl+Enter · Dangerous commands need confirmation</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const INIT_ID   = {{ server.id }};
+const INIT_NAME = '{{ server.name|escapejs }}';
+const INIT_HOST = '{{ server.host|escapejs }}';
+const INIT_PORT = {{ server.port }};
+const INIT_USER = '{{ server.username|escapejs }}';
+
+// ─── Tab State ────────────────────────────────────────────────────────────────
+const tabs = {};
+let activeTabId = null;
+let tabCounter = 0;
+const aiCmdEls = {};
+
+function eid(id) { return document.getElementById(id); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function getCookie(n){ let v=null; document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith(n+'='))v=decodeURIComponent(c.slice(n.length+1));}); return v; }
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function createTab(sid, name, host, port, user) {
+    const id = 'T'+(++tabCounter);
+    tabs[id] = { id, sid, name, host, port, user, socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null };
+    return id;
+}
+
+function renderTabs() {
+    const bar = eid('tab-bar');
+    const addBtn = eid('tab-add');
+    bar.querySelectorAll('.tab-item').forEach(e=>e.remove());
+    Object.values(tabs).forEach(tab => {
+        const el = document.createElement('div');
+        el.className = 'tab-item' + (tab.id===activeTabId?' active':'');
+        el.dataset.id = tab.id;
+        el.innerHTML = `<span class="tab-dot ${tab.connected?'connected':''}" id="tdot-${tab.id}"></span>
+            <span style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(tab.name)}</span>
+            <span class="tab-close" onclick="event.stopPropagation();closeTab('${tab.id}')"><span class="material-icons-round" style="font-size:13px">close</span></span>`;
+        el.addEventListener('click', ()=>switchTab(tab.id));
+        bar.insertBefore(el, addBtn);
+    });
+}
+
+function setTabDot(tid, status) {
+    const dot = eid('tdot-'+tid);
+    if (dot) dot.className = 'tab-dot' + (status==='connected'?' connected':status==='connecting'?' connecting':'');
+    if (tid===activeTabId) setStatusChip(status);
+}
+
+function setStatusChip(status) {
+    const chip = eid('status-chip'), txt = eid('status-txt'), lat = eid('lat-badge');
+    chip.className = 'status-chip ' + (status==='connected'?'connected':status==='connecting'?'connecting':'');
+    txt.textContent = status.charAt(0).toUpperCase()+status.slice(1);
+    if (lat) lat.style.display = status==='connected'?'block':'none';
+}
+
+function switchTab(tid) {
+    if (!tabs[tid]) return;
+    activeTabId = tid;
+    renderTabs();
+    const el = eid('terminal'); el.innerHTML='';
+    const tab = tabs[tid];
+    if (tab.terminal) {
+        tab.terminal.open(el); tab.terminal.focus();
+        setTimeout(()=>{ try{tab.fitAddon?.fit();}catch{} }, 50);
+    }
+    setStatusChip(tab.connected?'connected':'disconnected');
+}
+
+function closeTab(tid) {
+    const tab = tabs[tid]; if (!tab) return;
+    clearInterval(tab.pingInterval);
+    try { tab.socket?.close(); } catch{}
+    try { tab.terminal?.dispose(); } catch{}
+    delete tabs[tid];
+    const ids = Object.keys(tabs);
+    if (activeTabId===tid) {
+        activeTabId = null;
+        eid('terminal').innerHTML = '';
+        if (ids.length) switchTab(ids[ids.length-1]);
+    }
+    renderTabs();
+}
+
+function openServerTab(sid, name, host, port, user) {
+    closeSrvDropdown();
+    const tid = createTab(sid, name, host, port, user);
+    renderTabs(); switchTab(tid); connectTab(tid);
+}
+
+// ─── Server dropdown ──────────────────────────────────────────────────────────
+function toggleSrvDropdown(e) {
+    e.stopPropagation();
+    const dd = eid('srv-dropdown'), btn = eid('tab-add');
+    if (dd.classList.contains('open')) { closeSrvDropdown(); return; }
+    const r = btn.getBoundingClientRect();
+    dd.style.top = (r.bottom+4)+'px'; dd.style.left = r.left+'px';
+    dd.classList.add('open');
+}
+function closeSrvDropdown() { eid('srv-dropdown').classList.remove('open'); }
+document.addEventListener('click', e => {
+    if (!e.target.closest('#srv-dropdown') && !e.target.closest('#tab-add')) closeSrvDropdown();
+});
+
+// ─── Terminal ─────────────────────────────────────────────────────────────────
+function initTabTerminal(tid) {
+    const tab = tabs[tid]; if (!tab || typeof Terminal==='undefined') return;
+    const el = eid('terminal'); el.innerHTML='';
+    try { tab.fitAddon?.dispose?.(); tab.terminal?.dispose(); } catch{}
+
+    tab.terminal = new Terminal({
+        cursorBlink:true, scrollback:10000,
+        fontFamily:'JetBrains Mono, Consolas, monospace', fontSize:14, lineHeight:1.3,
+        theme:{ background:'#09090b', foreground:'#e5e7eb', cursor:'#6366f1', selection:'rgba(99,102,241,0.3)' }
+    });
+    if (typeof FitAddon!=='undefined') { tab.fitAddon=new FitAddon.FitAddon(); tab.terminal.loadAddon(tab.fitAddon); }
+    tab.terminal.open(el); tab.terminal.focus();
+    tab.terminal.writeln('\x1b[38;5;243m── '+tab.name+' ──\x1b[0m');
+    tab.terminal.writeln('');
+    tab.terminal.onData(d=>{ if(tab.socket?.readyState===WebSocket.OPEN) tab.socket.send(JSON.stringify({type:'input',data:d})); });
+
+    if (!window._ro) { window._ro=new ResizeObserver(fitActive); window._ro.observe(el); }
+    setTimeout(fitActive, 80);
+}
+
+function fitActive() {
+    if (!activeTabId) return;
+    const tab=tabs[activeTabId]; if (!tab?.fitAddon) return;
+    try { tab.fitAddon.fit(); } catch{}
+    if (tab.socket?.readyState===WebSocket.OPEN)
+        tab.socket.send(JSON.stringify({type:'resize',cols:tab.terminal.cols,rows:tab.terminal.rows}));
+}
+
+// ─── Connection ───────────────────────────────────────────────────────────────
+function connectTab(tid, mp='', pw='') {
+    const tab=tabs[tid]; if (!tab) return;
+    if (!tab.terminal) initTabTerminal(tid);
+    if (tab.socket?.readyState===WebSocket.OPEN||tab.socket?.readyState===WebSocket.CONNECTING) return;
+
+    const proto = location.protocol==='https:'?'wss':'ws';
+    tab.socket = new WebSocket(proto+'://'+location.host+'/ws/servers/'+tab.sid+'/terminal/');
+    setTabDot(tid,'connecting');
+
+    tab.socket.onopen = ()=>{
+        if(mp) fetch('/servers/api/master-password/set/', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify({master_password:mp}) }).catch(()=>{});
+        tab.socket.send(JSON.stringify({type:'connect',master_password:mp,password:pw,cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
+        tab.lastPing=Date.now();
+        tab.pingInterval=setInterval(()=>{ if(tab.socket?.readyState===WebSocket.OPEN){tab.lastPing=Date.now();tab.socket.send(JSON.stringify({type:'ping'}));} },5000);
+    };
+
+    tab.socket.onmessage = ev=>{
+        let msg; try{msg=JSON.parse(ev.data);}catch{return;}
+        switch(msg.type){
+            case 'output': tab.terminal?.write(msg.data||''); break;
+            case 'pong':
+                if (tid===activeTabId&&tab.lastPing) { const ms=Date.now()-tab.lastPing; const b=eid('lat-badge'); if(b){b.textContent=ms+' ms';b.style.display='block';} }
+                break;
+            case 'status':
+                tab.connected=(msg.status==='connected');
+                setTabDot(tid, msg.status||'disconnected');
+                break;
+            case 'error':
+                tab.connected=false; setTabDot(tid,'error');
+                tab.terminal?.writeln('\r\n\x1b[31m[Error] '+esc(msg.message||'')+'\x1b[0m');
+                if(tid===activeTabId&&/пароль|password|пасфраз|secret|мастер/i.test(msg.message||'')) eid('creds-row')?.classList.add('open');
+                break;
+            case 'exit':
+                tab.connected=false; setTabDot(tid,'disconnected');
+                tab.terminal?.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m');
+                break;
+            case 'ai_status':
+                if(tid!==activeTabId)break;
+                if(msg.status==='thinking'){ showThinking(); setAiRunningM(true); }
+                else if(msg.status==='running'){ hideThinking(); setAiRunningM(true); }
+                else if(msg.status==='waiting_confirm'){ hideThinking(); setAiRunningM(true); }
+                else if(msg.status==='generating_report'){ hideThinking(); showReportGen(); setAiRunningM(true); }
+                else if(msg.status==='idle'){ hideThinking(); hideReportGen(); setAiRunningM(false); }
+                break;
+            case 'ai_response': if(tid===activeTabId) handleAIResponse(msg); break;
+            case 'ai_command_status': if(tid===activeTabId) updateCS(msg); break;
+            case 'ai_report': if(tid===activeTabId) handleReport(msg); break;
+            case 'ai_error': if(tid===activeTabId){hideThinking();setAiRunningM(false);addMsg('sys','⚠ '+(msg.message||'AI Error'));}break;
+        }
+    };
+
+    tab.socket.onclose = ()=>{ tab.connected=false; clearInterval(tab.pingInterval); setTabDot(tid,'disconnected'); hideThinking(); setAiRunningM(false); };
+    tab.socket.onerror = ()=>{ tab.connected=false; setTabDot(tid,'error'); hideThinking(); setAiRunningM(false); };
+}
+
+function manualConnect() {
+    if (!activeTabId) return;
+    const tab=tabs[activeTabId]; if(!tab) return;
+    const mp=eid('mp-input').value||'', pw=eid('pw-input').value||'';
+    if(tab.socket&&(tab.socket.readyState===WebSocket.OPEN||tab.socket.readyState===WebSocket.CONNECTING)&&!tab.connected){ disconnectActive(); setTimeout(()=>connectTab(activeTabId,mp,pw),50); return; }
+    connectTab(activeTabId, mp, pw);
+}
+
+function disconnectActive() {
+    if (!activeTabId) return;
+    const tab=tabs[activeTabId]; if(!tab) return;
+    clearInterval(tab.pingInterval);
+    try{tab.socket?.send(JSON.stringify({type:'disconnect'}));}catch{}
+    try{tab.socket?.close();}catch{}
+    tab.socket=null; tab.connected=false; setTabDot(activeTabId,'disconnected');
+}
+
+function clearTerm() { if(activeTabId) tabs[activeTabId]?.terminal?.clear(); }
+
+// ─── Credentials row ──────────────────────────────────────────────────────────
+function toggleCredsRow() { eid('creds-row').classList.toggle('open'); }
+
+// ─── AI Panel ─────────────────────────────────────────────────────────────────
+function toggleAI() {
+    const p=eid('ai-panel'), btn=eid('ai-tbtn');
+    p.classList.toggle('collapsed');
+    btn.classList.toggle('ai-on', !p.classList.contains('collapsed'));
+    setTimeout(fitActive, 260);
+}
+
+// Resizer
+(function(){
+    const p=eid('ai-panel'), r=eid('ai-resizer'); if(!p||!r) return;
+    const MIN=280,MAX=600;
+    function gw(){try{const w=parseInt(localStorage.getItem('min_ai_w'),10);return w>=MIN&&w<=MAX?w:360;}catch{return 360;}}
+    function sw(w){w=Math.max(MIN,Math.min(MAX,w));p.style.width=w+'px';try{localStorage.setItem('min_ai_w',w);}catch{}}
+    sw(gw());
+    r.addEventListener('mousedown',e=>{
+        if(e.button!==0||p.classList.contains('collapsed'))return;
+        e.preventDefault();
+        const sx=e.clientX,sw2=p.offsetWidth;
+        const mv=e2=>sw(sw2+(sx-e2.clientX));
+        const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);document.body.style.cursor='';document.body.style.userSelect='';};
+        document.body.style.cursor='col-resize';document.body.style.userSelect='none';
+        document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+})();
+
+// ─── Marked setup ─────────────────────────────────────────────────────────────
+if (typeof marked !== 'undefined') {
+    const rr = new marked.Renderer();
+    rr.code = function(code, lang) {
+        const l=lang||'shell', cid='mc'+Math.random().toString(36).slice(2);
+        return `<div class="ai-cb"><div class="ai-cb-hdr"><span class="ai-cb-lang">${esc(l)}</span><button class="ai-cb-copy" onclick="mCopy(this,'${cid}')">Copy</button></div><pre id="${cid}"><code class="bc">${esc(code)}</code></pre></div>`;
+    };
+    rr.codespan = c => `<code>${esc(c)}</code>`;
+    marked.setOptions({ renderer:rr, breaks:true, gfm:true });
+}
+function mCopy(btn, id) { const el=eid(id); if(!el)return; navigator.clipboard.writeText(el.textContent||'').then(()=>{btn.textContent='✓';setTimeout(()=>{btn.textContent='Copy';},2000);}); }
+function mdRender(t) { if(typeof marked!=='undefined'){try{return marked.parse(t||'').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'');}catch{}}return '<div style="white-space:pre-wrap">'+esc(t)+'</div>'; }
+function fmtT() { const d=new Date(); return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); }
+
+// ─── AI Messages ─────────────────────────────────────────────────────────────
+function hideWelcome() { const w=eid('ai-welcome'); if(w)w.style.display='none'; }
+function showThinking() {
+    const t=eid('ai-thinking'); if(!t)return; t.classList.remove('hidden');
+    const c=eid('ai-msgs'); c.appendChild(t);
+    eid('ai-av-pulse')?.classList.add('go');
+    c.scrollTop=c.scrollHeight;
+}
+function hideThinking() { eid('ai-thinking')?.classList.add('hidden'); eid('ai-av-pulse')?.classList.remove('go'); }
+
+const _RGM_PHASES = ['Анализирую вывод...','Выявляю проблемы...','Пишу рекомендации...','Составляю отчёт...'];
+let _rgmTimer = null;
+function showReportGen() {
+    hideReportGen();
+    const c=eid('ai-msgs'); if(!c)return;
+    const d=document.createElement('div'); d.id='rg-card-m'; d.className='rg-card';
+    d.innerHTML=`<div class="rg-ico"><span class="material-icons-round">edit_note</span></div>
+    <div class="rg-txt"><div class="rg-title">Пишу отчёт</div><div class="rg-sub" id="rg-sub-m">${_RGM_PHASES[0]}</div></div>
+    <div class="rg-dots"><span></span><span></span><span></span></div>`;
+    c.insertBefore(d,eid('ai-thinking'));
+    let i=1;
+    _rgmTimer=setInterval(()=>{
+        const el=eid('rg-sub-m');
+        if(el){el.style.opacity='0';setTimeout(()=>{el.textContent=_RGM_PHASES[i%_RGM_PHASES.length];el.style.opacity='1';i++;},200);}
+    },1800);
+    c.scrollTop=c.scrollHeight;
+}
+function hideReportGen() {
+    if(_rgmTimer){clearInterval(_rgmTimer);_rgmTimer=null;}
+    eid('rg-card-m')?.remove();
+}
+
+function addMsg(role, text) {
+    const c=eid('ai-msgs'); if(!c)return;
+    hideWelcome();
+    const d=document.createElement('div');
+    if(role==='sys'||role==='msg-s') {
+        d.className='ai-row sys';
+        d.innerHTML=`<div class="ai-bub sys"><span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:3px">info</span>${esc(text)}</div>`;
+    } else if(role==='msg-u'||role==='user') {
+        d.className='ai-row user';
+        d.innerHTML=`<div class="ai-body"><div class="ai-bub user">${esc(text)}</div><div class="ai-time">${fmtT()}</div></div><div class="ai-av-sm user"><span class="material-icons-round" style="font-size:11px">person</span></div>`;
+    } else {
+        d.className='ai-row';
+        d.innerHTML=`<div class="ai-av-sm ai"><span class="material-icons-round" style="font-size:11px">smart_toy</span></div><div class="ai-body"><div class="ai-bub ai">${mdRender(text)}</div><div class="ai-time">${fmtT()}</div></div>`;
+    }
+    c.insertBefore(d, eid('ai-thinking')); c.scrollTop=c.scrollHeight;
+}
+
+function handleReport(msg) {
+    hideThinking(); hideReportGen(); setAiRunningM(false);
+    const c=eid('ai-msgs'); if(!c||!msg.report)return;
+    const st = msg.status || 'ok';
+    const stMap = {
+        ok:      {cls:'rep-ok',      icon:'check_circle',  badge:'OK',      label:'Выполнено'},
+        warning: {cls:'rep-warning', icon:'warning_amber', badge:'WARNING', label:'Предупреждение'},
+        error:   {cls:'rep-error',   icon:'error_outline', badge:'ERROR',   label:'Ошибки'},
+    };
+    const s = stMap[st] || stMap.ok;
+    const d=document.createElement('div'); d.className='ai-row'; const bid='rb'+Date.now();
+    d.innerHTML=`<div class="ai-av-sm ai"><span class="material-icons-round" style="font-size:11px">${s.icon}</span></div>
+    <div style="flex:1;min-width:0">
+        <div class="ai-rep ${s.cls}">
+            <div class="ai-rep-hdr" onclick="toggleRepM('${bid}')">
+                <span class="material-icons-round" style="font-size:13px">${s.icon}</span>
+                <span style="flex:1">${s.label}</span>
+                <span class="ai-rep-badge">${s.badge}</span>
+                <span class="material-icons-round" style="font-size:12px;opacity:.4;margin-left:4px;transition:transform .2s" id="rch-${bid}">expand_less</span>
+            </div>
+            <div class="ai-rep-body" id="${bid}">${mdRender(msg.report)}</div>
+            <div class="ai-rep-meta">
+                <span class="material-icons-round" style="font-size:11px">schedule</span>
+                <span>${fmtT()}</span>
+            </div>
+        </div>
+    </div>`;
+    c.insertBefore(d,eid('ai-thinking')); c.scrollTop=c.scrollHeight;
+}
+function toggleRepM(id){const b=eid(id),ch=eid('rch-'+id);if(!b)return;const h=b.style.display==='none';b.style.display=h?'':'none';if(ch)ch.style.transform=h?'':'rotate(180deg)';}
+
+function handleAIResponse(msg) {
+    hideThinking();
+    if(!msg.commands||!msg.commands.length){
+        if(msg.assistant_text)addMsg('msg-a',msg.assistant_text);
+        setAiRunningM(false); return;
+    }
+    if(msg.assistant_text)addMsg('msg-a',msg.assistant_text);
+    const c=eid('ai-msgs');
+    (msg.commands||[]).forEach(cmd=>{
+        const id=cmd.id; if(!id)return;
+        const isDanger=cmd.requires_confirm, isStream=!!cmd.streaming;
+        const card=document.createElement('div'); card.className='cmd-card status-'+(isDanger?'pending_confirm':'pending'); card.id='cc-'+id;
+        card.innerHTML=`<div class="cmd-hdr">
+            <div style="display:flex;align-items:center;gap:6px"><span class="material-icons-round" style="font-size:14px;color:#6b7280">${isStream?'stream':'terminal'}</span><span style="font-size:10px;color:#6b7280;font-family:monospace">CMD #${esc(String(id))}</span></div>
+            <span id="cs-${id}" class="cs ${isDanger?'pending_confirm':'pending'}">${isDanger?'⚠ Подтвердить':'В очереди'}</span>
+        </div>
+        <div class="cmd-body">
+            <div class="cmd-code">${esc(cmd.cmd||'')}</div>
+            ${cmd.why?`<div style="font-size:10px;color:#6b7280;margin-top:5px;display:flex;gap:4px"><span class="material-icons-round" style="font-size:11px;color:#4f46e5">info</span>${esc(cmd.why)}</div>`:''}
+            ${isStream?`<div style="font-size:10px;color:#0e7490;margin-top:5px;padding:3px 7px;background:rgba(6,182,212,.07);border-radius:4px;border:1px solid rgba(6,182,212,.12);display:flex;gap:4px"><span class="material-icons-round" style="font-size:11px">timer</span>Стриминг — прервётся через 8 с</div>`:''}
+            ${isDanger?`<div class="cmd-warn"><span class="material-icons-round" style="font-size:12px">warning</span>Требует подтверждения</div>`:''}
+            <div id="ca-${id}" class="cmd-acts">${isDanger?`<button class="cb cb-ok" onclick="okCmd('${id}')"><span class="material-icons-round" style="font-size:12px">check_circle</span>Выполнить</button><button class="cb cb-sk" onclick="skCmd('${id}')">Пропустить</button>`:''}</div>
+            <div id="cp-${id}" class="cmd-prog hidden"><div class="cmd-prog-bar"></div></div>
+        </div>`;
+        c.insertBefore(card,eid('ai-thinking')); c.scrollTop=c.scrollHeight;
+        aiCmdEls[id]={statusEl:card.querySelector('#cs-'+id),actionsEl:card.querySelector('#ca-'+id),progressEl:card.querySelector('#cp-'+id),card,streaming:isStream};
+    });
+}
+
+function updateCS(msg) {
+    const e=aiCmdEls[msg.id]; if(!e)return;
+    let t=msg.status,cl=msg.status;
+    if(msg.status==='done'&&msg.exit_code!=null){
+        if(msg.exit_code===0){t='✓ Выполнено';cl='done';}
+        else if(msg.exit_code===130&&(e.streaming||msg.streaming)){t='⏹ Захвачено';cl='captured';}
+        else{t='✗ Ошибка';cl='error';}
+    }
+    if(msg.status==='running'||msg.status==='confirmed'){t='● Выполняется';cl='running';}
+    if(msg.status==='skipped'){t='Пропущено';}
+    if(e.statusEl){e.statusEl.textContent=t;e.statusEl.className='cs '+cl;}
+    if(e.card)e.card.className='cmd-card status-'+cl;
+    if(e.progressEl)e.progressEl.classList.toggle('hidden',!['running','confirmed'].includes(msg.status));
+    if(['running','done','skipped','confirmed'].includes(msg.status))e.actionsEl?.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});
+}
+
+function okCmd(id){if(activeTabId)tabs[activeTabId]?.socket?.send(JSON.stringify({type:'ai_confirm',id}));}
+function skCmd(id){if(activeTabId)tabs[activeTabId]?.socket?.send(JSON.stringify({type:'ai_cancel',id}));}
+
+function setAiRunningM(running) {
+    const btn=eid('ai-stop-btn-m'); if(btn)btn.style.display=running?'flex':'none';
+}
+function stopAIM() {
+    if(activeTabId&&tabs[activeTabId]?.socket?.readyState===WebSocket.OPEN)
+        tabs[activeTabId].socket.send(JSON.stringify({type:'ai_stop'}));
+    hideThinking(); setAiRunningM(false); addMsg('sys','ИИ остановлен');
+}
+
+function aiAutoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,90)+'px'; }
+
+function sendAI(){
+    const inp=eid('ai-input'), text=(inp.value||'').trim(); if(!text)return;
+    if(!activeTabId||tabs[activeTabId]?.socket?.readyState!==WebSocket.OPEN){addMsg('sys','Сначала подключитесь к серверу');return;}
+    hideWelcome(); addMsg('msg-u',text); inp.value=''; inp.style.height='auto';
+    showThinking(); setAiRunningM(true);
+    tabs[activeTabId].socket.send(JSON.stringify({type:'ai_request',message:text}));
+}
+function sendQ(cmd){eid('ai-input').value=cmd;sendAI();}
+function clearAIChat(){aiCmdEls={};const c=eid('ai-msgs');Array.from(c.children).forEach(ch=>{if(ch.id!=='ai-welcome'&&ch.id!=='ai-thinking')ch.remove();});const w=eid('ai-welcome');if(w)w.style.display='';hideThinking();setAiRunningM(false);}
+eid('ai-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendAI();}});
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+    const tid = createTab(INIT_ID, INIT_NAME, INIT_HOST, INIT_PORT, INIT_USER);
+    activeTabId = tid;
+    renderTabs();
+    initTabTerminal(tid);
+    connectTab(tid); // auto-connect (backend uses session MP or key auth)
+
+    eid('terminal')?.addEventListener('click', ()=>{ if(activeTabId) tabs[activeTabId]?.terminal?.focus(); });
+});
+
+window.addEventListener('beforeunload', ()=>{
+    Object.values(tabs).forEach(t=>{ try{t.socket?.close();}catch{} });
+});
+</script>
+</body>
+</html>

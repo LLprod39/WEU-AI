@@ -109,16 +109,64 @@
         max-height: 0;
     }
 
-    /* Quick connect button */
+    /* Quick connect button - always visible */
     .quick-connect {
-        opacity: 0;
-        transform: translateX(8px);
         transition: all 0.2s ease;
     }
 
-    .server-card:hover .quick-connect {
+    .quick-connect:hover {
+        transform: scale(1.02);
+    }
+
+    /* Action menu */
+    .action-menu {
+        position: relative;
+    }
+
+    .action-dropdown {
+        position: fixed;
+        background: rgba(17, 17, 21, 0.98);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px;
+        padding: 6px;
+        min-width: 160px;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(4px);
+        transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
+        z-index: 1000;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    .action-dropdown.is-open {
         opacity: 1;
-        transform: translateX(0);
+        visibility: visible;
+        transform: translateY(0);
+    }
+
+    .action-dropdown button,
+    .action-dropdown a {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #d1d5db;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+
+    .action-dropdown button:hover,
+    .action-dropdown a:hover {
+        background: rgba(255,255,255,0.08);
+        color: white;
+    }
+
+    .action-dropdown .danger:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
     }
 
     /* AI indicator */
@@ -244,10 +292,6 @@
 
                 <!-- Actions -->
                 <div class="flex items-center gap-2">
-                    <a href="{% url 'servers:multi_terminal' %}" class="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl transition-all flex items-center gap-2 text-sm font-medium">
-                        <span class="material-icons-round text-lg">dashboard</span>
-                        <span class="hidden sm:inline">Terminal Hub</span>
-                    </a>
                     <button onclick="openGlobalContextModal()" class="px-4 py-2 bg-violet-500/15 hover:bg-violet-500/25 text-violet-400 border border-violet-500/25 rounded-xl transition-all flex items-center gap-2 text-sm" title="Global AI Context">
                         <span class="material-icons-round text-lg">public</span>
                         <span class="hidden sm:inline">Global Context</span>
@@ -332,16 +376,33 @@
 
                             <!-- Actions -->
                             <div class="flex items-center gap-2 flex-shrink-0">
-                                <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
-                                    <span class="material-icons-round text-lg">check_circle</span>
-                                </button>
-                                <button onclick="openEditModal({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Edit Server">
-                                    <span class="material-icons-round text-lg">edit</span>
-                                </button>
-                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
+                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-all flex items-center gap-2 text-sm font-medium shadow-sm">
                                     <span class="material-icons-round text-lg">terminal</span>
                                     Connect
                                 </a>
+                                <div class="action-menu">
+                                    <button class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                                        <span class="material-icons-round text-lg">more_vert</span>
+                                    </button>
+                                    <div class="action-dropdown">
+                                        <a href="{% url 'servers:server_terminal' server.id %}" target="_blank" onclick="event.preventDefault(); openMinimalTerminal({{ server.id }})">
+                                            <span class="material-icons-round text-base">open_in_new</span>
+                                            Open in window
+                                        </a>
+                                        <button onclick="testConnection({{ server.id }})">
+                                            <span class="material-icons-round text-base">wifi_tethering</span>
+                                            Test connection
+                                        </button>
+                                        <button onclick="openEditModal({{ server.id }})">
+                                            <span class="material-icons-round text-base">edit</span>
+                                            Edit server
+                                        </button>
+                                        <button onclick="deleteServer({{ server.id }})" class="danger">
+                                            <span class="material-icons-round text-base">delete</span>
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -431,16 +492,33 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 flex-shrink-0">
-                                <button onclick="testConnection({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Test Connection">
-                                    <span class="material-icons-round text-lg">check_circle</span>
-                                </button>
-                                <button onclick="openEditModal({{ server.id }})" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Edit Server">
-                                    <span class="material-icons-round text-lg">edit</span>
-                                </button>
-                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all flex items-center gap-2 text-sm font-medium">
+                                <a href="{% url 'servers:server_terminal' server.id %}" class="quick-connect px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-all flex items-center gap-2 text-sm font-medium shadow-sm">
                                     <span class="material-icons-round text-lg">terminal</span>
                                     Connect
                                 </a>
+                                <div class="action-menu">
+                                    <button class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                                        <span class="material-icons-round text-lg">more_vert</span>
+                                    </button>
+                                    <div class="action-dropdown">
+                                        <a href="{% url 'servers:server_terminal' server.id %}" target="_blank" onclick="event.preventDefault(); openMinimalTerminal({{ server.id }})">
+                                            <span class="material-icons-round text-base">open_in_new</span>
+                                            Open in window
+                                        </a>
+                                        <button onclick="testConnection({{ server.id }})">
+                                            <span class="material-icons-round text-base">wifi_tethering</span>
+                                            Test connection
+                                        </button>
+                                        <button onclick="openEditModal({{ server.id }})">
+                                            <span class="material-icons-round text-base">edit</span>
+                                            Edit server
+                                        </button>
+                                        <button onclick="deleteServer({{ server.id }})" class="danger">
+                                            <span class="material-icons-round text-base">delete</span>
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1046,6 +1124,39 @@ async function testConnection(serverId) {
     }
 }
 
+// Open minimal terminal in popup window
+function openMinimalTerminal(serverId) {
+    const w = 1200, h = 800;
+    const left = (screen.width - w) / 2;
+    const top = (screen.height - h) / 2;
+    window.open(
+        '/servers/' + serverId + '/terminal/minimal/',
+        'terminal_' + serverId,
+        'width=' + w + ',height=' + h + ',left=' + left + ',top=' + top + ',menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+    );
+}
+
+// Delete server
+async function deleteServer(serverId) {
+    if (!confirm('Delete this server? This cannot be undone.')) return;
+
+    try {
+        const response = await fetch('/servers/api/' + serverId + '/delete/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete'));
+        }
+    } catch (e) {
+        console.error('Error deleting server:', e);
+        alert('Error deleting server');
+    }
+}
+
 async function applyBulkAction() {
     const action = document.getElementById('bulk-action').value;
     const selectedIds = Array.from(document.querySelectorAll('.server-select:checked')).map(el => parseInt(el.value, 10));
@@ -1107,12 +1218,14 @@ document.addEventListener('keydown', function(e) {
         closeEditModal();
         closeGlobalContextModal();
         closeGroupContextModal();
+        closeMasterPasswordModal();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         document.getElementById('server-search')?.focus();
     }
 });
+
 
 // ========== Edit Server Modal ==========
 function toggleEditAuthFields() {
@@ -1289,5 +1402,32 @@ async function saveGroupContext() {
         alert('Error saving group context');
     }
 }
+
+// ========== Action dropdown (fixed positioning to escape overflow:hidden) ==========
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.action-menu > button');
+    if (btn) {
+        e.stopPropagation();
+        const dropdown = btn.nextElementSibling;
+        if (!dropdown || !dropdown.classList.contains('action-dropdown')) return;
+        const isOpen = dropdown.classList.contains('is-open');
+
+        // Close all open dropdowns
+        document.querySelectorAll('.action-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+
+        if (!isOpen) {
+            const rect = btn.getBoundingClientRect();
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+            dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+            dropdown.classList.add('is-open');
+        }
+        return;
+    }
+
+    // Close on outside click
+    if (!e.target.closest('.action-dropdown')) {
+        document.querySelectorAll('.action-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+    }
+});
 </script>
 {% endblock %}

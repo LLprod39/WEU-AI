@@ -75,8 +75,9 @@ def server_terminal_page(request, server_id: int):
     WebSocket endpoint is handled by Channels consumer.
     """
     server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+    all_servers = Server.objects.filter(user=request.user, is_active=True).exclude(id=server_id)
     template = 'servers/mobile/terminal.html' if getattr(request, 'is_mobile', False) else 'servers/terminal.html'
-    return render(request, template, {'server': server})
+    return render(request, template, {'server': server, 'all_servers': all_servers})
 
 
 @login_required
@@ -87,6 +88,17 @@ def multi_terminal(request):
     """
     servers = Server.objects.filter(user=request.user, is_active=True)
     return render(request, 'servers/multi_terminal.html', {'servers': servers})
+
+
+@login_required
+@require_feature('servers', redirect_on_forbidden=True)
+def terminal_minimal(request, server_id: int):
+    """
+    Minimal terminal for popup window - no navigation chrome.
+    """
+    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+    all_servers = Server.objects.filter(user=request.user, is_active=True).exclude(id=server_id)
+    return render(request, 'servers/terminal_minimal.html', {'server': server, 'all_servers': all_servers})
 
 
 def _get_group_role(group: ServerGroup, user: User) -> str:
@@ -501,6 +513,53 @@ def server_execute_command(request, server_id):
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_delete(request, server_id):
+    """Delete a server"""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user)
+        server.delete()
+        return JsonResponse({'success': True, 'message': 'Server deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def set_master_password(request):
+    """Store master password in session for auto-connect"""
+    try:
+        data = json.loads(request.body)
+        mp = data.get('master_password', '')
+        if mp:
+            request.session['_mp'] = mp
+            request.session.set_expiry(0)  # Expires when browser closes
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('servers')
+def get_master_password(request):
+    """Get master password from session (for auto-connect check)"""
+    has_mp = bool(request.session.get('_mp'))
+    return JsonResponse({'has_master_password': has_mp})
+
+
+@login_required
+@require_feature('servers')
+def clear_master_password(request):
+    """Clear master password from session"""
+    request.session.pop('_mp', None)
+    return JsonResponse({'success': True})
 
 
 @login_required

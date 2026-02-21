@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Документация — WEU AI Platform</title>
-    <meta name="description" content="Полная документация WEU AI: установка, настройка, работа с агентами, серверами и задачами.">
+    <meta name="description" content="Документация WEU AI: установка, конфигурация и работа с агентами, серверами, задачами и базой знаний.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -455,11 +455,11 @@
             </div>
             <span class="doc-tag">Начало работы</span>
             <h1 class="doc-h1">Добро пожаловать в <span>WEU AI</span></h1>
-            <p class="doc-lead">WEU AI — веб-платформа для автоматизации DevOps-задач. Запускай ИИ-агентов, управляй серверами по SSH, отслеживай задачи и работай с базой знаний — всё в браузере.</p>
+            <p class="doc-lead">WEU AI — веб-платформа для DevOps-команд. В одном интерфейсе доступны агенты, SSH-серверы, задачи и база знаний.</p>
 
             <div class="callout callout-ok">
                 <span class="material-icons-round">check_circle</span>
-                <div><strong>Это веб-приложение.</strong> Никакой установки клиентов — только браузер. Разверни платформу один раз на сервере или локально, и работай с любого устройства.</div>
+                <div><strong>Платформа работает в браузере.</strong> Дополнительные desktop-клиенты не требуются; достаточно один раз развернуть окружение.</div>
             </div>
 
             <div class="feat-grid">
@@ -607,7 +607,7 @@
                         <div class="step-num">5</div>
                         <div class="step-body">
                             <h4>Открой браузер</h4>
-                            <p>Перейди на <strong>http://localhost:9000/welcome/</strong> и войди.</p>
+                            <p>Открой <strong>http://localhost:9000/welcome/</strong> и выполни вход.</p>
                             <div class="mock-browser">
                                 <div class="mock-topbar">
                                     <div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div>
@@ -628,7 +628,7 @@
                 </div>
                 <div class="callout callout-ok">
                     <span class="material-icons-round">check_circle</span>
-                    <div>Платформа запущена. Перейди в раздел <strong>Конфигурация</strong>, чтобы настроить модели и агентов.</div>
+                    <div>Платформа запущена. Далее настрой параметры моделей и агентов в разделе <strong>Конфигурация</strong>.</div>
                 </div>
             </div>
 
@@ -831,13 +831,13 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Начало работы</span>
             <h1 class="doc-h1">Первый <span>запуск</span></h1>
-            <p class="doc-lead">После установки — настрой платформу за 5 минут. Вот что делать в первую очередь.</p>
+            <p class="doc-lead">Ниже приведена базовая последовательность действий после установки платформы.</p>
 
             <div class="steps">
                 <div class="step">
                     <div class="step-num">1</div>
                     <div class="step-body">
-                        <h4>Войди как администратор</h4>
+                        <h4>Войдите под учётной записью администратора</h4>
                         <p>Открой <strong>http://localhost:9000/login/</strong> и войди с данными суперпользователя, созданного при установке.</p>
                         <div class="mock-browser">
                             <div class="mock-topbar"><div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div><div class="mock-url">localhost:9000/login/</div></div>
@@ -855,7 +855,7 @@ python manage.py runserver
                     <div class="step-num">2</div>
                     <div class="step-body">
                         <h4>Настрой модели ИИ</h4>
-                        <p>Перейди в <strong>Настройки → Модели</strong>. Убедись, что API-ключ работает — попробуй написать в чате.</p>
+                        <p>Открой <strong>Настройки → Модели</strong>, проверь корректность API-ключа и выполните тестовый запрос в чате.</p>
                     </div>
                 </div>
 
@@ -863,7 +863,7 @@ python manage.py runserver
                     <div class="step-num">3</div>
                     <div class="step-body">
                         <h4>Добавь первый сервер</h4>
-                        <p>Перейди в <strong>Серверы → Добавить сервер</strong>. Укажи хост, порт, имя пользователя и пароль (или SSH-ключ). Пароль шифруется автоматически.</p>
+                        <p>Открой <strong>Серверы → Добавить сервер</strong>, укажи хост, порт, имя пользователя и пароль (или SSH-ключ). Учётные данные шифруются автоматически.</p>
                     </div>
                 </div>
 
@@ -871,7 +871,7 @@ python manage.py runserver
                     <div class="step-num">4</div>
                     <div class="step-body">
                         <h4>Запусти первый агент</h4>
-                        <p>Перейди в <strong>Агенты → Создать</strong>. Выбери runtime <strong>Ralph</strong>, введи задачу — например <em>"Проверь свободное место на дисках"</em> — и нажми запуск.</p>
+                        <p>Открой <strong>Агенты → Создать</strong>, выбери runtime <strong>Ralph</strong>, укажи задачу (например, <em>"Проверь свободное место на дисках"</em>) и запусти выполнение.</p>
                     </div>
                 </div>
             </div>
@@ -897,7 +897,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Возможности</span>
             <h1 class="doc-h1">Чат <span>с ИИ</span></h1>
-            <p class="doc-lead">Основной интерфейс взаимодействия с AI. Поддерживает несколько сессий, загрузку файлов, стриминг и режим оркестратора с ReAct-циклом.</p>
+            <p class="doc-lead">Основной интерфейс взаимодействия с ИИ: несколько сессий, загрузка файлов, потоковый вывод и режим Orchestrator.</p>
 
             <div class="mock-browser">
                 <div class="mock-topbar"><div class="mock-dot r"></div><div class="mock-dot y"></div><div class="mock-dot g"></div><div class="mock-url">localhost:9000/chat/</div></div>
@@ -939,7 +939,7 @@ python manage.py runserver
                 <tbody>
                     <tr><td><strong>Мульти-провайдер</strong></td><td>Переключение Gemini / Grok без перезагрузки страницы</td></tr>
                     <tr><td><strong>Выбор модели</strong></td><td>Список моделей обновляется при смене провайдера</td></tr>
-                    <tr><td><strong>RAG-режим</strong></td><td>Тумблер "База знаний" — ИИ подтягивает документы из Qdrant</td></tr>
+                    <tr><td><strong>RAG-режим</strong></td><td>Тумблер "База знаний" подключает документы из Qdrant к контексту ответа</td></tr>
                     <tr><td><strong>Стриминг</strong></td><td>Ответ появляется посимвольно в реальном времени</td></tr>
                     <tr><td><strong>Загрузка файлов</strong></td><td>PDF, TXT, изображения — передаются в контекст LLM</td></tr>
                     <tr><td><strong>Несколько сессий</strong></td><td>Список сессий в боковой панели, история сообщений</td></tr>
@@ -949,7 +949,7 @@ python manage.py runserver
 
             <div class="callout callout-info">
                 <span class="material-icons-round">info</span>
-                <div>В режиме <strong>Orchestrator</strong> (<code class="inline-code">/orchestrator/</code>) ИИ выполняет ReAct-цикл: думает → вызывает инструмент (SSH, поиск, задачи) → наблюдает → повторяет. Каждый шаг виден на экране.</div>
+                <div>В режиме <strong>Orchestrator</strong> (<code class="inline-code">/orchestrator/</code>) выполняется ReAct-цикл: планирование, вызов инструмента (SSH, поиск, задачи), анализ результата и следующий шаг. Ход выполнения отображается в интерфейсе.</div>
             </div>
 
             <div class="doc-nav-btns">
@@ -973,7 +973,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Возможности</span>
             <h1 class="doc-h1">Агенты и <span>воркфлоу</span></h1>
-            <p class="doc-lead">Создавай цепочки шагов, выбирай runtime под задачу, смотри логи в реальном времени. Каждый агент — изолированный процесс с контролируемым выводом.</p>
+            <p class="doc-lead">Раздел предназначен для настройки workflow: выбор runtime, запуск шагов и просмотр логов в реальном времени. Каждый агент работает в изолированном процессе.</p>
 
             <h2 class="doc-h2">Типы агентов (runtime)</h2>
             <table class="doc-table">
@@ -1012,15 +1012,15 @@ python manage.py runserver
             <div class="steps">
                 <div class="step">
                     <div class="step-num">1</div>
-                    <div class="step-body"><h4>Создай воркфлоу</h4><p>Агенты → Создать воркфлоу → выбери агентский профиль и runtime.</p></div>
+                    <div class="step-body"><h4>Создайте workflow</h4><p>Откройте: Агенты → Создать workflow, затем выберите профиль агента и runtime.</p></div>
                 </div>
                 <div class="step">
                     <div class="step-num">2</div>
-                    <div class="step-body"><h4>Добавь шаги</h4><p>Каждый шаг — это промпт или команда. Шаги выполняются последовательно, результат предыдущего доступен следующему.</p></div>
+                    <div class="step-body"><h4>Добавьте шаги</h4><p>Каждый шаг задаётся как промпт или команда. Шаги выполняются последовательно, результат предыдущего шага доступен следующему.</p></div>
                 </div>
                 <div class="step">
                     <div class="step-num">3</div>
-                    <div class="step-body"><h4>Запусти</h4><p>Нажми ▶ Play — логи появляются в реальном времени. Можно остановить в любой момент.</p></div>
+                    <div class="step-body"><h4>Запустите выполнение</h4><p>Кнопка ▶ Play запускает workflow; логи отображаются в реальном времени. Выполнение можно остановить в любой момент.</p></div>
                 </div>
             </div>
 
@@ -1043,13 +1043,13 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Возможности</span>
             <h1 class="doc-h1">Серверы <span>и SSH</span></h1>
-            <p class="doc-lead">Управляй SSH-серверами прямо в браузере. Полноценный xterm.js-терминал, мульти-вкладки, зашифрованные учётные данные.</p>
+            <p class="doc-lead">Раздел для управления SSH-серверами: браузерный терминал xterm.js, работа с несколькими вкладками и шифрование учётных данных.</p>
 
             <ul class="check-list">
                 <li><span class="material-icons-round">check_circle</span><strong>Браузерный терминал</strong> — xterm.js через WebSocket, полная совместимость</li>
                 <li><span class="material-icons-round">check_circle</span><strong>Несколько вкладок</strong> — открывай несколько серверов одновременно</li>
                 <li><span class="material-icons-round">check_circle</span><strong>AES-256 шифрование</strong> — пароли расшифровываются только в момент подключения</li>
-                <li><span class="material-icons-round">check_circle</span><strong>ИИ видит серверы</strong> — агент может подключиться по SSH и выполнить команды</li>
+                <li><span class="material-icons-round">check_circle</span><strong>Доступ агентов</strong> — агент может подключаться по SSH и выполнять команды в рамках сценария</li>
                 <li><span class="material-icons-round">check_circle</span><strong>Фильтрация опасных команд</strong> — <code class="inline-code">rm -rf</code>, <code class="inline-code">mkfs</code>, <code class="inline-code">shutdown</code> блокируются</li>
                 <li><span class="material-icons-round">check_circle</span><strong>Группировка по тегам</strong> — prod / dev / staging, фильтрация в списке</li>
             </ul>
@@ -1057,8 +1057,8 @@ python manage.py runserver
             <h2 class="doc-h2">Добавление сервера</h2>
             <div class="steps">
                 <div class="step"><div class="step-num">1</div><div class="step-body"><h4>Серверы → Добавить</h4><p>Заполни: имя, хост, порт (22), логин, пароль или приватный ключ.</p></div></div>
-                <div class="step"><div class="step-num">2</div><div class="step-body"><h4>Проверь соединение</h4><p>Нажми "Тест соединения" — платформа проверит SSH без сохранения пароля в открытом виде.</p></div></div>
-                <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Открой терминал</h4><p>Нажми "Terminal" рядом с сервером — откроется вкладка с полноценным браузерным терминалом.</p></div></div>
+                <div class="step"><div class="step-num">2</div><div class="step-body"><h4>Проверьте соединение</h4><p>Кнопка "Тест соединения" выполняет проверку SSH без хранения пароля в открытом виде.</p></div></div>
+                <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Откройте терминал</h4><p>Кнопка "Terminal" рядом с сервером открывает вкладку с браузерным терминалом.</p></div></div>
             </div>
 
             <div class="doc-nav-btns">
@@ -1080,7 +1080,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Возможности</span>
             <h1 class="doc-h1">Задачи и <span>проекты</span></h1>
-            <p class="doc-lead">Встроенный Jira-подобный трекер. Проекты, спринты, команды, Kanban-доска. Задачи связаны с агентами — ИИ сам анализирует и предлагает исполнителя.</p>
+            <p class="doc-lead">Встроенный трекер задач: проекты, спринты, команды и Kanban-доска. Задачи можно связывать с агентами для автоматизированного выполнения.</p>
 
             <h2 class="doc-h2">Структура</h2>
             <div class="arch-box">
@@ -1097,10 +1097,10 @@ python manage.py runserver
             <table class="doc-table">
                 <thead><tr><th>Функция</th><th>Описание</th></tr></thead>
                 <tbody>
-                    <tr><td><strong>Умный анализ</strong></td><td>ИИ извлекает упоминания серверов, проверяет, можно ли автоматически выполнить задачу</td></tr>
-                    <tr><td><strong>Подзадачи от ИИ</strong></td><td>Нажми "Разбить на подзадачи" — ИИ предложит шаги с тайм-оценками</td></tr>
-                    <tr><td><strong>Делегирование ИИ</strong></td><td>Назначь задачу на агента — тот запустит воркфлоу и отчитается о результате</td></tr>
-                    <tr><td><strong>Улучшение описания</strong></td><td>ИИ переформулирует задачу чётче и полнее</td></tr>
+                    <tr><td><strong>Умный анализ</strong></td><td>ИИ извлекает упоминания серверов и оценивает возможность автоматического выполнения задачи</td></tr>
+                    <tr><td><strong>Подзадачи от ИИ</strong></td><td>Кнопка "Разбить на подзадачи" формирует список шагов с оценкой трудозатрат</td></tr>
+                    <tr><td><strong>Делегирование ИИ</strong></td><td>Задачу можно назначить агенту для запуска workflow и получения отчёта по результату</td></tr>
+                    <tr><td><strong>Улучшение описания</strong></td><td>ИИ помогает привести формулировку задачи к более структурированному виду</td></tr>
                     <tr><td><strong>Jira-интеграция</strong></td><td>Синхронизация с внешними Jira-проектами</td></tr>
                 </tbody>
             </table>
@@ -1124,7 +1124,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Возможности</span>
             <h1 class="doc-h1">База <span>знаний (RAG)</span></h1>
-            <p class="doc-lead">Загружай документы — runbook'и, регламенты, описания инфраструктуры. ИИ автоматически подтягивает релевантные фрагменты в контекст при ответах.</p>
+            <p class="doc-lead">Раздел для загрузки runbook, регламентов и инфраструктурной документации. Релевантные фрагменты автоматически добавляются в контекст ответа.</p>
 
             <table class="doc-table">
                 <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
@@ -1139,7 +1139,7 @@ python manage.py runserver
 
             <div class="callout callout-warn">
                 <span class="material-icons-round">warning</span>
-                <div>Без запущенного Qdrant база знаний работает в режиме <strong>InMemory</strong> — данные теряются при перезапуске сервера. Для постоянного хранения запусти Qdrant через Docker.</div>
+                <div>Без запущенного Qdrant база знаний работает в режиме <strong>InMemory</strong>; данные не сохраняются после перезапуска. Для постоянного хранения рекомендуется запуск Qdrant в отдельном сервисе.</div>
             </div>
 
             <div class="doc-nav-btns">
@@ -1166,7 +1166,7 @@ python manage.py runserver
             <p class="doc-p">В разделе <strong>Skills / MCP</strong> находится каталог доступных серверов. Подключённые MCP-серверы автоматически добавляют свои инструменты в пул агента.</p>
 
             <h2 class="doc-h2">Встроенный MCP-сервер</h2>
-            <p class="doc-p">Платформа включает собственный MCP-сервер (<code class="inline-code">mcp_server.py</code>), который предоставляет агентам Claude Code доступ к:</p>
+            <p class="doc-p">В платформу входит встроенный MCP-сервер (<code class="inline-code">mcp_server.py</code>), который предоставляет агентам Claude Code доступ к следующим инструментам:</p>
             <ul class="doc-ul">
                 <li><strong>server_execute</strong> — выполнение команд на SSH-серверах пользователя</li>
                 <li><strong>servers_list</strong> — список зарегистрированных серверов</li>
@@ -1174,7 +1174,7 @@ python manage.py runserver
 
             <div class="callout callout-info">
                 <span class="material-icons-round">info</span>
-                <div>MCP-конфиг для каждого агента генерируется динамически при запуске. Инструменты MCP-серверов добавляются в общий пул инструментов агента автоматически.</div>
+                <div>Конфигурация MCP для агента формируется при запуске. Подключённые MCP-серверы автоматически добавляют доступные инструменты в пул агента.</div>
             </div>
 
             <div class="doc-nav-btns">
@@ -1196,7 +1196,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Справочник</span>
             <h1 class="doc-h1"><span>Архитектура</span> платформы</h1>
-            <p class="doc-lead">WEU AI построен на Django ASGI с несколькими слоями абстракции. Каждый слой изолирован и заменяем.</p>
+            <p class="doc-lead">WEU AI построен на Django ASGI с модульной архитектурой. Компоненты можно конфигурировать и развивать независимо.</p>
 
             <div class="arch-box">
                 <pre>
@@ -1259,7 +1259,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Справочник</span>
             <h1 class="doc-h1">Переменные <span>окружения</span></h1>
-            <p class="doc-lead">Полный справочник всех переменных из файла <code class="inline-code">.env</code>.</p>
+            <p class="doc-lead">Справочник переменных окружения из файла <code class="inline-code">.env</code>.</p>
 
             <table class="doc-table">
                 <thead><tr><th>Переменная</th><th>Обязательно</th><th>По умолчанию</th><th>Описание</th></tr></thead>
@@ -1301,7 +1301,7 @@ python manage.py runserver
             </div>
             <span class="doc-tag">Справочник</span>
             <h1 class="doc-h1"><span>Безопасность</span></h1>
-            <p class="doc-lead">Платформа проектировалась с учётом безопасности для команд. Каждый уровень — от шифрования до блокировки опасных команд.</p>
+            <p class="doc-lead">Раздел описывает механизмы безопасности платформы: шифрование данных, фильтрацию опасных команд и модель разграничения доступа.</p>
 
             <h2 class="doc-h2">Шифрование данных</h2>
             <ul class="check-list">
@@ -1311,7 +1311,7 @@ python manage.py runserver
             </ul>
 
             <h2 class="doc-h2">Блокировка опасных команд</h2>
-            <p class="doc-p">Перед выполнением SSH-команд агентами проверяется список опасных паттернов (<code class="inline-code">app/tools/safety.py</code>). Заблокированы:</p>
+            <p class="doc-p">Перед выполнением SSH-команд применяется проверка по списку опасных паттернов (<code class="inline-code">app/tools/safety.py</code>). Ниже приведены примеры блокируемых команд:</p>
             <pre class="code-block"><span class="comment"># Заблокированные паттерны:</span>
 rm -rf /           <span class="comment"># удаление корня</span>
 mkfs               <span class="comment"># форматирование диска</span>
@@ -1322,14 +1322,14 @@ truncate -s 0      <span class="comment"># обнуление файлов</span
 
             <h2 class="doc-h2">Изоляция данных</h2>
             <ul class="check-list">
-                <li><span class="material-icons-round">check_circle</span>Данные (серверы, задачи, пароли) изолированы по пользователю через Django ORM</li>
-                <li><span class="material-icons-round">check_circle</span>Каждый запуск агента логируется: кто, когда, с каким промптом, что получил</li>
+                <li><span class="material-icons-round">check_circle</span>Данные (серверы, задачи, пароли) изолируются по пользователям на уровне Django ORM</li>
+                <li><span class="material-icons-round">check_circle</span>Каждый запуск агента логируется: исполнитель, время, входные данные и результат</li>
                 <li><span class="material-icons-round">check_circle</span>Права на серверы, воркфлоу и задачи управляются через группы и разрешения Django</li>
             </ul>
 
             <div class="callout callout-warn">
                 <span class="material-icons-round">warning</span>
-                <div><strong>Production-рекомендации:</strong> Установи <code class="inline-code">DEBUG=0</code>, сгенерируй уникальный <code class="inline-code">SECRET_KEY</code>, используй PostgreSQL, настрой HTTPS (см. <code class="inline-code">docs/HTTPS_SETUP.md</code>), ограничь <code class="inline-code">ALLOWED_HOSTS</code>.</div>
+                <div><strong>Рекомендации для production:</strong> установите <code class="inline-code">DEBUG=0</code>, используйте уникальный <code class="inline-code">SECRET_KEY</code>, PostgreSQL и HTTPS (см. <code class="inline-code">docs/HTTPS_SETUP.md</code>), а также ограничьте <code class="inline-code">ALLOWED_HOSTS</code>.</div>
             </div>
 
             <div class="doc-nav-btns">
