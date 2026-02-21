@@ -40,7 +40,10 @@
       "WebFetch(domain:registry.modelcontextprotocol.io)",
       "mcp__plugin_playwright_playwright__browser_network_requests",
       "mcp__plugin_playwright_playwright__browser_evaluate",
-      "mcp__plugin_playwright_playwright__browser_wait_for"
+      "mcp__plugin_playwright_playwright__browser_wait_for",
+      "Bash(git checkout:*)",
+      "Bash(.venv/bin/python3:*)",
+      "Bash(.venv/bin/pip install:*)"
     ]
   }
 }

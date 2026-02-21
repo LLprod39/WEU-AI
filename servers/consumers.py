@@ -47,6 +47,38 @@ _STREAMING_CMD_RE = re.compile(
 )
 _INTERACTIVE_CMDS = {"top", "htop", "iotop", "iftop", "nethogs", "vim", "vi", "nano", "less", "more", "man", "pstree", "glances"}
 
+# Regex to detect long-running install/build commands that should be monitored
+_INSTALL_CMD_RE = re.compile(
+    r"(?:"
+    r"\bapt(?:-get)?\s+(?:install|upgrade|dist-upgrade)\b"
+    r"|\byum\s+(?:install|update)\b"
+    r"|\bdnf\s+(?:install|upgrade)\b"
+    r"|\bpip[23]?\s+install\b"
+    r"|\bnpm\s+(?:install|ci|i\b)"
+    r"|\byarn\s+(?:install|add)\b"
+    r"|\bdocker\s+(?:pull|build)\b"
+    r"|\bcomposer\s+(?:install|update)\b"
+    r"|\bcargo\s+(?:install|build)\b"
+    r"|\bgo\s+(?:get|install|build)\b"
+    r"|\bmake\s+(?:install|all|build)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+# Patterns that clearly indicate a failed install
+_INSTALL_ERROR_RE = re.compile(
+    r"(?:"
+    r"E: Unable to locate package"
+    r"|No such package|could not find package"
+    r"|npm ERR!"
+    r"|ERROR: Could not install"
+    r"|error: could not"
+    r"|Failed to fetch"
+    r"|dpkg: error"
+    r")",
+    re.IGNORECASE,
+)
+
 
 class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -62,6 +94,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "ai_command_status", id: int, status: "running"|"done"|"skipped", exit_code?, reason?}
           {type: "ai_report", report: str, status: "ok"|"warning"|"error"}
           {type: "ai_error", message: "<text>"}
+          {type: "ai_recovery", original_cmd, new_cmd, new_id, why}
+          {type: "ai_question", q_id, question, cmd, exit_code}
+          {type: "ai_install_progress", cmd, elapsed, output_tail}
       - client -> server:
           {type: "connect", master_password?, password?, cols?, rows?, term_type?}
           {type: "input", data: "<keystrokes>"}
@@ -70,6 +105,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "ai_request", message: "<text>"}
           {type: "ai_confirm", id: <int>}
           {type: "ai_cancel", id: <int>}
+          {type: "ai_reply", q_id: str, text: str}
     """
 
     server: Optional[Server] = None
@@ -95,7 +131,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
     _terminal_tail: str
     _ai_history: list[dict]
-    _unavailable_cmds: set[str]   # commands that returned exit=127 (not found) this session
+    _unavailable_cmds: set[str]    # commands that returned exit=127 this session
+    _ai_reply_futures: dict[str, "asyncio.Future[str]"]  # q_id → future waiting for user reply
+    _ai_error_retries: dict[int, int]   # cmd_id → retry count (max 2)
 
     _marker_suppress: dict[str, bool]
     _marker_line_buf: dict[str, str]
@@ -122,6 +160,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._terminal_tail = ""
         self._ai_history = []
         self._unavailable_cmds: set[str] = set()
+        self._ai_reply_futures: dict[str, asyncio.Future] = {}
+        self._ai_error_retries: dict[int, int] = {}
         self._marker_suppress = {"stdout": False, "stderr": False}
         self._marker_line_buf = {"stdout": "", "stderr": ""}
 
@@ -182,6 +222,14 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         if msg_type == "ai_stop":
             await self._cancel_ai()
             await self.send_json({"type": "ai_status", "status": "idle"})
+            return
+        if msg_type == "ai_reply":
+            # User replied to an ai_question card
+            q_id = str((content or {}).get("q_id") or "")
+            text = str((content or {}).get("text") or "").strip()
+            fut = self._ai_reply_futures.get(q_id)
+            if fut and not fut.done():
+                fut.set_result(text)
             return
         if msg_type == "ping":
             await self.send_json({"type": "pong"})
@@ -332,6 +380,12 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             if not fut.done():
                 fut.cancel()
         self._ai_exit_futures = {}
+
+        for fut in (getattr(self, "_ai_reply_futures", None) or {}).values():
+            if not fut.done():
+                fut.cancel()
+        if hasattr(self, "_ai_reply_futures"):
+            self._ai_reply_futures = {}
 
         self._ai_plan = []
         self._ai_plan_index = 0
@@ -568,12 +622,126 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
                 # Track unavailable commands (exit=127 = "command not found")
                 if exit_code == 127:
-                    # Extract the base command name (first word, strip pipeline/flags)
                     base_cmd = cmd.strip().split()[0].split("/")[-1] if cmd.strip() else ""
                     if base_cmd:
-                        if not hasattr(self, "_unavailable_cmds"):
-                            self._unavailable_cmds = set()
                         self._unavailable_cmds.add(base_cmd)
+
+                # ── Adaptive error recovery ─────────────────────────────────
+                # For non-trivial failures (not success, not interrupted, not skipped):
+                # call the LLM to decide: retry / skip / ask user / abort
+                recovery_action = None
+                if exit_code not in (0, 130, None) and not item.get("_no_recovery"):
+                    retries = self._ai_error_retries.get(item_id, 0)
+                    if retries < 2:
+                        await self.send_json({
+                            "type": "ai_status",
+                            "status": "analyzing_error",
+                            "cmd": cmd,
+                            "exit_code": exit_code,
+                        })
+                        try:
+                            async with self._ai_lock:
+                                remaining_cmds = [
+                                    it.get("cmd", "") for it in self._ai_plan[self._ai_plan_index + 1:]
+                                    if it.get("status") not in ("done", "skipped")
+                                ]
+                            decision = await self._ai_handle_error(cmd, exit_code, output_snippet, remaining_cmds)
+                            recovery_action = decision.get("action", "skip")
+
+                            if recovery_action == "retry":
+                                new_cmd = str(decision.get("cmd") or "").strip()
+                                why = str(decision.get("why") or "Retry after error")
+                                if new_cmd and new_cmd != cmd:
+                                    next_id = self._ai_next_id
+                                    self._ai_next_id += 1
+                                    self._ai_error_retries[next_id] = retries + 1
+                                    new_item = {
+                                        "id": next_id, "cmd": new_cmd, "why": why,
+                                        "status": "pending", "_no_recovery": False,
+                                    }
+                                    async with self._ai_lock:
+                                        # Insert right after current position
+                                        self._ai_plan.insert(self._ai_plan_index + 1, new_item)
+                                    await self.send_json({
+                                        "type": "ai_recovery",
+                                        "original_cmd": cmd,
+                                        "new_cmd": new_cmd,
+                                        "new_id": next_id,
+                                        "why": why,
+                                    })
+
+                            elif recovery_action == "ask":
+                                question = str(decision.get("question") or "Как лучше продолжить?")
+                                q_id = f"q_{item_id}_{self._ai_next_id}"
+                                self._ai_next_id += 1
+                                loop = asyncio.get_event_loop()
+                                reply_fut: asyncio.Future = loop.create_future()
+                                self._ai_reply_futures[q_id] = reply_fut
+                                await self.send_json({
+                                    "type": "ai_question",
+                                    "q_id": q_id,
+                                    "question": question,
+                                    "cmd": cmd,
+                                    "exit_code": exit_code,
+                                })
+                                try:
+                                    user_reply = await asyncio.wait_for(reply_fut, timeout=300)
+                                    self._add_to_history("user", f"[Ответ агенту]: {user_reply}")
+                                    # Re-evaluate with user's answer
+                                    decision2 = await self._ai_handle_error(
+                                        cmd, exit_code, output_snippet, remaining_cmds,
+                                        user_reply=user_reply
+                                    )
+                                    if decision2.get("action") == "retry":
+                                        new_cmd2 = str(decision2.get("cmd") or "").strip()
+                                        why2 = str(decision2.get("why") or "")
+                                        if new_cmd2 and new_cmd2 != cmd:
+                                            next_id2 = self._ai_next_id
+                                            self._ai_next_id += 1
+                                            self._ai_error_retries[next_id2] = retries + 1
+                                            new_item2 = {
+                                                "id": next_id2, "cmd": new_cmd2, "why": why2,
+                                                "status": "pending", "_no_recovery": False,
+                                            }
+                                            async with self._ai_lock:
+                                                self._ai_plan.insert(self._ai_plan_index + 1, new_item2)
+                                            await self.send_json({
+                                                "type": "ai_recovery",
+                                                "original_cmd": cmd,
+                                                "new_cmd": new_cmd2,
+                                                "new_id": next_id2,
+                                                "why": why2,
+                                            })
+                                            recovery_action = "retry"
+                                    elif decision2.get("action") == "abort":
+                                        recovery_action = "abort"
+                                        await self.send_json({
+                                            "type": "ai_error",
+                                            "message": str(decision2.get("why") or "Выполнение прервано"),
+                                        })
+                                except asyncio.TimeoutError:
+                                    # User didn't reply in time → skip
+                                    logger.info("ai_question timeout, skipping command")
+                                    recovery_action = "skip"
+                                finally:
+                                    self._ai_reply_futures.pop(q_id, None)
+
+                            elif recovery_action == "abort":
+                                await self.send_json({
+                                    "type": "ai_error",
+                                    "message": str(decision.get("why") or "Выполнение прервано из-за критической ошибки"),
+                                })
+
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.warning("Error recovery LLM failed: %s", e)
+                            recovery_action = "skip"
+
+                if recovery_action == "abort":
+                    send_idle = False
+                    break
+                # ── End adaptive error recovery ─────────────────────────────
 
                 async with self._ai_lock:
                     if self._ai_plan_index < len(self._ai_plan) and int(self._ai_plan[self._ai_plan_index].get("id") or 0) == item_id:
@@ -673,6 +841,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             raise ValueError("Команда слишком длинная")
 
         is_streaming = self._is_streaming_command(clean_cmd)
+        is_install = self._is_install_command(clean_cmd)
 
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[int] = loop.create_future()
@@ -696,8 +865,13 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         if is_streaming:
             interrupt_task = asyncio.create_task(self._interrupt_streaming_after(8.0))
 
+        # For install commands: start periodic monitoring
+        monitor_task: Optional[asyncio.Task] = None
+        if is_install and not is_streaming:
+            monitor_task = asyncio.create_task(self._monitor_install(cmd_id, clean_cmd))
+
         exit_code = -1
-        timeout = 30 if is_streaming else 180
+        timeout = 30 if is_streaming else 600  # installs may take up to 10 min
         try:
             exit_code = int(await asyncio.wait_for(fut, timeout=timeout))
         except asyncio.TimeoutError:
@@ -712,11 +886,17 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             else:
                 raise TimeoutError("Timeout waiting for command completion marker")
         finally:
-            # Always cancel the interrupt task if still pending
+            # Always cancel the interrupt/monitor tasks if still pending
             if interrupt_task and not interrupt_task.done():
                 interrupt_task.cancel()
                 try:
                     await interrupt_task
+                except asyncio.CancelledError:
+                    pass
+            if monitor_task and not monitor_task.done():
+                monitor_task.cancel()
+                try:
+                    await monitor_task
                 except asyncio.CancelledError:
                     pass
             async with self._ai_lock:
@@ -749,6 +929,123 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         # Check bare interactive command names
         cmd_name = c.split()[0].split("/")[-1].lower()
         return cmd_name in _INTERACTIVE_CMDS
+
+    @staticmethod
+    def _is_install_command(cmd: str) -> bool:
+        """Return True if cmd is a package/dependency install (potentially long-running)."""
+        return bool(_INSTALL_CMD_RE.search(cmd or ""))
+
+    @staticmethod
+    def _detect_install_error(output: str) -> bool:
+        """Return True if output clearly shows an install failure."""
+        return bool(_INSTALL_ERROR_RE.search(output or ""))
+
+    async def _monitor_install(self, cmd_id: int, cmd: str, interval: float = 30.0) -> None:
+        """
+        Periodically send install progress updates to the frontend.
+        If a clear error is detected, sends Ctrl+C to interrupt the install.
+        """
+        start = asyncio.get_event_loop().time()
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                # Check if command already finished
+                fut = (self._ai_exit_futures or {}).get(cmd_id)
+                if not fut or fut.done():
+                    return
+
+                output_so_far = (self._ai_active_output or "")[-3000:]
+                elapsed = int(asyncio.get_event_loop().time() - start)
+
+                # Send progress notification to frontend
+                last_line = (output_so_far.strip().split("\n")[-1] or "").strip()
+                try:
+                    await self.send_json({
+                        "type": "ai_install_progress",
+                        "cmd": cmd,
+                        "elapsed": elapsed,
+                        "output_tail": last_line[:200],
+                    })
+                except Exception:
+                    return
+
+                # Abort if a clear error is detected in output
+                if self._detect_install_error(output_so_far):
+                    logger.warning("Install error detected in output, sending Ctrl+C: %s", cmd)
+                    try:
+                        if self._ssh_proc:
+                            self._ssh_proc.stdin.write("\x03")
+                    except Exception:
+                        pass
+                    return
+        except asyncio.CancelledError:
+            pass
+
+    async def _ai_handle_error(
+        self,
+        cmd: str,
+        exit_code: int,
+        output: str,
+        remaining_cmds: list[str],
+        user_reply: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Ask LLM to decide what to do after a command failed.
+        Returns {"action": "retry"|"skip"|"ask"|"abort", "cmd"?, "why"?, "question"?}
+        """
+        from app.core.llm import LLMProvider
+
+        remaining_text = (
+            "\n".join(f"  {i + 1}. {c}" for i, c in enumerate(remaining_cmds[:5]))
+            or "(нет следующих команд)"
+        )
+        user_block = f"\n\nОтвет пользователя: «{user_reply}»" if user_reply else ""
+
+        prompt = f"""Ты DevOps-агент. Команда завершилась с ошибкой. Реши, что делать дальше.
+
+КОМАНДА: {cmd}
+КОД ВЫХОДА: {exit_code}
+ВЫВОД:
+{(output or '(нет вывода)')[:2000]}
+
+СЛЕДУЮЩИЕ КОМАНДЫ В ПЛАНЕ:
+{remaining_text}{user_block}
+
+ПРАВИЛА ПРИНЯТИЯ РЕШЕНИЯ:
+- exit=127 → команда не найдена → action=retry с альтернативой (ss вместо netstat, ip addr вместо ifconfig, etc.)
+- Ошибка прав доступа ("Permission denied", "sudo required", exit=1/126) → action=ask (спросить пользователя нужен ли sudo)
+- Явная опечатка или неправильные флаги → action=retry с исправленной командой
+- Критическая ошибка, делающая следующие команды бессмысленными → action=abort
+- Незначительная ошибка, остальные команды независимы → action=skip
+- Неоднозначная ситуация — нужна информация от пользователя → action=ask
+
+ФОРМАТ ОТВЕТА (только JSON, без markdown):
+{{
+  "action": "retry" | "skip" | "ask" | "abort",
+  "cmd": "новая_команда (только для action=retry)",
+  "why": "краткое объяснение решения (1-2 предложения)",
+  "question": "вопрос пользователю (только для action=ask)"
+}}
+
+Верни только JSON."""
+
+        llm = LLMProvider()
+        out = ""
+        async for chunk in llm.stream_chat(prompt, model="auto"):
+            out += chunk
+            if len(out) > 3000:
+                break
+
+        try:
+            result = self._extract_json_object(out)
+            action = str(result.get("action") or "skip").lower().strip()
+            if action not in ("retry", "skip", "ask", "abort"):
+                action = "skip"
+            result["action"] = action
+            return result
+        except Exception as e:
+            logger.warning("_ai_handle_error JSON parse failed: %s, output: %.200s", e, out)
+            return {"action": "skip", "why": "Не удалось разобрать ответ LLM — пропускаю команду"}
 
     async def _ai_type_text(self, text: str):
         if not self._ssh_proc or not text:
