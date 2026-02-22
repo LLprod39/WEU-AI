@@ -572,8 +572,10 @@
 .aip-cmd-badge.captured { background:rgba(6,182,212,.12); color:#22d3ee; border:1px solid rgba(6,182,212,.22); }
 .aip-cmd-badge.error { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); }
 .aip-cmd-badge.skipped { background:rgba(107,114,128,.1); color:#6b7280; border:1px solid rgba(107,114,128,.15); }
+.aip-cmd-badge.cancelled { background:rgba(251,191,36,.12); color:#fbbf24; border:1px solid rgba(251,191,36,.25); }
 @keyframes badgePulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 .aip-cmd-card.status-captured { border-left:3px solid #06b6d4; }
+.aip-cmd-card.status-cancelled { border-left:3px solid #f59e0b; }
 .aip-cmd-streaming-note { display:flex; align-items:center; gap:5px; margin-top:6px; font-size:10px; color:#0e7490; padding:4px 8px; background:rgba(6,182,212,.06); border-radius:5px; border:1px solid rgba(6,182,212,.12); }
 
 /* Stop button */
@@ -1022,7 +1024,7 @@ function updateStatusPill(status) {
         const tab = tabs[activeTabId];
         const sub = document.getElementById('aip-subtitle');
         if (sub) {
-            if (status==='connected') { sub.textContent=tab.username+'@'+tab.host; sub.className='aip-subtitle connected'; }
+            if (status==='connected') { sub.textContent=tab.user+'@'+tab.host; sub.className='aip-subtitle connected'; }
             else { sub.textContent='Connect to start session'; sub.className='aip-subtitle'; }
         }
     }
@@ -1031,7 +1033,7 @@ function updateStatusPill(status) {
 // ── Tab operations ────────────────────────────────────────────────────────────
 function createTab(sid, name, host, port, user) {
     const id = genId();
-    tabs[id] = { id, sid, name, host, port, user, socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null };
+    tabs[id] = { id, sid, name, host, port, user, socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null, aiStatus:'idle', aiRunId:'' };
     return id;
 }
 
@@ -1045,6 +1047,13 @@ function switchTab(tid) {
     if (tab.terminal) { tab.terminal.open(el); tab.terminal.focus(); setTimeout(()=>{try{tab.fitAddon?.fit();}catch{}},50); }
     updateStatusPill(tab.connected?'connected':'disconnected');
     document.getElementById('breadcrumb-server-name').textContent = tab.name;
+    if(tab.aiStatus && tab.aiStatus!=='idle'){
+        if(tab.aiStatus==='thinking') showThinking(); else hideThinking();
+        setAiRunning(true);
+    } else {
+        hideThinking(); hideReportGenerating(); hideAnalyzingError(); hideInstallProgress();
+        setAiRunning(false);
+    }
 }
 
 function closeTab(tid) {
@@ -1124,6 +1133,7 @@ function connectTab(tid, mp='', pw='') {
 
     tab.socket.onmessage = ev=>{
         let msg; try{msg=JSON.parse(ev.data);}catch{return;}
+        if(msg && msg.run_id){ tab.aiRunId = String(msg.run_id); }
         switch(msg.type){
             case 'output': tab.terminal?.write(msg.data||''); break;
             case 'pong':
@@ -1133,6 +1143,7 @@ function connectTab(tid, mp='', pw='') {
             case 'error': tab.connected=false; setTabStatus(tid,'error'); tab.terminal?.writeln('\r\n\x1b[1;31m[Error]\x1b[0m '+esc(msg.message||'')); if(tid===activeTabId&&/пароль|password|пасфраз|secret|мастер/i.test(msg.message||'')) document.getElementById('creds-panel')?.classList.add('open'); break;
             case 'exit': tab.connected=false; setTabStatus(tid,'disconnected'); tab.terminal?.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m'); break;
             case 'ai_status':
+                tab.aiStatus = msg.status || 'idle';
                 if(tid!==activeTabId)break;
                 if(msg.status==='thinking'){ showThinking(); setAiRunning(true); }
                 else if(msg.status==='running'){ hideThinking(); setAiRunning(true); }
@@ -1144,14 +1155,25 @@ function connectTab(tid, mp='', pw='') {
             case 'ai_response': if(tid===activeTabId) handleAiResponse(msg); break;
             case 'ai_command_status': if(tid===activeTabId) updateCommandStatus(msg); break;
             case 'ai_report': if(tid===activeTabId) handleAiReport(msg); break;
-            case 'ai_error': if(tid===activeTabId){hideThinking();hideAnalyzingError();setAiRunning(false);appendMsg('system','⚠ '+(msg.message||'AI Error'));} break;
+            case 'ai_error': tab.aiStatus='idle'; if(tid===activeTabId){hideThinking();hideAnalyzingError();setAiRunning(false);appendMsg('system','⚠ '+(msg.message||'AI Error'));} break;
             case 'ai_recovery': if(tid===activeTabId) handleAiRecovery(msg); break;
             case 'ai_question': if(tid===activeTabId) handleAiQuestion(msg); break;
             case 'ai_install_progress': if(tid===activeTabId) handleInstallProgress(msg); break;
         }
     };
-    tab.socket.onclose = ()=>{ tab.connected=false; clearInterval(tab.pingInterval); setTabStatus(tid,'disconnected'); hideThinking(); setAiRunning(false); };
-    tab.socket.onerror = ()=>{ tab.connected=false; setTabStatus(tid,'error'); hideThinking(); setAiRunning(false); };
+    tab.socket.onclose = ()=>{
+        tab.connected=false;
+        tab.aiStatus='idle';
+        clearInterval(tab.pingInterval);
+        setTabStatus(tid,'disconnected');
+        if(tid===activeTabId){ hideThinking(); setAiRunning(false); }
+    };
+    tab.socket.onerror = ()=>{
+        tab.connected=false;
+        tab.aiStatus='idle';
+        setTabStatus(tid,'error');
+        if(tid===activeTabId){ hideThinking(); setAiRunning(false); }
+    };
 }
 
 function disconnectTerminal() {
@@ -1208,6 +1230,7 @@ function toggleAiPanel() {
 
 // ── AI messages ───────────────────────────────────────────────────────────────
 let aiCommandEls = {};
+let currentAiRunId = '';
 let userScrolledUp = false;
 
 function aiScrollToBottom() {
@@ -1296,8 +1319,54 @@ function showAnalyzingError(msg) {
 }
 function hideAnalyzingError() { document.getElementById('ai-analyzing-error')?.remove(); }
 
+function ensureAiCommandCard(cmd) {
+    const id=cmd?.id; if(!id)return null;
+    if(aiCommandEls[id]) return aiCommandEls[id];
+
+    const isDanger=!!cmd.requires_confirm;
+    const isStream=!!cmd.streaming;
+    const card=document.createElement('div');
+    card.className='aip-cmd-card status-'+(isDanger?'pending_confirm':'pending');
+    card.id='cmd-card-'+id;
+    card.innerHTML=`
+        <div class="aip-cmd-header">
+            <div class="aip-cmd-header-left">
+                <span class="material-icons-round aip-cmd-icon">${isStream?'stream':'terminal'}</span>
+                <span class="aip-cmd-num">Команда #${esc(String(id))}</span>
+            </div>
+            <span id="cmd-badge-${id}" class="aip-cmd-badge ${isDanger?'pending_confirm':'pending'}">
+                ${isDanger?'⚠ Подтвердить':'В очереди'}
+            </span>
+        </div>
+        <div class="aip-cmd-body">
+            <div class="aip-cmd-code-wrap">
+                <div class="aip-cmd-code">${esc(cmd.cmd||'')}</div>
+                <button class="aip-cmd-copy" onclick="copyCmd(this,'cmd-card-${id}')">Copy</button>
+            </div>
+            ${cmd.why?`<div class="aip-cmd-why"><span class="material-icons-round">info</span>${esc(cmd.why)}</div>`:''}
+            ${isStream?`<div class="aip-cmd-streaming-note"><span class="material-icons-round" style="font-size:12px">timer</span>Стриминг-команда — вывод захватится за 8 с, затем прервётся автоматически</div>`:''}
+            ${isDanger?`<div class="aip-cmd-danger-warn"><span class="material-icons-round">warning</span>Требует подтверждения перед выполнением</div>`:''}
+            <div id="cmd-actions-${id}" class="aip-cmd-actions"></div>
+            <div id="cmd-progress-${id}" class="aip-cmd-progress hidden"><div class="aip-cmd-progress-bar"></div></div>
+        </div>`;
+    const c=document.getElementById('ai-messages');
+    c?.insertBefore(card, document.getElementById('ai-thinking'));
+
+    aiCommandEls[id]={
+        badgeEl:card.querySelector('#cmd-badge-'+id),
+        actionsEl:card.querySelector('#cmd-actions-'+id),
+        progressEl:card.querySelector('#cmd-progress-'+id),
+        card,
+        streaming:isStream,
+    };
+    if(isDanger)renderConfirmButtons(id);
+    if(!userScrolledUp)aiScrollToBottom();
+    return aiCommandEls[id];
+}
+
 // ── Recovery card ─────────────────────────────────────────────────────────────
 function handleAiRecovery(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId) return;
     hideAnalyzingError();
     const c=document.getElementById('ai-messages'); if(!c)return;
     const d=document.createElement('div');
@@ -1317,11 +1386,22 @@ function handleAiRecovery(msg) {
         </div>
         ${msg.why?`<div class="aip-rec-why">${esc(msg.why)}</div>`:''}`;
     c.insertBefore(d,document.getElementById('ai-thinking'));
+    if(msg.new_id && msg.new_cmd){
+        ensureAiCommandCard({
+            id: msg.new_id,
+            cmd: msg.new_cmd,
+            why: msg.why || '',
+            requires_confirm: !!msg.requires_confirm,
+            reason: msg.reason || '',
+            streaming: !!msg.streaming,
+        });
+    }
     if(!userScrolledUp)aiScrollToBottom();
 }
 
 // ── Question card ─────────────────────────────────────────────────────────────
 function handleAiQuestion(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId) return;
     hideAnalyzingError();
     const c=document.getElementById('ai-messages'); if(!c)return;
     const qid=msg.q_id||'';
@@ -1364,6 +1444,7 @@ function sendAiReply(qid) {
 
 // ── Install progress card ─────────────────────────────────────────────────────
 function handleInstallProgress(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId) return;
     let card=document.getElementById('ai-install-progress');
     if(!card){
         card=document.createElement('div');
@@ -1418,6 +1499,7 @@ function appendMsg(role, text) {
 }
 
 function handleAiReport(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId) return;
     hideThinking();
     hideReportGenerating();
     setAiRunning(false);
@@ -1457,6 +1539,11 @@ function toggleReport(bodyId) {
 }
 
 function handleAiResponse(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId){
+        aiCommandEls = {};
+        document.querySelectorAll('#ai-messages .aip-cmd-card').forEach(el=>el.remove());
+    }
+    if(msg.run_id) currentAiRunId = msg.run_id;
     hideThinking();
     // mode=answer or mode=ask: just show the text, no commands
     if(!msg.commands || !msg.commands.length) {
@@ -1469,39 +1556,8 @@ function handleAiResponse(msg) {
     }
     // mode=execute: show assistant text + command cards
     if(msg.assistant_text) appendMsg('assistant', msg.assistant_text);
-    const c=document.getElementById('ai-messages');
     msg.commands.forEach(cmd=>{
-        const id=cmd.id; if(!id)return;
-        const isDanger=cmd.requires_confirm;
-        const isStream=!!cmd.streaming;
-        const card=document.createElement('div');
-        card.className='aip-cmd-card status-'+(isDanger?'pending_confirm':'pending');
-        card.id='cmd-card-'+id;
-        card.innerHTML=`
-            <div class="aip-cmd-header">
-                <div class="aip-cmd-header-left">
-                    <span class="material-icons-round aip-cmd-icon">${isStream?'stream':'terminal'}</span>
-                    <span class="aip-cmd-num">Команда #${esc(String(id))}</span>
-                </div>
-                <span id="cmd-badge-${id}" class="aip-cmd-badge ${isDanger?'pending_confirm':'pending'}">
-                    ${isDanger?'⚠ Подтвердить':'В очереди'}
-                </span>
-            </div>
-            <div class="aip-cmd-body">
-                <div class="aip-cmd-code-wrap">
-                    <div class="aip-cmd-code">${esc(cmd.cmd||'')}</div>
-                    <button class="aip-cmd-copy" onclick="copyCmd(this,'cmd-card-${id}')">Copy</button>
-                </div>
-                ${cmd.why?`<div class="aip-cmd-why"><span class="material-icons-round">info</span>${esc(cmd.why)}</div>`:''}
-                ${isStream?`<div class="aip-cmd-streaming-note"><span class="material-icons-round" style="font-size:12px">timer</span>Стриминг-команда — вывод захватится за 8 с, затем прервётся автоматически</div>`:''}
-                ${isDanger?`<div class="aip-cmd-danger-warn"><span class="material-icons-round">warning</span>Требует подтверждения перед выполнением</div>`:''}
-                <div id="cmd-actions-${id}" class="aip-cmd-actions"></div>
-                <div id="cmd-progress-${id}" class="aip-cmd-progress hidden"><div class="aip-cmd-progress-bar"></div></div>
-            </div>`;
-        c.insertBefore(card, document.getElementById('ai-thinking'));
-        aiCommandEls[id]={ badgeEl:card.querySelector('#cmd-badge-'+id), actionsEl:card.querySelector('#cmd-actions-'+id), progressEl:card.querySelector('#cmd-progress-'+id), card, streaming:isStream };
-        if(isDanger)renderConfirmButtons(id);
-        if(!userScrolledUp)aiScrollToBottom();
+        ensureAiCommandCard(cmd);
     });
 }
 
@@ -1524,6 +1580,7 @@ function renderConfirmButtons(id) {
 }
 
 function updateCommandStatus(msg) {
+    if(msg.run_id && currentAiRunId && msg.run_id!==currentAiRunId) return;
     const e=aiCommandEls[msg.id]; if(!e)return;
 
     let text=msg.status, cls=msg.status;
@@ -1535,12 +1592,13 @@ function updateCommandStatus(msg) {
     if(msg.status==='running'){ text='● Выполняется'; }
     if(msg.status==='skipped'){ text='Пропущено'; }
     if(msg.status==='confirmed'){ text='● Выполняется'; cls='running'; }
+    if(msg.status==='cancelled'){ text='⏹ Остановлено'; cls='cancelled'; }
 
     if(e.badgeEl){ e.badgeEl.textContent=text; e.badgeEl.className='aip-cmd-badge '+cls; }
     if(e.card){ e.card.className='aip-cmd-card status-'+cls; }
     if(e.progressEl){ e.progressEl.classList.toggle('hidden',msg.status!=='running'&&msg.status!=='confirmed'); }
 
-    if(['running','done','skipped','confirmed'].includes(msg.status))
+    if(['running','done','skipped','confirmed','cancelled'].includes(msg.status))
         e.actionsEl?.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.4';});
 }
 
@@ -1562,6 +1620,7 @@ function setAiRunning(running) {
 function stopAi() {
     if(activeTabId&&tabs[activeTabId]?.socket?.readyState===WebSocket.OPEN)
         tabs[activeTabId].socket.send(JSON.stringify({type:'ai_stop'}));
+    if(activeTabId&&tabs[activeTabId]) tabs[activeTabId].aiStatus='idle';
     hideThinking();
     setAiRunning(false);
     appendMsg('system','ИИ остановлен');
@@ -1583,6 +1642,7 @@ function sendAiMessage() {
     }
     hideWelcome();
     appendMsg('user',text);
+    if(activeTabId&&tabs[activeTabId]) tabs[activeTabId].aiStatus='thinking';
     input.value=''; input.style.height='auto';
     showThinking();
     setAiRunning(true);
@@ -1600,6 +1660,7 @@ function handleAiKeydown(e) {
 
 function clearAiChat() {
     aiCommandEls={};
+    currentAiRunId='';
     const c=document.getElementById('ai-messages'); if(!c)return;
     // Remove all messages except welcome and thinking
     Array.from(c.children).forEach(ch=>{

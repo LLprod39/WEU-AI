@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shlex
+import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -134,6 +136,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     _unavailable_cmds: set[str]    # commands that returned exit=127 this session
     _ai_reply_futures: dict[str, "asyncio.Future[str]"]  # q_id → future waiting for user reply
     _ai_error_retries: dict[int, int]   # cmd_id → retry count (max 2)
+    _ai_run_id: str
+    _ai_marker_token: str
+    _ai_stop_requested: bool
 
     _marker_suppress: dict[str, bool]
     _marker_line_buf: dict[str, str]
@@ -162,6 +167,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._unavailable_cmds: set[str] = set()
         self._ai_reply_futures: dict[str, asyncio.Future] = {}
         self._ai_error_retries: dict[int, int] = {}
+        self._ai_run_id = ""
+        self._ai_marker_token = ""
+        self._ai_stop_requested = False
         self._marker_suppress = {"stdout": False, "stderr": False}
         self._marker_line_buf = {"stdout": "", "stderr": ""}
 
@@ -220,8 +228,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             await self._handle_ai_cancel(content or {})
             return
         if msg_type == "ai_stop":
-            await self._cancel_ai()
-            await self.send_json({"type": "ai_status", "status": "idle"})
+            await self._handle_ai_stop()
             return
         if msg_type == "ai_reply":
             # User replied to an ai_question card
@@ -236,6 +243,31 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             return
 
         await self.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
+
+    @staticmethod
+    def _new_run_id() -> str:
+        return f"run_{uuid.uuid4().hex[:12]}"
+
+    @staticmethod
+    def _new_marker_token() -> str:
+        return uuid.uuid4().hex[:10]
+
+    def _marker_prefix(self) -> str:
+        token = (self._ai_marker_token or "").strip()
+        if token:
+            return f"{_WEUAI_MARKER_PREFIX}{token}_"
+        return _WEUAI_MARKER_PREFIX
+
+    def _with_ai_run_id(self, payload: dict[str, Any]) -> dict[str, Any]:
+        msg_type = str((payload or {}).get("type") or "")
+        if msg_type.startswith("ai_") and self._ai_run_id:
+            out = dict(payload)
+            out.setdefault("run_id", self._ai_run_id)
+            return out
+        return payload
+
+    async def _send_ai_event(self, payload: dict[str, Any]) -> None:
+        await self.send_json(self._with_ai_run_id(payload))
 
     async def _handle_connect(self, content: dict[str, Any]):
         if not self.server:
@@ -362,6 +394,66 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         except Exception as e:
             await self.send_json({"type": "error", "message": f"resize failed: {e}"})
 
+    async def _interrupt_active_command(self) -> Optional[int]:
+        """
+        Try to interrupt active command with Ctrl+C and unblock waiter with exit=130.
+        Returns active cmd_id if interrupted.
+        """
+        async with self._ai_lock:
+            cmd_id = self._ai_active_cmd_id
+            fut = (self._ai_exit_futures or {}).get(cmd_id) if cmd_id is not None else None
+
+        if cmd_id is None:
+            return None
+
+        try:
+            if self._ssh_proc:
+                self._ssh_proc.stdin.write("\x03")
+        except Exception:
+            pass
+
+        async with self._ai_lock:
+            if fut and not fut.done():
+                try:
+                    fut.set_result(130)
+                except Exception:
+                    pass
+        return cmd_id
+
+    async def _handle_ai_stop(self):
+        active_cmd_id = await self._interrupt_active_command()
+
+        pending_to_skip: list[int] = []
+        async with self._ai_lock:
+            self._ai_stop_requested = True
+            for item in self._ai_plan[self._ai_plan_index :]:
+                iid = int(item.get("id") or 0)
+                status = str(item.get("status") or "pending")
+                if iid and iid != active_cmd_id and status not in ("done", "skipped", "cancelled"):
+                    pending_to_skip.append(iid)
+
+        if active_cmd_id is not None:
+            await self._send_ai_event(
+                {
+                    "type": "ai_command_status",
+                    "id": active_cmd_id,
+                    "status": "cancelled",
+                    "reason": "stopped",
+                }
+            )
+        for cmd_id in pending_to_skip:
+            await self._send_ai_event(
+                {
+                    "type": "ai_command_status",
+                    "id": cmd_id,
+                    "status": "skipped",
+                    "reason": "stopped",
+                }
+            )
+
+        await self._cancel_ai()
+        await self._send_ai_event({"type": "ai_status", "status": "idle"})
+
     async def _cancel_ai(self):
         # Can be called from disconnect/cleanup paths
         if not hasattr(self, "_ai_lock"):
@@ -392,28 +484,32 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_forbidden_patterns = []
         self._ai_active_cmd_id = None
         self._ai_active_output = ""
+        self._ai_stop_requested = False
 
     async def _handle_ai_request(self, message: str):
         msg = (message or "").strip()
         if not msg:
             return
-        if not self._ssh_proc:
-            await self.send_json({"type": "ai_error", "message": "SSH не подключён. Сначала нажмите Connect."})
-            return
-        if not self.server or not self._user_id:
-            await self.send_json({"type": "ai_error", "message": "Server not loaded"})
-            return
 
         async with self._ai_lock:
             await self._cancel_ai_locked()
+            self._ai_run_id = self._new_run_id()
+            self._ai_marker_token = self._new_marker_token()
             self._ai_plan = []
             self._ai_plan_index = 0
             self._ai_next_id = 1
             self._ai_user_message = msg
 
+        if not self._ssh_proc:
+            await self._send_ai_event({"type": "ai_error", "message": "SSH не подключён. Сначала нажмите Connect."})
+            return
+        if not self.server or not self._user_id:
+            await self._send_ai_event({"type": "ai_error", "message": "Server not loaded"})
+            return
+
         # Save user message to history
         self._add_to_history("user", msg)
-        await self.send_json({"type": "ai_status", "status": "thinking"})
+        await self._send_ai_event({"type": "ai_status", "status": "thinking"})
 
         try:
             forbidden_patterns, rules_context = await self._get_ai_rules_and_forbidden(self._user_id, self.server.id)
@@ -425,8 +521,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 unavailable_cmds=set(getattr(self, "_unavailable_cmds", set())),
             )
         except Exception as e:
-            await self.send_json({"type": "ai_error", "message": str(e)})
-            await self.send_json({"type": "ai_status", "status": "idle"})
+            await self._send_ai_event({"type": "ai_error", "message": str(e)})
+            await self._send_ai_event({"type": "ai_status", "status": "idle"})
             return
 
         mode = str(plan_obj.get("mode") or "execute").lower().strip()
@@ -436,13 +532,13 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         # --- answer / ask mode: just reply, no commands needed ---
         if mode in ("answer", "ask"):
             self._add_to_history("assistant", assistant_text or "(ответ)")
-            await self.send_json({
+            await self._send_ai_event({
                 "type": "ai_response",
                 "mode": mode,
                 "assistant_text": assistant_text,
                 "commands": [],
             })
-            await self.send_json({"type": "ai_status", "status": "idle"})
+            await self._send_ai_event({"type": "ai_status", "status": "idle"})
             return
 
         # --- execute mode ---
@@ -465,20 +561,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             why = c.get("why") or ""
             item_id = next_id
             next_id += 1
-            reason = self._compute_confirm_reason(cmd, forbidden_patterns)
-            requires_confirm = bool(reason)
-            is_stream = self._is_streaming_command(cmd)
-            plan_items.append(
-                {
-                    "id": item_id,
-                    "cmd": cmd,
-                    "why": why,
-                    "requires_confirm": requires_confirm,
-                    "reason": reason,
-                    "status": "pending",
-                    "streaming": is_stream,
-                }
-            )
+            plan_items.append(self._build_plan_item(item_id=item_id, cmd=cmd, why=why, forbidden_patterns=forbidden_patterns))
 
         async with self._ai_lock:
             self._ai_plan = plan_items
@@ -486,7 +569,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             self._ai_next_id = next_id
             self._ai_forbidden_patterns = forbidden_patterns or []
 
-        await self.send_json({
+        await self._send_ai_event({
             "type": "ai_response",
             "mode": "execute",
             "assistant_text": assistant_text,
@@ -495,10 +578,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
         if not plan_items:
             self._add_to_history("assistant", assistant_text or "Команды не нужны")
-            await self.send_json({"type": "ai_status", "status": "idle"})
+            await self._send_ai_event({"type": "ai_status", "status": "idle"})
             return
 
-        await self.send_json({"type": "ai_status", "status": "running"})
+        await self._send_ai_event({"type": "ai_status", "status": "running"})
         async with self._ai_lock:
             self._ai_task = asyncio.create_task(self._ai_process_queue())
 
@@ -506,7 +589,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         try:
             cmd_id = int(content.get("id"))
         except Exception:
-            await self.send_json({"type": "ai_error", "message": "Некорректный id для подтверждения"})
+            await self._send_ai_event({"type": "ai_error", "message": "Некорректный id для подтверждения"})
             return
 
         should_start = False
@@ -515,7 +598,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 return
             item = self._ai_plan[self._ai_plan_index]
             if int(item.get("id") or 0) != cmd_id:
-                await self.send_json({"type": "ai_error", "message": "Подтверждать можно только текущую ожидающую команду"})
+                await self._send_ai_event({"type": "ai_error", "message": "Подтверждать можно только текущую ожидающую команду"})
                 return
             if not item.get("requires_confirm"):
                 return
@@ -525,9 +608,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             if not self._ai_task or self._ai_task.done():
                 should_start = True
 
-        await self.send_json({"type": "ai_command_status", "id": cmd_id, "status": "confirmed"})
+        await self._send_ai_event({"type": "ai_command_status", "id": cmd_id, "status": "confirmed"})
         if should_start:
-            await self.send_json({"type": "ai_status", "status": "running"})
+            await self._send_ai_event({"type": "ai_status", "status": "running"})
             async with self._ai_lock:
                 self._ai_task = asyncio.create_task(self._ai_process_queue())
 
@@ -535,7 +618,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         try:
             cmd_id = int(content.get("id"))
         except Exception:
-            await self.send_json({"type": "ai_error", "message": "Некорректный id для отмены"})
+            await self._send_ai_event({"type": "ai_error", "message": "Некорректный id для отмены"})
             return
 
         should_start = False
@@ -544,16 +627,16 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 return
             item = self._ai_plan[self._ai_plan_index]
             if int(item.get("id") or 0) != cmd_id:
-                await self.send_json({"type": "ai_error", "message": "Отменять можно только текущую ожидающую команду"})
+                await self._send_ai_event({"type": "ai_error", "message": "Отменять можно только текущую ожидающую команду"})
                 return
             item["status"] = "skipped"
             self._ai_plan_index += 1
             if not self._ai_task or self._ai_task.done():
                 should_start = True
 
-        await self.send_json({"type": "ai_command_status", "id": cmd_id, "status": "skipped"})
+        await self._send_ai_event({"type": "ai_command_status", "id": cmd_id, "status": "skipped"})
         if should_start:
-            await self.send_json({"type": "ai_status", "status": "running"})
+            await self._send_ai_event({"type": "ai_status", "status": "running"})
             async with self._ai_lock:
                 self._ai_task = asyncio.create_task(self._ai_process_queue())
 
@@ -565,6 +648,37 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_history.append(entry)
         if len(self._ai_history) > 20:
             self._ai_history = self._ai_history[-20:]
+
+    def _build_plan_item(
+        self,
+        item_id: int,
+        cmd: str,
+        why: str,
+        forbidden_patterns: list[str] | None = None,
+    ) -> dict[str, Any]:
+        clean_cmd = str(cmd or "").strip()
+        reason = self._compute_confirm_reason(clean_cmd, forbidden_patterns or [])
+        return {
+            "id": int(item_id),
+            "cmd": clean_cmd,
+            "why": str(why or "").strip(),
+            "requires_confirm": bool(reason),
+            "reason": reason,
+            "status": "pending",
+            "streaming": self._is_streaming_command(clean_cmd),
+        }
+
+    @staticmethod
+    def _normalize_command_text(cmd: str) -> str:
+        clean_cmd = (cmd or "").strip()
+        if not clean_cmd:
+            return ""
+        if "\x00" in clean_cmd:
+            raise ValueError("Команда содержит недопустимый нулевой байт")
+        # Allow multiline heredoc/script commands from planner.
+        if len(clean_cmd) > 12000:
+            raise ValueError("Команда слишком длинная (лимит 12000 символов)")
+        return clean_cmd
 
     async def _ai_process_queue(self):
         """
@@ -589,14 +703,14 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     requires_confirm = bool(item.get("requires_confirm"))
                     status = str(item.get("status") or "pending")
 
-                    if status in ("done", "skipped"):
+                    if status in ("done", "skipped", "cancelled"):
                         self._ai_plan_index += 1
                         continue
 
                     if requires_confirm:
                         item["status"] = "pending_confirm"
                         # Pause until user confirms/cancels current command
-                        await self.send_json(
+                        await self._send_ai_event(
                             {
                                 "type": "ai_status",
                                 "status": "waiting_confirm",
@@ -609,9 +723,17 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
                     item["status"] = "running"
 
-                await self.send_json({"type": "ai_command_status", "id": item_id, "status": "running"})
+                await self._send_ai_event({"type": "ai_command_status", "id": item_id, "status": "running"})
 
-                exit_code, output_snippet = await self._ai_execute_command(cmd, item_id)
+                try:
+                    exit_code, output_snippet = await self._ai_execute_command(cmd, item_id)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning("AI command execution failed (id=%s): %s", item_id, e)
+                    # Do not crash the whole queue on one bad command; let recovery logic decide.
+                    exit_code = 1
+                    output_snippet = f"WEUAI_EXECUTION_ERROR: {type(e).__name__}: {e}"
                 await self._log_ai_command_history(
                     user_id=self._user_id,
                     server_id=self.server.id,
@@ -633,7 +755,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 if exit_code not in (0, 130, None) and not item.get("_no_recovery"):
                     retries = self._ai_error_retries.get(item_id, 0)
                     if retries < 2:
-                        await self.send_json({
+                        await self._send_ai_event({
                             "type": "ai_status",
                             "status": "analyzing_error",
                             "cmd": cmd,
@@ -655,19 +777,27 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                                     next_id = self._ai_next_id
                                     self._ai_next_id += 1
                                     self._ai_error_retries[next_id] = retries + 1
-                                    new_item = {
-                                        "id": next_id, "cmd": new_cmd, "why": why,
-                                        "status": "pending", "_no_recovery": False,
-                                    }
+                                    async with self._ai_lock:
+                                        forbidden_patterns = list(self._ai_forbidden_patterns or [])
+                                    new_item = self._build_plan_item(
+                                        item_id=next_id,
+                                        cmd=new_cmd,
+                                        why=why,
+                                        forbidden_patterns=forbidden_patterns,
+                                    )
+                                    new_item["_no_recovery"] = False
                                     async with self._ai_lock:
                                         # Insert right after current position
                                         self._ai_plan.insert(self._ai_plan_index + 1, new_item)
-                                    await self.send_json({
+                                    await self._send_ai_event({
                                         "type": "ai_recovery",
                                         "original_cmd": cmd,
                                         "new_cmd": new_cmd,
                                         "new_id": next_id,
                                         "why": why,
+                                        "requires_confirm": bool(new_item.get("requires_confirm")),
+                                        "reason": str(new_item.get("reason") or ""),
+                                        "streaming": bool(new_item.get("streaming")),
                                     })
 
                             elif recovery_action == "ask":
@@ -677,7 +807,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                                 loop = asyncio.get_event_loop()
                                 reply_fut: asyncio.Future = loop.create_future()
                                 self._ai_reply_futures[q_id] = reply_fut
-                                await self.send_json({
+                                await self._send_ai_event({
                                     "type": "ai_question",
                                     "q_id": q_id,
                                     "question": question,
@@ -699,23 +829,31 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                                             next_id2 = self._ai_next_id
                                             self._ai_next_id += 1
                                             self._ai_error_retries[next_id2] = retries + 1
-                                            new_item2 = {
-                                                "id": next_id2, "cmd": new_cmd2, "why": why2,
-                                                "status": "pending", "_no_recovery": False,
-                                            }
+                                            async with self._ai_lock:
+                                                forbidden_patterns = list(self._ai_forbidden_patterns or [])
+                                            new_item2 = self._build_plan_item(
+                                                item_id=next_id2,
+                                                cmd=new_cmd2,
+                                                why=why2,
+                                                forbidden_patterns=forbidden_patterns,
+                                            )
+                                            new_item2["_no_recovery"] = False
                                             async with self._ai_lock:
                                                 self._ai_plan.insert(self._ai_plan_index + 1, new_item2)
-                                            await self.send_json({
+                                            await self._send_ai_event({
                                                 "type": "ai_recovery",
                                                 "original_cmd": cmd,
                                                 "new_cmd": new_cmd2,
                                                 "new_id": next_id2,
                                                 "why": why2,
+                                                "requires_confirm": bool(new_item2.get("requires_confirm")),
+                                                "reason": str(new_item2.get("reason") or ""),
+                                                "streaming": bool(new_item2.get("streaming")),
                                             })
                                             recovery_action = "retry"
                                     elif decision2.get("action") == "abort":
                                         recovery_action = "abort"
-                                        await self.send_json({
+                                        await self._send_ai_event({
                                             "type": "ai_error",
                                             "message": str(decision2.get("why") or "Выполнение прервано"),
                                         })
@@ -727,7 +865,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                                     self._ai_reply_futures.pop(q_id, None)
 
                             elif recovery_action == "abort":
-                                await self.send_json({
+                                await self._send_ai_event({
                                     "type": "ai_error",
                                     "message": str(decision.get("why") or "Выполнение прервано из-за критической ошибки"),
                                 })
@@ -739,7 +877,6 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                             recovery_action = "skip"
 
                 if recovery_action == "abort":
-                    send_idle = False
                     break
                 # ── End adaptive error recovery ─────────────────────────────
 
@@ -751,7 +888,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         self._ai_plan_index += 1
 
                 is_stream = bool(item.get("streaming", False))
-                await self.send_json({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code, "streaming": is_stream})
+                await self._send_ai_event({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code, "streaming": is_stream})
 
             # После выполнения всех команд — сформировать отчёт по выводу (анализ логов, проблем и т.д.)
             if send_idle:
@@ -772,7 +909,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     report = ""
                     if done_with_output:
                         try:
-                            await self.send_json({"type": "ai_status", "status": "generating_report"})
+                            await self._send_ai_event({"type": "ai_status", "status": "generating_report"})
                             report = (await self._ai_make_report(user_msg, done_with_output)).strip()
                         except Exception as e:
                             logger.warning("AI report generation failed: %s", e)
@@ -796,7 +933,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                             rep_status = "error" if ok_count < len(codes) / 2 else "warning"
                         else:
                             rep_status = "warning"
-                        await self.send_json({"type": "ai_report", "report": report, "status": rep_status})
+                        await self._send_ai_event({"type": "ai_report", "report": report, "status": rep_status})
                         # Save structured execution summary to history (for next planning call)
                         exec_summary_parts = []
                         for it in done_items:
@@ -812,13 +949,13 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         except Exception as e:
             logger.exception("AI processing failed")
             try:
-                await self.send_json({"type": "ai_error", "message": str(e)})
+                await self._send_ai_event({"type": "ai_error", "message": str(e)})
             except Exception:
                 pass
         finally:
             if send_idle:
                 try:
-                    await self.send_json({"type": "ai_status", "status": "idle"})
+                    await self._send_ai_event({"type": "ai_status", "status": "idle"})
                 except Exception:
                     pass
 
@@ -831,14 +968,9 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         if not self._ssh_proc:
             raise RuntimeError("SSH process not connected")
 
-        clean_cmd = (cmd or "").strip()
+        clean_cmd = self._normalize_command_text(cmd)
         if not clean_cmd:
             return -1, ""
-
-        if "\n" in clean_cmd or "\r" in clean_cmd:
-            raise ValueError("Команда должна быть однострочной")
-        if len(clean_cmd) > 400:
-            raise ValueError("Команда слишком длинная")
 
         is_streaming = self._is_streaming_command(clean_cmd)
         is_install = self._is_install_command(clean_cmd)
@@ -854,9 +986,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ssh_proc.stdin.write("\n")
 
         # Marker line to capture exit status (filtered from UI output)
-        marker_var = f"{_WEUAI_MARKER_PREFIX}{cmd_id}"
+        marker_prefix = self._marker_prefix()
+        marker_var = f"{marker_prefix}{cmd_id}"
         marker_cmd = (
-            f"{marker_var}=$?; echo \"{_WEUAI_MARKER_PREFIX}{cmd_id}:${{{marker_var}}}__\""
+            f"{marker_var}=$?; echo \"{marker_prefix}{cmd_id}:${{{marker_var}}}__\""
         )
         self._ssh_proc.stdin.write(marker_cmd + "\n")
 
@@ -960,7 +1093,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 # Send progress notification to frontend
                 last_line = (output_so_far.strip().split("\n")[-1] or "").strip()
                 try:
-                    await self.send_json({
+                    await self._send_ai_event({
                         "type": "ai_install_progress",
                         "cmd": cmd,
                         "elapsed": elapsed,
@@ -1269,7 +1402,27 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             pat = (str(p or "")).strip()
             if not pat:
                 continue
-            if pat.lower() in cmd_l:
+            pl = pat.lower()
+            if pl.startswith("re:"):
+                expr = pat[3:].strip()
+                if not expr:
+                    continue
+                try:
+                    if re.search(expr, cmd, flags=re.IGNORECASE):
+                        return True
+                except re.error:
+                    continue
+                continue
+
+            pat_tokens = re.findall(r"[a-z0-9_./:-]+", pl)
+            cmd_tokens = re.findall(r"[a-z0-9_./:-]+", cmd_l)
+            if pat_tokens and cmd_tokens:
+                plen = len(pat_tokens)
+                for i in range(0, len(cmd_tokens) - plen + 1):
+                    if cmd_tokens[i : i + plen] == pat_tokens:
+                        return True
+
+            if pl in cmd_l:
                 return True
         return False
 
@@ -1358,6 +1511,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
         suppress = bool(self._marker_suppress.get(stream, False))
         buf = self._marker_line_buf.get(stream, "")
+        marker_prefix = self._marker_prefix()
+        marker_re = re.compile(rf"^{re.escape(marker_prefix)}(\d+):(-?\d+)__\s*$")
 
         while i < len(data):
             if suppress:
@@ -1367,8 +1522,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     i = len(data)
                     break
                 buf += data[i:nl]
-                # Try parse marker output line: __WEUAI_EXIT_<id>:<code>__
-                m = re.match(r"^__WEUAI_EXIT_(\d+):(-?\d+)__\s*$", buf.strip())
+                # Try parse marker output line: __WEUAI_EXIT_<token>_<id>:<code>__
+                m = marker_re.match(buf.strip())
                 if m:
                     try:
                         markers.append((int(m.group(1)), int(m.group(2))))
@@ -1381,7 +1536,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 i = nl + 1
                 continue
 
-            idx = data.find(_WEUAI_MARKER_PREFIX, i)
+            idx = data.find(marker_prefix, i)
             if idx == -1:
                 out.append(data[i:])
                 i = len(data)
@@ -1407,7 +1562,10 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     def _append_terminal_tail(self, text: str):
         if not text:
             return
-        self._terminal_tail = (self._terminal_tail or "") + text
+        clean = self._strip_ansi_and_controls(text)
+        if not clean:
+            return
+        self._terminal_tail = (self._terminal_tail or "") + clean
         # keep last ~8k chars
         if len(self._terminal_tail) > 8000:
             self._terminal_tail = self._terminal_tail[-8000:]
@@ -1417,9 +1575,22 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             return
         if getattr(self, "_ai_active_cmd_id", None) is None:
             return
-        self._ai_active_output = (self._ai_active_output or "") + text
+        clean = self._strip_ansi_and_controls(text)
+        if not clean:
+            return
+        self._ai_active_output = (self._ai_active_output or "") + clean
         if len(self._ai_active_output) > 6000:
             self._ai_active_output = self._ai_active_output[-6000:]
+
+    @staticmethod
+    def _strip_ansi_and_controls(text: str) -> str:
+        if not text:
+            return ""
+        # ANSI escape sequences
+        out = re.sub(r"\x1B[@-_][0-?]*[ -/]*[@-~]", "", text)
+        # C0 controls except line breaks and tab
+        out = re.sub(r"[\x00-\x08\x0B-\x1F\x7F]", "", out)
+        return out
 
     async def _wait_for_process_exit(self):
         proc = self._ssh_proc
@@ -1466,9 +1637,11 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             key = str(k or "").strip()
             if not key:
                 continue
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                continue
             # Avoid newlines which would break the shell
             value = str(v if v is not None else "").replace("\n", " ").replace("\r", " ").strip()
-            exports.append(f"export {key}={value}")
+            exports.append(f"export {key}={shlex.quote(value)}")
         return "; ".join(exports)
 
     async def _get_session_master_password(self) -> str:
@@ -1605,4 +1778,3 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             output=output_snippet or "",
             exit_code=exit_code,
         )
-

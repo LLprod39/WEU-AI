@@ -453,6 +453,8 @@
     .cmd-status.running { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
     .cmd-status.done { background: rgba(16, 185, 129, 0.2); color: #34d399; }
     .cmd-status.skipped { background: rgba(107, 114, 128, 0.2); color: #6b7280; }
+    .cmd-status.cancelled { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .cmd-status.captured { background: rgba(6, 182, 212, 0.2); color: #22d3ee; }
     .cmd-status.error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
 
     .cmd-actions {
@@ -614,6 +616,57 @@
     .report-body-md strong { color: #e5e7eb; font-weight: 600; }
     .report-body-md p { margin: 8px 0; }
     .report-body-md code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    .ai-state-note {
+        align-self: center;
+        font-size: 11px;
+        color: #9ca3af;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 999px;
+        padding: 4px 10px;
+    }
+    .ai-question-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(99, 102, 241, 0.25);
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .ai-question-row {
+        display: flex;
+        gap: 6px;
+    }
+    .ai-question-row input {
+        flex: 1;
+        min-width: 0;
+        background: rgba(9, 9, 11, 0.8);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        padding: 7px 10px;
+        color: #fff;
+        font-size: 12px;
+    }
+    .ai-question-row button {
+        padding: 0 10px;
+        border-radius: 6px;
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.35);
+        color: #c7d2fe;
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .ai-install-note {
+        align-self: flex-start;
+        background: rgba(6, 182, 212, 0.08);
+        border: 1px solid rgba(6, 182, 212, 0.25);
+        color: #a5f3fc;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 11px;
+        line-height: 1.35;
+    }
 </style>
 
 <div class="terminal-hub">
@@ -720,7 +773,11 @@ function addTerminalTab(serverId, serverName, host, port, username) {
         fitAddon: null,
         resizeObserver: null,
         status: 'disconnected',
-        aiCommandEls: {}
+        aiCommandEls: {},
+        aiStatus: 'idle',
+        aiRunId: '',
+        aiInstallNode: null,
+        aiRenderedRun: ''
     };
     tabs.set(tabId, tabData);
 
@@ -984,6 +1041,7 @@ function connectTab(tabId) {
         let msg;
         try { msg = JSON.parse(ev.data); } catch(e) { return; }
         if (!msg || !msg.type) return;
+        if (msg.run_id) tabData.aiRunId = String(msg.run_id);
 
         switch (msg.type) {
             case 'output':
@@ -999,6 +1057,9 @@ function connectTab(tabId) {
             case 'exit':
                 tabData.terminal.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m');
                 break;
+            case 'ai_status':
+                handleAiStatus(tabId, msg);
+                break;
             case 'ai_response':
                 handleAiResponse(tabId, msg);
                 break;
@@ -1010,13 +1071,27 @@ function connectTab(tabId) {
                 break;
             case 'ai_error':
                 appendAiMsg(tabId, 'system', msg.message || 'AI Error');
+                handleAiStatus(tabId, { status: 'idle' });
+                break;
+            case 'ai_recovery':
+                handleAiRecovery(tabId, msg);
+                break;
+            case 'ai_question':
+                handleAiQuestion(tabId, msg);
+                break;
+            case 'ai_install_progress':
+                handleAiInstallProgress(tabId, msg);
                 break;
         }
     };
 
-    socket.onclose = () => setTabStatus(tabId, 'disconnected');
+    socket.onclose = () => {
+        setTabStatus(tabId, 'disconnected');
+        handleAiStatus(tabId, { status: 'idle' });
+    };
     socket.onerror = () => {
         setTabStatus(tabId, 'disconnected');
+        handleAiStatus(tabId, { status: 'idle' });
         tabData.terminal.writeln('\r\n\x1b[1;31m[Connection error]\x1b[0m');
     };
 }
@@ -1032,6 +1107,7 @@ function disconnectTab(tabId) {
     } catch(e) {}
     tabData.socket = null;
     setTabStatus(tabId, 'disconnected');
+    handleAiStatus(tabId, { status: 'idle' });
 }
 
 // AI Sidebar
@@ -1070,46 +1146,162 @@ function handleAiReport(tabId, msg) {
     container.scrollTop = container.scrollHeight;
 }
 
+function handleAiStatus(tabId, msg) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    const next = String(msg?.status || 'idle');
+    const prev = tabData.aiStatus || 'idle';
+    tabData.aiStatus = next;
+
+    if (next === 'idle') {
+        hideAiInstallProgress(tabId);
+    }
+    if (next === prev) return;
+
+    if (next === 'thinking') appendAiMsg(tabId, 'system', 'AI: анализирую запрос...');
+    if (next === 'waiting_confirm') appendAiMsg(tabId, 'system', 'AI: ожидаю подтверждение команды.');
+    if (next === 'analyzing_error') appendAiMsg(tabId, 'system', 'AI: анализирую ошибку выполнения...');
+    if (next === 'generating_report') appendAiMsg(tabId, 'system', 'AI: формирую итоговый отчёт...');
+    if (next === 'idle' && prev !== 'idle') appendAiMsg(tabId, 'system', 'AI: выполнение завершено.');
+}
+
+function ensureCommandCard(tabId, c) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return null;
+
+    const id = c?.id;
+    if (!id) return null;
+    if (tabData.aiCommandEls[id]) return tabData.aiCommandEls[id];
+
+    const container = document.getElementById('ai-messages-' + tabId);
+    if (!container) return null;
+
+    const card = document.createElement('div');
+    card.className = 'cmd-card';
+    const reason = c.reason ? ' <span style="color: #fbbf24;">(' + escapeHtml(c.reason) + ')</span>' : '';
+    card.innerHTML = `
+        <div class="cmd-card-header">
+            <span style="color: #6b7280;">Command #${escapeHtml(id)}${reason}</span>
+            <span class="cmd-status ${c.requires_confirm ? 'pending_confirm' : 'pending'}" id="cmd-st-${tabId}-${id}">${c.requires_confirm ? 'Confirm?' : 'Pending'}</span>
+        </div>
+        <div class="cmd-card-body">
+            <div class="cmd-code">${escapeHtml(c.cmd || '')}</div>
+            <div class="cmd-actions" id="cmd-act-${tabId}-${id}"></div>
+        </div>
+    `;
+    container.appendChild(card);
+    container.scrollTop = container.scrollHeight;
+
+    tabData.aiCommandEls[id] = {
+        statusEl: card.querySelector('#cmd-st-' + tabId + '-' + id),
+        actionsEl: card.querySelector('#cmd-act-' + tabId + '-' + id),
+    };
+
+    if (c.requires_confirm) renderCmdButtons(tabId, id);
+    return tabData.aiCommandEls[id];
+}
+
 function handleAiResponse(tabId, msg) {
     const tabData = tabs.get(tabId);
     if (!tabData) return;
+    if (msg.run_id && tabData.aiRenderedRun && msg.run_id !== tabData.aiRenderedRun) {
+        tabData.aiCommandEls = {};
+        const box = document.querySelector('#ai-messages-' + tabId);
+        box?.querySelectorAll('.cmd-card').forEach(el => el.remove());
+        hideAiInstallProgress(tabId);
+    }
+    if (msg.run_id) tabData.aiRenderedRun = msg.run_id;
 
     if (msg.assistant_text) {
         appendAiMsg(tabId, 'assistant', msg.assistant_text);
     }
 
     if (!Array.isArray(msg.commands) || !msg.commands.length) return;
-
-    const container = document.getElementById('ai-messages-' + tabId);
     msg.commands.forEach(c => {
-        const id = c.id;
-        if (!id) return;
-
-        const card = document.createElement('div');
-        card.className = 'cmd-card';
-        const reason = c.reason ? ' <span style="color: #fbbf24;">(' + escapeHtml(c.reason) + ')</span>' : '';
-        card.innerHTML = `
-            <div class="cmd-card-header">
-                <span style="color: #6b7280;">Command #${escapeHtml(id)}${reason}</span>
-                <span class="cmd-status ${c.requires_confirm ? 'pending_confirm' : 'pending'}" id="cmd-st-${tabId}-${id}">${c.requires_confirm ? 'Confirm?' : 'Pending'}</span>
-            </div>
-            <div class="cmd-card-body">
-                <div class="cmd-code">${escapeHtml(c.cmd || '')}</div>
-                <div class="cmd-actions" id="cmd-act-${tabId}-${id}"></div>
-            </div>
-        `;
-        container.appendChild(card);
-        container.scrollTop = container.scrollHeight;
-
-        tabData.aiCommandEls[id] = {
-            statusEl: card.querySelector('#cmd-st-' + tabId + '-' + id),
-            actionsEl: card.querySelector('#cmd-act-' + tabId + '-' + id)
-        };
-
-        if (c.requires_confirm) {
-            renderCmdButtons(tabId, id);
-        }
+        ensureCommandCard(tabId, c);
     });
+}
+
+function handleAiRecovery(tabId, msg) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    if (msg.run_id && tabData.aiRenderedRun && msg.run_id !== tabData.aiRenderedRun) return;
+    const note = msg.why ? `\n${msg.why}` : '';
+    appendAiMsg(tabId, 'system', `Recovery: ${msg.original_cmd || '(unknown)'} -> ${msg.new_cmd || '(empty)'}${note}`);
+    if (!msg.new_id || !msg.new_cmd) return;
+    ensureCommandCard(tabId, {
+        id: msg.new_id,
+        cmd: msg.new_cmd,
+        reason: msg.reason || '',
+        why: msg.why || '',
+        requires_confirm: !!msg.requires_confirm,
+        streaming: !!msg.streaming,
+    });
+}
+
+function handleAiQuestion(tabId, msg) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    if (msg.run_id && tabData.aiRenderedRun && msg.run_id !== tabData.aiRenderedRun) return;
+    const qid = String(msg.q_id || '');
+    if (!qid) return;
+    const container = document.getElementById('ai-messages-' + tabId);
+    if (!container) return;
+
+    const card = document.createElement('div');
+    card.className = 'ai-question-card';
+    card.id = 'ai-question-' + tabId + '-' + qid;
+    card.innerHTML = `
+        <div style="font-size:11px;color:#c7d2fe;font-weight:600;">AI вопрос по команде: ${escapeHtml((msg.cmd || '').slice(0, 80))}</div>
+        <div style="font-size:12px;color:#d1d5db;">${escapeHtml(msg.question || 'Как лучше продолжить?')}</div>
+        <div class="ai-question-row">
+            <input id="ai-reply-input-${tabId}-${qid}" type="text" placeholder="Ваш ответ..." onkeydown="if(event.key==='Enter'){sendAiReply('${tabId}', '${qid}');}" />
+            <button onclick="sendAiReply('${tabId}', '${qid}')">Send</button>
+        </div>
+    `;
+    container.appendChild(card);
+    container.scrollTop = container.scrollHeight;
+}
+
+function sendAiReply(tabId, qid) {
+    const tabData = tabs.get(tabId);
+    if (!tabData?.socket || tabData.socket.readyState !== WebSocket.OPEN) return;
+    const input = document.getElementById('ai-reply-input-' + tabId + '-' + qid);
+    if (!input) return;
+    const text = (input.value || '').trim();
+    if (!text) return;
+    tabData.socket.send(JSON.stringify({ type: 'ai_reply', q_id: qid, text }));
+    const card = document.getElementById('ai-question-' + tabId + '-' + qid);
+    if (card) {
+        card.innerHTML = `<div style="font-size:11px;color:#34d399;">✓ Ответ отправлен: ${escapeHtml(text)}</div>`;
+    }
+}
+
+function handleAiInstallProgress(tabId, msg) {
+    const container = document.getElementById('ai-messages-' + tabId);
+    const tabData = tabs.get(tabId);
+    if (!container || !tabData) return;
+    if (msg.run_id && tabData.aiRenderedRun && msg.run_id !== tabData.aiRenderedRun) return;
+    let node = tabData.aiInstallNode;
+    if (!node || !document.body.contains(node)) {
+        node = document.createElement('div');
+        node.className = 'ai-install-note';
+        container.appendChild(node);
+        tabData.aiInstallNode = node;
+    }
+    const elapsed = Number(msg.elapsed || 0);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    const stamp = m > 0 ? `${m}m ${s}s` : `${s}s`;
+    node.innerHTML = `<strong>Install progress</strong> (${stamp})<br>${escapeHtml(msg.output_tail || '')}`;
+    container.scrollTop = container.scrollHeight;
+}
+
+function hideAiInstallProgress(tabId) {
+    const tabData = tabs.get(tabId);
+    const node = tabData?.aiInstallNode;
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+    if (tabData) tabData.aiInstallNode = null;
 }
 
 function renderCmdButtons(tabId, cmdId) {
@@ -1125,14 +1317,30 @@ function renderCmdButtons(tabId, cmdId) {
 
 function updateCmdStatus(tabId, msg) {
     const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    if (msg.run_id && tabData.aiRenderedRun && msg.run_id !== tabData.aiRenderedRun) return;
     const entry = tabData?.aiCommandEls[msg.id];
     if (!entry) return;
 
     let statusText = msg.status;
     let statusClass = msg.status;
     if (msg.status === 'done' && msg.exit_code != null) {
-        statusText = 'Done (exit=' + msg.exit_code + ')';
-        statusClass = msg.exit_code === 0 ? 'done' : 'error';
+        if (msg.exit_code === 0) {
+            statusText = 'Done';
+            statusClass = 'done';
+        } else if (msg.exit_code === 130 && msg.streaming) {
+            statusText = 'Captured';
+            statusClass = 'captured';
+        } else {
+            statusText = 'Error (exit=' + msg.exit_code + ')';
+            statusClass = 'error';
+        }
+    } else if (msg.status === 'running' || msg.status === 'confirmed') {
+        statusText = 'Running';
+        statusClass = 'running';
+    } else if (msg.status === 'cancelled') {
+        statusText = 'Cancelled';
+        statusClass = 'cancelled';
     }
 
     if (entry.statusEl) {
@@ -1140,7 +1348,7 @@ function updateCmdStatus(tabId, msg) {
         entry.statusEl.className = 'cmd-status ' + statusClass;
     }
 
-    if (['running', 'done', 'skipped', 'confirmed'].includes(msg.status)) {
+    if (['running', 'done', 'skipped', 'confirmed', 'cancelled'].includes(msg.status)) {
         if (entry.actionsEl) entry.actionsEl.innerHTML = '';
     }
 }
@@ -1171,6 +1379,7 @@ function sendAiMessage(tabId) {
     }
 
     appendAiMsg(tabId, 'user', text);
+    handleAiStatus(tabId, { status: 'thinking' });
     input.value = '';
     tabData.socket.send(JSON.stringify({ type: 'ai_request', message: text }));
 }

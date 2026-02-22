@@ -80,6 +80,7 @@ class TestServersTerminalWebSocket(TransactionTestCase):
             await comm.send_json_to({"type": "ai_request", "message": "проверь диск"})
             msg = await comm.receive_json_from()
             self.assertEqual(msg.get("type"), "ai_error")
+            self.assertTrue(bool(msg.get("run_id")))
 
             await comm.disconnect()
 
