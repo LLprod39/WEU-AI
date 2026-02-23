@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+
+{% block title %}RDP — {{ server.name }}{% endblock %}
+{% block header_title %}RDP (Windows){% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm min-w-0">
+    <ol class="flex items-center gap-2 list-none" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center gap-2">
+            <a href="{% url 'servers:server_list' %}" class="text-gray-500 hover:text-white transition-colors" itemprop="item"><span itemprop="name">Servers</span></a>
+            <meta itemprop="position" content="1">
+            <span class="text-gray-700">/</span>
+        </li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="flex items-center" aria-current="page">
+            <span class="font-medium text-white truncate max-w-[200px]" itemprop="name">{{ server.name }}</span>
+            <meta itemprop="position" content="2">
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<style>
+.rdp-root { display: flex; flex-direction: column; height: 100%; min-height: 400px; background: #09090b; border-radius: 12px; overflow: hidden; }
+.rdp-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(17,17,21,0.95); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.rdp-toolbar a { color: #9ca3af; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+.rdp-toolbar a:hover { color: #fff; }
+.rdp-display-wrap { flex: 1; min-height: 0; position: relative; }
+#rdp-display { width: 100%; height: 100%; }
+.rdp-connect-panel { padding: 16px; background: rgba(9,9,11,0.98); border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rdp-connect-panel input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 13px; }
+.rdp-connect-panel input:focus { outline: none; border-color: rgba(99,102,241,0.5); }
+.rdp-connect-panel button { padding: 8px 16px; background: #6366f1; color: #fff; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; }
+.rdp-connect-panel button:hover { background: #4f46e5; }
+.rdp-connect-panel button:disabled { opacity: 0.6; cursor: not-allowed; }
+.rdp-status { font-size: 12px; color: #6b7280; }
+.rdp-status.connected { color: #10b981; }
+.rdp-status.error { color: #ef4444; }
+</style>
+
+<div class="rdp-root">
+    <div class="rdp-toolbar">
+        <a href="{% url 'servers:server_list' %}"><span class="material-icons-round" style="font-size:18px">arrow_back</span> Servers</a>
+        <span class="rdp-status" id="rdp-status">Disconnected</span>
+    </div>
+    <div class="rdp-connect-panel" id="rdp-connect-panel">
+        <input type="password" id="rdp-master-password" placeholder="Master password (for stored credentials)" style="width: 220px;">
+        <input type="password" id="rdp-password" placeholder="RDP password (optional override)" style="width: 220px;">
+        <input type="text" id="rdp-domain" placeholder="Domain (optional)" style="width: 180px;">
+        <button type="button" id="rdp-connect-btn">Connect</button>
+    </div>
+    <div class="rdp-display-wrap">
+        <div id="rdp-display"></div>
+    </div>
+</div>
+
+<script type="module">
+(function() {
+    const serverId = {{ server.id }};
+    const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = wsScheme + '//' + window.location.host + '/ws/servers/' + serverId + '/rdp/';
+
+    const statusEl = document.getElementById('rdp-status');
+    const panelEl = document.getElementById('rdp-connect-panel');
+    const connectBtn = document.getElementById('rdp-connect-btn');
+    const displayEl = document.getElementById('rdp-display');
+    const masterPasswordEl = document.getElementById('rdp-master-password');
+    const passwordEl = document.getElementById('rdp-password');
+    const domainEl = document.getElementById('rdp-domain');
+    let lastError = '';
+    let activeWs = null;
+
+    function setStatus(text, cls) {
+        statusEl.textContent = text;
+        statusEl.className = 'rdp-status' + (cls ? ' ' + cls : '');
+    }
+
+    function showError(message) {
+        const msg = message || 'Unknown RDP error';
+        lastError = msg;
+        setStatus('Error: ' + msg, 'error');
+        panelEl.style.display = 'flex';
+        connectBtn.disabled = false;
+    }
+
+    function closeActiveWs() {
+        if (!activeWs) return;
+        try {
+            if (activeWs.readyState === WebSocket.OPEN || activeWs.readyState === WebSocket.CONNECTING) {
+                activeWs.close();
+            }
+        } catch (e) {}
+        activeWs = null;
+    }
+
+    async function connect() {
+        closeActiveWs();
+        lastError = '';
+        connectBtn.disabled = true;
+        setStatus('Connecting…');
+        const masterPassword = (masterPasswordEl && masterPasswordEl.value) || '';
+        const password = (passwordEl && passwordEl.value) || '';
+        const domain = (domainEl && domainEl.value) || '';
+
+        try {
+            const Guacamole = (await import('https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/esm/guacamole-common.js')).default;
+            let tunnel = null;
+            let guacClient = null;
+
+            const ws = new WebSocket(wsUrl);
+            activeWs = ws;
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = function() {
+                ws.send(JSON.stringify({
+                    master_password: masterPassword,
+                    password: password,
+                    domain: domain
+                }));
+            };
+
+            ws.onmessage = function(ev) {
+                let data = ev.data;
+                if (data instanceof ArrayBuffer)
+                    data = new TextDecoder().decode(data);
+                if (typeof data !== 'string') return;
+                var trimmed = data.trim();
+                if (trimmed.charAt(0) === '{') {
+                    try {
+                        var j = JSON.parse(data);
+                        if (j.error) {
+                            var code = j.code ? (' [' + j.code + ']') : '';
+                            showError(j.error + code);
+                        }
+                    } catch (err) {
+                        showError('Invalid error payload');
+                    }
+                    return;
+                }
+
+                if (!tunnel) {
+                    tunnel = new Guacamole.Tunnel();
+                    tunnel.connect = function() {};
+                    tunnel.sendMessage = function() {
+                        if (ws.readyState !== WebSocket.OPEN || !arguments.length) return;
+                        var parts = [];
+                        for (var i = 0; i < arguments.length; i++) {
+                            var s = String(arguments[i]);
+                            parts.push(s.length + "." + s);
+                        }
+                        ws.send(parts.join(",") + ";");
+                    };
+                    tunnel.uuid = null;
+                    tunnel.disconnect = function() { ws.close(); };
+                    var parser = new Guacamole.Parser();
+                    parser.oninstruction = function(opcode, args) {
+                        if (tunnel.uuid === null) {
+                            if (opcode === Guacamole.Tunnel.INTERNAL_DATA_OPCODE && args.length === 1)
+                                tunnel.setUUID(args[0]);
+                            tunnel.setState(Guacamole.Tunnel.State.OPEN);
+                        }
+                        if (opcode !== Guacamole.Tunnel.INTERNAL_DATA_OPCODE && tunnel.oninstruction)
+                            tunnel.oninstruction(opcode, args);
+                    };
+                    tunnel._parser = parser;
+                    guacClient = new Guacamole.Client(tunnel);
+                    displayEl.innerHTML = '';
+                    displayEl.appendChild(guacClient.getDisplay().getElement());
+                    guacClient.getDisplay().showCursor(true);
+                    guacClient.connect();
+
+                    guacClient.onerror = function(status) {
+                        var msg = (status && (status.message || status.code)) || 'Guacamole error';
+                        showError(msg);
+                    };
+
+                    guacClient.onstatechange = function(state) {
+                        if (state === Guacamole.Client.State.WAITING) {
+                            panelEl.style.display = 'flex';
+                            setStatus('Authorizing…');
+                        } else if (state === Guacamole.Client.State.CONNECTED) {
+                            panelEl.style.display = 'none';
+                            setStatus('Connected', 'connected');
+                        } else if (state === Guacamole.Client.State.DISCONNECTING) {
+                            setStatus('Disconnecting…');
+                        } else if (state === Guacamole.Client.State.DISCONNECTED) {
+                            if (!lastError) setStatus('Disconnected', '');
+                            panelEl.style.display = 'flex';
+                            connectBtn.disabled = false;
+                        }
+                    };
+                }
+                try {
+                    tunnel._parser.receive(data);
+                } catch (e) {
+                    showError('Protocol parse error');
+                    console.error('RDP parse error', e);
+                }
+            };
+
+            ws.onclose = function(ev) {
+                if (!lastError) {
+                    if (ev && ev.code && ev.code !== 1000) {
+                        var suffix = ev.reason ? (': ' + ev.reason) : '';
+                        setStatus('Disconnected (' + ev.code + suffix + ')', 'error');
+                    } else {
+                        setStatus('Disconnected', '');
+                    }
+                }
+                panelEl.style.display = 'flex';
+                connectBtn.disabled = false;
+                if (activeWs === ws) activeWs = null;
+            };
+
+            ws.onerror = function() {
+                if (!lastError) showError('Connection error');
+            };
+        } catch (e) {
+            console.error('RDP connect error', e);
+            showError(e.message || 'Failed to load client');
+        }
+    }
+
+    connectBtn.addEventListener('click', connect);
+})();
+</script>
+{% endblock %}

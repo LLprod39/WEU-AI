@@ -1,0 +1,40 @@
+{
+  "name": "Развернуть Grafana в Docker на порту 9500",
+  "description": "Развернуть в докере графану и настроить на порту 9500",
+  "runtime": "cursor",
+  "task_type": "server",
+  "target_server": "lunix",
+  "steps": [
+    {
+      "title": "Развернуть Grafana в Docker на порту 9500",
+      "prompt": "Execute via server_execute on server lunix: разверни Grafana в Docker и настрои на порту 9500. Используй docker run или docker-compose. Убедись, что Grafana доступна на порту 9500. Output <promise>STEP_DONE</promise> when done",
+      "completion_promise": "STEP_DONE",
+      "max_iterations": 3
+    }
+  ],
+  "model": "auto",
+  "ralph_yml": {
+    "cli": {
+      "backend": "cursor"
+    },
+    "event_loop": {
+      "completion_promise": "LOOP_COMPLETE",
+      "max_iterations": 50,
+      "starting_event": "task.start"
+    },
+    "hats": {
+      "step_1": {
+        "name": "Развернуть Grafana в Docker на порту 9500",
+        "description": "Развернуть Grafana в Docker на порту 9500",
+        "triggers": [
+          "task.start"
+        ],
+        "publishes": [
+          "step_1.done"
+        ],
+        "instructions": "Execute via server_execute on server lunix: разверни Grafana в Docker и настрои на порту 9500. Используй docker run или docker-compose. Убедись, что Grafana доступна на порту 9500. Output <promise>STEP_DONE</promise> when done"
+      }
+    }
+  },
+  "script_file": "/mnt/c/work_ai/agent_projects/web_rA/media/workflows/workflow-46.json"
+}

@@ -1,32 +1,74 @@
 """
 Middleware: русский язык для админки Django + определение мобильных устройств.
 """
+from urllib.parse import urlparse
+
 from django.utils import translation
 from django.conf import settings
 
 
+def _origin_from_referer(referer: str) -> str | None:
+    """Из Referer извлекает origin (scheme + netloc)."""
+    if not referer or not referer.startswith(("http://", "https://")):
+        return None
+    try:
+        p = urlparse(referer)
+        if p.scheme and p.netloc:
+            return f"{p.scheme}://{p.netloc}"
+    except Exception:
+        pass
+    return None
+
+
 class CsrfTrustNgrokMiddleware:
     """
-    Динамически добавляет ngrok-домены в CSRF_TRUSTED_ORIGINS.
-    При каждом рестарте ngrok меняет URL (8e81-..., 8c56-..., и т.д.),
-    поэтому фиксированный список не работает. Этот middleware доверяет
-    любой Origin с *.ngrok-free.app или *.ngrok.io.
+    Динамически добавляет любые ngrok-домены в CSRF_TRUSTED_ORIGINS.
+    При каждом рестарте ngrok меняет URL (8e81-..., 4b20-..., и т.д.),
+    поэтому фиксированный список не помогает. Middleware доверяет любой
+    origin с *.ngrok-free.app или *.ngrok.io из заголовков Origin и Referer.
     """
     NGROK_PATTERNS = (".ngrok-free.app", ".ngrok.io")
 
     def __init__(self, get_response):
         self.get_response = get_response
 
-    def __call__(self, request):
-        origin = request.META.get("HTTP_ORIGIN")
-        if origin and any(p in origin for p in self.NGROK_PATTERNS):
-            trusted = getattr(settings, "CSRF_TRUSTED_ORIGINS", [])
+    def _is_ngrok_origin(self, origin: str | None) -> bool:
+        if not origin or not origin.startswith(("http://", "https://")):
+            return False
+        return any(p in origin for p in self.NGROK_PATTERNS)
+
+    def _add_origins(self, to_add: set[str]) -> None:
+        if not to_add:
+            return
+        trusted = list(getattr(settings, "CSRF_TRUSTED_ORIGINS", []))
+        changed = False
+        for origin in to_add:
             if origin not in trusted:
-                settings.CSRF_TRUSTED_ORIGINS = list(trusted) + [origin]
-                # http-версия для смешанного контента
-                http_origin = origin.replace("https://", "http://")
-                if http_origin not in settings.CSRF_TRUSTED_ORIGINS:
-                    settings.CSRF_TRUSTED_ORIGINS = list(settings.CSRF_TRUSTED_ORIGINS) + [http_origin]
+                trusted.append(origin)
+                changed = True
+            # всегда добавляем вторую схему (http/https) для того же хоста
+            other = origin.replace("https://", "http://") if origin.startswith("https://") else origin.replace("http://", "https://")
+            if other not in trusted:
+                trusted.append(other)
+                changed = True
+        if changed:
+            settings.CSRF_TRUSTED_ORIGINS = trusted
+
+    def __call__(self, request):
+        origins_to_trust: set[str] = set()
+
+        # 1) Origin — браузер часто шлёт при CORS / частично при POST
+        origin = request.META.get("HTTP_ORIGIN")
+        if self._is_ngrok_origin(origin):
+            origins_to_trust.add(origin)
+
+        # 2) Referer — при POST с формы браузер может не слать Origin, но шлёт Referer
+        referer = request.META.get("HTTP_REFERER")
+        referer_origin = _origin_from_referer(referer)
+        if self._is_ngrok_origin(referer_origin):
+            origins_to_trust.add(referer_origin)
+
+        self._add_origins(origins_to_trust)
         return self.get_response(request)
 
 

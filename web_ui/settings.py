@@ -51,11 +51,9 @@ ALLOWED_HOSTS = [
     if h.strip()
 ] or _DEFAULT_ALLOWED
 
-# Истоки для CSRF при доступе через ngrok (Django не поддерживает wildcard в этой настройке)
-CSRF_TRUSTED_ORIGINS = [
-    "https://8c56-46-42-238-129.ngrok-free.app",
-    "http://8c56-46-42-238-129.ngrok-free.app",
-]
+# Истоки для CSRF. Ngrok-домены добавляются автоматически в core_ui.middleware.CsrfTrustNgrokMiddleware.
+# Через .env можно добавить свои: CSRF_TRUSTED_ORIGINS=https://example.com,http://example.com
+CSRF_TRUSTED_ORIGINS = []
 _for_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "").strip()
 if _for_origins:
     CSRF_TRUSTED_ORIGINS.extend(o.strip() for o in _for_origins.split(",") if o.strip())

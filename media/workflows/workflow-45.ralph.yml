@@ -1,0 +1,19 @@
+cli:
+  backend: "cursor"
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 50
+  starting_event: "task.start"
+hats:
+  step_1:
+    name: "Анализ пакетов для обновления"
+    description: "Анализ пакетов для обновления"
+    triggers: ["task.start"]
+    publishes: ["step_1.done"]
+    instructions: "Execute via server_execute on weu-ai-test. Run commands to list upgradable packages (apt list --upgradable 2>/dev/null or yum check-update). Show count and list of packages. Output <promise>STEP_DONE</promise> when done"
+  step_2:
+    name: "Анализ системных логов"
+    description: "Анализ системных логов"
+    triggers: ["step_1.done"]
+    publishes: ["step_2.done"]
+    instructions: "Execute via server_execute on weu-ai-test. Run journalctl -n 100 --no-pager, dmesg | tail -50, and check /var/log for recent errors. Summarize findings. Output <promise>STEP_DONE</promise> when done"
