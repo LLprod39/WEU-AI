@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import uuid
+from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -17,7 +18,9 @@ from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_GET
 from django.conf import settings
+from django.db import transaction
 from django.db.models import OuterRef, Subquery, Count
+from django.urls import reverse
 from asgiref.sync import sync_to_async
 from dotenv import load_dotenv
 from loguru import logger
@@ -32,7 +35,7 @@ from app.rag.engine import RAGEngine
 from app.utils.file_processor import FileProcessor
 from app.utils.disk_usage import get_disk_usage_report
 from app.agents.manager import get_agent_manager
-from core_ui.context_processors import user_can_feature
+from core_ui.context_processors import user_can_feature, is_server_only_user
 from core_ui.decorators import require_feature, async_login_required, async_require_feature
 from core_ui.models import ChatSession, ChatMessage
 from core_ui.middleware import get_template_name
@@ -130,6 +133,12 @@ class CustomLoginView(LoginView):
         """Return mobile or desktop login template based on device."""
         return [get_template_name(self.request, 'login.html')]
 
+    def get_success_url(self):
+        """Server-only accounts should land directly on Servers tab after login."""
+        if is_server_only_user(self.request.user):
+            return reverse('servers:server_list')
+        return super().get_success_url()
+
 
 # ============================================
 # Public / Semi-Public Landing
@@ -176,6 +185,7 @@ def serve_landing_video(request, filename):
 # ============================================
 
 @login_required
+@require_feature('orchestrator', redirect_on_forbidden=True)
 def chat_view(request):
     """Main chat interface"""
     default_provider = model_manager.config.default_provider
@@ -232,6 +242,9 @@ def monitor_view(request):
 @login_required
 def dashboard_view(request):
     """Dashboard - main page with system overview for DevOps admins."""
+    if is_server_only_user(request.user):
+        return redirect('servers:server_list')
+
     from datetime import date, timedelta
     from django.utils import timezone as tz
     from servers.models import Server
@@ -329,6 +342,9 @@ def dashboard_view(request):
 @login_required
 def api_dashboard_stats(request):
     """API endpoint for dashboard statistics (for real-time updates)."""
+    if is_server_only_user(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
     from datetime import date, timedelta
     from django.utils import timezone as tz
     from servers.models import Server
@@ -428,14 +444,119 @@ def settings_view(request):
 # Settings: управление доступом (одна страница с вкладками)
 # ============================================
 
+
+def _access_feature_slugs():
+    from core_ui.models import FEATURE_CHOICES
+    return [slug for slug, _ in FEATURE_CHOICES]
+
+
+def _feature_allowed_for_user(user, feature: str, explicit_permissions: dict) -> bool:
+    """Effective access (explicit row > defaults), aligned with core_ui.context_processors."""
+    from core_ui.models import DEFAULT_ALLOWED_FEATURES
+
+    if user.is_staff:
+        explicit = explicit_permissions.get(feature)
+        return True if explicit is None else bool(explicit)
+
+    if feature == 'settings':
+        return bool(explicit_permissions.get('settings', False))
+
+    explicit = explicit_permissions.get(feature)
+    if explicit is not None:
+        return bool(explicit)
+    return feature in DEFAULT_ALLOWED_FEATURES
+
+
+def _build_user_access_payload(user, explicit_permissions: dict) -> dict:
+    features = _access_feature_slugs()
+    effective = {
+        feature: _feature_allowed_for_user(user, feature, explicit_permissions)
+        for feature in features
+    }
+
+    if effective.get('servers') and all(not allowed for f, allowed in effective.items() if f != 'servers'):
+        profile = 'server_only'
+    elif user.is_staff and all(effective.values()):
+        profile = 'admin_full'
+    else:
+        profile = 'custom'
+
+    return {
+        'effective_permissions': effective,
+        'explicit_permissions': explicit_permissions,
+        'access_profile': profile,
+    }
+
+
+def _apply_access_profile(user, profile: str) -> None:
+    """Apply one of predefined access profiles to user permissions."""
+    from core_ui.models import UserAppPermission
+
+    features = _access_feature_slugs()
+    profile = (profile or '').strip()
+    if profile not in {'server_only', 'admin_full', 'reset_defaults', 'custom'}:
+        raise ValueError('Invalid access profile')
+
+    if profile == 'custom':
+        return
+
+    if profile == 'reset_defaults':
+        UserAppPermission.objects.filter(user=user).delete()
+        return
+
+    if profile == 'server_only' and user.is_superuser:
+        raise ValueError('Cannot apply server-only profile to superuser')
+
+    if profile == 'server_only':
+        target = {feature: (feature == 'servers') for feature in features}
+        if user.is_staff:
+            user.is_staff = False
+            user.save(update_fields=['is_staff'])
+    else:
+        # admin_full
+        target = {feature: True for feature in features}
+        if not user.is_staff:
+            user.is_staff = True
+            user.save(update_fields=['is_staff'])
+
+    with transaction.atomic():
+        for feature, allowed in target.items():
+            UserAppPermission.objects.update_or_create(
+                user=user,
+                feature=feature,
+                defaults={'allowed': allowed},
+            )
+
+
 def _get_access_data():
     """Данные для раздела «Управление доступом»."""
     from django.contrib.auth.models import User, Group
     from core_ui.models import UserAppPermission
+
+    users = list(User.objects.all().prefetch_related('groups').order_by('username'))
+    groups = Group.objects.all().prefetch_related('user_set').order_by('name')
+    permissions = UserAppPermission.objects.select_related('user').all().order_by('user__username', 'feature')
+
+    explicit_by_user: dict[int, dict[str, bool]] = defaultdict(dict)
+    for p in permissions:
+        explicit_by_user[p.user_id][p.feature] = bool(p.allowed)
+
+    users_with_access = []
+    for user in users:
+        access = _build_user_access_payload(user, explicit_by_user.get(user.id, {}))
+        users_with_access.append({
+            'user': user,
+            'access_profile': access['access_profile'],
+            'effective_permissions': access['effective_permissions'],
+            'explicit_permissions': access['explicit_permissions'],
+        })
+
     return {
-        'users': User.objects.all().order_by('username'),
-        'groups': Group.objects.all().prefetch_related('user_set').order_by('name'),
-        'permissions': UserAppPermission.objects.select_related('user').all().order_by('user__username', 'feature'),
+        'users': users,
+        'users_with_access': users_with_access,
+        'groups': groups,
+        'permissions': permissions,
+        'feature_slugs': _access_feature_slugs(),
     }
 
 
@@ -768,6 +889,7 @@ async def _try_server_command_by_name(user_id: int, message: str):
 
 @csrf_exempt
 @login_required
+@require_feature('orchestrator')
 @require_http_methods(["GET"])
 def api_chats_list(request):
     """Список чатов текущего пользователя."""
@@ -810,6 +932,7 @@ def api_chats_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('orchestrator')
 @require_http_methods(["POST"])
 def api_chats_create(request):
     """Создать новый чат. Body: {} или {"title": "..."}. Возвращает { "id", "title" }."""
@@ -827,6 +950,7 @@ def api_chats_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('orchestrator')
 @require_http_methods(["GET"])
 def api_chat_detail(request, chat_id):
     """Получить чат по id с сообщениями. Доступ только к своим чатам."""
@@ -852,10 +976,11 @@ def api_chat_detail(request, chat_id):
 
 @csrf_exempt
 @async_login_required
+@async_require_feature('orchestrator')
 async def chat_api(request):
     """
     Async API endpoint for chat streaming.
-    Expects JSON: { "message": "user input", "model": "auto|gemini|grok", "chat_id": null|int }
+    Expects JSON: { "message": "user input", "model": "auto|gemini|grok|openai|claude", "chat_id": null|int }
     model=auto → Cursor CLI; chat_id — сессия для истории и сохранения сообщений.
     """
     if request.method != 'POST':
@@ -1242,13 +1367,18 @@ def api_tools_list(request):
 @login_required
 def api_models_list(request):
     """Get list of available models for dropdowns"""
+    if is_server_only_user(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
     try:
         gemini_models = model_manager.get_available_models('gemini')
         grok_models = model_manager.get_available_models('grok')
+        openai_models = model_manager.get_available_models('openai')
         c = model_manager.config
         return JsonResponse({
             'gemini': gemini_models,
             'grok': grok_models,
+            'openai': openai_models,
             'rag_defaults': [
                 'models/text-embedding-004',
                 'models/text-embedding-005',
@@ -1257,9 +1387,11 @@ def api_models_list(request):
             'current': {
                 'chat_gemini': c.chat_model_gemini,
                 'chat_grok': c.chat_model_grok,
+                'chat_openai': getattr(c, 'chat_model_openai', 'gpt-5-mini'),
                 'rag_model': c.rag_model,
                 'agent_model_gemini': c.agent_model_gemini,
                 'agent_model_grok': c.agent_model_grok,
+                'agent_model_openai': getattr(c, 'agent_model_openai', 'gpt-5-mini'),
                 'default_provider': c.default_provider,
             }
         })
@@ -1269,6 +1401,52 @@ def api_models_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('settings')
+@require_http_methods(["POST"])
+def api_models_refresh(request):
+    """
+    POST /api/models/refresh/
+    Body: { "provider": "gemini|grok|openai" }
+    Fetch models from provider API and return refreshed list.
+    """
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    provider = (data.get('provider') or '').strip().lower()
+    if provider not in {'gemini', 'grok', 'openai'}:
+        return JsonResponse({'error': 'provider must be one of: gemini, grok, openai'}, status=400)
+
+    if provider == 'gemini' and not (os.getenv('GEMINI_API_KEY') or '').strip():
+        return JsonResponse({'error': 'GEMINI_API_KEY is not configured'}, status=400)
+    if provider == 'grok' and not (os.getenv('GROK_API_KEY') or '').strip():
+        return JsonResponse({'error': 'GROK_API_KEY is not configured'}, status=400)
+    if provider == 'openai' and not ((os.getenv('OPENAI_API_KEY') or '').strip() or (os.getenv('CODEX_API_KEY') or '').strip()):
+        return JsonResponse({'error': 'OPENAI_API_KEY or CODEX_API_KEY is not configured'}, status=400)
+
+    try:
+        if provider == 'gemini':
+            models = asyncio.run(model_manager.fetch_available_gemini_models())
+        elif provider == 'grok':
+            models = asyncio.run(model_manager.fetch_available_grok_models())
+        else:
+            models = asyncio.run(model_manager.fetch_available_openai_models())
+
+        return JsonResponse({
+            'success': True,
+            'provider': provider,
+            'models': models,
+            'count': len(models),
+        })
+    except Exception as e:
+        logger.exception('api_models_refresh error: %s', e)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('orchestrator')
 @require_http_methods(["POST"])
 def api_clear_history(request):
     """Clear conversation history via UnifiedOrchestrator"""
@@ -1315,13 +1493,16 @@ def api_settings(request):
                     'ralph_completion_promise': getattr(c, 'ralph_completion_promise', 'COMPLETE') or 'COMPLETE',
                     'gemini_enabled': getattr(c, 'gemini_enabled', False),
                     'grok_enabled': getattr(c, 'grok_enabled', True),
+                    'openai_enabled': getattr(c, 'openai_enabled', False),
                     'claude_enabled': getattr(c, 'claude_enabled', False),
                     'chat_model_gemini': c.chat_model_gemini,
                     'chat_model_grok': c.chat_model_grok,
+                    'chat_model_openai': getattr(c, 'chat_model_openai', 'gpt-5-mini'),
                     'chat_model_claude': getattr(c, 'chat_model_claude', 'claude-sonnet-4-6'),
                     'rag_model': c.rag_model,
                     'agent_model_gemini': c.agent_model_gemini,
                     'agent_model_grok': c.agent_model_grok,
+                    'agent_model_openai': getattr(c, 'agent_model_openai', 'gpt-5-mini'),
                     'default_agent_output_path': getattr(c, 'default_agent_output_path', '') or '',
                     'cursor_chat_mode': getattr(c, 'cursor_chat_mode', 'ask') or 'ask',
                     'cursor_sandbox': getattr(c, 'cursor_sandbox', '') or '',
@@ -1332,6 +1513,7 @@ def api_settings(request):
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
                     'grok_set': bool(os.getenv('GROK_API_KEY')),
+                    'openai_set': bool(os.getenv('OPENAI_API_KEY') or os.getenv('CODEX_API_KEY')),
                     'anthropic_set': bool(os.getenv('ANTHROPIC_API_KEY')),
                     'claude_set': bool(os.getenv('ANTHROPIC_API_KEY')),
                     'cursor_set': bool(os.getenv('CURSOR_API_KEY')),
@@ -1347,13 +1529,16 @@ def api_settings(request):
             data = json.loads(request.body)
             allowed = {
                 'default_provider', 'chat_model_gemini', 'chat_model_grok',
+                'chat_model_openai',
                 'rag_model', 'agent_model_gemini', 'agent_model_grok',
+                'agent_model_openai',
                 'default_agent_output_path', 'cursor_chat_mode',
                 'cursor_sandbox', 'cursor_approve_mcps',
                 'internal_llm_provider',  # Провайдер для внутренних вызовов (workflow, анализ)
                 'allow_model_selection',  # Разрешить выбор моделей в workflow
                 'gemini_enabled',  # Включение/отключение Gemini API
                 'grok_enabled',    # Включение/отключение Grok API
+                'openai_enabled',  # Включение/отключение OpenAI API
                 'claude_enabled',  # Включение/отключение Claude API
                 'chat_model_claude',   # Выбранная модель Claude
                 'default_orchestrator_mode',  # react | ralph_internal | ralph_cli
@@ -1854,20 +2039,34 @@ def api_access_users(request):
     POST /api/access/users/ - создание нового пользователя
     """
     from django.contrib.auth.models import User, Group
+    from core_ui.models import UserAppPermission
 
     if request.method == 'GET':
-        users = User.objects.all().order_by('username')
-        data = [{
-            'id': u.id,
-            'username': u.username,
-            'email': u.email or '',
-            'is_staff': u.is_staff,
-            'is_active': u.is_active,
-            'is_superuser': u.is_superuser,
-            'date_joined': u.date_joined.isoformat(),
-            'groups': [{'id': g.id, 'name': g.name} for g in u.groups.all()],
-        } for u in users]
-        return JsonResponse({'users': data})
+        users = User.objects.all().prefetch_related('groups').order_by('username')
+        features = _access_feature_slugs()
+
+        permissions_by_user: dict[int, dict[str, bool]] = defaultdict(dict)
+        for row in UserAppPermission.objects.all().values('user_id', 'feature', 'allowed'):
+            permissions_by_user[row['user_id']][row['feature']] = bool(row['allowed'])
+
+        data = []
+        for u in users:
+            explicit = permissions_by_user.get(u.id, {})
+            access = _build_user_access_payload(u, explicit)
+            data.append({
+                'id': u.id,
+                'username': u.username,
+                'email': u.email or '',
+                'is_staff': u.is_staff,
+                'is_active': u.is_active,
+                'is_superuser': u.is_superuser,
+                'date_joined': u.date_joined.isoformat(),
+                'groups': [{'id': g.id, 'name': g.name} for g in u.groups.all()],
+                'access_profile': access['access_profile'],
+                'effective_permissions': access['effective_permissions'],
+                'explicit_permissions': access['explicit_permissions'],
+            })
+        return JsonResponse({'users': data, 'features': features})
 
     if request.method == 'POST':
         try:
@@ -1877,6 +2076,7 @@ def api_access_users(request):
             password = data.get('password', '')
             is_staff = data.get('is_staff', False)
             is_active = data.get('is_active', True)
+            access_profile = (data.get('access_profile') or '').strip()
 
             if not username:
                 return JsonResponse({'error': 'Username is required'}, status=400)
@@ -1900,6 +2100,18 @@ def api_access_users(request):
                 groups = Group.objects.filter(id__in=group_ids)
                 user.groups.set(groups)
 
+            # New regular users should default to server-only profile.
+            if access_profile:
+                _apply_access_profile(user, access_profile)
+            elif not user.is_staff:
+                _apply_access_profile(user, 'server_only')
+
+            explicit = {
+                p.feature: bool(p.allowed)
+                for p in UserAppPermission.objects.filter(user=user).only('feature', 'allowed')
+            }
+            access = _build_user_access_payload(user, explicit)
+
             return JsonResponse({
                 'success': True,
                 'user': {
@@ -1908,8 +2120,11 @@ def api_access_users(request):
                     'email': user.email,
                     'is_staff': user.is_staff,
                     'is_active': user.is_active,
+                    'access_profile': access['access_profile'],
                 }
             })
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=400)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
@@ -1928,6 +2143,7 @@ def api_access_user_detail(request, user_id):
     DELETE /api/access/users/<id>/ - удалить пользователя
     """
     from django.contrib.auth.models import User, Group
+    from core_ui.models import UserAppPermission
 
     try:
         user = User.objects.get(id=user_id)
@@ -1935,6 +2151,11 @@ def api_access_user_detail(request, user_id):
         return JsonResponse({'error': 'User not found'}, status=404)
 
     if request.method == 'GET':
+        explicit = {
+            p.feature: bool(p.allowed)
+            for p in UserAppPermission.objects.filter(user=user).only('feature', 'allowed')
+        }
+        access = _build_user_access_payload(user, explicit)
         return JsonResponse({
             'user': {
                 'id': user.id,
@@ -1945,6 +2166,9 @@ def api_access_user_detail(request, user_id):
                 'is_superuser': user.is_superuser,
                 'date_joined': user.date_joined.isoformat(),
                 'groups': [{'id': g.id, 'name': g.name} for g in user.groups.all()],
+                'access_profile': access['access_profile'],
+                'effective_permissions': access['effective_permissions'],
+                'explicit_permissions': access['explicit_permissions'],
             }
         })
 
@@ -1978,6 +2202,15 @@ def api_access_user_detail(request, user_id):
                 groups = Group.objects.filter(id__in=group_ids)
                 user.groups.set(groups)
 
+            if 'access_profile' in data:
+                _apply_access_profile(user, data.get('access_profile'))
+
+            explicit = {
+                p.feature: bool(p.allowed)
+                for p in UserAppPermission.objects.filter(user=user).only('feature', 'allowed')
+            }
+            access = _build_user_access_payload(user, explicit)
+
             return JsonResponse({
                 'success': True,
                 'user': {
@@ -1986,8 +2219,11 @@ def api_access_user_detail(request, user_id):
                     'email': user.email,
                     'is_staff': user.is_staff,
                     'is_active': user.is_active,
+                    'access_profile': access['access_profile'],
                 }
             })
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=400)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
@@ -2040,6 +2276,61 @@ def api_access_user_password(request, user_id):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.exception('api_access_user_password error: %s', e)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('settings')
+@require_http_methods(["POST"])
+def api_access_user_profile(request, user_id):
+    """
+    POST /api/access/users/<id>/profile/ - применить профиль доступа
+    profile: server_only | admin_full | reset_defaults | custom
+    """
+    from django.contrib.auth.models import User
+    from core_ui.models import UserAppPermission
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    if user.is_superuser and user.id != request.user.id:
+        return JsonResponse({'error': 'Cannot edit superuser'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        profile = (data.get('profile') or '').strip()
+        if not profile:
+            return JsonResponse({'error': 'profile is required'}, status=400)
+
+        _apply_access_profile(user, profile)
+
+        explicit = {
+            p.feature: bool(p.allowed)
+            for p in UserAppPermission.objects.filter(user=user).only('feature', 'allowed')
+        }
+        access = _build_user_access_payload(user, explicit)
+
+        return JsonResponse({
+            'success': True,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'is_staff': user.is_staff,
+                'is_active': user.is_active,
+            },
+            'access_profile': access['access_profile'],
+            'effective_permissions': access['effective_permissions'],
+            'explicit_permissions': access['explicit_permissions'],
+        })
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.exception('api_access_user_profile error: %s', e)
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -2254,6 +2545,9 @@ def api_access_permissions(request):
             except User.DoesNotExist:
                 return JsonResponse({'error': 'User not found'}, status=404)
 
+            if user.is_superuser and user.id != request.user.id:
+                return JsonResponse({'error': 'Cannot edit superuser'}, status=403)
+
             # Создаем или обновляем
             perm, created = UserAppPermission.objects.update_or_create(
                 user=user,
@@ -2294,6 +2588,9 @@ def api_access_permission_detail(request, perm_id):
         perm = UserAppPermission.objects.select_related('user').get(id=perm_id)
     except UserAppPermission.DoesNotExist:
         return JsonResponse({'error': 'Permission not found'}, status=404)
+
+    if perm.user.is_superuser and perm.user.id != request.user.id:
+        return JsonResponse({'error': 'Cannot edit superuser'}, status=403)
 
     if request.method == 'PUT':
         try:

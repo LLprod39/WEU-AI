@@ -166,7 +166,7 @@
     </style>
 </head>
 
-<body class="bg-bg-base text-gray-100 font-sans antialiased overflow-hidden h-screen flex noise-overlay {% block body_extra_class %}{% endblock %}" data-theme="dark" data-density="normal" data-size="normal">
+<body class="bg-bg-base text-gray-100 font-sans antialiased overflow-hidden h-screen flex noise-overlay {% if is_server_only_mode %}server-only-shell{% endif %} {% block body_extra_class %}{% endblock %}" data-theme="dark" data-density="normal" data-size="normal">
 
     <!-- Skip to main content (A11Y) -->
     <a href="#main-content" class="skip-to-content">Skip to main content</a>
@@ -178,6 +178,7 @@
         <div class="aurora-blob aurora-blob-3"></div>
     </div>
 
+    {% if not is_server_only_mode %}
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar glass-md border-r border-white/5 flex flex-col z-20 relative">
 
@@ -242,11 +243,11 @@
 
             <!-- TOOLS -->
             <div class="px-3 py-2 mt-4 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tools</div>
+            {% if user_can_orchestrator %}
             <a href="{% url 'chat' %}" class="sidebar-link {% if request.path == '/chat/' %}active{% endif %}" aria-label="Chat">
                 <span class="material-icons-round text-lg {% if request.path == '/chat/' %}text-primary{% endif %}" aria-hidden="true">chat</span>
                 <span class="nav-text">Chat</span>
             </a>
-            {% if user_can_orchestrator %}
             <a href="{% url 'ide' %}" class="sidebar-link {% if 'ide' in request.path %}active{% endif %}" aria-label="IDE">
                 <span class="material-icons-round text-lg {% if 'ide' in request.path %}text-primary{% endif %}" aria-hidden="true">code</span>
                 <span class="nav-text">IDE</span>
@@ -267,10 +268,12 @@
                 <span class="nav-text">Settings</span>
             </a>
             {% endif %}
+            {% if user_can_passwords %}
             <a href="{% url 'passwords:password_list' %}" class="sidebar-link {% if 'passwords' in request.path %}active{% endif %}" aria-label="Passwords">
                 <span class="material-icons-round text-lg {% if 'passwords' in request.path %}text-primary{% endif %}" aria-hidden="true">key</span>
                 <span class="nav-text">Passwords</span>
             </a>
+            {% endif %}
             </div>
         </nav>
 
@@ -302,9 +305,25 @@
     <button type="button" id="mobile-menu-btn" class="mobile-menu-btn fixed top-4 left-4 z-[100] p-2 rounded-xl bg-bg-surface border border-white/10 shadow-lg text-white hover:bg-white/10 md:hidden" aria-label="Открыть меню" aria-expanded="false" aria-controls="sidebar">
         <span class="material-icons-round text-xl">menu</span>
     </button>
+    {% endif %}
 
     <!-- Main Content -->
     <main id="main-content" class="flex-1 flex flex-col relative overflow-hidden" tabindex="-1">
+        {% if is_server_only_mode %}
+        <div class="flex items-center justify-between px-6 py-3 border-b border-white/5 bg-bg-surface/50 backdrop-blur-sm">
+            <a href="{% url 'servers:server_list' %}" class="inline-flex items-center gap-2 text-sm text-white font-medium">
+                <span class="material-icons-round text-base text-primary">dns</span>
+                Servers
+            </a>
+            <form action="{% url 'logout' %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                    <span class="material-icons-round text-base">logout</span>
+                    Sign Out
+                </button>
+            </form>
+        </div>
+        {% endif %}
 
         <!-- Page Content -->
         <div class="flex-1 min-h-0 flex flex-col overflow-hidden z-10 relative" style="min-height: 0;">

@@ -6,7 +6,6 @@ import os
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 from loguru import logger
-from google import genai
 import httpx
 import json
 
@@ -16,11 +15,13 @@ class ModelConfig(BaseModel):
     # API providers (optional, disabled by default)
     gemini_enabled: bool = False
     grok_enabled: bool = True  # Fallback for internal calls
+    openai_enabled: bool = False
     claude_enabled: bool = False
 
     # Chat models
     chat_model_gemini: str = "models/gemini-3-flash-preview"
     chat_model_grok: str = "grok-3"
+    chat_model_openai: str = "gpt-5-mini"
     chat_model_claude: str = "claude-sonnet-4-6"
     
     # RAG/Embedding models
@@ -29,6 +30,7 @@ class ModelConfig(BaseModel):
     # Agent/ReAct models
     agent_model_gemini: str = "models/gemini-3-flash-preview"
     agent_model_grok: str = "grok-3"
+    agent_model_openai: str = "gpt-5-mini"
     
     # Default provider (CLI agent): cursor = Cursor CLI, claude = Claude Code CLI
     # Note: "ralph" is NOT a valid provider - it's an orchestrator mode
@@ -36,7 +38,7 @@ class ModelConfig(BaseModel):
     
     # Провайдер для ВНУТРЕННИХ вызовов LLM (генерация workflow, анализ задач).
     # Когда default_provider - CLI agent, внутренние вызовы используют этот провайдер.
-    # Варианты: "gemini", "grok"
+    # Варианты: "gemini", "grok", "openai", "claude"
     internal_llm_provider: str = "grok"
     
     # Default orchestrator mode: react | ralph_internal | ralph_cli
@@ -66,12 +68,20 @@ class ModelManager:
         self.config = ModelConfig()
         self.available_gemini_models: List[str] = []
         self.available_grok_models: List[str] = []
+        self.available_openai_models: List[str] = []
         self.available_claude_models: List[str] = []
         self.gemini_api_key: Optional[str] = None
         self.grok_api_key: Optional[str] = None
+        self.openai_api_key: Optional[str] = None
         self.anthropic_api_key: Optional[str] = None
     
-    def set_api_keys(self, gemini_key: Optional[str] = None, grok_key: Optional[str] = None, anthropic_key: Optional[str] = None):
+    def set_api_keys(
+        self,
+        gemini_key: Optional[str] = None,
+        grok_key: Optional[str] = None,
+        anthropic_key: Optional[str] = None,
+        openai_key: Optional[str] = None,
+    ):
         """Set API keys"""
         if gemini_key:
             self.gemini_api_key = gemini_key
@@ -79,43 +89,95 @@ class ModelManager:
             self.grok_api_key = grok_key
         if anthropic_key:
             self.anthropic_api_key = anthropic_key
+        if openai_key:
+            self.openai_api_key = openai_key
+
+    @staticmethod
+    def _extract_model_ids(payload: dict) -> List[str]:
+        """Extract model IDs from provider payloads with {data:[{id:...}]} shape."""
+        out: List[str] = []
+        for item in payload.get("data", []) or []:
+            model_id = item.get("id")
+            if isinstance(model_id, str) and model_id:
+                out.append(model_id)
+        return out
+
+    @staticmethod
+    def _is_openai_text_model(model_id: str) -> bool:
+        """Filter for text/chat-capable OpenAI model IDs."""
+        mid = (model_id or "").lower()
+        if not mid:
+            return False
+
+        blocked_prefixes = (
+            "text-embedding",
+            "omni-moderation",
+            "whisper",
+            "tts",
+            "dall-e",
+            "gpt-image",
+            "sora",
+        )
+        if mid.startswith(blocked_prefixes):
+            return False
+
+        return (
+            mid.startswith("gpt-")
+            or mid.startswith("gpt-oss")
+            or mid.startswith("codex-")
+            or mid.startswith("o1")
+            or mid.startswith("o3")
+            or mid.startswith("o4")
+            or mid.startswith("o5")
+        )
     
     async def fetch_available_gemini_models(self) -> List[str]:
         """
-        Fetch available Gemini models using google.genai
+        Fetch available Gemini models via REST API.
         """
-        if not self.gemini_api_key:
+        key = self.gemini_api_key or (os.getenv("GEMINI_API_KEY") or "").strip()
+        if key:
+            self.gemini_api_key = key
+        if not key:
             logger.warning("Gemini API key not set")
             return self._get_default_gemini_models()
         
         try:
-            # Create client with API key
-            client = genai.Client(api_key=self.gemini_api_key)
-            
-            # List all models
-            models = client.models.list()
-            
-            # Filter for generative models (chat/text)
-            generative_models = []
-            embedding_models = []
-            
-            for model in models:
-                model_name = model.name
-                
-                # Check if it supports text generation
-                if hasattr(model, 'supported_actions') and 'generateContent' in model.supported_actions:
-                    generative_models.append(model_name)
-                
-                # Check if it supports embeddings
-                if hasattr(model, 'supported_actions') and 'embedContent' in model.supported_actions:
-                    embedding_models.append(model_name)
-            
-            self.available_gemini_models = generative_models
-            
-            logger.success(f"Fetched {len(generative_models)} Gemini generative models")
-            logger.info(f"Found {len(embedding_models)} embedding models")
-            
-            return generative_models
+            models: List[str] = []
+            page_token = ""
+
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                while True:
+                    params = {"key": key, "pageSize": 200}
+                    if page_token:
+                        params["pageToken"] = page_token
+                    response = await client.get(
+                        "https://generativelanguage.googleapis.com/v1beta/models",
+                        params=params,
+                    )
+                    if response.status_code != 200:
+                        logger.error(f"Gemini API returned status {response.status_code}: {response.text}")
+                        return self._get_default_gemini_models()
+
+                    payload = response.json()
+                    for model in payload.get("models", []) or []:
+                        name = model.get("name")
+                        supported = model.get("supportedGenerationMethods") or []
+                        if isinstance(name, str) and name and "generateContent" in supported:
+                            models.append(name)
+
+                    page_token = (payload.get("nextPageToken") or "").strip()
+                    if not page_token:
+                        break
+
+            models = sorted(set(models))
+            if not models:
+                logger.warning("Gemini API returned empty models list; using defaults")
+                return self._get_default_gemini_models()
+
+            self.available_gemini_models = models
+            logger.success(f"Fetched {len(models)} Gemini models")
+            return models
             
         except Exception as e:
             logger.error(f"Failed to fetch Gemini models: {e}")
@@ -125,32 +187,83 @@ class ModelManager:
         """
         Fetch available Grok models from xAI API
         """
-        if not self.grok_api_key:
+        key = self.grok_api_key or (os.getenv("GROK_API_KEY") or "").strip()
+        if key:
+            self.grok_api_key = key
+        if not key:
             logger.warning("Grok API key not set")
             return self._get_default_grok_models()
         
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://api.x.ai/v1/models",
-                    headers={"Authorization": f"Bearer {self.grok_api_key}"},
-                    timeout=10.0
-                )
-                
-                if response.status_code == 200:
+                for endpoint in ("https://api.x.ai/v1/language-models", "https://api.x.ai/v1/models"):
+                    response = await client.get(
+                        endpoint,
+                        headers={"Authorization": f"Bearer {key}"},
+                        timeout=10.0
+                    )
+                    
+                    if response.status_code != 200:
+                        logger.warning(f"Grok API returned status {response.status_code} for {endpoint}")
+                        continue
+
                     data = response.json()
-                    models = [model['id'] for model in data.get('data', [])]
+                    models = sorted(set(self._extract_model_ids(data)))
+                    if not models:
+                        continue
                     
                     self.available_grok_models = models
-                    logger.success(f"Fetched {len(models)} Grok models")
+                    logger.success(f"Fetched {len(models)} Grok models from {endpoint}")
                     return models
-                else:
-                    logger.error(f"Grok API returned status {response.status_code}")
-                    return self._get_default_grok_models()
+
+                logger.error("Grok API returned no model data from supported endpoints")
+                return self._get_default_grok_models()
                     
         except Exception as e:
             logger.error(f"Failed to fetch Grok models: {e}")
             return self._get_default_grok_models()
+
+    async def fetch_available_openai_models(self) -> List[str]:
+        """
+        Fetch available OpenAI models from OpenAI Models API.
+        """
+        key = self.openai_api_key or (os.getenv("OPENAI_API_KEY") or "").strip() or (os.getenv("CODEX_API_KEY") or "").strip()
+        if key:
+            self.openai_api_key = key
+        if not key:
+            logger.warning("OpenAI API key not set")
+            return self._get_default_openai_models()
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"OpenAI API returned status {response.status_code}: {response.text}")
+                    return self._get_default_openai_models()
+
+                payload = response.json()
+                models = sorted(
+                    set(
+                        model_id
+                        for model_id in self._extract_model_ids(payload)
+                        if self._is_openai_text_model(model_id)
+                    )
+                )
+
+                if not models:
+                    logger.warning("OpenAI API returned empty text model list; using defaults")
+                    return self._get_default_openai_models()
+
+                self.available_openai_models = models
+                logger.success(f"Fetched {len(models)} OpenAI models")
+                return models
+        except Exception as e:
+            logger.error(f"Failed to fetch OpenAI models: {e}")
+            return self._get_default_openai_models()
     
     def _get_default_gemini_models(self) -> List[str]:
         """Default Gemini models list (fallback)"""
@@ -165,16 +278,27 @@ class ModelManager:
             "grok-3",
             "grok-4-1-fast-non-reasoning",
         ]
+
+    def _get_default_openai_models(self) -> List[str]:
+        """Default OpenAI models list (fallback)"""
+        return [
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+        ]
     
     async def refresh_models(self):
         """Refresh available models from both providers"""
         logger.info("Refreshing available models...")
         
-        if self.gemini_api_key:
+        if self.gemini_api_key or (os.getenv("GEMINI_API_KEY") or "").strip():
             await self.fetch_available_gemini_models()
         
-        if self.grok_api_key:
+        if self.grok_api_key or (os.getenv("GROK_API_KEY") or "").strip():
             await self.fetch_available_grok_models()
+
+        if self.openai_api_key or (os.getenv("OPENAI_API_KEY") or "").strip() or (os.getenv("CODEX_API_KEY") or "").strip():
+            await self.fetch_available_openai_models()
     
     def get_chat_model(self, provider: Optional[str] = None) -> str:
         """Get configured chat model for provider."""
@@ -183,6 +307,8 @@ class ModelManager:
             provider = self.config.internal_llm_provider or "grok"
         if provider == "gemini":
             return self.config.chat_model_gemini
+        if provider == "openai":
+            return self.config.chat_model_openai
         if provider == "claude":
             return self.config.chat_model_claude
         return self.config.chat_model_grok
@@ -194,6 +320,8 @@ class ModelManager:
             provider = self.config.internal_llm_provider or "grok"
         if provider == "gemini":
             return self.config.agent_model_gemini
+        if provider == "openai":
+            return self.config.agent_model_openai
         if provider == "claude":
             return self.config.chat_model_claude
         return self.config.agent_model_grok
@@ -246,6 +374,10 @@ class ModelManager:
             if not self.available_gemini_models:
                 return self._get_default_gemini_models()
             return self.available_gemini_models
+        if provider == "openai":
+            if not self.available_openai_models:
+                return self._get_default_openai_models()
+            return self.available_openai_models
         if provider == "claude":
             if not self.available_claude_models:
                 return self._get_default_claude_models()
@@ -260,6 +392,8 @@ class ModelManager:
             return self.config.gemini_enabled
         elif provider == "grok":
             return self.config.grok_enabled
+        elif provider == "openai":
+            return self.config.openai_enabled
         elif provider == "claude":
             return self.config.claude_enabled
         # CLI providers always enabled if binary available

@@ -29,6 +29,13 @@ class ProviderRegistry:
             "requires_key": "GROK_API_KEY",
             "check_method": "api"
         },
+        "openai": {
+            "type": "api",
+            "name": "OpenAI API",
+            "enabled_by_default": False,
+            "requires_key": "OPENAI_API_KEY",
+            "check_method": "api"
+        },
         "cursor": {
             "type": "cli",
             "name": "Cursor CLI",
@@ -76,6 +83,8 @@ class ProviderRegistry:
                 return model_manager.config.gemini_enabled
             elif provider == "grok":
                 return model_manager.config.grok_enabled
+            elif provider == "openai":
+                return model_manager.config.openai_enabled
         
         # CLI провайдеры - проверяем наличие binary
         elif info["type"] == "cli":
@@ -92,7 +101,10 @@ class ProviderRegistry:
         
         # Проверяем API key
         if info.get("requires_key"):
-            key = os.getenv(info["requires_key"], "").strip()
+            if provider == "openai":
+                key = os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("CODEX_API_KEY", "").strip()
+            else:
+                key = os.getenv(info["requires_key"], "").strip()
             if not key:
                 return False
         
@@ -198,8 +210,12 @@ class ProviderRegistry:
         # Детали конфигурации
         if info.get("requires_key"):
             key_name = info["requires_key"]
-            result["api_key_set"] = bool(os.getenv(key_name, "").strip())
-            result["api_key_name"] = key_name
+            if provider == "openai":
+                result["api_key_set"] = bool(os.getenv("OPENAI_API_KEY", "").strip() or os.getenv("CODEX_API_KEY", "").strip())
+                result["api_key_name"] = "OPENAI_API_KEY/CODEX_API_KEY"
+            else:
+                result["api_key_set"] = bool(os.getenv(key_name, "").strip())
+                result["api_key_name"] = key_name
         
         if info.get("requires_binary"):
             binary = info["requires_binary"]
@@ -235,6 +251,10 @@ class ProviderRegistry:
         if self.is_enabled("grok") and self.is_configured("grok"):
             logger.warning(f"No CLI provider available, using Grok")
             return "grok"
+        
+        if self.is_enabled("openai") and self.is_configured("openai"):
+            logger.warning("No CLI provider available, using OpenAI")
+            return "openai"
         
         logger.error("No providers available!")
         return None

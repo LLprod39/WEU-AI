@@ -114,10 +114,25 @@
     
     <!-- Bottom Navigation -->
     <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
-        <a href="{% url 'index' %}" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}" data-page="chat">
+        {% if is_server_only_mode %}
+        <a href="{% url 'servers:server_list' %}" class="mobile-nav-item {% if 'servers' in request.path %}active{% endif %}" data-page="servers">
+            <span class="material-icons-round mobile-nav-icon">dns</span>
+            <span class="mobile-nav-label">Серверы</span>
+        </a>
+        <form action="{% url 'logout' %}" method="post" class="mobile-nav-item">
+            {% csrf_token %}
+            <button type="submit" class="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-400">
+                <span class="material-icons-round mobile-nav-icon">logout</span>
+                <span class="mobile-nav-label">Выйти</span>
+            </button>
+        </form>
+        {% else %}
+        {% if user_can_orchestrator %}
+        <a href="{% url 'chat' %}" class="mobile-nav-item {% if request.path == '/chat/' %}active{% endif %}" data-page="chat">
             <span class="material-icons-round mobile-nav-icon">chat</span>
             <span class="mobile-nav-label">Чат</span>
         </a>
+        {% endif %}
         {% if user_can_tasks %}
         <a href="{% url 'tasks:task_list' %}" class="mobile-nav-item {% if 'tasks' in request.path %}active{% endif %}" data-page="tasks">
             <span class="material-icons-round mobile-nav-icon">check_circle</span>
@@ -140,8 +155,10 @@
             <span class="material-icons-round mobile-nav-icon">more_horiz</span>
             <span class="mobile-nav-label">Ещё</span>
         </button>
+        {% endif %}
     </nav>
     
+    {% if not is_server_only_mode %}
     <!-- More Menu (Drawer) -->
     <div id="mobile-more-drawer" class="mobile-drawer hidden">
         <div class="mobile-drawer-overlay"></div>
@@ -159,10 +176,12 @@
                     <span>Серверы</span>
                 </a>
                 {% endif %}
+                {% if user_can_passwords %}
                 <a href="{% url 'passwords:password_list' %}" class="mobile-menu-item">
                     <span class="material-icons-round">lock</span>
                     <span>Пароли</span>
                 </a>
+                {% endif %}
                 {% if user_can_settings %}
                 <a href="{% url 'settings' %}" class="mobile-menu-item">
                     <span class="material-icons-round">settings</span>
@@ -187,6 +206,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
     
     <!-- Toast Container -->
     <div id="mobile-toast-container" class="mobile-toast-container"></div>

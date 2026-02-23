@@ -10,10 +10,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 from .models import Credential, CredentialCategory, CredentialTag
 from .encryption import PasswordEncryption
+from core_ui.decorators import require_feature
 from core_ui.middleware import get_template_name
 
 
 @login_required
+@require_feature('passwords', redirect_on_forbidden=True)
 def password_list(request):
     """List all credentials for the user"""
     credentials = Credential.objects.filter(user=request.user)
@@ -49,6 +51,7 @@ def password_list(request):
 
 @csrf_exempt
 @login_required
+@require_feature('passwords')
 @require_http_methods(["POST"])
 def credential_create(request):
     """Create a new credential"""
@@ -98,6 +101,7 @@ def credential_create(request):
 
 @csrf_exempt
 @login_required
+@require_feature('passwords')
 @require_http_methods(["POST"])
 def credential_decrypt(request, credential_id):
     """Decrypt and return password"""
@@ -138,6 +142,7 @@ def credential_decrypt(request, credential_id):
 
 @csrf_exempt
 @login_required
+@require_feature('passwords')
 @require_http_methods(["POST"])
 def generate_password(request):
     """Generate a random password"""

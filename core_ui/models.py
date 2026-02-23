@@ -53,11 +53,13 @@ FEATURE_CHOICES = [
     ('servers', 'Servers'),
     ('tasks', 'Tasks'),
     ('knowledge_base', 'Knowledge Base'),
+    ('passwords', 'Passwords'),
     ('settings', 'Settings'),
 ]
 
-# Features allowed by default for new users (settings is never default — only is_staff or explicit grant)
-DEFAULT_ALLOWED_FEATURES = {'agents', 'orchestrator', 'servers', 'tasks', 'knowledge_base'}
+# Features allowed by default for non-staff users.
+# By product policy, regular accounts start in server-only mode.
+DEFAULT_ALLOWED_FEATURES = {'servers'}
 
 
 class UserAppPermission(models.Model):

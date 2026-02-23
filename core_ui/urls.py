@@ -56,6 +56,7 @@ urlpatterns = [
     # Tools & Models API
     path('api/tools/', views.api_tools_list, name='api_tools'),
     path('api/models/', views.api_models_list, name='api_models'),
+    path('api/models/refresh/', views.api_models_refresh, name='api_models_refresh'),
     
     # Settings API
     path('api/settings/', views.api_settings, name='api_settings'),
@@ -67,6 +68,7 @@ urlpatterns = [
     path('api/access/users/', views.api_access_users, name='api_access_users'),
     path('api/access/users/<int:user_id>/', views.api_access_user_detail, name='api_access_user_detail'),
     path('api/access/users/<int:user_id>/password/', views.api_access_user_password, name='api_access_user_password'),
+    path('api/access/users/<int:user_id>/profile/', views.api_access_user_profile, name='api_access_user_profile'),
     path('api/access/groups/', views.api_access_groups, name='api_access_groups'),
     path('api/access/groups/<int:group_id>/', views.api_access_group_detail, name='api_access_group_detail'),
     path('api/access/groups/<int:group_id>/members/', views.api_access_group_members, name='api_access_group_members'),

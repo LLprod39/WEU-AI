@@ -53,9 +53,15 @@ class LLMProvider:
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.grok_api_key = os.getenv("GROK_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("CODEX_API_KEY")
 
         # Set keys in model manager
-        model_manager.set_api_keys(self.gemini_api_key, self.grok_api_key, self.anthropic_api_key)
+        model_manager.set_api_keys(
+            self.gemini_api_key,
+            self.grok_api_key,
+            self.anthropic_api_key,
+            self.openai_api_key,
+        )
 
         # Lazy initialization of clients
         self._gemini_client = None
@@ -107,6 +113,9 @@ class LLMProvider:
             self.anthropic_api_key = key
             model_manager.set_api_keys(anthropic_key=key)
             self._anthropic_client = None
+        elif model == "openai":
+            self.openai_api_key = key
+            model_manager.set_api_keys(openai_key=key)
 
     async def stream_chat(self, prompt: str, model: str = "gemini", specific_model: str = None) -> AsyncGenerator[str, None]:
         """
@@ -114,7 +123,7 @@ class LLMProvider:
         
         Args:
             prompt: The prompt to send
-            model: Provider name (auto/gemini/grok). При «auto» используется internal_llm_provider из config.
+            model: Provider name (auto/gemini/grok/openai/claude). При «auto» используется internal_llm_provider из config.
             specific_model: Specific model to use (overrides config)
         """
         # «auto» = используем internal_llm_provider, с автоматическим fallback на первый включённый
@@ -128,13 +137,15 @@ class LLMProvider:
                     return model_manager.config.gemini_enabled and bool(self.gemini_api_key)
                 if p == "claude":
                     return model_manager.config.claude_enabled and bool(self.anthropic_api_key)
+                if p == "openai":
+                    return model_manager.config.openai_enabled and bool(self.openai_api_key)
                 return False
 
             if _enabled(preferred):
                 model = preferred
             else:
                 # Fallback: pick first enabled provider
-                for candidate in ("claude", "grok", "gemini"):
+                for candidate in ("openai", "claude", "grok", "gemini"):
                     if _enabled(candidate):
                         model = candidate
                         logger.warning(
@@ -296,6 +307,78 @@ class LLMProvider:
                     else:
                         logger.error(f"Claude Error: {e}")
                         yield f"Error calling Claude: {str(e)}"
+                        return
+        
+        elif model == "openai":
+            if not model_manager.config.openai_enabled:
+                yield "Error: OpenAI API disabled. Enable in settings."
+                return
+
+            if not self.openai_api_key:
+                yield "Error: OpenAI API Key not configured."
+                return
+
+            import aiohttp
+            import json
+
+            target_model = specific_model or model_manager.get_chat_model("openai")
+            logger.info(f"Using OpenAI model: {target_model}")
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_api_key}",
+            }
+            data = {
+                "model": target_model,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": True,
+            }
+            timeout = aiohttp.ClientTimeout(total=90.0)
+            max_attempts = 3
+
+            for attempt in range(max_attempts):
+                try:
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data) as response:
+                            if response.status == 200:
+                                async for line_bytes in response.content:
+                                    line = line_bytes.decode("utf-8").strip()
+                                    if not line.startswith("data: "):
+                                        continue
+                                    chunk_str = line[6:]
+                                    if chunk_str == "[DONE]":
+                                        break
+                                    try:
+                                        chunk_json = json.loads(chunk_str)
+                                    except json.JSONDecodeError:
+                                        continue
+
+                                    content = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                    if content:
+                                        yield content
+                                return
+
+                            error_text = await response.text()
+                            is_retryable = response.status == 429 or (500 <= response.status < 600)
+                            if is_retryable and attempt < max_attempts - 1:
+                                yield "[Повтор попытки...]"
+                                delay = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
+                                await asyncio.sleep(delay)
+                            else:
+                                yield f"Error from OpenAI API: {response.status} - {error_text}"
+                                return
+                except Exception as e:
+                    err_retryable = _is_retryable_error(e) and attempt < max_attempts - 1
+                    if err_retryable:
+                        yield "[Повтор попытки...]"
+                        delay = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"OpenAI Error: {e}")
+                        yield f"Error calling OpenAI: {str(e)}"
                         return
 
         else:

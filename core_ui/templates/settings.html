@@ -18,8 +18,8 @@
 {% endblock %}
 
 {% block content %}
-<div class="h-full overflow-y-auto p-6">
-    <div class="max-w-4xl mx-auto space-y-6">
+<div class="h-full overflow-y-auto px-4 py-5 lg:px-8 xl:px-10">
+    <div class="w-full max-w-none space-y-6">
 
         <!-- Header -->
         <div>
@@ -27,12 +27,101 @@
             <p class="text-gray-400 text-sm mt-1" style="color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--spacing-xs);">API-ключи, модели, провайдеры и управление доступом.</p>
         </div>
 
+        <style>
+            .settings-nav-link {
+                position: relative;
+                overflow: hidden;
+            }
+
+            .settings-nav-link.active {
+                border-color: rgba(99, 102, 241, 0.4);
+                background: rgba(99, 102, 241, 0.15);
+                color: #ffffff;
+                box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2) inset;
+            }
+
+            .settings-nav-link.active .material-icons-round {
+                color: #818cf8;
+            }
+        </style>
+
         <div id="settings-loading" class="glass-card rounded-xl p-8 text-center text-gray-400">
             <span class="material-icons-round animate-pulse text-4xl mb-2">hourglass_empty</span>
             <p>Loading settings…</p>
         </div>
 
         <div id="settings-content" class="hidden space-y-6">
+            <div class="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
+                <aside class="space-y-4 xl:sticky xl:top-6">
+                    <div class="glass-card rounded-xl p-5 border border-white/10" id="settings-map">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="material-icons-round text-primary text-lg">segment</span>
+                            <h2 class="text-base font-semibold text-white">Навигация по настройкам</h2>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-4">Откройте раздел по шагам: сначала интеграции и модели, затем рабочий режим, после этого доступы.</p>
+                        <div class="space-y-2">
+                            <a href="#tour-settings-keys" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Интеграции и API</span>
+                                <span class="material-icons-round text-base text-gray-500">key</span>
+                            </a>
+                            <a href="#settings-models" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Провайдеры и модели</span>
+                                <span class="material-icons-round text-base text-gray-500">memory</span>
+                            </a>
+                            <a href="#tour-agent-output-path" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Папки и артефакты</span>
+                                <span class="material-icons-round text-base text-gray-500">folder</span>
+                            </a>
+                            <a href="#settings-delegate" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Делегирование ИИ</span>
+                                <span class="material-icons-round text-base text-gray-500">smart_toy</span>
+                            </a>
+                            {% if user_can_tasks %}
+                            <a href="#tasks-execution" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Выполнение задач</span>
+                                <span class="material-icons-round text-base text-gray-500">task_alt</span>
+                            </a>
+                            {% endif %}
+                            {% if user_can_tasks and settings_projects %}
+                            <a href="#settings-projects" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Настройки проектов</span>
+                                <span class="material-icons-round text-base text-gray-500">folder_special</span>
+                            </a>
+                            {% endif %}
+                            <a href="#settings-access-shortcut" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-primary/15 border border-primary/25 text-sm text-primary hover:bg-primary/20 transition-colors">
+                                <span>Управление доступом</span>
+                                <span class="material-icons-round text-base text-primary">manage_accounts</span>
+                            </a>
+                            <a href="#disk-usage-card" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Система и диск</span>
+                                <span class="material-icons-round text-base text-gray-500">storage</span>
+                            </a>
+                            <a href="#settings-session" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Сессия и история</span>
+                                <span class="material-icons-round text-base text-gray-500">history</span>
+                            </a>
+                            <a href="#settings-about" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>О системе</span>
+                                <span class="material-icons-round text-base text-gray-500">info</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-xl p-4 border border-white/10">
+                        <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Быстрый сценарий</div>
+                        <p class="text-sm text-gray-300 leading-relaxed">Если настраиваете систему с нуля: API Keys → Провайдеры → Папка агента → Доступы пользователей.</p>
+                    </div>
+                </aside>
+
+                <div class="space-y-6 min-w-0">
+
+            <div class="px-1">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs uppercase tracking-wider text-gray-400">
+                    <span class="material-icons-round text-sm text-primary">tune</span>
+                    Базовая конфигурация
+                </div>
+            </div>
+
             <!-- API Keys -->
             <div class="glass-card rounded-xl p-6" id="tour-settings-keys" title="API-ключи задаются в .env в корне проекта — не храните их в браузере">
                 <div class="flex items-center gap-3 mb-6">
@@ -74,6 +163,13 @@
                         </div>
                         <span id="api-cursor-status" class="text-xs font-medium px-2 py-1 rounded-lg">—</span>
                     </div>
+                    <div class="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <span class="material-icons-round text-emerald-400">api</span>
+                            <span class="font-medium text-white">OpenAI API</span>
+                        </div>
+                        <span id="api-openai-status" class="text-xs font-medium px-2 py-1 rounded-lg">—</span>
+                    </div>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">API ключи настраиваются в файле .env в корне проекта</p>
             </div>
@@ -99,7 +195,7 @@
             </div>
 
             <!-- Models -->
-            <div class="glass-card rounded-xl p-6">
+            <div class="glass-card rounded-xl p-6" id="settings-models">
                 <div class="flex items-center gap-3 mb-6">
                     <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
                         <span class="material-icons-round text-primary">memory</span>
@@ -113,7 +209,7 @@
                 <div class="space-y-5">
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">CLI Агент (провайдер)</label>
-                        <select id="default-provider" class="input-field w-full md:max-w-xs" data-required="1" aria-label="Провайдер для агентов">
+                        <select id="default-provider" class="input-field w-full lg:max-w-xl" data-required="1" aria-label="Провайдер для агентов">
                             <option value="cursor">Cursor CLI (agent)</option>
                             <option value="claude">Claude CLI (claude)</option>
                             <option value="codex">Codex CLI</option>
@@ -126,7 +222,7 @@
 
                     <div id="cursor-chat-mode-row">
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="cursor-chat-mode">Режим Cursor Auto в чате</label>
-                        <select id="cursor-chat-mode" class="input-field w-full md:max-w-xs" aria-label="Режим Cursor CLI: Ask или Agent">
+                        <select id="cursor-chat-mode" class="input-field w-full lg:max-w-xl" aria-label="Режим Cursor CLI: Ask или Agent">
                             <option value="ask">Ask — только ответы, без правки файлов</option>
                             <option value="agent">Agent — агент с правкой кода и инструментами</option>
                         </select>
@@ -178,6 +274,20 @@
                             </label>
                         </div>
 
+                        <div class="flex items-center justify-between p-3 rounded-xl" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.15)">
+                            <div class="flex items-center gap-3">
+                                <span class="material-icons-round text-emerald-400" style="font-size:18px">api</span>
+                                <div>
+                                    <span class="text-sm font-medium text-white">OpenAI</span>
+                                    <p class="text-xs text-gray-500">OPENAI_API_KEY / CODEX_API_KEY в .env</p>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="openai-enabled" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+
                         <div class="flex items-center justify-between p-3 rounded-xl" style="background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.15)">
                             <div class="flex items-center gap-3">
                                 <span class="material-icons-round text-purple-400" style="font-size:18px">psychology</span>
@@ -195,7 +305,7 @@
                         <!-- Claude model selector (visible only when Claude enabled) -->
                         <div id="claude-model-row" class="hidden pl-2">
                             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="chat-model-claude">Модель Claude</label>
-                            <select id="chat-model-claude" class="input-field w-full md:max-w-xs">
+                            <select id="chat-model-claude" class="input-field w-full lg:max-w-xl">
                                 <option value="claude-opus-4-6">claude-opus-4-6 (Opus · мощная)</option>
                                 <option value="claude-sonnet-4-6">claude-sonnet-4-6 (Sonnet · баланс)</option>
                                 <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (Haiku · быстрая)</option>
@@ -205,9 +315,10 @@
 
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="internal-llm-provider">LLM для генерации workflow</label>
-                        <select id="internal-llm-provider" class="input-field w-full md:max-w-xs" aria-label="Провайдер для генерации workflow">
+                        <select id="internal-llm-provider" class="input-field w-full lg:max-w-xl" aria-label="Провайдер для генерации workflow">
                             <option value="grok">Grok (рекомендуется)</option>
                             <option value="gemini">Gemini</option>
+                            <option value="openai">OpenAI</option>
                             <option value="claude">Claude</option>
                         </select>
                         <p class="text-xs text-gray-500 mt-1">Используется для генерации workflow и анализа задач</p>
@@ -215,7 +326,7 @@
 
                     <div>
                         <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="default-orchestrator-mode">Режим выполнения Ralph</label>
-                        <select id="default-orchestrator-mode" class="input-field w-full md:max-w-xs" aria-label="Как запускать Ralph workflow">
+                        <select id="default-orchestrator-mode" class="input-field w-full lg:max-w-xl" aria-label="Как запускать Ralph workflow">
                             <option value="ralph_internal">Ralph Internal (внутри Python)</option>
                             <option value="ralph_cli">Ralph CLI (внешний binary)</option>
                             <option value="react">ReAct Loop</option>
@@ -231,6 +342,29 @@
                             <span id="advanced-toggle-icon" class="material-icons-round text-sm">expand_more</span>
                         </button>
                         <div id="advanced-settings" class="hidden space-y-5 mt-4">
+                            <div id="provider-model-sync" class="rounded-xl border border-white/10 bg-white/5 p-4">
+                                <div class="flex items-center justify-between gap-3 mb-3">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-white">Синхронизация моделей из API</h3>
+                                        <p class="text-xs text-gray-500 mt-1">Нажмите кнопку провайдера, чтобы запросить актуальный список моделей и обновить селекты ниже.</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <button type="button" id="btn-refresh-models-gemini" class="btn-ghost w-full justify-center">
+                                        <span class="material-icons-round text-sm">cloud_download</span>
+                                        Gemini API
+                                    </button>
+                                    <button type="button" id="btn-refresh-models-grok" class="btn-ghost w-full justify-center">
+                                        <span class="material-icons-round text-sm">cloud_download</span>
+                                        Grok API
+                                    </button>
+                                    <button type="button" id="btn-refresh-models-openai" class="btn-ghost w-full justify-center">
+                                        <span class="material-icons-round text-sm">cloud_download</span>
+                                        OpenAI API
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat Model · Gemini</label>
@@ -257,11 +391,22 @@
                                 </div>
                             </div>
 
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Chat Model · OpenAI</label>
+                                    <select id="chat-model-openai" class="input-field w-full"></select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Agent Model · OpenAI</label>
+                                    <select id="agent-model-openai" class="input-field w-full"></select>
+                                </div>
+                            </div>
+
                             <div>
                                 <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">RAG · Embeddings Model</label>
                                 <div class="flex flex-wrap gap-2 items-center">
-                                    <select id="rag-model" class="input-field flex-1 min-w-0 md:max-w-md" data-required="1"></select>
-                                    <input type="text" id="rag-model-custom" placeholder="or custom model id" class="input-field flex-1 min-w-[200px] md:max-w-xs" data-required-rag="1" />
+                                    <select id="rag-model" class="input-field flex-1 min-w-[240px]" data-required="1"></select>
+                                    <input type="text" id="rag-model-custom" placeholder="or custom model id" class="input-field flex-1 min-w-[240px]" data-required-rag="1" />
                                 </div>
                                 <span class="field-error" id="rag-model-error" style="display:none;">Required field</span>
                                 <p class="text-xs text-gray-500 mt-1">Used for indexing and search in the knowledge base.</p>
@@ -290,7 +435,7 @@
                 </div>
                 <div class="space-y-3">
                     <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Папка по умолчанию</label>
-                    <select id="default-agent-output-path" class="input-field w-full md:max-w-md" aria-label="Выбор папки для файлов агента">
+                    <select id="default-agent-output-path" class="input-field w-full lg:max-w-2xl" aria-label="Выбор папки для файлов агента">
                         <option value="">— Не задано (каждый раз выбирать вручную) —</option>
                         <option value="__load__" disabled>Загрузка…</option>
                     </select>
@@ -304,8 +449,15 @@
                 </div>
             </div>
 
+            <div class="px-1">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs uppercase tracking-wider text-gray-400">
+                    <span class="material-icons-round text-sm text-emerald-400">bolt</span>
+                    Рабочие сценарии
+                </div>
+            </div>
+
             <!-- Делегирование задач ИИ -->
-            <div class="glass-card rounded-xl p-6">
+            <div class="glass-card rounded-xl p-6" id="settings-delegate">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
                         <span class="material-icons-round text-primary">smart_toy</span>
@@ -317,7 +469,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="delegate-ui">При делегировании открывать</label>
-                    <select id="delegate-ui" class="input-field w-full md:max-w-md" aria-label="Чат или форма задачи при делегировании ИИ">
+                    <select id="delegate-ui" class="input-field w-full lg:max-w-2xl" aria-label="Чат или форма задачи при делегировании ИИ">
                         <option value="chat">Чат с контекстом задачи</option>
                         <option value="task_form">Форма задачи агента</option>
                     </select>
@@ -385,7 +537,7 @@
                             <h3 class="font-semibold text-white">Сервер по умолчанию</h3>
                         </div>
                         <p class="text-sm text-gray-400 mb-3">Если в задаче не указан сервер — будет использоваться этот. Пусто = всегда спрашивать.</p>
-                        <select id="default_server" class="input-field w-full max-w-md">
+                        <select id="default_server" class="input-field w-full lg:max-w-2xl">
                             <option value="">Не выбран (всегда спрашивать)</option>
                         </select>
                     </div>
@@ -428,8 +580,15 @@
             </div>
             {% endif %}
 
+            <div class="px-1">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs uppercase tracking-wider text-gray-400">
+                    <span class="material-icons-round text-sm text-cyan-400">admin_panel_settings</span>
+                    Администрирование
+                </div>
+            </div>
+
             <!-- Session -->
-            <div class="glass-card rounded-xl p-6">
+            <div class="glass-card rounded-xl p-6" id="settings-session">
                 <div class="flex items-center gap-3 mb-6">
                     <div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
                         <span class="material-icons-round text-red-400">history</span>
@@ -486,7 +645,7 @@
 
             <!-- Управление доступом — одна страница с вкладками -->
             {% if user_can_settings %}
-            <div class="glass-card rounded-xl p-6 border border-primary/20 shadow-glow-primary">
+            <div class="glass-card rounded-xl p-6 border border-primary/20 shadow-glow-primary" id="settings-access-shortcut">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div class="flex items-start gap-3">
                         <div class="w-11 h-11 rounded-xl bg-primary/20 flex items-center justify-center ring-2 ring-primary/30 shrink-0">
@@ -506,7 +665,7 @@
             {% endif %}
 
             <!-- About -->
-            <div class="glass-card rounded-xl p-6">
+            <div class="glass-card rounded-xl p-6" id="settings-about">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
                         <span class="material-icons-round text-cyan-400">info</span>
@@ -537,6 +696,8 @@
             </div>
         </div>
     </div>
+</div>
+</div>
 </div>
 
 {% load static %}
@@ -578,6 +739,114 @@
         }
     }
 
+    function providerModelSelectIds(provider) {
+        if (provider === 'gemini') return ['chat-model-gemini', 'agent-model-gemini'];
+        if (provider === 'grok') return ['chat-model-grok', 'agent-model-grok'];
+        if (provider === 'openai') return ['chat-model-openai', 'agent-model-openai'];
+        return [];
+    }
+
+    async function refreshProviderModels(provider) {
+        var btn = document.getElementById('btn-refresh-models-' + provider);
+        var providerLabel = provider.toUpperCase();
+        var ids = providerModelSelectIds(provider);
+        var previous = {};
+        ids.forEach(function(id) {
+            var el = document.getElementById(id);
+            previous[id] = el ? el.value : '';
+        });
+
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('btn-loading');
+        }
+        try {
+            const r = await fetch('/api/models/refresh/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ provider: provider }),
+            });
+            const data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error(data.error || ('Failed to refresh ' + providerLabel + ' models'));
+            }
+
+            ids.forEach(function(id) {
+                fillSelect(id, data.models || [], previous[id]);
+            });
+            showToast(providerLabel + ' models updated: ' + (data.count || 0), 'success');
+        } catch (e) {
+            showToast((providerLabel + ' refresh error: ' + (e.message || e)), 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('btn-loading');
+            }
+        }
+    }
+
+    var settingsNavInitialized = false;
+    function setupSettingsNavigation() {
+        if (settingsNavInitialized) return;
+        var links = Array.prototype.slice.call(document.querySelectorAll('[data-settings-nav]'));
+        if (!links.length) return;
+
+        var targets = links.map(function(link) {
+            var href = link.getAttribute('href') || '';
+            var id = href.replace(/^#/, '');
+            return {
+                link: link,
+                target: id ? document.getElementById(id) : null,
+                id: id
+            };
+        }).filter(function(item) { return !!item.target; });
+
+        if (!targets.length) return;
+        settingsNavInitialized = true;
+
+        var setActive = function(id) {
+            links.forEach(function(link) {
+                link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+            });
+        };
+
+        links.forEach(function(link) {
+            link.addEventListener('click', function() {
+                var href = link.getAttribute('href') || '';
+                setActive(href.replace(/^#/, ''));
+            });
+        });
+
+        var initialHash = (window.location.hash || '').replace(/^#/, '');
+        if (initialHash && document.getElementById(initialHash)) {
+            setActive(initialHash);
+        } else {
+            setActive(targets[0].id);
+        }
+
+        if (!('IntersectionObserver' in window)) return;
+        var observer = new IntersectionObserver(function(entries) {
+            var visible = entries
+                .filter(function(entry) { return entry.isIntersecting; })
+                .sort(function(a, b) { return b.intersectionRatio - a.intersectionRatio; })[0];
+            if (visible && visible.target && visible.target.id) {
+                setActive(visible.target.id);
+            }
+        }, {
+            root: null,
+            rootMargin: '-30% 0px -55% 0px',
+            threshold: [0.1, 0.35, 0.6]
+        });
+
+        targets.forEach(function(item) {
+            observer.observe(item.target);
+        });
+    }
+
     var loadSettings = async function() {
         const loading = document.getElementById('settings-loading');
         const content = document.getElementById('settings-content');
@@ -597,6 +866,7 @@
             const cur = models.current || {};
             const gemini = models.gemini || [];
             const grok = models.grok || [];
+            const openai = models.openai || [];
             const ragDefaults = models.rag_defaults || ['models/text-embedding-004'];
 
             // API status
@@ -604,6 +874,7 @@
             const grokStatus = document.getElementById('api-grok-status');
             const anthropicStatus = document.getElementById('api-anthropic-status');
             const cursorStatus = document.getElementById('api-cursor-status');
+            const openaiStatus = document.getElementById('api-openai-status');
             
             if (geminiStatus) {
                 geminiStatus.textContent = apiKeys.gemini_set ? 'Configured' : 'Not set';
@@ -620,6 +891,10 @@
             if (cursorStatus) {
                 cursorStatus.textContent = apiKeys.cursor_set ? 'Configured' : 'Not set';
                 cursorStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.cursor_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
+            }
+            if (openaiStatus) {
+                openaiStatus.textContent = apiKeys.openai_set ? 'Configured' : 'Not set';
+                openaiStatus.className = 'text-xs font-medium px-2 py-1 rounded-lg ' + (apiKeys.openai_set ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
             }
             const codexStatus = document.getElementById('api-codex-status');
             if (codexStatus) {
@@ -655,31 +930,59 @@
             if (geminiEnabled) geminiEnabled.checked = !!cfg.gemini_enabled;
             const grokEnabled = document.getElementById('grok-enabled');
             if (grokEnabled) grokEnabled.checked = !!cfg.grok_enabled;
+            const openaiEnabled = document.getElementById('openai-enabled');
+            if (openaiEnabled) openaiEnabled.checked = !!cfg.openai_enabled;
             const claudeEnabled = document.getElementById('claude-enabled');
             if (claudeEnabled) {
                 claudeEnabled.checked = !!cfg.claude_enabled;
                 const claudeRow = document.getElementById('claude-model-row');
                 if (claudeRow) claudeRow.classList.toggle('hidden', !cfg.claude_enabled);
-                claudeEnabled.addEventListener('change', function() {
-                    if (claudeRow) claudeRow.classList.toggle('hidden', !this.checked);
-                    // Auto-switch internal LLM provider when enabling Claude
-                    const internalLlmSel = document.getElementById('internal-llm-provider');
-                    if (internalLlmSel && this.checked) {
-                        internalLlmSel.value = 'claude';
-                    }
+            }
+
+            const internalLlmSel = document.getElementById('internal-llm-provider');
+            function enabledInternalProviders() {
+                const providers = [];
+                if (grokEnabled && grokEnabled.checked) providers.push('grok');
+                if (geminiEnabled && geminiEnabled.checked) providers.push('gemini');
+                if (openaiEnabled && openaiEnabled.checked) providers.push('openai');
+                if (claudeEnabled && claudeEnabled.checked) providers.push('claude');
+                return providers;
+            }
+            function fallbackInternalProvider() {
+                const enabled = enabledInternalProviders();
+                return enabled.length ? enabled[0] : 'grok';
+            }
+            function onProviderToggle(provider, checked) {
+                if (!internalLlmSel) return;
+                if (checked) {
+                    internalLlmSel.value = provider;
+                    return;
+                }
+                if (internalLlmSel.value === provider) {
+                    internalLlmSel.value = fallbackInternalProvider();
+                }
+            }
+
+            if (geminiEnabled) {
+                geminiEnabled.addEventListener('change', function() {
+                    onProviderToggle('gemini', this.checked);
                 });
             }
-            // Also: when disabling grok, auto-switch internal provider if it was grok
-            const grokEnabledEl = document.getElementById('grok-enabled');
-            if (grokEnabledEl) {
-                grokEnabledEl.addEventListener('change', function() {
-                    const internalLlmSel = document.getElementById('internal-llm-provider');
-                    if (!this.checked && internalLlmSel && internalLlmSel.value === 'grok') {
-                        const claudeEl = document.getElementById('claude-enabled');
-                        const geminiEl = document.getElementById('gemini-enabled');
-                        if (claudeEl && claudeEl.checked) internalLlmSel.value = 'claude';
-                        else if (geminiEl && geminiEl.checked) internalLlmSel.value = 'gemini';
-                    }
+            if (grokEnabled) {
+                grokEnabled.addEventListener('change', function() {
+                    onProviderToggle('grok', this.checked);
+                });
+            }
+            if (openaiEnabled) {
+                openaiEnabled.addEventListener('change', function() {
+                    onProviderToggle('openai', this.checked);
+                });
+            }
+            if (claudeEnabled) {
+                claudeEnabled.addEventListener('change', function() {
+                    const claudeRow = document.getElementById('claude-model-row');
+                    if (claudeRow) claudeRow.classList.toggle('hidden', !this.checked);
+                    onProviderToggle('claude', this.checked);
                 });
             }
             const chatModelClaude = document.getElementById('chat-model-claude');
@@ -687,7 +990,13 @@
 
             // LLM для внутренних задач
             const internalLlm = document.getElementById('internal-llm-provider');
-            if (internalLlm) internalLlm.value = cfg.internal_llm_provider || 'grok';
+            if (internalLlm) {
+                const requestedInternal = cfg.internal_llm_provider || 'grok';
+                internalLlm.value = requestedInternal;
+                if (!enabledInternalProviders().includes(internalLlm.value)) {
+                    internalLlm.value = fallbackInternalProvider();
+                }
+            }
 
             // Режим оркестратора Ralph
             const orchestratorMode = document.getElementById('default-orchestrator-mode');
@@ -724,8 +1033,10 @@
             // Chat / Agent selects: use lists from API, preserve current value
             fillSelect('chat-model-gemini', gemini, cfg.chat_model_gemini || cur.chat_gemini);
             fillSelect('chat-model-grok', grok, cfg.chat_model_grok || cur.chat_grok);
+            fillSelect('chat-model-openai', openai, cfg.chat_model_openai || cur.chat_openai);
             fillSelect('agent-model-gemini', gemini, cfg.agent_model_gemini || cur.agent_model_gemini);
             fillSelect('agent-model-grok', grok, cfg.agent_model_grok || cur.agent_model_grok);
+            fillSelect('agent-model-openai', openai, cfg.agent_model_openai || cur.agent_model_openai);
             fillSelect('rag-model', ragDefaults, cfg.rag_model || cur.rag_model);
             const ragCustom = document.getElementById('rag-model-custom');
             if (ragCustom && (cfg.rag_model || cur.rag_model)) {
@@ -735,6 +1046,7 @@
 
             loading.classList.add('hidden');
             content.classList.remove('hidden');
+            setupSettingsNavigation();
 
             // Настройки выполнения задач (если блок есть)
             var tasksCard = document.getElementById('tasks-execution');
@@ -745,6 +1057,7 @@
         } catch (e) {
             loading.classList.add('hidden');
             content.classList.remove('hidden');
+            setupSettingsNavigation();
             showToast('Load error: ' + (e.message || e), 'error');
         }
     };
@@ -829,8 +1142,10 @@
             default_provider: (document.getElementById('default-provider') && document.getElementById('default-provider').value) || 'cursor',
             chat_model_gemini: document.getElementById('chat-model-gemini').value,
             chat_model_grok: document.getElementById('chat-model-grok').value,
+            chat_model_openai: (document.getElementById('chat-model-openai') && document.getElementById('chat-model-openai').value) || 'gpt-5-mini',
             agent_model_gemini: document.getElementById('agent-model-gemini').value,
             agent_model_grok: document.getElementById('agent-model-grok').value,
+            agent_model_openai: (document.getElementById('agent-model-openai') && document.getElementById('agent-model-openai').value) || 'gpt-5-mini',
             rag_model: ragVal,
             default_agent_output_path: (document.getElementById('default-agent-output-path') && document.getElementById('default-agent-output-path').value) || '',
             cursor_chat_mode: (document.getElementById('cursor-chat-mode') && document.getElementById('cursor-chat-mode').value) || 'ask',
@@ -840,6 +1155,7 @@
             allow_model_selection: document.getElementById('allow-model-selection') ? document.getElementById('allow-model-selection').checked : false,
             gemini_enabled: document.getElementById('gemini-enabled') ? document.getElementById('gemini-enabled').checked : false,
             grok_enabled: document.getElementById('grok-enabled') ? document.getElementById('grok-enabled').checked : true,
+            openai_enabled: document.getElementById('openai-enabled') ? document.getElementById('openai-enabled').checked : false,
             claude_enabled: document.getElementById('claude-enabled') ? document.getElementById('claude-enabled').checked : false,
             chat_model_claude: (document.getElementById('chat-model-claude') && document.getElementById('chat-model-claude').value) || 'claude-sonnet-4-6',
         };
@@ -958,6 +1274,14 @@
                 localStorage.setItem('weu_allow_model_selection', this.checked ? '1' : '0');
             });
         }
+        ['gemini', 'grok', 'openai'].forEach(function(provider) {
+            var btn = document.getElementById('btn-refresh-models-' + provider);
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    refreshProviderModels(provider);
+                });
+            }
+        });
         // Кнопка «Обновить» для места на диске (блок виден только при user_can_settings)
         var btnDiskRefresh = document.getElementById('btn-disk-refresh');
         if (btnDiskRefresh) btnDiskRefresh.addEventListener('click', loadDiskUsage);
