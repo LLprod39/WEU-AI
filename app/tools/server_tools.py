@@ -5,6 +5,8 @@
 import os
 from typing import Any, Dict, Optional, Tuple
 from loguru import logger
+from django.db.models import Q
+from django.utils import timezone
 from app.tools.base import BaseTool, ToolMetadata, ToolParameter
 from app.tools.ssh_tools import ssh_manager
 from app.tools.safety import is_dangerous_command
@@ -82,12 +84,31 @@ class ServersListTool(BaseTool):
             )
 
         from servers.models import Server
-        qs = Server.objects.filter(user_id=user_id).order_by("name").values("id", "name", "host", "port")
+        now = timezone.now()
+        qs = (
+            Server.objects.filter(is_active=True)
+            .filter(
+                Q(user_id=user_id)
+                | (
+                    Q(shares__user_id=user_id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
+            .order_by("name")
+            .values("id", "name", "host", "port", "user_id")
+        )
         rows = list(qs)
         if not rows:
             return "Нет настроенных серверов. Добавь серверы в разделе Servers."
         servers = [
-            {"id": r["id"], "name": r["name"], "host": r["host"], "port": r["port"]}
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "host": r["host"],
+                "port": r["port"],
+                "access": "owner" if r["user_id"] == user_id else "shared",
+            }
             for r in rows
         ]
         return {"servers": servers, "total": len(servers)}
@@ -133,6 +154,7 @@ class ServerExecuteTool(BaseTool):
         
         # Находим запрошенный сервер
         server = await sync_to_async(self._get_server, thread_sensitive=True)(user_id, server_name_or_id)
+        share = await sync_to_async(self._get_active_share, thread_sensitive=True)(user_id, server)
         
         if not server:
             if target_server_id:
@@ -204,7 +226,8 @@ class ServerExecuteTool(BaseTool):
 
             # Добавляем информацию о network context если есть
             network_info = ""
-            if server.network_config or server.corporate_context:
+            share_context_enabled = bool(getattr(share, "share_context", True)) if share else True
+            if share_context_enabled and (server.network_config or server.corporate_context):
                 network_summary = server.get_network_context_summary()
                 if network_summary and network_summary != "Стандартная сеть":
                     network_info = f"\n\n=== Server Context ===\n{network_summary}\n===================="
@@ -217,11 +240,36 @@ class ServerExecuteTool(BaseTool):
     @staticmethod
     def _get_server(user_id: int, server_name_or_id: str):
         from servers.models import Server
+        now = timezone.now()
+        base_qs = (
+            Server.objects.filter(is_active=True)
+            .filter(
+                Q(user_id=user_id)
+                | (
+                    Q(shares__user_id=user_id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
+        )
         try:
             sid = int(server_name_or_id)
-            return Server.objects.filter(user_id=user_id, id=sid).first()
+            return base_qs.filter(id=sid).first()
         except ValueError:
-            return Server.objects.filter(user_id=user_id, name__iexact=server_name_or_id).first()
+            return base_qs.filter(name__iexact=server_name_or_id).first()
+
+    @staticmethod
+    def _get_active_share(user_id: int, server):
+        if not server or server.user_id == user_id:
+            return None
+        from servers.models import ServerShare
+
+        now = timezone.now()
+        return (
+            ServerShare.objects.filter(server=server, user_id=user_id, is_revoked=False)
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .first()
+        )
 
     @staticmethod
     def _save_command_history(user_id: int, server, command: str, output: str, exit_code: int):

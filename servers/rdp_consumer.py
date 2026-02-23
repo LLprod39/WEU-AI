@@ -10,6 +10,8 @@ import contextlib
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.db.models import Q
+from django.utils import timezone
 from loguru import logger
 
 from passwords.encryption import PasswordEncryption
@@ -63,7 +65,19 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_server(self, server_id: int) -> Server | None:
-        return Server.objects.filter(id=server_id, user_id=self.user.id, is_active=True).first()
+        now = timezone.now()
+        return (
+            Server.objects.filter(id=server_id, is_active=True)
+            .filter(
+                Q(user_id=self.user.id)
+                | (
+                    Q(shares__user_id=self.user.id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
+            .first()
+        )
 
     async def receive(self, text_data=None, bytes_data=None):
         # First message is expected to be auth payload for resolving stored secrets.

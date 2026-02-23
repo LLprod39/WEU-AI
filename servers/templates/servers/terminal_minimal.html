@@ -549,6 +549,14 @@ let currentAiRunId = '';
 
 function eid(id) { return document.getElementById(id); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function normalizeMdInput(v) {
+    if (typeof v === 'string') return v;
+    if (v == null) return '';
+    if (typeof v === 'object') {
+        try { return JSON.stringify(v, null, 2); } catch {}
+    }
+    return String(v);
+}
 function getCookie(n){ let v=null; document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith(n+'='))v=decodeURIComponent(c.slice(n.length+1));}); return v; }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -792,15 +800,42 @@ function toggleAI() {
 // ─── Marked setup ─────────────────────────────────────────────────────────────
 if (typeof marked !== 'undefined') {
     const rr = new marked.Renderer();
-    rr.code = function(code, lang) {
-        const l=lang||'shell', cid='mc'+Math.random().toString(36).slice(2);
-        return `<div class="ai-cb"><div class="ai-cb-hdr"><span class="ai-cb-lang">${esc(l)}</span><button class="ai-cb-copy" onclick="mCopy(this,'${cid}')">Copy</button></div><pre id="${cid}"><code class="bc">${esc(code)}</code></pre></div>`;
+    const mdTokenText = t => {
+        if (typeof t === 'string') return t;
+        if (t && typeof t === 'object') {
+            if (typeof t.text === 'string') return t.text;
+            if (typeof t.raw === 'string') return t.raw;
+        }
+        return String(t == null ? '' : t);
     };
-    rr.codespan = c => `<code>${esc(c)}</code>`;
+    const mdTokenLang = (t, fallback) => {
+        if (typeof t === 'string') return t || fallback;
+        if (t && typeof t === 'object') {
+            if (typeof t.lang === 'string' && t.lang) return t.lang;
+            if (typeof t.language === 'string' && t.language) return t.language;
+        }
+        return fallback;
+    };
+    rr.code = function(code, lang) {
+        const l=mdTokenLang(code, lang || 'shell') || 'shell';
+        const cid='mc'+Math.random().toString(36).slice(2);
+        return `<div class="ai-cb"><div class="ai-cb-hdr"><span class="ai-cb-lang">${esc(l)}</span><button class="ai-cb-copy" onclick="mCopy(this,'${cid}')">Copy</button></div><pre id="${cid}"><code class="bc">${esc(mdTokenText(code))}</code></pre></div>`;
+    };
+    rr.codespan = c => `<code>${esc(mdTokenText(c))}</code>`;
     marked.setOptions({ renderer:rr, breaks:true, gfm:true });
 }
 function mCopy(btn, id) { const el=eid(id); if(!el)return; navigator.clipboard.writeText(el.textContent||'').then(()=>{btn.textContent='✓';setTimeout(()=>{btn.textContent='Copy';},2000);}); }
-function mdRender(t) { if(typeof marked!=='undefined'){try{return marked.parse(t||'').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'');}catch{}}return '<div style="white-space:pre-wrap">'+esc(t)+'</div>'; }
+function mdRender(t) {
+    const src = normalizeMdInput(t);
+    if (typeof marked!=='undefined') {
+        try {
+            return marked.parse(src || '').replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'');
+        } catch {
+            return '<div style="white-space:pre-wrap">'+esc(src)+'</div>';
+        }
+    }
+    return '<div style="white-space:pre-wrap">'+esc(src)+'</div>';
+}
 function fmtT() { const d=new Date(); return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); }
 
 // ─── AI Messages ─────────────────────────────────────────────────────────────

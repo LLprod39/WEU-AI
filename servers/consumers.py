@@ -15,12 +15,14 @@ from typing import Any, Optional
 import asyncssh
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.db.models import Q
+from django.utils import timezone
 from loguru import logger
 
 from app.tools.safety import is_dangerous_command
 from core_ui.context_processors import user_can_feature
 from passwords.encryption import PasswordEncryption
-from servers.models import Server
+from servers.models import Server, ServerShare
 
 
 @dataclass(frozen=True)
@@ -1665,7 +1667,20 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _get_server(self, user_id: int, server_id: int) -> Server:
-        return Server.objects.select_related("group").get(id=server_id, user_id=user_id, is_active=True)
+        now = timezone.now()
+        return (
+            Server.objects.select_related("group", "user")
+            .filter(id=server_id, is_active=True)
+            .filter(
+                Q(user_id=user_id)
+                | (
+                    Q(shares__user_id=user_id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
+            .get()
+        )
 
     @database_sync_to_async
     def _resolve_server_secret(self, server_id: int, master_password: str, plain_password: str) -> str:
@@ -1711,39 +1726,60 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         """
         from servers.models import GlobalServerRules
 
+        now = timezone.now()
         server = (
-            Server.objects.select_related("group")
-            .filter(id=server_id, user_id=user_id, is_active=True)
+            Server.objects.select_related("group", "user")
+            .filter(id=server_id, is_active=True)
+            .filter(
+                Q(user_id=user_id)
+                | (
+                    Q(shares__user_id=user_id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
             .first()
         )
         if not server:
             return [], ""
 
-        global_rules = GlobalServerRules.objects.filter(user_id=user_id).first()
+        share = None
+        if server.user_id != user_id:
+            share = (
+                ServerShare.objects.filter(server_id=server_id, user_id=user_id, is_revoked=False)
+                .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+                .first()
+            )
+        share_context_enabled = bool(share.share_context) if share else True
+
+        global_rules = GlobalServerRules.objects.filter(user_id=server.user_id).first()
 
         forbidden: list[str] = []
         parts: list[str] = []
 
         if global_rules:
-            ctx = global_rules.get_context_for_ai()
-            if ctx:
-                parts.append(ctx)
+            if share_context_enabled:
+                ctx = global_rules.get_context_for_ai()
+                if ctx:
+                    parts.append(ctx)
             if global_rules.forbidden_commands:
                 forbidden.extend([str(x) for x in global_rules.forbidden_commands if x])
 
         if server.group:
-            gctx = server.group.get_context_for_ai()
-            if gctx:
-                parts.append(gctx)
+            if share_context_enabled:
+                gctx = server.group.get_context_for_ai()
+                if gctx:
+                    parts.append(gctx)
             if server.group.forbidden_commands:
                 forbidden.extend([str(x) for x in server.group.forbidden_commands if x])
 
-        try:
-            server_ctx = server.get_network_context_summary()
-            if server_ctx:
-                parts.append("=== КОНТЕКСТ СЕРВЕРА ===\n" + server_ctx)
-        except Exception:
-            pass
+        if share_context_enabled:
+            try:
+                server_ctx = server.get_network_context_summary()
+                if server_ctx:
+                    parts.append("=== КОНТЕКСТ СЕРВЕРА ===\n" + server_ctx)
+            except Exception:
+                pass
 
         # De-duplicate forbidden patterns (case-insensitive)
         seen: set[str] = set()

@@ -121,6 +121,11 @@ class ServerGroupPermission(models.Model):
 
 class Server(models.Model):
     """Server configuration"""
+    SERVER_TYPE_CHOICES = [
+        ("ssh", "SSH (Linux)"),
+        ("rdp", "RDP (Windows)"),
+    ]
+
     AUTH_METHOD_CHOICES = [
         ('password', 'Password'),
         ('key', 'SSH Key'),
@@ -138,6 +143,12 @@ class Server(models.Model):
     
     # Server info
     name = models.CharField(max_length=200)  # Display name
+    server_type = models.CharField(
+        max_length=10,
+        choices=SERVER_TYPE_CHOICES,
+        default="ssh",
+        help_text="SSH для Linux, RDP для Windows",
+    )
     host = models.CharField(max_length=255)
     port = models.IntegerField(default=22)
     username = models.CharField(max_length=100)
@@ -192,6 +203,23 @@ class Server(models.Model):
     
     def __str__(self):
         return f"{self.name} ({self.host}:{self.port})"
+
+    def is_rdp(self) -> bool:
+        return (self.server_type or "ssh") == "rdp"
+
+    def is_ssh(self) -> bool:
+        return not self.is_rdp()
+
+    def get_rdp_port(self) -> int:
+        if self.is_rdp():
+            try:
+                return int(self.port or 3389)
+            except Exception:
+                return 3389
+        try:
+            return int(self.port or 22)
+        except Exception:
+            return 22
     
     def get_connection_string(self) -> str:
         """Get SSH connection string"""
@@ -245,6 +273,48 @@ class Server(models.Model):
         # Firewall (по умолчанию True для корпоративных сетей)
         if nc.get('firewall'):
             self.behind_firewall = True
+
+
+class ServerShare(models.Model):
+    """Explicit server sharing between users."""
+    server = models.ForeignKey(Server, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="server_shares")
+    shared_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="server_shares_sent",
+    )
+    share_context = models.BooleanField(
+        default=True,
+        help_text="Передавать ли AI-контекст сервера (corporate/network/group/global rules) пользователю с доступом",
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Если задано, доступ автоматически истекает в это время",
+    )
+    is_revoked = models.BooleanField(default=False)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["server", "user"]
+        indexes = [
+            models.Index(fields=["user", "is_revoked"]),
+            models.Index(fields=["server", "is_revoked"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.server.name} -> {self.user.username}"
+
+    def is_active(self) -> bool:
+        if self.is_revoked:
+            return False
+        if self.expires_at and timezone.now() >= self.expires_at:
+            return False
+        return True
 
 
 class ServerConnection(models.Model):

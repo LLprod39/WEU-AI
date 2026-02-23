@@ -9,10 +9,12 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.contrib.auth.models import User
 from django.db import transaction
 from .models import (
     Server,
+    ServerShare,
     ServerGroup,
     ServerConnection,
     ServerCommandHistory,
@@ -31,7 +33,7 @@ from core_ui.middleware import get_template_name
 @require_feature('servers', redirect_on_forbidden=True)
 def server_list(request):
     """List all servers for the user"""
-    servers = Server.objects.filter(user=request.user, is_active=True)
+    servers = Server.objects.filter(user=request.user, is_active=True).select_related("group", "user")
     
     # Filter by group
     group_id = request.GET.get('group')
@@ -46,6 +48,30 @@ def server_list(request):
             Q(host__icontains=search) |
             Q(username__icontains=search)
         )
+
+    servers = list(servers)
+    for s in servers:
+        s.share_access_kind = "owner"
+        s.share_context_enabled = True
+        s.share_expires_at = None
+        s.shared_by_user = None
+
+    now = timezone.now()
+    shared_links = (
+        ServerShare.objects.select_related("server", "server__group", "server__user", "shared_by")
+        .filter(user=request.user, is_revoked=False, server__is_active=True)
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .order_by("server__name")
+    )
+    shared_servers: list[Server] = []
+    for link in shared_links:
+        srv = link.server
+        srv.share_access_kind = "shared"
+        srv.share_context_enabled = bool(link.share_context)
+        srv.share_expires_at = link.expires_at
+        srv.shared_by_user = link.shared_by or srv.user
+        srv.share_link_id = link.id
+        shared_servers.append(srv)
     
     groups = ServerGroup.objects.filter(
         Q(user=request.user) | Q(memberships__user=request.user)
@@ -61,6 +87,10 @@ def server_list(request):
 
     return render(request, template, {
         'servers': servers,
+        'shared_servers': shared_servers,
+        'owned_server_count': len(servers),
+        'shared_server_count': len(shared_servers),
+        'total_server_count': len(servers) + len(shared_servers),
         'groups': groups,
         'group_tags': group_tags,
         'global_rules': global_rules,
@@ -74,10 +104,17 @@ def server_terminal_page(request, server_id: int):
     Full-page SSH terminal (mobile-first). Desktop also supported as a page fallback.
     WebSocket endpoint is handled by Channels consumer.
     """
-    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
-    all_servers = Server.objects.filter(user=request.user, is_active=True).exclude(id=server_id)
+    accessible_qs = _accessible_servers_queryset(request.user)
+    server = get_object_or_404(accessible_qs, id=server_id)
+    all_servers = accessible_qs.exclude(id=server_id)
+    share = _active_server_share(server, request.user)
     template = 'servers/mobile/terminal.html' if getattr(request, 'is_mobile', False) else 'servers/terminal.html'
-    return render(request, template, {'server': server, 'all_servers': all_servers})
+    return render(request, template, {
+        'server': server,
+        'all_servers': all_servers,
+        'is_shared_server': bool(share),
+        'share_context_enabled': bool(share.share_context) if share else True,
+    })
 
 
 @login_required
@@ -86,7 +123,7 @@ def multi_terminal(request):
     """
     Multi-terminal hub - multiple SSH sessions in tabs.
     """
-    servers = Server.objects.filter(user=request.user, is_active=True)
+    servers = _accessible_servers_queryset(request.user)
     return render(request, 'servers/multi_terminal.html', {'servers': servers})
 
 
@@ -96,9 +133,16 @@ def terminal_minimal(request, server_id: int):
     """
     Minimal terminal for popup window - no navigation chrome.
     """
-    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
-    all_servers = Server.objects.filter(user=request.user, is_active=True).exclude(id=server_id)
-    return render(request, 'servers/terminal_minimal.html', {'server': server, 'all_servers': all_servers})
+    accessible_qs = _accessible_servers_queryset(request.user)
+    server = get_object_or_404(accessible_qs, id=server_id)
+    all_servers = accessible_qs.exclude(id=server_id)
+    share = _active_server_share(server, request.user)
+    return render(request, 'servers/terminal_minimal.html', {
+        'server': server,
+        'all_servers': all_servers,
+        'is_shared_server': bool(share),
+        'share_context_enabled': bool(share.share_context) if share else True,
+    })
 
 
 def _get_group_role(group: ServerGroup, user: User) -> str:
@@ -106,6 +150,45 @@ def _get_group_role(group: ServerGroup, user: User) -> str:
         return "owner"
     membership = ServerGroupMember.objects.filter(group=group, user=user).first()
     return membership.role if membership else ""
+
+
+def _active_share_q(user: User) -> Q:
+    now = timezone.now()
+    return (
+        Q(shares__user=user, shares__is_revoked=False)
+        & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+    )
+
+
+def _accessible_servers_queryset(user: User):
+    return (
+        Server.objects.select_related("group", "user")
+        .filter(is_active=True)
+        .filter(Q(user=user) | _active_share_q(user))
+        .distinct()
+    )
+
+
+def _active_server_share(server: Server, user: User) -> ServerShare | None:
+    if not server or server.user_id == user.id:
+        return None
+    now = timezone.now()
+    return (
+        ServerShare.objects.filter(server=server, user=user, is_revoked=False)
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .first()
+    )
+
+
+def _parse_expires_at(raw_value):
+    if raw_value in (None, "", "null", "None"):
+        return None
+    dt = parse_datetime(str(raw_value))
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
 
 
 @csrf_exempt
@@ -260,10 +343,31 @@ def server_create(request):
     """Create a new server"""
     try:
         data = json.loads(request.body)
-        
+
+        # Validate and normalize core fields
+        raw_port = data.get("port", 22)
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid port"}, status=400)
+        if port < 1 or port > 65535:
+            return JsonResponse({"error": "Port must be in range 1..65535"}, status=400)
+
+        server_type = str(data.get("server_type", "ssh") or "ssh").strip().lower()
+        if server_type not in ("ssh", "rdp"):
+            return JsonResponse({"error": "Invalid server_type"}, status=400)
+
         group = None
-        group_id = data.get('group_id')
-        if group_id:
+        group_id = data.get("group_id")
+        if isinstance(group_id, str):
+            group_id = group_id.strip()
+        if group_id in ("", "null", "None"):
+            group_id = None
+        if group_id is not None:
+            try:
+                group_id = int(group_id)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "Invalid group_id"}, status=400)
             try:
                 group = ServerGroup.objects.get(id=group_id)
                 if _get_group_role(group, request.user) == "":
@@ -275,8 +379,9 @@ def server_create(request):
         server = Server.objects.create(
             user=request.user,
             name=data.get('name', ''),
+            server_type=server_type,
             host=data.get('host', ''),
-            port=data.get('port', 22),
+            port=port,
             username=data.get('username', ''),
             auth_method=data.get('auth_method', 'password'),
             key_path=data.get('key_path', ''),
@@ -324,9 +429,20 @@ def server_update(request, server_id):
         if 'host' in data:
             server.host = data['host']
         if 'port' in data:
-            server.port = data['port']
+            try:
+                port = int(data['port'])
+            except (TypeError, ValueError):
+                return JsonResponse({'error': 'Invalid port'}, status=400)
+            if port < 1 or port > 65535:
+                return JsonResponse({'error': 'Port must be in range 1..65535'}, status=400)
+            server.port = port
         if 'username' in data:
             server.username = data['username']
+        if 'server_type' in data:
+            server_type = str(data.get('server_type') or '').strip().lower()
+            if server_type not in ('ssh', 'rdp'):
+                return JsonResponse({'error': 'Invalid server_type'}, status=400)
+            server.server_type = server_type
         if 'auth_method' in data:
             server.auth_method = data['auth_method']
         if 'key_path' in data:
@@ -343,7 +459,16 @@ def server_update(request, server_id):
         # Update group
         if 'group_id' in data:
             group_id = data.get('group_id')
-            if group_id:
+            if isinstance(group_id, str):
+                group_id = group_id.strip()
+            if group_id in ("", "null", "None"):
+                group_id = None
+
+            if group_id is not None:
+                try:
+                    group_id = int(group_id)
+                except (TypeError, ValueError):
+                    return JsonResponse({'error': 'Invalid group_id'}, status=400)
                 try:
                     group = ServerGroup.objects.get(id=group_id)
                     if _get_group_role(group, request.user) == "":
@@ -399,7 +524,7 @@ def server_update(request, server_id):
 def server_test_connection(request, server_id):
     """Test connection to server"""
     try:
-        server = get_object_or_404(Server, id=server_id, user=request.user)
+        server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         data = json.loads(request.body)
         master_password = data.get('master_password', '')
         
@@ -407,11 +532,15 @@ def server_test_connection(request, server_id):
         password = None
         if server.auth_method in ['password', 'key_password']:
             if server.encrypted_password and master_password:
-                password = PasswordEncryption.decrypt_password(
-                    server.encrypted_password,
-                    master_password,
-                    bytes(server.salt)
-                )
+                try:
+                    password = PasswordEncryption.decrypt_password(
+                        server.encrypted_password,
+                        master_password,
+                        bytes(server.salt)
+                    )
+                except Exception:
+                    # Fallback: allow explicit plain secret (useful for shared users)
+                    password = data.get('password', '')
             else:
                 password = data.get('password', '')
         
@@ -452,7 +581,7 @@ def server_test_connection(request, server_id):
 def server_execute_command(request, server_id):
     """Execute command on server"""
     try:
-        server = get_object_or_404(Server, id=server_id, user=request.user)
+        server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         data = json.loads(request.body)
         command = data.get('command', '')
         master_password = data.get('master_password', '')
@@ -464,11 +593,15 @@ def server_execute_command(request, server_id):
         password = None
         if server.auth_method in ['password', 'key_password']:
             if server.encrypted_password and master_password:
-                password = PasswordEncryption.decrypt_password(
-                    server.encrypted_password,
-                    master_password,
-                    bytes(server.salt)
-                )
+                try:
+                    password = PasswordEncryption.decrypt_password(
+                        server.encrypted_password,
+                        master_password,
+                        bytes(server.salt)
+                    )
+                except Exception:
+                    # Fallback: allow explicit plain secret (useful for shared users)
+                    password = data.get('password', '')
             else:
                 password = data.get('password', '')
         
@@ -527,6 +660,115 @@ def server_delete(request, server_id):
         return JsonResponse({'success': True, 'message': 'Server deleted'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_feature('servers')
+@require_http_methods(["GET"])
+def server_share_list(request, server_id):
+    """List shares for an owned server."""
+    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+    now = timezone.now()
+    shares = (
+        ServerShare.objects.select_related("user", "shared_by")
+        .filter(server=server, is_revoked=False)
+        .order_by("-created_at")
+    )
+    payload = []
+    for share in shares:
+        active = share.expires_at is None or share.expires_at > now
+        payload.append(
+            {
+                "id": share.id,
+                "user_id": share.user_id,
+                "username": share.user.username,
+                "email": share.user.email or "",
+                "share_context": bool(share.share_context),
+                "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+                "created_at": share.created_at.isoformat() if share.created_at else None,
+                "is_active": active and not share.is_revoked,
+            }
+        )
+    return JsonResponse({"success": True, "shares": payload})
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_share_create(request, server_id):
+    """Create or update share for an owned server."""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+        data = json.loads(request.body)
+
+        identifier = str(data.get("user") or "").strip()
+        if not identifier:
+            return JsonResponse({"error": "User (username/email/id) required"}, status=400)
+
+        target_user = None
+        if identifier.isdigit():
+            target_user = User.objects.filter(id=int(identifier)).first()
+        if not target_user:
+            target_user = User.objects.filter(username=identifier).first() or User.objects.filter(email=identifier).first()
+        if not target_user:
+            return JsonResponse({"error": "User not found"}, status=404)
+        if target_user.id == request.user.id:
+            return JsonResponse({"error": "Cannot share server with yourself"}, status=400)
+
+        raw_expires = data.get("expires_at")
+        expires_at = _parse_expires_at(raw_expires)
+        if raw_expires not in (None, "", "null", "None") and not expires_at:
+            return JsonResponse({"error": "Invalid expires_at format (use ISO datetime)"}, status=400)
+        if expires_at and expires_at <= timezone.now():
+            return JsonResponse({"error": "expires_at must be in the future"}, status=400)
+
+        share_context = bool(data.get("share_context", True))
+
+        share, _ = ServerShare.objects.update_or_create(
+            server=server,
+            user=target_user,
+            defaults={
+                "shared_by": request.user,
+                "share_context": share_context,
+                "expires_at": expires_at,
+                "is_revoked": False,
+                "revoked_at": None,
+            },
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "share": {
+                    "id": share.id,
+                    "user_id": share.user_id,
+                    "username": share.user.username,
+                    "email": share.user.email or "",
+                    "share_context": bool(share.share_context),
+                    "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+                    "created_at": share.created_at.isoformat() if share.created_at else None,
+                    "is_active": share.is_active(),
+                },
+            }
+        )
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_share_revoke(request, server_id, share_id):
+    """Revoke previously issued share."""
+    server = get_object_or_404(Server, id=server_id, user=request.user, is_active=True)
+    share = get_object_or_404(ServerShare, id=share_id, server=server)
+    if not share.is_revoked:
+        share.is_revoked = True
+        share.revoked_at = timezone.now()
+        share.save(update_fields=["is_revoked", "revoked_at", "updated_at"])
+    return JsonResponse({"success": True})
 
 
 @csrf_exempt
@@ -659,6 +901,7 @@ def server_get(request, server_id):
     return JsonResponse({
         'id': server.id,
         'name': server.name,
+        'server_type': server.server_type,
         'host': server.host,
         'port': server.port,
         'username': server.username,

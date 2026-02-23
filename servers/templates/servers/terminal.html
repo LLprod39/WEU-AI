@@ -941,6 +941,14 @@ function genId() { return 't' + (++tabCounter); }
 function esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function normalizeMdInput(value) {
+    if (typeof value === 'string') return value;
+    if (value == null) return '';
+    if (typeof value === 'object') {
+        try { return JSON.stringify(value, null, 2); } catch {}
+    }
+    return String(value);
+}
 function getCookie(n) {
     let v=null; document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith(n+'='))v=decodeURIComponent(c.slice(n.length+1));});
     return v;
@@ -952,31 +960,49 @@ function fmtTime() {
 // ── Marked config ─────────────────────────────────────────────────────────────
 if (typeof marked !== 'undefined') {
     const renderer = new marked.Renderer();
+    const mdTokenText = (token) => {
+        if (typeof token === 'string') return token;
+        if (token && typeof token === 'object') {
+            if (typeof token.text === 'string') return token.text;
+            if (typeof token.raw === 'string') return token.raw;
+        }
+        return String(token == null ? '' : token);
+    };
+    const mdTokenLang = (token, fallback) => {
+        if (typeof token === 'string') return token || fallback;
+        if (token && typeof token === 'object') {
+            if (typeof token.lang === 'string' && token.lang) return token.lang;
+            if (typeof token.language === 'string' && token.language) return token.language;
+        }
+        return fallback;
+    };
     renderer.code = function(code, lang) {
-        const l = lang || 'shell';
+        const l = mdTokenLang(code, lang || 'shell') || 'shell';
+        const codeText = mdTokenText(code);
         const id = 'cb-' + Math.random().toString(36).slice(2);
         return `<div class="aip-code-block">
             <div class="aip-code-header">
                 <span class="aip-code-lang">${esc(l)}</span>
                 <button class="aip-copy-btn" onclick="copyCode(this,'${id}')">Copy</button>
             </div>
-            <pre id="${id}"><code class="block-code">${esc(code)}</code></pre>
+            <pre id="${id}"><code class="block-code">${esc(codeText)}</code></pre>
         </div>`;
     };
     renderer.codespan = function(code) {
-        return `<code>${esc(code)}</code>`;
+        return `<code>${esc(mdTokenText(code))}</code>`;
     };
     marked.setOptions({ renderer, breaks: true, gfm: true });
 }
 
 function renderMd(text) {
+    const source = normalizeMdInput(text);
     if (typeof marked !== 'undefined') {
         try {
-            const html = marked.parse(text || '');
+            const html = marked.parse(source || '');
             return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'');
-        } catch { return '<pre>' + esc(text) + '</pre>'; }
+        } catch { return '<pre>' + esc(source) + '</pre>'; }
     }
-    return '<div style="white-space:pre-wrap">' + esc(text) + '</div>';
+    return '<div style="white-space:pre-wrap">' + esc(source) + '</div>';
 }
 
 function copyCode(btn, preId) {
