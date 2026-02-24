@@ -44,8 +44,6 @@
         <span class="rdp-status" id="rdp-status">Disconnected</span>
     </div>
     <div class="rdp-connect-panel" id="rdp-connect-panel">
-        <input type="password" id="rdp-master-password" placeholder="Master password (for stored credentials)" style="width: 220px;">
-        <input type="password" id="rdp-password" placeholder="RDP password (optional override)" style="width: 220px;">
         <input type="text" id="rdp-domain" placeholder="Domain (optional)" style="width: 180px;">
         <button type="button" id="rdp-connect-btn">Connect</button>
     </div>
@@ -64,8 +62,6 @@
     const panelEl = document.getElementById('rdp-connect-panel');
     const connectBtn = document.getElementById('rdp-connect-btn');
     const displayEl = document.getElementById('rdp-display');
-    const masterPasswordEl = document.getElementById('rdp-master-password');
-    const passwordEl = document.getElementById('rdp-password');
     const domainEl = document.getElementById('rdp-domain');
     let lastError = '';
     let activeWs = null;
@@ -98,8 +94,6 @@
         lastError = '';
         connectBtn.disabled = true;
         setStatus('Connecting…');
-        const masterPassword = (masterPasswordEl && masterPasswordEl.value) || '';
-        const password = (passwordEl && passwordEl.value) || '';
         const domain = (domainEl && domainEl.value) || '';
 
         try {
@@ -113,8 +107,6 @@
 
             ws.onopen = function() {
                 ws.send(JSON.stringify({
-                    master_password: masterPassword,
-                    password: password,
                     domain: domain
                 }));
             };
@@ -222,6 +214,7 @@
     }
 
     connectBtn.addEventListener('click', connect);
+    connect();
 })();
 </script>
 {% endblock %}

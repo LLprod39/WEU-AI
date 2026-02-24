@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.db.models import Q
@@ -22,7 +23,8 @@ from servers.models import Server
 class RDPTerminalConsumer(AsyncWebsocketConsumer):
     """
     Accepts WebSocket at /ws/servers/<server_id>/rdp/.
-    Expects first message: JSON { "master_password": "..." } or {} if no encrypted password.
+    Expects first message: JSON { "master_password": "...", "password": "...", "domain": "..." } (all optional).
+    If master_password is omitted, uses MASTER_PASSWORD from environment.
     Then switches to binary Guacamole protocol: we send args, then proxy guacd <-> client.
     """
 
@@ -97,6 +99,8 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
                     master_password = ""
                     plain_password = ""
                     domain = ""
+                if not master_password:
+                    master_password = (os.environ.get("MASTER_PASSWORD") or "").strip()
                 self._rdp_domain = domain
                 password_source = "direct" if plain_password else "stored"
                 logger.info(
@@ -107,13 +111,6 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
                     len(plain_password),
                     domain,
                 )
-                if self.server.auth_method in ("password", "key_password") and self.server.encrypted_password and not master_password and not plain_password:
-                    logger.warning("RDP credentials required: server_id={}", self.server_id)
-                    await self._send_ws_error(
-                        "Master password required or enter RDP password",
-                        "credentials_required",
-                    )
-                    return
                 try:
                     password = await self._resolve_password(master_password, plain_password)
                 except ValueError as e:
@@ -152,11 +149,16 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
             return plain
         if self.server.auth_method not in ("password", "key_password"):
             return ""
-        if self.server.encrypted_password and master_password and self.server.salt:
+        if self.server.encrypted_password:
+            resolved_master_password = (master_password or "").strip() or (os.environ.get("MASTER_PASSWORD") or "").strip()
+            if not resolved_master_password:
+                raise ValueError("MASTER_PASSWORD is not set")
+            if not self.server.salt:
+                raise ValueError("Encrypted password exists but salt is missing")
             try:
                 return PasswordEncryption.decrypt_password(
                     self.server.encrypted_password,
-                    master_password,
+                    resolved_master_password,
                     bytes(self.server.salt),
                 )
             except Exception:

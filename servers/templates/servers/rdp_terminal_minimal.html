@@ -17,8 +17,6 @@
         <span id="rdp-status" style="font-size:12px;color:#6b7280">Disconnected</span>
     </div>
     <div class="connect-bar" id="rdp-connect-panel">
-        <input type="password" id="rdp-master-password" placeholder="Master password">
-        <input type="password" id="rdp-password" placeholder="RDP password (optional)">
         <input type="text" id="rdp-domain" placeholder="Domain (optional)">
         <button type="button" id="rdp-connect-btn">Connect</button>
     </div>
@@ -32,8 +30,6 @@
     const panelEl = document.getElementById('rdp-connect-panel');
     const connectBtn = document.getElementById('rdp-connect-btn');
     const displayEl = document.getElementById('rdp-display');
-    const masterPasswordEl = document.getElementById('rdp-master-password');
-    const passwordEl = document.getElementById('rdp-password');
     const domainEl = document.getElementById('rdp-domain');
     let lastError = '';
     let activeWs = null;
@@ -66,8 +62,6 @@
         lastError = '';
         connectBtn.disabled = true;
         setStatus('Connecting…');
-        const masterPassword = (masterPasswordEl && masterPasswordEl.value) || '';
-        const password = (passwordEl && passwordEl.value) || '';
         const domain = (domainEl && domainEl.value) || '';
         try {
             const Guacamole = (await import('https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/esm/guacamole-common.js')).default;
@@ -76,8 +70,6 @@
             activeWs = ws;
             ws.binaryType = 'arraybuffer';
             ws.onopen = () => ws.send(JSON.stringify({
-                master_password: masterPassword,
-                password: password,
                 domain: domain
             }));
             ws.onmessage = function(ev) {
@@ -175,6 +167,7 @@
         }
     }
     connectBtn.addEventListener('click', connect);
+    connect();
 })();
 </script>
 {% endblock %}

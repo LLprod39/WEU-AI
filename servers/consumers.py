@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shlex
 import uuid
@@ -287,6 +288,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             # Auto-connect: if master_password not provided, try to get from session
             if not master_password:
                 master_password = await self._get_session_master_password()
+            if not master_password:
+                master_password = (os.environ.get("MASTER_PASSWORD") or "").strip()
             plain_password = (content.get("password") or "").strip()
             term_type = (content.get("term_type") or "xterm-256color").strip() or "xterm-256color"
             term_size = self._parse_term_size(content)
@@ -327,8 +330,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 if self.server.auth_method == "password":
                     if not secret:
                         raise ValueError(
-                            "Для входа по паролю укажите в панели учётных данных терминала: "
-                            "мастер-пароль (если пароль сервера сохранён зашифрованным) или пароль сервера, затем нажмите Connect."
+                            "Не удалось получить пароль сервера. "
+                            "Проверь сохранённый пароль сервера и MASTER_PASSWORD в .env."
                         )
                     connect_kwargs["password"] = secret
                 elif self.server.auth_method == "key":
@@ -340,8 +343,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         raise ValueError("Не указан путь к SSH ключу (key+password auth)")
                     if not secret:
                         raise ValueError(
-                            "Для ключа с пасфразой укажите в панели учётных данных: "
-                            "мастер-пароль или пасфразу ключа, затем нажмите Connect."
+                            "Не удалось получить пасфразу ключа. "
+                            "Проверь сохранённый секрет сервера и MASTER_PASSWORD в .env."
                         )
                     connect_kwargs["client_keys"] = [self.server.key_path]
                     # For encrypted private keys, AsyncSSH expects passphrase
@@ -1695,7 +1698,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             return ""
 
         if server.encrypted_password:
-            if not master_password:
+            resolved_master_password = (master_password or "").strip() or (os.environ.get("MASTER_PASSWORD") or "").strip()
+            if not resolved_master_password:
                 # Allow user-provided plaintext secret as fallback
                 return plain_password or ""
             if not server.salt:
@@ -1703,7 +1707,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             try:
                 return PasswordEncryption.decrypt_password(
                     server.encrypted_password,
-                    master_password,
+                    resolved_master_password,
                     bytes(server.salt),
                 )
             except Exception as e:
@@ -1714,7 +1718,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     )
                     return plain_password
                 # Surface a user-friendly message
-                msg = (str(e) or "").strip() or "Неверный мастер‑пароль или повреждённый секрет"
+                msg = (str(e) or "").strip() or "Неверный MASTER_PASSWORD или повреждённый секрет"
                 raise ValueError(msg) from e
 
         return plain_password or ""

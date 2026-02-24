@@ -436,8 +436,11 @@
             <div id="lat-badge" style="display:none;font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,0.04);padding:2px 6px;border-radius:4px;"></div>
         </div>
         <div class="toolbar-right">
-            <button class="tbtn" onclick="toggleCredsRow()" title="Credentials">
-                <span class="material-icons-round" style="font-size:16px">key</span>
+            <button class="tbtn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect">
+                <span class="material-icons-round" style="font-size:16px">link</span>
+            </button>
+            <button class="tbtn" onclick="disconnectActive()" title="Disconnect">
+                <span class="material-icons-round" style="font-size:16px">link_off</span>
             </button>
             <button class="tbtn" onclick="clearTerm()" title="Clear">
                 <span class="material-icons-round" style="font-size:16px">delete_sweep</span>
@@ -446,18 +449,6 @@
                 <span class="material-icons-round" style="font-size:16px">psychology</span>
             </button>
         </div>
-    </div>
-
-    <!-- Credentials row -->
-    <div class="creds-row" id="creds-row">
-        <input type="password" id="mp-input" placeholder="Master password" class="cred-input">
-        <input type="password" id="pw-input" placeholder="Password / passphrase" class="cred-input">
-        <button class="cred-btn-connect" onclick="manualConnect()">
-            <span class="material-icons-round" style="font-size:13px">link</span>Connect
-        </button>
-        <button class="cred-btn-disc" onclick="disconnectActive()">
-            <span class="material-icons-round" style="font-size:13px">link_off</span>
-        </button>
     </div>
 
     <!-- Main -->
@@ -680,7 +671,7 @@ function fitActive() {
 }
 
 // ─── Connection ───────────────────────────────────────────────────────────────
-function connectTab(tid, mp='', pw='') {
+function connectTab(tid) {
     const tab=tabs[tid]; if (!tab) return;
     if (!tab.terminal) initTabTerminal(tid);
     if (tab.socket?.readyState===WebSocket.OPEN||tab.socket?.readyState===WebSocket.CONNECTING) return;
@@ -690,8 +681,7 @@ function connectTab(tid, mp='', pw='') {
     setTabDot(tid,'connecting');
 
     tab.socket.onopen = ()=>{
-        if(mp) fetch('/servers/api/master-password/set/', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify({master_password:mp}) }).catch(()=>{});
-        tab.socket.send(JSON.stringify({type:'connect',master_password:mp,password:pw,cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
+        tab.socket.send(JSON.stringify({type:'connect',cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
         tab.lastPing=Date.now();
         tab.pingInterval=setInterval(()=>{ if(tab.socket?.readyState===WebSocket.OPEN){tab.lastPing=Date.now();tab.socket.send(JSON.stringify({type:'ping'}));} },5000);
     };
@@ -711,7 +701,6 @@ function connectTab(tid, mp='', pw='') {
             case 'error':
                 tab.connected=false; setTabDot(tid,'error');
                 tab.terminal?.writeln('\r\n\x1b[31m[Error] '+esc(msg.message||'')+'\x1b[0m');
-                if(tid===activeTabId&&/пароль|password|пасфраз|secret|мастер/i.test(msg.message||'')) eid('creds-row')?.classList.add('open');
                 break;
             case 'exit':
                 tab.connected=false; setTabDot(tid,'disconnected');
@@ -749,14 +738,6 @@ function connectTab(tid, mp='', pw='') {
     };
 }
 
-function manualConnect() {
-    if (!activeTabId) return;
-    const tab=tabs[activeTabId]; if(!tab) return;
-    const mp=eid('mp-input').value||'', pw=eid('pw-input').value||'';
-    if(tab.socket&&(tab.socket.readyState===WebSocket.OPEN||tab.socket.readyState===WebSocket.CONNECTING)&&!tab.connected){ disconnectActive(); setTimeout(()=>connectTab(activeTabId,mp,pw),50); return; }
-    connectTab(activeTabId, mp, pw);
-}
-
 function disconnectActive() {
     if (!activeTabId) return;
     const tab=tabs[activeTabId]; if(!tab) return;
@@ -767,9 +748,6 @@ function disconnectActive() {
 }
 
 function clearTerm() { if(activeTabId) tabs[activeTabId]?.terminal?.clear(); }
-
-// ─── Credentials row ──────────────────────────────────────────────────────────
-function toggleCredsRow() { eid('creds-row').classList.toggle('open'); }
 
 // ─── AI Panel ─────────────────────────────────────────────────────────────────
 function toggleAI() {

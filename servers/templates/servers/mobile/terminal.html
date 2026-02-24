@@ -40,10 +40,6 @@
         </div>
 
         <div class="mt-3 grid grid-cols-1 gap-2">
-            <input type="password" id="terminal-master-password" placeholder="Мастер‑пароль (если нужен)"
-                   class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
-            <input type="password" id="terminal-password" placeholder="Пароль / пасфраза (альтернатива)"
-                   class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50">
             <div class="flex gap-2">
                 <button type="button" id="terminal-connect-btn" onclick="connectTerminal()"
                         class="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg flex items-center justify-center gap-2">
@@ -173,7 +169,7 @@ function initTerminal() {
   terminal.open(el);
   terminal.focus();
   terminal.writeln('WEU SSH Terminal');
-  terminal.writeln('Нажмите Connect для подключения...');
+  terminal.writeln('Подключение через сохранённые данные сервера...');
   terminal.writeln('');
   terminal.onData(function (data) {
     if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
@@ -211,12 +207,8 @@ function connectTerminal() {
     terminalConnected = true;
     setTerminalStatus('connecting');
     fitTerminalAndNotify();
-    var masterPassword = (document.getElementById('terminal-master-password') || {}).value || '';
-    var password = (document.getElementById('terminal-password') || {}).value || '';
     terminalSocket.send(JSON.stringify({
       type: 'connect',
-      master_password: masterPassword,
-      password: password,
       cols: terminal.cols,
       rows: terminal.rows,
       term_type: 'xterm-256color'
@@ -352,7 +344,7 @@ function sendAiToTerminal() {
 document.addEventListener('DOMContentLoaded', function () {
   initTerminal();
   setTerminalStatus('disconnected');
+  connectTerminal();
 });
 </script>
 {% endblock %}
-

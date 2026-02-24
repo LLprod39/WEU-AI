@@ -810,8 +810,6 @@ function addTerminalTab(serverId, serverName, host, port, username) {
                 <span class="conn-bar-host">${escapeHtml(username)}@${escapeHtml(host)}:${port}</span>
             </div>
             <div class="conn-bar-inputs">
-                <input type="password" id="master-pwd-${tabId}" placeholder="Master password" class="conn-input">
-                <input type="password" id="pwd-${tabId}" placeholder="Password" class="conn-input">
                 <button onclick="connectTab('${tabId}')" id="conn-btn-${tabId}" class="conn-btn conn-btn-primary">
                     <span class="material-icons-round" style="font-size: 16px;">link</span>
                     Connect
@@ -1025,12 +1023,8 @@ function connectTab(tabId) {
 
     socket.onopen = () => {
         fitAndNotify(tabId);
-        const masterPwd = document.getElementById('master-pwd-' + tabId)?.value || '';
-        const pwd = document.getElementById('pwd-' + tabId)?.value || '';
         socket.send(JSON.stringify({
             type: 'connect',
-            master_password: masterPwd,
-            password: pwd,
             cols: tabData.terminal.cols,
             rows: tabData.terminal.rows,
             term_type: 'xterm-256color'

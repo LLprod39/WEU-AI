@@ -346,10 +346,6 @@
             </button>
         </div>
         <div class="help-panel-body">
-            <button type="button" class="help-repeat-tour" onclick="if(window.OnboardingTour){window.OnboardingTour.start(true);toggleHelpPanel();}" aria-label="Запустить обучение с начала">
-                <span class="material-icons-round" aria-hidden="true">tour</span>
-                Повторить тур
-            </button>
             <h2 style="font-size: var(--text-base); margin-top: 0;">Статьи</h2>
             <article class="help-article">
                 <h3>Что такое RAG</h3>
@@ -375,7 +371,6 @@
     <script src="{% static 'js/toast.js' %}"></script>
     <script src="{% static 'js/common.js' %}"></script>
     <script src="{% static 'js/app_shell.js' %}"></script>
-    <script src="{% static 'js/onboarding.js' %}"></script>
     <script>
     function toggleHelpPanel() {
         var p = document.getElementById('help-panel');
@@ -385,9 +380,6 @@
         }
     }
     document.addEventListener('DOMContentLoaded', function() {
-        if (window.OnboardingTour && window.OnboardingTour.shouldShowAfterLogin && window.OnboardingTour.shouldShowAfterLogin()) {
-            window.OnboardingTour.start(true);
-        }
         document.addEventListener('click', function(e) {
             var hp = document.getElementById('help-panel');
             var ht = document.getElementById('help-trigger');

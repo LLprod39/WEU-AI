@@ -797,18 +797,12 @@
                     <div id="latency-badge" class="hidden" style="font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,.04);padding:3px 7px;border-radius:5px;"></div>
                 </div>
                 <div class="terminal-toolbar-right">
-                    <button class="toolbar-btn" onclick="toggleCredsPanel()" title="Credentials"><span class="material-icons-round" style="font-size:18px">key</span></button>
+                    <button class="toolbar-btn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect"><span class="material-icons-round" style="font-size:18px">link</span></button>
+                    <button class="toolbar-btn" onclick="disconnectTerminal()" title="Disconnect"><span class="material-icons-round" style="font-size:18px">link_off</span></button>
                     <button class="toolbar-btn" onclick="clearTerminal()" title="Clear"><span class="material-icons-round" style="font-size:18px">delete_sweep</span></button>
                     <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window"><span class="material-icons-round" style="font-size:18px">open_in_new</span></button>
                     <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant"><span class="material-icons-round" style="font-size:18px">psychology</span></button>
                 </div>
-            </div>
-
-            <div class="creds-panel" id="creds-panel">
-                <input type="password" id="terminal-master-password" placeholder="Master password" class="cred-input">
-                <input type="password" id="terminal-password" placeholder="Password / passphrase" class="cred-input">
-                <button onclick="manualConnect()" class="cred-connect-btn"><span class="material-icons-round" style="font-size:15px">link</span>Connect</button>
-                <button onclick="disconnectTerminal()" class="cred-disconnect-btn"><span class="material-icons-round" style="font-size:15px">link_off</span></button>
             </div>
 
             <div class="terminal-body">
@@ -1158,7 +1152,7 @@ function fitActive() {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
-function connectTab(tid, mp='', pw='') {
+function connectTab(tid) {
     const tab=tabs[tid]; if(!tab) return;
     if(!tab.terminal) initTabTerminal(tid);
     if(tab.socket?.readyState===WebSocket.OPEN||tab.socket?.readyState===WebSocket.CONNECTING) return;
@@ -1167,8 +1161,7 @@ function connectTab(tid, mp='', pw='') {
     setTabStatus(tid,'connecting');
 
     tab.socket.onopen = ()=>{
-        if(mp) fetch('/servers/api/master-password/set/', { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify({master_password:mp}) }).catch(()=>{});
-        tab.socket.send(JSON.stringify({type:'connect',master_password:mp,password:pw,cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
+        tab.socket.send(JSON.stringify({type:'connect',cols:tab.terminal?.cols||80,rows:tab.terminal?.rows||24,term_type:'xterm-256color'}));
         tab.lastPing=Date.now();
         tab.pingInterval=setInterval(()=>{ if(tab.socket?.readyState===WebSocket.OPEN){tab.lastPing=Date.now();tab.socket.send(JSON.stringify({type:'ping'}));} },5000);
     };
@@ -1182,7 +1175,7 @@ function connectTab(tid, mp='', pw='') {
                 if(tid===activeTabId&&tab.lastPing){const ms=Date.now()-tab.lastPing;const b=document.getElementById('latency-badge');if(b){b.textContent=ms+'ms';b.classList.remove('hidden');}}
                 break;
             case 'status': tab.connected=(msg.status==='connected'); setTabStatus(tid,msg.status||'disconnected'); break;
-            case 'error': tab.connected=false; setTabStatus(tid,'error'); tab.terminal?.writeln('\r\n\x1b[1;31m[Error]\x1b[0m '+esc(msg.message||'')); if(tid===activeTabId&&/пароль|password|пасфраз|secret|мастер/i.test(msg.message||'')) document.getElementById('creds-panel')?.classList.add('open'); break;
+            case 'error': tab.connected=false; setTabStatus(tid,'error'); tab.terminal?.writeln('\r\n\x1b[1;31m[Error]\x1b[0m '+esc(msg.message||'')); break;
             case 'exit': tab.connected=false; setTabStatus(tid,'disconnected'); tab.terminal?.writeln('\r\n\x1b[38;5;243m[Session ended]\x1b[0m'); break;
             case 'ai_status':
                 tab.aiStatus = msg.status || 'idle';
@@ -1226,22 +1219,12 @@ function disconnectTerminal() {
     tab.socket=null; tab.connected=false; setTabStatus(activeTabId,'disconnected');
 }
 
-function manualConnect() {
-    if(!activeTabId)return;
-    const tab=tabs[activeTabId]; if(!tab)return;
-    const mp=document.getElementById('terminal-master-password').value||'', pw=document.getElementById('terminal-password').value||'';
-    if(tab.socket&&(tab.socket.readyState===WebSocket.OPEN||tab.socket.readyState===WebSocket.CONNECTING)&&!tab.connected){ disconnectTerminal(); setTimeout(()=>connectTab(activeTabId,mp,pw),50); return; }
-    connectTab(activeTabId,mp,pw);
-}
-
 function clearTerminal() { if(activeTabId) tabs[activeTabId]?.terminal?.clear(); }
 function openMinimalWindow() {
     if(!activeTabId)return; const tab=tabs[activeTabId];
     const w=1200,h=800;
     window.open('/servers/'+tab.sid+'/terminal/minimal/','terminal_'+tab.sid,'width='+w+',height='+h+',left='+((screen.width-w)/2)+',top='+((screen.height-h)/2)+',menubar=no,toolbar=no,location=no,status=no,resizable=yes');
 }
-
-function toggleCredsPanel() { document.getElementById('creds-panel').classList.toggle('open'); }
 
 // ── AI Panel toggle ───────────────────────────────────────────────────────────
 function toggleAiPanel() {

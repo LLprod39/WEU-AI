@@ -747,12 +747,6 @@
                         <input type="password" id="server-password" placeholder="Server password"
                                class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
                     </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-2">Master Password (for encryption)</label>
-                        <input type="password" id="server-master-password" placeholder="Your master password"
-                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
-                        <p class="text-[11px] text-gray-500 mt-2">Password will be encrypted with AES-256</p>
-                    </div>
                 </div>
 
                 <!-- Key Path -->
@@ -909,11 +903,6 @@
                     <div>
                         <label class="block text-xs font-medium text-gray-400 mb-2">New Password <span class="text-gray-600">(leave empty to keep current)</span></label>
                         <input type="password" id="edit-server-password" placeholder="New password (optional)"
-                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-2">Master Password</label>
-                        <input type="password" id="edit-server-master-password" placeholder="Required to save new password"
                                class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
                     </div>
                 </div>
@@ -1427,7 +1416,6 @@ async function saveServer(e) {
         group_id: document.getElementById('server-group').value || null,
         auth_method: document.getElementById('server-auth-method').value,
         password: document.getElementById('server-password').value,
-        master_password: document.getElementById('server-master-password').value,
         key_path: document.getElementById('server-key-path').value,
         tags: document.getElementById('server-tags').value,
         corporate_context: document.getElementById('server-corporate-context').value
@@ -1475,14 +1463,11 @@ async function saveGroup(e) {
 }
 
 async function testConnection(serverId) {
-    const secretInput = prompt('Enter master password or server password:');
-    if (!secretInput) return;
-
     try {
         const response = await fetch('/servers/api/' + serverId + '/test/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-            body: JSON.stringify({ master_password: secretInput, password: secretInput })
+            body: JSON.stringify({})
         });
         const data = await response.json();
         if (data.success) {
@@ -1598,7 +1583,6 @@ document.addEventListener('keydown', function(e) {
         closeGlobalContextModal();
         closeGroupContextModal();
         closeActionDropdowns();
-        if (typeof closeMasterPasswordModal === 'function') closeMasterPasswordModal();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -1649,7 +1633,6 @@ async function saveEditServer(e) {
     e.preventDefault();
     const serverId = document.getElementById('edit-server-id').value;
     const password = document.getElementById('edit-server-password').value;
-    const masterPassword = document.getElementById('edit-server-master-password').value;
 
     const payload = {
         name: document.getElementById('edit-server-name').value,
@@ -1663,9 +1646,8 @@ async function saveEditServer(e) {
         corporate_context: document.getElementById('edit-server-corporate-context').value,
         group_id: document.getElementById('edit-server-group').value || null,
     };
-    if (password && masterPassword) {
+    if (password) {
         payload.password = password;
-        payload.master_password = masterPassword;
     }
 
     try {

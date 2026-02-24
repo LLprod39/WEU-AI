@@ -2,6 +2,7 @@
 Server Management Views
 """
 import json
+import os
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
@@ -178,6 +179,49 @@ def _active_server_share(server: Server, user: User) -> ServerShare | None:
         .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
         .first()
     )
+
+
+def _effective_master_password(request, data: dict | None = None) -> str:
+    """Resolve master password from payload, session, or env."""
+    data = data or {}
+    from_payload = str(data.get("master_password") or "").strip()
+    if from_payload:
+        return from_payload
+
+    try:
+        from_session = str(request.session.get("_mp") or "").strip()
+    except Exception:
+        from_session = ""
+    if from_session:
+        return from_session
+
+    return str(os.environ.get("MASTER_PASSWORD") or "").strip()
+
+
+def _resolve_server_secret(server: Server, request, data: dict) -> str | None:
+    """
+    Resolve server password/passphrase from encrypted secret or direct payload.
+    """
+    if server.auth_method not in ["password", "key_password"]:
+        return None
+
+    direct_secret = str(data.get("password") or "").strip()
+    if server.encrypted_password:
+        master_password = _effective_master_password(request, data)
+        if not master_password:
+            return direct_secret or None
+        try:
+            return PasswordEncryption.decrypt_password(
+                server.encrypted_password,
+                master_password,
+                bytes(server.salt or b""),
+            )
+        except Exception:
+            if direct_secret:
+                return direct_secret
+            raise ValueError("Не удалось расшифровать пароль сервера. Проверь MASTER_PASSWORD в .env.")
+
+    return direct_secret or None
 
 
 def _parse_expires_at(raw_value):
@@ -391,9 +435,9 @@ def server_create(request):
             group=group,
         )
         
-        # Encrypt password if provided
-        password = data.get('password', '')
-        master_password = data.get('master_password', '')
+        # Encrypt password if provided (master password comes from payload/session/env)
+        password = str(data.get('password', '') or '').strip()
+        master_password = _effective_master_password(request, data)
         if password and master_password:
             server.salt = PasswordEncryption.generate_salt()
             server.encrypted_password = PasswordEncryption.encrypt_password(
@@ -402,6 +446,8 @@ def server_create(request):
                 bytes(server.salt)
             )
             server.save()
+        elif password and not master_password:
+            return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
         
         return JsonResponse({
             'success': True,
@@ -487,10 +533,10 @@ def server_update(request, server_id):
                 # Обновляем helper flags
                 server.update_network_flags()
         
-        # Update password if provided
-        if 'password' in data and 'master_password' in data:
-            password = data['password']
-            master_password = data['master_password']
+        # Update password if provided (master password comes from payload/session/env)
+        if 'password' in data:
+            password = str(data.get('password') or '').strip()
+            master_password = _effective_master_password(request, data)
             if password and master_password:
                 server.salt = PasswordEncryption.generate_salt()
                 server.encrypted_password = PasswordEncryption.encrypt_password(
@@ -498,6 +544,8 @@ def server_update(request, server_id):
                     master_password,
                     bytes(server.salt)
                 )
+            elif password and not master_password:
+                return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
         
         server.save()
         
@@ -526,23 +574,10 @@ def server_test_connection(request, server_id):
     try:
         server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         data = json.loads(request.body)
-        master_password = data.get('master_password', '')
-        
-        # Get password if needed
-        password = None
-        if server.auth_method in ['password', 'key_password']:
-            if server.encrypted_password and master_password:
-                try:
-                    password = PasswordEncryption.decrypt_password(
-                        server.encrypted_password,
-                        master_password,
-                        bytes(server.salt)
-                    )
-                except Exception:
-                    # Fallback: allow explicit plain secret (useful for shared users)
-                    password = data.get('password', '')
-            else:
-                password = data.get('password', '')
+        try:
+            password = _resolve_server_secret(server, request, data)
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
         
         # Test connection using SSH tools
         from asgiref.sync import async_to_sync
@@ -584,26 +619,14 @@ def server_execute_command(request, server_id):
         server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         data = json.loads(request.body)
         command = data.get('command', '')
-        master_password = data.get('master_password', '')
         
         if not command:
             return JsonResponse({'error': 'Command required'}, status=400)
         
-        # Get password if needed
-        password = None
-        if server.auth_method in ['password', 'key_password']:
-            if server.encrypted_password and master_password:
-                try:
-                    password = PasswordEncryption.decrypt_password(
-                        server.encrypted_password,
-                        master_password,
-                        bytes(server.salt)
-                    )
-                except Exception:
-                    # Fallback: allow explicit plain secret (useful for shared users)
-                    password = data.get('password', '')
-            else:
-                password = data.get('password', '')
+        try:
+            password = _resolve_server_secret(server, request, data)
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
         
         # Execute command
         from asgiref.sync import async_to_sync
