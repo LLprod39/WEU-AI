@@ -1059,18 +1059,31 @@ function updateStatusPill(status) {
 // ── Tab operations ────────────────────────────────────────────────────────────
 function createTab(sid, name, host, port, user) {
     const id = genId();
-    tabs[id] = { id, sid, name, host, port, user, socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null, aiStatus:'idle', aiRunId:'' };
+    tabs[id] = {
+        id, sid, name, host, port, user,
+        socket:null, terminal:null, fitAddon:null, connected:false, pingInterval:null,
+        aiStatus:'idle', aiRunId:'',
+        aiMessagesHtml: defaultAiMessagesHtml || '',
+        aiScrollTop: 0,
+        aiUserScrolledUp: false,
+        aiDraft: '',
+    };
     return id;
 }
 
 function switchTab(tid) {
     if (!tabs[tid]) return;
+    if (tid === activeTabId) return;
+    if (activeTabId && activeTabId !== tid && tabs[activeTabId]) {
+        saveAiState(activeTabId);
+    }
     activeTabId = tid;
     renderTabs();
     const el = document.getElementById('ssh-terminal');
     el.innerHTML = '';
     const tab = tabs[tid];
     if (tab.terminal) { tab.terminal.open(el); tab.terminal.focus(); setTimeout(()=>{try{tab.fitAddon?.fit();}catch{}},50); }
+    restoreAiState(tid);
     updateStatusPill(tab.connected?'connected':'disconnected');
     document.getElementById('breadcrumb-server-name').textContent = tab.name;
     if(tab.aiStatus && tab.aiStatus!=='idle'){
@@ -1084,6 +1097,9 @@ function switchTab(tid) {
 
 function closeTab(tid) {
     const tab=tabs[tid]; if (!tab) return;
+    if (activeTabId === tid) {
+        saveAiState(tid);
+    }
     clearInterval(tab.pingInterval);
     try{tab.socket?.close();}catch{}
     try{tab.terminal?.dispose();}catch{}
@@ -1258,6 +1274,54 @@ function toggleAiPanel() {
 let aiCommandEls = {};
 let currentAiRunId = '';
 let userScrolledUp = false;
+let defaultAiMessagesHtml = '';
+
+function rebuildAiCommandElsFromDom() {
+    aiCommandEls = {};
+    document.querySelectorAll('#ai-messages .aip-cmd-card[id^="cmd-card-"]').forEach(card => {
+        const id = (card.id || '').replace('cmd-card-', '');
+        if (!id) return;
+        aiCommandEls[id] = {
+            badgeEl: card.querySelector('#cmd-badge-' + id),
+            actionsEl: card.querySelector('#cmd-actions-' + id),
+            progressEl: card.querySelector('#cmd-progress-' + id),
+            card,
+            streaming: !!card.querySelector('.aip-cmd-streaming-note'),
+        };
+    });
+}
+
+function saveAiState(tid) {
+    const tab = tabs[tid];
+    const c = document.getElementById('ai-messages');
+    if (!tab || !c) return;
+    tab.aiMessagesHtml = c.innerHTML;
+    tab.aiScrollTop = c.scrollTop;
+    tab.aiUserScrolledUp = userScrolledUp;
+    tab.aiRunId = currentAiRunId || tab.aiRunId || '';
+    const input = document.getElementById('ai-input');
+    if (input) tab.aiDraft = input.value || '';
+}
+
+function restoreAiState(tid) {
+    const tab = tabs[tid];
+    const c = document.getElementById('ai-messages');
+    if (!tab || !c) return;
+
+    c.innerHTML = tab.aiMessagesHtml || defaultAiMessagesHtml;
+    currentAiRunId = tab.aiRunId || '';
+    userScrolledUp = !!tab.aiUserScrolledUp;
+    rebuildAiCommandElsFromDom();
+
+    const input = document.getElementById('ai-input');
+    if (input) {
+        input.value = tab.aiDraft || '';
+        autoResizeAi(input);
+    }
+
+    if (typeof tab.aiScrollTop === 'number') c.scrollTop = tab.aiScrollTop;
+    handleAiScroll();
+}
 
 function aiScrollToBottom() {
     const c=document.getElementById('ai-messages'); if(!c)return;
@@ -1698,6 +1762,8 @@ function clearAiChat() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
+    const aiWrap = document.getElementById('ai-messages');
+    defaultAiMessagesHtml = aiWrap ? aiWrap.innerHTML : '';
     const tid=createTab(INITIAL_SERVER_ID,INITIAL_SERVER_NAME,INITIAL_SERVER_HOST,INITIAL_SERVER_PORT,INITIAL_SERVER_USER);
     activeTabId=tid; renderTabs(); initTabTerminal(tid); connectTab(tid);
     document.getElementById('ssh-terminal')?.addEventListener('click',()=>{ if(activeTabId)tabs[activeTabId]?.terminal?.focus(); });
