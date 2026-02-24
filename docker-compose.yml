@@ -72,6 +72,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weu_secret_change_me}
       ALLOWED_HOSTS: "*"
       DJANGO_SETTINGS_MODULE: web_ui.settings
+      # Domain SSO (upstream must provide authenticated user header)
+      DOMAIN_AUTH_ENABLED: ${DOMAIN_AUTH_ENABLED:-1}
+      DOMAIN_AUTH_HEADER: ${DOMAIN_AUTH_HEADER:-X-Forwarded-User}
+      DOMAIN_AUTH_AUTO_CREATE: ${DOMAIN_AUTH_AUTO_CREATE:-1}
+      DOMAIN_AUTH_DEFAULT_PROFILE: ${DOMAIN_AUTH_DEFAULT_PROFILE:-server_only}
       # Автосоздание суперпользователя при первом старте (задай в .env для продакшена)
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}

@@ -115,7 +115,40 @@
     }
 
     .quick-connect:hover {
-        transform: scale(1.02);
+        transform: none;
+    }
+
+    /* Server create/edit modal ergonomics */
+    .server-modal-panel {
+        width: min(980px, calc(100vw - 24px));
+        max-height: 92vh;
+        display: flex;
+        flex-direction: column;
+    }
+    .server-modal-scroll {
+        overflow-y: auto;
+        min-height: 0;
+        padding: 1.25rem 1.5rem;
+    }
+    .server-modal-footer {
+        flex-shrink: 0;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(9, 9, 11, 0.92);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+    @media (max-width: 768px) {
+        .server-modal-panel {
+            width: calc(100vw - 12px);
+            max-height: 94vh;
+        }
+        .server-modal-scroll {
+            padding: 1rem;
+        }
+        .server-modal-footer {
+            padding: 0.875rem 1rem;
+        }
     }
 
     /* Action menu */
@@ -647,24 +680,25 @@
 <!-- Create Server Modal -->
 <div id="serverModal" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden server-modal-panel">
         <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <h2 class="text-lg font-bold text-white">Add Server</h2>
             <button onclick="closeModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
                 <span class="material-icons-round">close</span>
             </button>
         </div>
-        <form id="serverForm" onsubmit="saveServer(event)" class="p-6">
-            <div class="space-y-5">
+        <form id="serverForm" onsubmit="saveServer(event)" class="min-h-0 flex flex-col">
+            <div class="server-modal-scroll custom-scrollbar">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <!-- Name -->
-                <div>
+                <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">Server Name *</label>
                     <input type="text" id="server-name" required placeholder="production-api-01"
                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
                 </div>
 
                 <!-- Host & Port -->
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-3 gap-4 lg:col-span-2">
                     <div class="col-span-2">
                         <label class="block text-xs font-medium text-gray-400 mb-2">Host *</label>
                         <input type="text" id="server-host" required placeholder="192.168.1.100 or hostname"
@@ -696,7 +730,7 @@
                 </div>
 
                 <!-- Auth Method -->
-                <div>
+                <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">Authentication *</label>
                     <select id="server-auth-method" required onchange="toggleAuthFields()"
                             class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
@@ -707,7 +741,7 @@
                 </div>
 
                 <!-- Password Fields -->
-                <div id="password-field" class="space-y-4 hidden">
+                <div id="password-field" class="space-y-4 hidden lg:col-span-2">
                     <div>
                         <label class="block text-xs font-medium text-gray-400 mb-2">Password</label>
                         <input type="password" id="server-password" placeholder="Server password"
@@ -722,7 +756,7 @@
                 </div>
 
                 <!-- Key Path -->
-                <div id="key-field" class="hidden">
+                <div id="key-field" class="hidden lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">SSH Key Path</label>
                     <input type="text" id="server-key-path" placeholder="~/.ssh/id_rsa"
                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono">
@@ -736,7 +770,7 @@
                 </div>
 
                 <!-- Corporate Context (AI) -->
-                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4 lg:col-span-2">
                     <div class="flex items-center gap-2 mb-3">
                         <span class="material-icons-round text-primary text-lg">psychology</span>
                         <span class="text-sm font-medium text-white">AI Context</span>
@@ -750,8 +784,8 @@
                               class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono text-xs resize-none"></textarea>
                 </div>
             </div>
-
-            <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
+            </div>
+            <div class="server-modal-footer flex justify-end gap-3">
                 <button type="button" onclick="closeModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" class="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl shadow-glow-primary transition-all font-medium">
                     Add Server
@@ -810,7 +844,7 @@
 <!-- Edit Server Modal -->
 <div id="editServerModal" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeEditModal()"></div>
-    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden server-modal-panel">
         <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
                 <span class="material-icons-round text-amber-400">edit</span>
@@ -820,17 +854,18 @@
                 <span class="material-icons-round">close</span>
             </button>
         </div>
-        <form id="editServerForm" onsubmit="saveEditServer(event)" class="p-6 overflow-y-auto custom-scrollbar">
+        <form id="editServerForm" onsubmit="saveEditServer(event)" class="min-h-0 flex flex-col">
             <input type="hidden" id="edit-server-id">
-            <div class="space-y-5">
+            <div class="server-modal-scroll custom-scrollbar">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <!-- Name -->
-                <div>
+                <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">Server Name *</label>
                     <input type="text" id="edit-server-name" required
                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
                 </div>
                 <!-- Host & Port -->
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-3 gap-4 lg:col-span-2">
                     <div class="col-span-2">
                         <label class="block text-xs font-medium text-gray-400 mb-2">Host *</label>
                         <input type="text" id="edit-server-host" required
@@ -860,7 +895,7 @@
                     </div>
                 </div>
                 <!-- Auth Method -->
-                <div>
+                <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">Authentication *</label>
                     <select id="edit-server-auth-method" required onchange="toggleEditAuthFields()"
                             class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
@@ -870,7 +905,7 @@
                     </select>
                 </div>
                 <!-- Password Fields -->
-                <div id="edit-password-field" class="space-y-4 hidden">
+                <div id="edit-password-field" class="space-y-4 hidden lg:col-span-2">
                     <div>
                         <label class="block text-xs font-medium text-gray-400 mb-2">New Password <span class="text-gray-600">(leave empty to keep current)</span></label>
                         <input type="password" id="edit-server-password" placeholder="New password (optional)"
@@ -883,7 +918,7 @@
                     </div>
                 </div>
                 <!-- Key Path -->
-                <div id="edit-key-field" class="hidden">
+                <div id="edit-key-field" class="hidden lg:col-span-2">
                     <label class="block text-xs font-medium text-gray-400 mb-2">SSH Key Path</label>
                     <input type="text" id="edit-server-key-path"
                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
@@ -901,7 +936,7 @@
                               class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors resize-none"></textarea>
                 </div>
                 <!-- Corporate Context (AI) -->
-                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <div class="bg-primary/5 border border-primary/20 rounded-xl p-4 lg:col-span-2">
                     <div class="flex items-center gap-2 mb-3">
                         <span class="material-icons-round text-primary text-lg">psychology</span>
                         <span class="text-sm font-medium text-white">AI Context</span>
@@ -914,7 +949,8 @@
                               class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono text-xs resize-none"></textarea>
                 </div>
             </div>
-            <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
+            </div>
+            <div class="server-modal-footer flex justify-end gap-3">
                 <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 text-gray-400 hover:text-white transition-colors">Cancel</button>
                 <button type="submit" class="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-xl transition-all font-medium">
                     Save Changes
@@ -1548,6 +1584,10 @@ document.getElementById('group-filter')?.addEventListener('change', function() {
     window.location.href = url;
 });
 
+function closeActionDropdowns() {
+    document.querySelectorAll('.action-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+}
+
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
@@ -1557,6 +1597,7 @@ document.addEventListener('keydown', function(e) {
         closeEditModal();
         closeGlobalContextModal();
         closeGroupContextModal();
+        closeActionDropdowns();
         if (typeof closeMasterPasswordModal === 'function') closeMasterPasswordModal();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -1752,7 +1793,7 @@ document.addEventListener('click', function(e) {
         const isOpen = dropdown.classList.contains('is-open');
 
         // Close all open dropdowns
-        document.querySelectorAll('.action-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+        closeActionDropdowns();
 
         if (!isOpen) {
             const rect = btn.getBoundingClientRect();
@@ -1763,9 +1804,15 @@ document.addEventListener('click', function(e) {
         return;
     }
 
+    // Close when a dropdown action is selected
+    if (e.target.closest('.action-dropdown button, .action-dropdown a')) {
+        closeActionDropdowns();
+        return;
+    }
+
     // Close on outside click
     if (!e.target.closest('.action-dropdown')) {
-        document.querySelectorAll('.action-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+        closeActionDropdowns();
     }
 });
 </script>

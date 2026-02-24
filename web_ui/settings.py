@@ -10,10 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
 import json
 import os
 import shutil
+from pathlib import Path
 
 # Загрузка .env до чтения os.getenv (для POSTGRES_*, CELERY_* и т.д.)
 try:
@@ -86,6 +86,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core_ui.domain_auth.DomainAutoLoginMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core_ui.middleware.AdminRussianMiddleware',
@@ -206,6 +207,24 @@ USE_TZ = True
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = 'login'
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Domain SSO / integrated auth
+# DOMAIN_AUTH_HEADER examples: REMOTE_USER, X-Forwarded-User
+DOMAIN_AUTH_ENABLED = _env_bool("DOMAIN_AUTH_ENABLED", False)
+DOMAIN_AUTH_HEADER = (os.getenv("DOMAIN_AUTH_HEADER", "REMOTE_USER") or "REMOTE_USER").strip() or "REMOTE_USER"
+DOMAIN_AUTH_AUTO_CREATE = _env_bool("DOMAIN_AUTH_AUTO_CREATE", True)
+DOMAIN_AUTH_LOWERCASE_USERNAMES = _env_bool("DOMAIN_AUTH_LOWERCASE_USERNAMES", True)
+DOMAIN_AUTH_DEFAULT_PROFILE = (
+    os.getenv("DOMAIN_AUTH_DEFAULT_PROFILE", "server_only") or "server_only"
+).strip().lower() or "server_only"
 
 # =============================================================================
 # Email Configuration

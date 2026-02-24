@@ -1509,6 +1509,31 @@ def api_settings(request):
                     'cursor_approve_mcps': getattr(c, 'cursor_approve_mcps', False),
                     'allow_model_selection': getattr(c, 'allow_model_selection', False),
                     'delegate_ui': delegate_ui,
+                    'domain_auth_enabled': (
+                        getattr(c, 'domain_auth_enabled', None)
+                        if getattr(c, 'domain_auth_enabled', None) is not None
+                        else bool(getattr(settings, 'DOMAIN_AUTH_ENABLED', False))
+                    ),
+                    'domain_auth_header': (
+                        getattr(c, 'domain_auth_header', None)
+                        if getattr(c, 'domain_auth_header', None)
+                        else str(getattr(settings, 'DOMAIN_AUTH_HEADER', 'REMOTE_USER') or 'REMOTE_USER')
+                    ),
+                    'domain_auth_auto_create': (
+                        getattr(c, 'domain_auth_auto_create', None)
+                        if getattr(c, 'domain_auth_auto_create', None) is not None
+                        else bool(getattr(settings, 'DOMAIN_AUTH_AUTO_CREATE', True))
+                    ),
+                    'domain_auth_lowercase_usernames': (
+                        getattr(c, 'domain_auth_lowercase_usernames', None)
+                        if getattr(c, 'domain_auth_lowercase_usernames', None) is not None
+                        else bool(getattr(settings, 'DOMAIN_AUTH_LOWERCASE_USERNAMES', True))
+                    ),
+                    'domain_auth_default_profile': (
+                        getattr(c, 'domain_auth_default_profile', None)
+                        if getattr(c, 'domain_auth_default_profile', None)
+                        else str(getattr(settings, 'DOMAIN_AUTH_DEFAULT_PROFILE', 'server_only') or 'server_only')
+                    ),
                 },
                 'api_keys': {
                     'gemini_set': bool(os.getenv('GEMINI_API_KEY')),
@@ -1544,7 +1569,19 @@ def api_settings(request):
                 'default_orchestrator_mode',  # react | ralph_internal | ralph_cli
                 'ralph_max_iterations',
                 'ralph_completion_promise',
+                'domain_auth_enabled',
+                'domain_auth_header',
+                'domain_auth_auto_create',
+                'domain_auth_lowercase_usernames',
+                'domain_auth_default_profile',
             }
+            if 'domain_auth_header' in data and data['domain_auth_header'] is not None:
+                data['domain_auth_header'] = str(data['domain_auth_header']).strip() or 'REMOTE_USER'
+            if 'domain_auth_default_profile' in data and data['domain_auth_default_profile'] is not None:
+                profile = str(data['domain_auth_default_profile']).strip().lower()
+                if profile not in {'server_only', 'admin_full', 'reset_defaults', 'custom'}:
+                    return JsonResponse({'success': False, 'error': 'Invalid domain_auth_default_profile'}, status=400)
+                data['domain_auth_default_profile'] = profile
             for key, value in data.items():
                 if key in allowed and value is not None:
                     model_manager.update_config(**{key: value})

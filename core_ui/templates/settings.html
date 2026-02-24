@@ -92,6 +92,10 @@
                                 <span>Управление доступом</span>
                                 <span class="material-icons-round text-base text-primary">manage_accounts</span>
                             </a>
+                            <a href="#settings-domain-auth" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Доменная SSO</span>
+                                <span class="material-icons-round text-base text-gray-500">badge</span>
+                            </a>
                             <a href="#disk-usage-card" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
                                 <span>Система и диск</span>
                                 <span class="material-icons-round text-base text-gray-500">storage</span>
@@ -664,6 +668,80 @@
             </div>
             {% endif %}
 
+            {% if user_can_settings %}
+            <div class="glass-card rounded-xl p-6" id="settings-domain-auth">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                        <span class="material-icons-round text-indigo-400">badge</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">Доменная авторизация (SSO)</h2>
+                        <p class="text-sm text-gray-500">Автологин по доменному пользователю без ввода логина и пароля</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                        <div>
+                            <span class="text-sm font-medium text-white">Включить доменную авторизацию</span>
+                            <p class="text-xs text-gray-500">Если включено, система берёт пользователя из trusted header и логинит автоматически.</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="domain-auth-enabled" class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="domain-auth-header">Заголовок доменного пользователя</label>
+                        <input id="domain-auth-header" type="text" class="input-field w-full lg:max-w-xl" placeholder="X-Forwarded-User или REMOTE_USER">
+                        <p class="text-xs text-gray-500 mt-1">Должен приходить только от доверенного reverse proxy (Nginx/IIS).</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                            <div>
+                                <span class="text-sm font-medium text-white">Автосоздание пользователей</span>
+                                <p class="text-xs text-gray-500">Если пользователя нет — создать при первом входе.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="domain-auth-auto-create" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                            <div>
+                                <span class="text-sm font-medium text-white">Нижний регистр логина</span>
+                                <p class="text-xs text-gray-500">DOMAIN\\User → user (защита от дублей User/user).</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="domain-auth-lowercase-usernames" class="sr-only peer">
+                                <div class="w-10 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="domain-auth-default-profile">Профиль для нового доменного пользователя</label>
+                        <select id="domain-auth-default-profile" class="input-field w-full lg:max-w-xl">
+                            <option value="server_only">server_only (рекомендуется)</option>
+                            <option value="admin_full">admin_full</option>
+                            <option value="reset_defaults">reset_defaults</option>
+                            <option value="custom">custom</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Для вашей задачи используйте server_only: доступ только к серверам.</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-end mt-6 pt-4 border-t border-white/5">
+                    <button type="button" id="btn-save-domain-auth" class="btn-primary">
+                        <span class="material-icons-round text-lg">save</span>
+                        Сохранить SSO
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- About -->
             <div class="glass-card rounded-xl p-6" id="settings-about">
                 <div class="flex items-center gap-3 mb-4">
@@ -1006,6 +1084,21 @@
             const delegateUi = document.getElementById('delegate-ui');
             if (delegateUi) delegateUi.value = (cfg.delegate_ui === 'task_form') ? 'task_form' : 'chat';
 
+            // Domain SSO settings
+            const domainAuthEnabled = document.getElementById('domain-auth-enabled');
+            if (domainAuthEnabled) domainAuthEnabled.checked = !!cfg.domain_auth_enabled;
+            const domainAuthHeader = document.getElementById('domain-auth-header');
+            if (domainAuthHeader) domainAuthHeader.value = cfg.domain_auth_header || 'X-Forwarded-User';
+            const domainAuthAutoCreate = document.getElementById('domain-auth-auto-create');
+            if (domainAuthAutoCreate) domainAuthAutoCreate.checked = !!cfg.domain_auth_auto_create;
+            const domainAuthLowercase = document.getElementById('domain-auth-lowercase-usernames');
+            if (domainAuthLowercase) domainAuthLowercase.checked = !!cfg.domain_auth_lowercase_usernames;
+            const domainAuthProfile = document.getElementById('domain-auth-default-profile');
+            if (domainAuthProfile) {
+                const p = (cfg.domain_auth_default_profile || 'server_only');
+                domainAuthProfile.value = ['server_only', 'admin_full', 'reset_defaults', 'custom'].includes(p) ? p : 'server_only';
+            }
+
             // Папка для файлов агента: загрузка списка проектов
             const outputPathSel = document.getElementById('default-agent-output-path');
             if (outputPathSel) {
@@ -1158,6 +1251,11 @@
             openai_enabled: document.getElementById('openai-enabled') ? document.getElementById('openai-enabled').checked : false,
             claude_enabled: document.getElementById('claude-enabled') ? document.getElementById('claude-enabled').checked : false,
             chat_model_claude: (document.getElementById('chat-model-claude') && document.getElementById('chat-model-claude').value) || 'claude-sonnet-4-6',
+            domain_auth_enabled: document.getElementById('domain-auth-enabled') ? document.getElementById('domain-auth-enabled').checked : false,
+            domain_auth_header: (document.getElementById('domain-auth-header') && document.getElementById('domain-auth-header').value.trim()) || 'X-Forwarded-User',
+            domain_auth_auto_create: document.getElementById('domain-auth-auto-create') ? document.getElementById('domain-auth-auto-create').checked : true,
+            domain_auth_lowercase_usernames: document.getElementById('domain-auth-lowercase-usernames') ? document.getElementById('domain-auth-lowercase-usernames').checked : true,
+            domain_auth_default_profile: (document.getElementById('domain-auth-default-profile') && document.getElementById('domain-auth-default-profile').value) || 'server_only',
         };
         // Сохраняем в localStorage для agent_hub.js
         localStorage.setItem('weu_allow_model_selection', payload.allow_model_selection ? '1' : '0');
@@ -1290,6 +1388,8 @@
     if (btnSave) btnSave.addEventListener('click', saveSettings);
     var btnSavePath = document.getElementById('btn-save-output-path');
     if (btnSavePath) btnSavePath.addEventListener('click', saveSettings);
+    var btnSaveDomainAuth = document.getElementById('btn-save-domain-auth');
+    if (btnSaveDomainAuth) btnSaveDomainAuth.addEventListener('click', saveSettings);
     const btnClear = document.getElementById('btn-clear-history');
     if (btnClear) btnClear.addEventListener('click', clearHistory);
     var btnSaveTasks = document.getElementById('btn-save-tasks-execution');

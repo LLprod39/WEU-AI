@@ -59,6 +59,13 @@ class ModelConfig(BaseModel):
     # В headless/чате автоматически одобрять MCP (--approve-mcps).
     cursor_approve_mcps: bool = False
 
+    # Domain SSO settings (None => use Django settings/.env fallback)
+    domain_auth_enabled: Optional[bool] = None
+    domain_auth_header: Optional[str] = None
+    domain_auth_auto_create: Optional[bool] = None
+    domain_auth_lowercase_usernames: Optional[bool] = None
+    domain_auth_default_profile: Optional[str] = None
+
 
 
 class ModelManager:

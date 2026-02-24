@@ -371,7 +371,7 @@ select option {
     background: rgba(99, 102, 241, 0.4);
     color: #fff;
     box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-    transform: scale(1.05);
+    transform: none;
 }
 .sidebar .sidebar-toggle-icon.icon-collapse { display: none; }
 .sidebar.collapsed .sidebar-toggle-icon.icon-expand { display: none; }
@@ -398,7 +398,7 @@ select option {
 .sidebar-link:hover {
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-primary);
-    transform: translateX(2px);
+    transform: none;
 }
 .sidebar-link.active {
     background: var(--color-primary-muted);
@@ -3694,7 +3694,7 @@ body.page-admin-logs > main {
 }
 
 .sidebar-toggle:hover {
-    transform: scale(1.1);
+    transform: none;
     box-shadow: 0 6px 16px rgba(255, 94, 0, 0.6);
 }
 
@@ -6424,7 +6424,7 @@ body.page-admin-logs > main {
 }
 .stat-card:hover {
     border-color: var(--border-default);
-    transform: translateY(-3px);
+    transform: none;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 .stat-card::before {
@@ -6607,7 +6607,7 @@ body.page-admin-logs > main {
 }
 .command-card:hover {
     border-color: var(--border-default);
-    transform: translateY(-2px);
+    transform: none;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 .command-card-primary {
@@ -6626,7 +6626,7 @@ body.page-admin-logs > main {
     transition: all 0.2s ease;
 }
 .command-card:hover .command-card-icon {
-    transform: scale(1.05);
+    transform: none;
 }
 .command-icon-amber { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
 .command-icon-cyan  { background: rgba(6, 182, 212, 0.1);  color: #06b6d4; }
@@ -6649,7 +6649,7 @@ body.page-admin-logs > main {
 }
 .command-card:hover .command-card-arrow {
     color: rgba(255, 255, 255, 0.5);
-    transform: translateX(3px);
+    transform: none;
 }
 
 @media (max-width: 640px) {
@@ -6897,7 +6897,7 @@ body.page-admin-logs > main {
     font-size: 12px; font-weight: 500; border-radius: 8px;
     text-decoration: none; transition: all 0.2s;
 }
-.btn-primary-sm:hover { background: var(--primary-hover); transform: translateY(-1px); }
+.btn-primary-sm:hover { background: var(--primary-hover); transform: none; }
 
 .status-list {
     display: flex; flex-direction: column; gap: 10px;
