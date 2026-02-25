@@ -1775,6 +1775,7 @@
                         </div>
                         <div class="hub-card__actions">
                             <button type="button" onclick="toggleWebhookForm()" class="hub-btn hub-btn-secondary">+ New</button>
+                            <button type="button" onclick="createQuickTestWebhook()" class="hub-btn hub-btn-ghost">Quick Test Hook</button>
                             <button type="button" onclick="loadWebhooks()" class="hub-btn hub-btn-ghost">Refresh</button>
                         </div>
                     </div>
@@ -1784,6 +1785,7 @@
                             <select id="webhook-source-preset" class="hub-select">
                                 <option value="generic">Generic</option>
                                 <option value="zabbix">Zabbix</option>
+                                <option value="incident_workflow">Incident Workflow</option>
                                 <option value="email">Email</option>
                                 <option value="slack">Slack</option>
                                 <option value="jira">Jira</option>
@@ -1798,6 +1800,7 @@
                                 <option value="">— not set —</option>
                             </select>
                         </div>
+                        <div class="hub-help">Agent executor: выберите кастомного агента, который будет выполнять workflow при триггере.</div>
                         <div class="hub-form-row">
                             <select id="webhook-agent-type" class="hub-select">
                                 <option value="react">react</option>
@@ -1813,7 +1816,7 @@
                         <div class="hub-form-row">
                             <select id="webhook-workflow-template" class="hub-select">
                                 <option value="">LLM generate</option>
-                                <option value="remediation">Remediation</option>
+                                <option value="remediation">Runbook (template)</option>
                             </select>
                             <select id="webhook-target-server" class="hub-select">
                                 <option value="">auto by payload</option>
@@ -1843,6 +1846,62 @@
                             <textarea id="webhook-description-template" class="hub-textarea" rows="3" placeholder="{{payload_json}}"></textarea>
                         </div>
                         <div id="webhook-workflow-extra" class="hidden">
+                            <div class="hub-form-row">
+                                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%;">
+                                    <div>
+                                        <label class="hub-label" for="webhook-workflow-builder" style="margin:0;">Workflow Steps (Builder)</label>
+                                        <p class="hub-help" style="margin:4px 0 0 0;">Соберите цепочку шагов из веба: диагностика → действие → проверка и т.д.</p>
+                                    </div>
+                                    <div class="hub-card__actions">
+                                        <select id="webhook-step-template" class="hub-select" style="min-width:180px;">
+                                            <option value="">Step template...</option>
+                                            <option value="triage">Triage</option>
+                                            <option value="fix">Fix</option>
+                                            <option value="verify">Verify</option>
+                                            <option value="check_service">Check service</option>
+                                            <option value="restart_service">Restart service</option>
+                                            <option value="deploy_release">Deploy release</option>
+                                            <option value="cleanup_disk">Cleanup disk</option>
+                                        </select>
+                                        <button type="button" class="hub-btn hub-btn-ghost" onclick="addWebhookStepFromTemplate()">+ From template</button>
+                                        <button type="button" class="hub-btn hub-btn-secondary" onclick="addWebhookWorkflowStep()">+ Step</button>
+                                        <button type="button" class="hub-btn hub-btn-ghost" onclick="resetWebhookWorkflowBuilder()">Preset 3-step</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="webhook-workflow-builder" class="hub-stack" style="gap:8px;margin-bottom:8px;"></div>
+                            <div class="hub-form-row">
+                                <input id="webhook-workflow-name-template" class="hub-input" placeholder="Workflow name template (optional), e.g. Incident: {{event_name}}">
+                            </div>
+                            <div class="hub-form-row">
+                                <input id="webhook-workflow-description-template" class="hub-input" placeholder="Workflow description template (optional)">
+                            </div>
+                            <div class="hub-form-row">
+                                <input id="webhook-notify-emails" class="hub-input" placeholder="Notify emails (comma separated), e.g. ops@example.com,devops@example.com">
+                            </div>
+                            <div class="hub-form-row">
+                                <label class="hub-checkbox" style="margin-right:12px;">
+                                    <input type="checkbox" id="webhook-notify-on-success" checked>
+                                    Notify on success
+                                </label>
+                                <label class="hub-checkbox">
+                                    <input type="checkbox" id="webhook-notify-on-failure" checked>
+                                    Notify on failure
+                                </label>
+                            </div>
+                            <details style="border:1px solid var(--hub-border);border-radius:var(--radius-md);padding:10px 12px;">
+                                <summary style="font-size:12px;font-weight:600;color:var(--hub-muted);cursor:pointer;list-style:none;">Advanced: Workflow JSON override</summary>
+                                <textarea id="webhook-workflow-script" class="hub-textarea" rows="8" style="margin-top:8px;" placeholder='Workflow JSON (опционально). Пример:
+{
+  "name": "Incident flow: {{event_name}}",
+  "runtime": "claude",
+  "steps": [
+    {"title":"Triage","prompt":"Собери диагностику по {{host.name}}","max_iterations":3},
+    {"title":"Fix","prompt":"Выполни исправление и опиши изменения","max_iterations":5},
+    {"title":"Verify","prompt":"Проверь доступность сервиса","verify_prompt":"Проверь сервис и выведи <promise>PASS</promise>"}
+  ]
+}'></textarea>
+                            </details>
                             <div class="hub-form-row">
                                 <textarea id="webhook-verify-prompt" class="hub-textarea" rows="2" placeholder="Verify prompt (optional)"></textarea>
                             </div>
@@ -2073,6 +2132,18 @@
 
                 <!-- MCP -->
                 <div>
+                    <label class="hub-label">MCP серверы агента</label>
+                    <p class="hub-help" style="margin-bottom:8px;">Добавляйте MCP прямо во вкладке Agents: из пула или шаблон Zabbix.</p>
+                    <div class="hub-form-row" style="margin-bottom:8px;">
+                        <select id="agent-editor-mcp-pool" class="hub-select">
+                            <option value="">Выбрать из Моих MCP...</option>
+                        </select>
+                        <div class="hub-card__actions">
+                            <button type="button" class="hub-btn hub-btn-secondary" onclick="addAgentMcpFromPool()">Добавить из пула</button>
+                            <button type="button" class="hub-btn hub-btn-ghost" onclick="addAgentMcpTemplateZabbix()">Шаблон Zabbix</button>
+                        </div>
+                    </div>
+                    <div id="agent-editor-mcp-servers" class="hub-stack" style="gap:8px;margin-bottom:8px;"></div>
                     <label class="hub-toggle">
                         <input type="checkbox" id="agent-editor-mcp-auto">
                         <span class="hub-toggle__control" aria-hidden="true"></span>
@@ -2415,6 +2486,28 @@
                             </ul>
                         </div>
                     </div>
+
+                    <details style="border:1px solid var(--hub-border);border-radius:var(--radius-md);padding:10px 14px;">
+                        <summary style="font-size:12px;font-weight:600;color:var(--hub-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;">
+                            <span class="material-icons-round" style="font-size:14px;">tune</span>
+                            Advanced runtime settings
+                        </summary>
+                        <div class="hub-form-row" style="margin-top:10px;">
+                            <input id="agent-editor-model-ui" class="hub-input" placeholder="Model (e.g. auto, claude-4.5-sonnet)">
+                            <select id="agent-editor-orchestrator-ui" class="hub-select">
+                                <option value="ralph_internal">ralph_internal</option>
+                                <option value="react">react</option>
+                                <option value="ralph_cli">ralph_cli</option>
+                            </select>
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="agent-editor-max-iterations-ui" type="number" min="1" max="100" class="hub-input" placeholder="Max iterations">
+                            <input id="agent-editor-temperature-ui" type="number" min="0" max="1" step="0.1" class="hub-input" placeholder="Temperature">
+                        </div>
+                        <div class="hub-form-row">
+                            <input id="agent-editor-completion-promise-ui" class="hub-input" placeholder="Completion promise (e.g. COMPLETE)">
+                        </div>
+                    </details>
                 </div>
             </div>
             
@@ -2683,5 +2776,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/agent_hub.js' %}?v=hub-v9"></script>
+<script src="{% static 'js/agent_hub.js' %}?v=hub-v10"></script>
 {% endblock %}

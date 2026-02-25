@@ -111,7 +111,10 @@ def server_terminal_page(request, server_id: int):
     server = get_object_or_404(accessible_qs, id=server_id)
     all_servers = accessible_qs.exclude(id=server_id)
     share = _active_server_share(server, request.user)
-    template = 'servers/mobile/terminal.html' if getattr(request, 'is_mobile', False) else 'servers/terminal.html'
+    if server.is_rdp():
+        template = 'servers/mobile/rdp_terminal.html' if getattr(request, 'is_mobile', False) else 'servers/rdp_terminal.html'
+    else:
+        template = 'servers/mobile/terminal.html' if getattr(request, 'is_mobile', False) else 'servers/terminal.html'
     return render(request, template, {
         'server': server,
         'all_servers': all_servers,
@@ -140,7 +143,8 @@ def terminal_minimal(request, server_id: int):
     server = get_object_or_404(accessible_qs, id=server_id)
     all_servers = accessible_qs.exclude(id=server_id)
     share = _active_server_share(server, request.user)
-    return render(request, 'servers/terminal_minimal.html', {
+    template = 'servers/rdp_terminal_minimal.html' if server.is_rdp() else 'servers/terminal_minimal.html'
+    return render(request, template, {
         'server': server,
         'all_servers': all_servers,
         'is_shared_server': bool(share),

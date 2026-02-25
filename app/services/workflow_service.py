@@ -38,6 +38,7 @@ class WorkflowService:
         runtime_override: str | None = None,
         project_path_override: str | None = None,
         skill_ids_override: list[int] | None = None,
+        extra_script_patch: dict[str, Any] | None = None,
     ) -> tuple["AgentWorkflow | None", "AgentWorkflowRun | None"]:
         """
         Create a workflow from a Task and start its execution.
@@ -51,6 +52,7 @@ class WorkflowService:
             runtime_override: Optional runtime override for workflow execution
             project_path_override: Optional project path override
             skill_ids_override: Optional list of skills to inject into workflow
+            extra_script_patch: Optional top-level script fields to merge before save/run
 
         Returns:
             Tuple of (workflow, run) or (None, None) if creation failed
@@ -89,7 +91,7 @@ class WorkflowService:
         target_server_id = target_server.id if target_server else None
         target_server_name = target_server.name if target_server else None
 
-        # Get runtime from settings
+        # Get runtime from settings (explicit override has highest priority)
         default_runtime = runtime_override or model_manager.config.default_provider or "cursor"
         
         # Load recommended CustomAgent if specified
@@ -105,7 +107,8 @@ class WorkflowService:
         # If custom_agent exists, use its parameters
         selected_skill_ids: list[int] = []
         if custom_agent:
-            default_runtime = custom_agent.runtime
+            if not runtime_override:
+                default_runtime = custom_agent.runtime
             logger.info(f"Using CustomAgent {custom_agent.name} (id={custom_agent.id}) for task {task.id}")
             selected_skill_ids = list(custom_agent.skills.values_list("id", flat=True))
             
@@ -132,6 +135,8 @@ class WorkflowService:
             return None, None
         if selected_skill_ids:
             parsed["skill_ids"] = selected_skill_ids
+        if isinstance(extra_script_patch, dict) and extra_script_patch:
+            parsed.update(extra_script_patch)
 
         # Ralph — оркестратор: генерируем ralph_yml из steps для любого CLI runtime
         if not parsed.get("ralph_yml") and parsed.get("steps"):

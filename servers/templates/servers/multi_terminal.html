@@ -320,6 +320,26 @@
         border-top: 1px solid rgba(255,255,255,0.06);
         flex-shrink: 0;
     }
+    .ai-mode-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        color: #6b7280;
+    }
+    .ai-mode-row .material-icons-round { font-size: 13px; color: #6366f1; }
+    .ai-mode-select {
+        background: rgba(9, 9, 11, 0.8);
+        color: #d1d5db;
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 7px;
+        padding: 3px 7px;
+        font-size: 11px;
+        outline: none;
+    }
+    .ai-mode-select:focus { border-color: rgba(99,102,241,0.45); }
 
     .ai-textarea {
         width: 100%;
@@ -846,6 +866,15 @@ function addTerminalTab(serverId, serverName, host, port, username) {
                         <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'show logs')">Logs</button>
                         <button class="quick-cmd" onclick="sendQuickCmd('${tabId}', 'list processes')">Procs</button>
                     </div>
+                    <div class="ai-mode-row">
+                        <span class="material-icons-round">tune</span>
+                        <span>Mode</span>
+                        <select id="ai-mode-${tabId}" class="ai-mode-select" onchange="onAiModeChange('${tabId}', this.value)">
+                            <option value="auto">Auto</option>
+                            <option value="step">Step-by-step</option>
+                            <option value="fast">Fast</option>
+                        </select>
+                    </div>
                     <textarea id="ai-input-${tabId}" class="ai-textarea" rows="2" placeholder="Ask AI..." onkeydown="handleAiKey(event, '${tabId}')"></textarea>
                     <div class="flex justify-end mt-2">
                         <button onclick="sendAiMessage('${tabId}')" class="conn-btn conn-btn-primary">
@@ -858,6 +887,7 @@ function addTerminalTab(serverId, serverName, host, port, username) {
         </div>
     `;
     container.appendChild(panel);
+    syncAiModeSelectors(getStoredAiExecutionMode());
 
     // Hide empty state
     document.getElementById('empty-state').style.display = 'none';
@@ -1361,6 +1391,40 @@ function skipCmd(tabId, cmdId) {
     }
 }
 
+function normalizeAiExecutionMode(raw) {
+    const v = String(raw || '').trim().toLowerCase();
+    if (v === 'fast') return 'fast';
+    if (v === 'step') return 'step';
+    return 'auto';
+}
+
+function getStoredAiExecutionMode() {
+    try {
+        return normalizeAiExecutionMode(localStorage.getItem('ai_execution_mode') || 'auto');
+    } catch (e) {
+        return 'auto';
+    }
+}
+
+function syncAiModeSelectors(mode) {
+    const normalized = normalizeAiExecutionMode(mode);
+    document.querySelectorAll('select[id^="ai-mode-"]').forEach(el => {
+        if (el.value !== normalized) el.value = normalized;
+    });
+}
+
+function onAiModeChange(tabId, raw) {
+    const mode = normalizeAiExecutionMode(raw);
+    try { localStorage.setItem('ai_execution_mode', mode); } catch (e) {}
+    syncAiModeSelectors(mode);
+}
+
+function getAiExecutionMode(tabId) {
+    const sel = document.getElementById('ai-mode-' + tabId);
+    if (sel && sel.value) return normalizeAiExecutionMode(sel.value);
+    return getStoredAiExecutionMode();
+}
+
 function sendAiMessage(tabId) {
     const input = document.getElementById('ai-input-' + tabId);
     const text = (input?.value || '').trim();
@@ -1375,7 +1439,11 @@ function sendAiMessage(tabId) {
     appendAiMsg(tabId, 'user', text);
     handleAiStatus(tabId, { status: 'thinking' });
     input.value = '';
-    tabData.socket.send(JSON.stringify({ type: 'ai_request', message: text }));
+    tabData.socket.send(JSON.stringify({
+        type: 'ai_request',
+        message: text,
+        execution_mode: getAiExecutionMode(tabId),
+    }));
 }
 
 function sendQuickCmd(tabId, cmd) {
@@ -1421,6 +1489,7 @@ document.addEventListener('keydown', e => {
 
 // Open initial server if passed via URL
 document.addEventListener('DOMContentLoaded', () => {
+    syncAiModeSelectors(getStoredAiExecutionMode());
     const params = new URLSearchParams(window.location.search);
     const serverId = params.get('server');
     if (serverId) {

@@ -28,6 +28,7 @@ from app.services.workflow_service import WorkflowService
 DEFAULT_TITLE_TEMPLATE = "{{webhook_name}}: {{event_name}}"
 DEFAULT_DESCRIPTION_TEMPLATE = "Источник: {{source}}\nВремя: {{received_at}}\n\nPayload:\n{{payload_json}}"
 DEFAULT_VERIFY_PROMISE = "PASS"
+ALLOWED_WORKFLOW_RUNTIMES = {"internal", "cursor", "claude", "codex", "opencode", "gemini", "ralph"}
 
 
 def _parse_payload(request) -> Dict[str, Any]:
@@ -216,6 +217,368 @@ def _build_remediation_script(
     return script
 
 
+def _clamp_int(value: Any, default: int, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(max_value, parsed))
+
+
+def _normalize_runtime_name(runtime: Any, default: str = "cursor") -> str:
+    value = str(runtime or "").strip().lower()
+    return value if value in ALLOWED_WORKFLOW_RUNTIMES else default
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in {"1", "true", "yes", "on"}:
+            return True
+        if norm in {"0", "false", "no", "off", ""}:
+            return False
+    return default
+
+
+def _normalize_email_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_items = [part.strip() for part in value.split(",")]
+    elif isinstance(value, list):
+        raw_items = [str(item or "").strip() for item in value]
+    else:
+        return []
+
+    emails: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        if not item or "@" not in item:
+            continue
+        lower = item.lower()
+        if lower in seen:
+            continue
+        seen.add(lower)
+        emails.append(item)
+    return emails
+
+
+def _normalize_notify_config(raw_notify: Any) -> Dict[str, Any]:
+    if not isinstance(raw_notify, dict):
+        return {}
+    notify: Dict[str, Any] = {}
+    emails = _normalize_email_list(raw_notify.get("emails"))
+    if emails:
+        notify["emails"] = emails
+    if "on_success" in raw_notify:
+        notify["on_success"] = _as_bool(raw_notify.get("on_success"), default=True)
+    if "on_failure" in raw_notify:
+        notify["on_failure"] = _as_bool(raw_notify.get("on_failure"), default=True)
+    return notify
+
+
+def _build_notify_config_from_webhook_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    notify: Dict[str, Any] = {}
+    emails = _normalize_email_list(config.get("notify_emails"))
+    if emails:
+        notify["emails"] = emails
+    if "notify_on_success" in config:
+        notify["on_success"] = _as_bool(config.get("notify_on_success"), default=True)
+    if "notify_on_failure" in config:
+        notify["on_failure"] = _as_bool(config.get("notify_on_failure"), default=True)
+    return notify
+
+
+def _normalize_int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    out: list[int] = []
+    seen: set[int] = set()
+    for raw in value:
+        try:
+            num = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if num <= 0 or num in seen:
+            continue
+        seen.add(num)
+        out.append(num)
+    return out
+
+
+def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(raw_script, str):
+        try:
+            raw_script = json.loads(raw_script)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(raw_script, dict):
+        return None
+
+    script: Dict[str, Any] = {}
+    name = str(raw_script.get("name") or "").strip()
+    description = str(raw_script.get("description") or "").strip()
+    runtime = str(raw_script.get("runtime") or "").strip().lower()
+    task_type = str(raw_script.get("task_type") or "").strip().lower()
+    model = str(raw_script.get("model") or "").strip()
+
+    if name:
+        script["name"] = name[:200]
+    if description:
+        script["description"] = description[:5000]
+    if runtime:
+        script["runtime"] = _normalize_runtime_name(runtime, default=runtime)
+    if task_type in {"server", "code"}:
+        script["task_type"] = task_type
+    if model:
+        script["model"] = model[:100]
+
+    steps_raw = raw_script.get("steps")
+    steps: list[Dict[str, Any]] = []
+    if isinstance(steps_raw, list):
+        for idx, raw_step in enumerate(steps_raw[:30], start=1):
+            if not isinstance(raw_step, dict):
+                continue
+            prompt = str(raw_step.get("prompt") or "").strip()
+            if not prompt:
+                continue
+            step: Dict[str, Any] = {
+                "title": (str(raw_step.get("title") or f"Step {idx}").strip() or f"Step {idx}")[:200],
+                "prompt": prompt,
+                "completion_promise": (str(raw_step.get("completion_promise") or "STEP_DONE").strip() or "STEP_DONE")[:100],
+                "max_iterations": _clamp_int(raw_step.get("max_iterations"), default=5, min_value=1, max_value=30),
+            }
+            verify_prompt = str(raw_step.get("verify_prompt") or "").strip()
+            if verify_prompt:
+                step["verify_prompt"] = verify_prompt
+                step["verify_promise"] = (
+                    str(raw_step.get("verify_promise") or DEFAULT_VERIFY_PROMISE).strip()
+                    or DEFAULT_VERIFY_PROMISE
+                )[:100]
+            step_model = str(raw_step.get("model") or "").strip()
+            if step_model:
+                step["model"] = step_model[:100]
+            steps.append(step)
+
+    if not steps:
+        return None
+    script["steps"] = steps
+
+    skill_ids = _normalize_int_list(raw_script.get("skill_ids"))
+    if skill_ids:
+        script["skill_ids"] = skill_ids
+
+    notify = _normalize_notify_config(raw_script.get("notify"))
+    if notify:
+        script["notify"] = notify
+
+    return script
+
+
+def _normalize_webhook_config(raw_config: Any) -> Dict[str, Any]:
+    if not isinstance(raw_config, dict):
+        return {}
+
+    cfg: Dict[str, Any] = {}
+    for key in (
+        "workflow_template",
+        "workflow_name_template",
+        "workflow_description_template",
+        "server_field",
+        "event_id_field",
+        "event_name_field",
+        "event_name",
+        "title_template",
+        "description_template",
+        "verify_prompt",
+    ):
+        value = raw_config.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            cfg[key] = text
+    runtime_value = raw_config.get("runtime")
+    if runtime_value not in (None, ""):
+        cfg["runtime"] = _normalize_runtime_name(runtime_value)
+    notify_emails = raw_config.get("notify_emails")
+    if notify_emails not in (None, ""):
+        normalized_emails = _normalize_email_list(notify_emails)
+        if normalized_emails:
+            cfg["notify_emails"] = ", ".join(normalized_emails)
+    if "notify_on_success" in raw_config:
+        cfg["notify_on_success"] = _as_bool(raw_config.get("notify_on_success"), default=True)
+    if "notify_on_failure" in raw_config:
+        cfg["notify_on_failure"] = _as_bool(raw_config.get("notify_on_failure"), default=True)
+
+    target_server_id = raw_config.get("target_server_id")
+    if target_server_id not in (None, ""):
+        try:
+            parsed_id = int(target_server_id)
+        except (TypeError, ValueError):
+            parsed_id = None
+        if parsed_id and parsed_id > 0:
+            cfg["target_server_id"] = parsed_id
+
+    server_map_raw = raw_config.get("server_map")
+    if isinstance(server_map_raw, dict):
+        server_map: Dict[str, int] = {}
+        for raw_name, raw_id in server_map_raw.items():
+            name = str(raw_name or "").strip()
+            if not name:
+                continue
+            try:
+                sid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if sid > 0:
+                server_map[name] = sid
+        if server_map:
+            cfg["server_map"] = server_map
+
+    skill_ids = _normalize_int_list(raw_config.get("skill_ids"))
+    if skill_ids:
+        cfg["skill_ids"] = skill_ids
+
+    workflow_script = _normalize_workflow_script(raw_config.get("workflow_script"))
+    if workflow_script:
+        cfg["workflow_script"] = workflow_script
+        cfg.setdefault("workflow_template", "custom")
+
+    return cfg
+
+
+def _render_template_tree(value: Any, payload: Dict[str, Any], extra: Dict[str, Any]) -> Any:
+    if isinstance(value, str):
+        return _render_template(value, payload, extra)
+    if isinstance(value, list):
+        return [_render_template_tree(item, payload, extra) for item in value]
+    if isinstance(value, dict):
+        return {str(k): _render_template_tree(v, payload, extra) for k, v in value.items()}
+    return value
+
+
+def _ensure_ralph_yml(script: Dict[str, Any], runtime: str) -> None:
+    if runtime != "ralph" or script.get("ralph_yml"):
+        return
+    steps = script.get("steps") if isinstance(script.get("steps"), list) else []
+    hats: Dict[str, Any] = {}
+    previous_event = "task.start"
+    for idx, step in enumerate(steps, start=1):
+        next_event = f"step_{idx}.done"
+        hats[f"step_{idx}"] = {
+            "name": (step.get("title") or f"Step {idx}") if isinstance(step, dict) else f"Step {idx}",
+            "description": (step.get("title") or f"Step {idx}") if isinstance(step, dict) else f"Step {idx}",
+            "triggers": [previous_event],
+            "publishes": [next_event],
+            "instructions": step.get("prompt", "") if isinstance(step, dict) else "",
+        }
+        previous_event = next_event
+    script["ralph_yml"] = {
+        "cli": {"backend": "cursor"},
+        "event_loop": {
+            "completion_promise": "LOOP_COMPLETE",
+            "max_iterations": 50,
+            "starting_event": "task.start",
+        },
+        "hats": hats,
+    }
+
+
+def _apply_workflow_script_overrides(
+    script: Dict[str, Any],
+    config: Dict[str, Any],
+    payload: Dict[str, Any],
+    extra: Dict[str, Any],
+    target_server: Optional[Server],
+    default_name: str,
+    default_description: str,
+) -> Dict[str, Any]:
+    if not isinstance(script, dict):
+        script = {}
+
+    name_template = str(config.get("workflow_name_template") or "").strip()
+    if name_template:
+        rendered_name = _render_template(name_template, payload, extra).strip()
+        if rendered_name:
+            script["name"] = rendered_name[:200]
+    script.setdefault("name", default_name[:200])
+
+    desc_template = str(config.get("workflow_description_template") or "").strip()
+    if desc_template:
+        rendered_desc = _render_template(desc_template, payload, extra).strip()
+        if rendered_desc:
+            script["description"] = rendered_desc[:5000]
+    script.setdefault("description", default_description[:5000])
+
+    script.setdefault("task_type", "server" if target_server else "code")
+
+    notify_from_cfg = _build_notify_config_from_webhook_config(config)
+    existing_notify = _normalize_notify_config(script.get("notify"))
+    merged_notify: Dict[str, Any] = {}
+    emails = _normalize_email_list((existing_notify.get("emails") or []) + (notify_from_cfg.get("emails") or []))
+    if emails:
+        merged_notify["emails"] = emails
+    if "on_success" in existing_notify:
+        merged_notify["on_success"] = existing_notify["on_success"]
+    if "on_failure" in existing_notify:
+        merged_notify["on_failure"] = existing_notify["on_failure"]
+    if "on_success" in notify_from_cfg:
+        merged_notify["on_success"] = notify_from_cfg["on_success"]
+    if "on_failure" in notify_from_cfg:
+        merged_notify["on_failure"] = notify_from_cfg["on_failure"]
+    if merged_notify:
+        script["notify"] = merged_notify
+
+    return script
+
+
+def _create_workflow_from_script(
+    owner,
+    task: Task,
+    target_server: Optional[Server],
+    script: Dict[str, Any],
+    runtime: str,
+):
+    from pathlib import Path
+    from django.conf import settings
+    from agent_hub.models import AgentWorkflow
+    from agent_hub.views import _start_workflow_run, _write_ralph_yml
+
+    workflow = AgentWorkflow.objects.create(
+        owner=owner,
+        name=script.get("name", task.title[:80]),
+        description=(script.get("description") or "")[:200],
+        runtime=runtime,
+        script=script,
+        project_path="",
+        target_server=target_server,
+        task=task,
+    )
+
+    workflows_dir = Path(settings.MEDIA_ROOT) / "workflows"
+    workflows_dir.mkdir(parents=True, exist_ok=True)
+    file_path = workflows_dir / f"workflow-{workflow.id}.json"
+    script["script_file"] = str(file_path)
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(script, f, ensure_ascii=False, indent=2)
+
+    if script.get("ralph_yml"):
+        ralph_path = workflows_dir / f"workflow-{workflow.id}.ralph.yml"
+        script["ralph_yml_path"] = str(ralph_path)
+        _write_ralph_yml(ralph_path, script["ralph_yml"])
+
+    workflow.script = script
+    workflow.save(update_fields=["script"])
+    run = _start_workflow_run(workflow, owner)
+    task.ai_execution_status = "RUNNING"
+    task.save(update_fields=["ai_execution_status"])
+    return workflow, run
+
+
 def _start_task_execution(task: Task, user_id: int) -> None:
     executor = TaskExecutor()
     thread = threading.Thread(
@@ -236,7 +599,7 @@ def api_webhook_receive(request, secret: str):
     event = AgentWebhookEvent.objects.create(webhook=webhook, payload=payload, status="received")
 
     try:
-        config = webhook.config or {}
+        config = _normalize_webhook_config(webhook.config or {})
         received_at = datetime.now(timezone.utc).isoformat()
         extra = {
             "webhook_name": webhook.name,
@@ -297,20 +660,62 @@ def api_webhook_receive(request, secret: str):
                 result["error"] = "Target server not resolved; execution skipped"
             elif webhook.execution_mode == "workflow":
                 template_mode = (config.get("workflow_template") or "").strip().lower()
-                runtime_override = (config.get("runtime") or "").strip() or None
+                runtime_override = (
+                    _normalize_runtime_name(config.get("runtime"), default="").strip()
+                    or None
+                )
                 skill_ids_override = None
                 if isinstance(config.get("skill_ids"), list):
                     skill_ids_override = config.get("skill_ids")
                 elif custom_agent:
                     skill_ids_override = list(custom_agent.skills.values_list("id", flat=True))
 
-                if template_mode == "remediation":
-                    from pathlib import Path
-                    from django.conf import settings
-                    from agent_hub.models import AgentWorkflow
-                    from agent_hub.views_legacy import _start_workflow_run, _write_ralph_yml
-
-                    runtime = runtime_override or (custom_agent.runtime if custom_agent else None) or "cursor"
+                workflow_script_cfg = config.get("workflow_script")
+                if isinstance(workflow_script_cfg, dict):
+                    rendered_script_raw = _render_template_tree(workflow_script_cfg, payload, extra)
+                    script = _normalize_workflow_script(rendered_script_raw)
+                    if not script:
+                        raise ValueError("workflow_script is invalid after template rendering")
+                    runtime = _normalize_runtime_name(
+                        runtime_override
+                        or (script.get("runtime") if isinstance(script.get("runtime"), str) else "")
+                        or (custom_agent.runtime if custom_agent else None)
+                        or "cursor",
+                        default="cursor",
+                    )
+                    script["runtime"] = runtime
+                    script = _apply_workflow_script_overrides(
+                        script=script,
+                        config=config,
+                        payload=payload,
+                        extra=extra,
+                        target_server=target_server,
+                        default_name=f"Webhook workflow: {task.title[:60]}",
+                        default_description=f"Webhook-driven workflow for task {task.id}",
+                    )
+                    if skill_ids_override and not script.get("skill_ids"):
+                        script["skill_ids"] = skill_ids_override
+                    verify_prompt = (config.get("verify_prompt") or "").strip()
+                    if verify_prompt:
+                        steps = script.get("steps") if isinstance(script.get("steps"), list) else []
+                        if steps:
+                            last_step = steps[-1]
+                            if isinstance(last_step, dict) and not str(last_step.get("verify_prompt") or "").strip():
+                                last_step["verify_prompt"] = verify_prompt
+                                last_step["verify_promise"] = DEFAULT_VERIFY_PROMISE
+                    _ensure_ralph_yml(script, runtime)
+                    workflow, run = _create_workflow_from_script(
+                        owner=webhook.owner,
+                        task=task,
+                        target_server=target_server,
+                        script=script,
+                        runtime=runtime,
+                    )
+                elif template_mode == "remediation":
+                    runtime = _normalize_runtime_name(
+                        runtime_override or (custom_agent.runtime if custom_agent else None) or "cursor",
+                        default="cursor",
+                    )
                     script = _build_remediation_script(
                         task=task,
                         payload=payload,
@@ -319,42 +724,39 @@ def api_webhook_receive(request, secret: str):
                         skill_ids=skill_ids_override,
                         verify_prompt=(config.get("verify_prompt") or "").strip() or None,
                     )
-
-                    workflow = AgentWorkflow.objects.create(
-                        owner=webhook.owner,
-                        name=script.get("name", task.title[:80]),
-                        description=script.get("description", "")[:200],
-                        runtime=runtime,
+                    script = _apply_workflow_script_overrides(
                         script=script,
-                        project_path="",
+                        config=config,
+                        payload=payload,
+                        extra=extra,
                         target_server=target_server,
+                        default_name=script.get("name", f"Remediation: {task.title[:60]}"),
+                        default_description=script.get("description", f"Auto-remediation workflow for {task.title}"),
                     )
-
-                    workflows_dir = Path(settings.MEDIA_ROOT) / "workflows"
-                    workflows_dir.mkdir(parents=True, exist_ok=True)
-                    file_path = workflows_dir / f"workflow-{workflow.id}.json"
-                    script["script_file"] = str(file_path)
-
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        json.dump(script, f, ensure_ascii=False, indent=2)
-
-                    if script.get("ralph_yml"):
-                        ralph_path = workflows_dir / f"workflow-{workflow.id}.ralph.yml"
-                        script["ralph_yml_path"] = str(ralph_path)
-                        _write_ralph_yml(ralph_path, script["ralph_yml"])
-
-                    workflow.script = script
-                    workflow.save(update_fields=["script"])
-
-                    run = _start_workflow_run(workflow, webhook.owner)
-                    task.ai_execution_status = "RUNNING"
-                    task.save(update_fields=["ai_execution_status"])
+                    _ensure_ralph_yml(script, runtime)
+                    workflow, run = _create_workflow_from_script(
+                        owner=webhook.owner,
+                        task=task,
+                        target_server=target_server,
+                        script=script,
+                        runtime=runtime,
+                    )
                 else:
+                    script_patch = _apply_workflow_script_overrides(
+                        script={},
+                        config=config,
+                        payload=payload,
+                        extra=extra,
+                        target_server=target_server,
+                        default_name=f"Webhook workflow: {task.title[:60]}",
+                        default_description=f"Webhook-generated workflow for task {task.id}",
+                    )
                     workflow, run = WorkflowService.create_from_task(
                         task,
                         webhook.owner,
                         runtime_override=runtime_override,
                         skill_ids_override=skill_ids_override,
+                        extra_script_patch=script_patch,
                     )
 
                 result["workflow_id"] = workflow.id if workflow else None
@@ -393,6 +795,7 @@ def api_webhooks_list(request):
                 "secret": hook.secret,
                 "config": hook.config,
                 "custom_agent_id": hook.custom_agent_id,
+                "custom_agent_name": hook.custom_agent.name if hook.custom_agent else "",
                 "agent_type": hook.agent_type,
                 "auto_execute": hook.auto_execute,
                 "execution_mode": hook.execution_mode,
@@ -411,13 +814,18 @@ def api_webhooks_list(request):
     execution_mode = data.get("execution_mode", "task")
     if execution_mode not in ("task", "workflow"):
         execution_mode = "task"
+    if execution_mode == "workflow" and not custom_agent:
+        return JsonResponse(
+            {"success": False, "error": "custom_agent_id is required for workflow mode"},
+            status=400,
+        )
 
     hook = AgentWebhook.objects.create(
         owner=request.user,
         name=data.get("name", "New Webhook"),
         description=data.get("description", ""),
         source=data.get("source", "generic"),
-        config=data.get("config", {}) or {},
+        config=_normalize_webhook_config(data.get("config", {}) or {}),
         custom_agent=custom_agent,
         agent_type=data.get("agent_type", "react"),
         auto_execute=bool(data.get("auto_execute", True)),
@@ -448,6 +856,7 @@ def api_webhook_detail(request, webhook_id: int):
                 "secret": hook.secret,
                 "config": hook.config,
                 "custom_agent_id": hook.custom_agent_id,
+                "custom_agent_name": hook.custom_agent.name if hook.custom_agent else "",
                 "agent_type": hook.agent_type,
                 "auto_execute": hook.auto_execute,
                 "execution_mode": hook.execution_mode,
@@ -466,7 +875,7 @@ def api_webhook_detail(request, webhook_id: int):
         if "source" in data:
             hook.source = data["source"]
         if "config" in data:
-            hook.config = data["config"] or {}
+            hook.config = _normalize_webhook_config(data["config"] or {})
         if "agent_type" in data:
             hook.agent_type = data["agent_type"]
         if "auto_execute" in data:
@@ -479,6 +888,11 @@ def api_webhook_detail(request, webhook_id: int):
         if "custom_agent_id" in data:
             custom_agent_id = data.get("custom_agent_id")
             hook.custom_agent = CustomAgent.objects.filter(owner=request.user, id=custom_agent_id, is_active=True).first() if custom_agent_id else None
+        if hook.execution_mode == "workflow" and not hook.custom_agent:
+            return JsonResponse(
+                {"success": False, "error": "custom_agent_id is required for workflow mode"},
+                status=400,
+            )
 
         hook.save()
         return JsonResponse({"success": True, "message": "Webhook updated"})

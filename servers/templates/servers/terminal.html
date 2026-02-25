@@ -754,6 +754,26 @@
 @keyframes sendPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(0.9)} }
 
 .aip-input-hint { font-size:10px; color:#1f2937; margin-top:8px; text-align:center; letter-spacing:.02em; }
+.aip-mode-row {
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:7px;
+    margin-bottom:8px;
+    font-size:11px;
+    color:#6b7280;
+}
+.aip-mode-row .material-icons-round { font-size:13px; color:#6366f1; }
+.aip-mode-select {
+    background: rgba(9,9,11,.75);
+    color: #d1d5db;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    outline: none;
+}
+.aip-mode-select:focus { border-color: rgba(99,102,241,.45); }
 
 /* Mobile */
 @media (max-width:768px) {
@@ -896,6 +916,15 @@
                     <button class="aip-quick-chip" onclick="quickSend('check SSL certificates')"><span class="material-icons-round">verified_user</span>SSL</button>
                     <button class="aip-quick-chip" onclick="quickSend('check nginx/apache status')"><span class="material-icons-round">http</span>Web</button>
                     <button class="aip-quick-chip" onclick="quickSend('show cron jobs')"><span class="material-icons-round">schedule</span>Cron</button>
+                </div>
+                <div class="aip-mode-row">
+                    <span class="material-icons-round">tune</span>
+                    <span>Mode</span>
+                    <select id="ai-mode-select" class="aip-mode-select" onchange="onAiModeChange(this.value)">
+                        <option value="auto">Auto</option>
+                        <option value="step">Step-by-step</option>
+                        <option value="fast">Fast</option>
+                    </select>
                 </div>
                 <div class="aip-input-wrap">
                     <textarea id="ai-input" class="aip-textarea" rows="1"
@@ -1705,6 +1734,30 @@ function autoResizeAi(el) {
     el.style.height=Math.min(el.scrollHeight,120)+'px';
 }
 
+function normalizeAiExecutionMode(raw){
+    const v=String(raw||'').trim().toLowerCase();
+    if(v==='fast') return 'fast';
+    if(v==='step') return 'step';
+    return 'auto';
+}
+
+function onAiModeChange(raw){
+    const mode=normalizeAiExecutionMode(raw);
+    const el=document.getElementById('ai-mode-select');
+    if(el && el.value!==mode) el.value=mode;
+    try{ localStorage.setItem('ai_execution_mode', mode); }catch{}
+}
+
+function getAiExecutionMode() {
+    try {
+        const el = document.getElementById('ai-mode-select');
+        if (el && el.value) return normalizeAiExecutionMode(el.value);
+        return normalizeAiExecutionMode(localStorage.getItem('ai_execution_mode') || 'auto');
+    } catch {
+        return 'auto';
+    }
+}
+
 function sendAiMessage() {
     const input=document.getElementById('ai-input');
     const text=(input.value||'').trim(); if(!text)return;
@@ -1721,7 +1774,11 @@ function sendAiMessage() {
     setAiRunning(true);
     const btn=document.getElementById('aip-send-btn'); btn.classList.add('sending');
     setTimeout(()=>btn.classList.remove('sending'),300);
-    tabs[activeTabId].socket.send(JSON.stringify({type:'ai_request',message:text}));
+    tabs[activeTabId].socket.send(JSON.stringify({
+        type:'ai_request',
+        message:text,
+        execution_mode:getAiExecutionMode(),
+    }));
 }
 
 function quickSend(cmd) { document.getElementById('ai-input').value=cmd; sendAiMessage(); }
@@ -1745,6 +1802,7 @@ function clearAiChat() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
+    onAiModeChange(localStorage.getItem('ai_execution_mode') || 'auto');
     const aiWrap = document.getElementById('ai-messages');
     defaultAiMessagesHtml = aiWrap ? aiWrap.innerHTML : '';
     const tid=createTab(INITIAL_SERVER_ID,INITIAL_SERVER_NAME,INITIAL_SERVER_HOST,INITIAL_SERVER_PORT,INITIAL_SERVER_USER);

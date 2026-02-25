@@ -711,6 +711,16 @@
                     </div>
                 </div>
 
+                <!-- Server Type -->
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Server Type *</label>
+                    <select id="server-type" onchange="toggleServerTypeFields()"
+                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors">
+                        <option value="ssh">SSH (Linux)</option>
+                        <option value="rdp">RDP (Windows)</option>
+                    </select>
+                </div>
+
                 <!-- Username & Group -->
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -870,6 +880,15 @@
                         <input type="number" id="edit-server-port"
                                class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono">
                     </div>
+                </div>
+                <!-- Server Type -->
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-gray-400 mb-2">Server Type *</label>
+                    <select id="edit-server-type" onchange="toggleEditServerTypeFields()"
+                            class="w-full bg-bg-base border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors">
+                        <option value="ssh">SSH (Linux)</option>
+                        <option value="rdp">RDP (Windows)</option>
+                    </select>
                 </div>
                 <!-- Username & Group -->
                 <div class="grid grid-cols-2 gap-4">
@@ -1211,12 +1230,16 @@ function clearSelection() {
 // Modals
 function openCreateModal() {
     document.getElementById('serverModal').classList.remove('hidden');
+    toggleServerTypeFields();
     toggleAuthFields();
 }
 
 function closeModal() {
     document.getElementById('serverModal').classList.add('hidden');
     document.getElementById('serverForm').reset();
+    const authEl = document.getElementById('server-auth-method');
+    if (authEl) authEl.disabled = false;
+    toggleServerTypeFields();
 }
 
 function openGroupModal() {
@@ -1405,11 +1428,33 @@ function toggleAuthFields() {
     }
 }
 
+function toggleServerTypeFields() {
+    const type = document.getElementById('server-type')?.value || 'ssh';
+    const authEl = document.getElementById('server-auth-method');
+    const portEl = document.getElementById('server-port');
+    if (!authEl || !portEl) return;
+
+    if (type === 'rdp') {
+        authEl.value = 'password';
+        authEl.disabled = true;
+        if (!String(portEl.value || '').trim() || Number(portEl.value) === 22) {
+            portEl.value = 3389;
+        }
+    } else {
+        authEl.disabled = false;
+        if (Number(portEl.value) === 3389) {
+            portEl.value = 22;
+        }
+    }
+    toggleAuthFields();
+}
+
 // API calls
 async function saveServer(e) {
     e.preventDefault();
     const formData = {
         name: document.getElementById('server-name').value,
+        server_type: document.getElementById('server-type').value || 'ssh',
         host: document.getElementById('server-host').value,
         port: parseInt(document.getElementById('server-port').value) || 22,
         username: document.getElementById('server-username').value,
@@ -1598,6 +1643,24 @@ function toggleEditAuthFields() {
     document.getElementById('edit-key-field').classList.toggle('hidden', !['key', 'key_password'].includes(authMethod));
 }
 
+function toggleEditServerTypeFields() {
+    const type = document.getElementById('edit-server-type')?.value || 'ssh';
+    const authEl = document.getElementById('edit-server-auth-method');
+    const portEl = document.getElementById('edit-server-port');
+    if (!authEl || !portEl) return;
+
+    if (type === 'rdp') {
+        authEl.value = 'password';
+        authEl.disabled = true;
+        if (!String(portEl.value || '').trim() || Number(portEl.value) === 22) {
+            portEl.value = 3389;
+        }
+    } else {
+        authEl.disabled = false;
+    }
+    toggleEditAuthFields();
+}
+
 async function openEditModal(serverId) {
     try {
         const resp = await fetch('/servers/api/' + serverId + '/get/', {
@@ -1606,6 +1669,7 @@ async function openEditModal(serverId) {
         const s = await resp.json();
         document.getElementById('edit-server-id').value = s.id;
         document.getElementById('edit-server-name').value = s.name || '';
+        document.getElementById('edit-server-type').value = s.server_type || 'ssh';
         document.getElementById('edit-server-host').value = s.host || '';
         document.getElementById('edit-server-port').value = s.port || 22;
         document.getElementById('edit-server-username').value = s.username || '';
@@ -1616,6 +1680,7 @@ async function openEditModal(serverId) {
         document.getElementById('edit-server-corporate-context').value = s.corporate_context || '';
         const groupSel = document.getElementById('edit-server-group');
         groupSel.value = s.group_id || '';
+        toggleEditServerTypeFields();
         toggleEditAuthFields();
         document.getElementById('editServerModal').classList.remove('hidden');
     } catch(e) {
@@ -1627,6 +1692,8 @@ async function openEditModal(serverId) {
 function closeEditModal() {
     document.getElementById('editServerModal').classList.add('hidden');
     document.getElementById('editServerForm').reset();
+    const authEl = document.getElementById('edit-server-auth-method');
+    if (authEl) authEl.disabled = false;
 }
 
 async function saveEditServer(e) {
@@ -1636,6 +1703,7 @@ async function saveEditServer(e) {
 
     const payload = {
         name: document.getElementById('edit-server-name').value,
+        server_type: document.getElementById('edit-server-type').value || 'ssh',
         host: document.getElementById('edit-server-host').value,
         port: parseInt(document.getElementById('edit-server-port').value) || 22,
         username: document.getElementById('edit-server-username').value,
@@ -1797,5 +1865,8 @@ document.addEventListener('click', function(e) {
         closeActionDropdowns();
     }
 });
+
+// Align create modal defaults with backend defaults.
+toggleServerTypeFields();
 </script>
 {% endblock %}

@@ -1570,7 +1570,12 @@ def _get_cursor_cli_extra_env() -> dict:
     return env if isinstance(env, dict) and env else {}
 
 
-def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
+def _ensure_mcp_servers_config(
+    workspace: str,
+    user_id: int,
+    extra_mcp_servers: Dict[str, Any] | None = None,
+    auto_approve_all: bool = False,
+) -> str:
     """Создаёт/обновляет mcp_config.json в workspace для сервера weu-servers.
     Используется standalone mcp_server.py вместо manage.py mcp_servers,
     т.к. Django management command долго инициализируется и может зависать.
@@ -1614,6 +1619,49 @@ def _ensure_mcp_servers_config(workspace: str, user_id: int) -> str:
         "description": "WEU AI Servers: servers_list, server_execute (серверы из вкладки Servers)",
         "autoApprove": ["server_execute", "servers_list"],
     }
+    for raw_name, raw_cfg in (extra_mcp_servers or {}).items():
+        if raw_name == "weu-servers":
+            continue
+        if not isinstance(raw_cfg, dict):
+            continue
+        if raw_cfg.get("enabled", True) is False:
+            continue
+        name = str(raw_name).strip()
+        if not name:
+            continue
+
+        server_type = str(raw_cfg.get("type") or "stdio").strip().lower()
+        cfg_item: Dict[str, Any] = {"type": server_type}
+        if server_type == "sse":
+            url = str(raw_cfg.get("url") or "").strip()
+            if not url:
+                continue
+            cfg_item["url"] = url
+        else:
+            command = str(raw_cfg.get("command") or "").strip()
+            if not command:
+                continue
+            args = raw_cfg.get("args")
+            cfg_item["command"] = command
+            cfg_item["args"] = args if isinstance(args, list) else []
+
+        env_cfg = raw_cfg.get("env")
+        if isinstance(env_cfg, dict) and env_cfg:
+            cfg_item["env"] = {str(k): str(v) for k, v in env_cfg.items()}
+
+        description = str(raw_cfg.get("description") or "").strip()
+        if description:
+            cfg_item["description"] = description
+
+        auto_approve = raw_cfg.get("autoApprove")
+        if isinstance(auto_approve, list):
+            cfg_item["autoApprove"] = [str(v).strip() for v in auto_approve if str(v).strip()]
+        elif auto_approve_all:
+            # Для агента с mcp_auto_approve=true разрешаем MCP без ручного подтверждения.
+            cfg_item["autoApprove"] = ["*"]
+
+        servers[name] = cfg_item
+
     cfg["mcpServers"] = servers
     try:
         cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2454,6 +2502,70 @@ def _get_user_servers_context(user_id: int, target_server_id: int = None) -> str
         return ""
 
 
+def _send_workflow_finish_email_notifications(workflow: AgentWorkflow, run_obj: AgentWorkflowRun) -> None:
+    script = workflow.script if isinstance(workflow.script, dict) else {}
+    notify = script.get("notify") if isinstance(script.get("notify"), dict) else {}
+    if not notify:
+        return
+
+    emails_raw = notify.get("emails")
+    if isinstance(emails_raw, str):
+        candidates = [part.strip() for part in emails_raw.split(",")]
+    elif isinstance(emails_raw, list):
+        candidates = [str(item or "").strip() for item in emails_raw]
+    else:
+        candidates = []
+
+    recipients = []
+    seen = set()
+    for email in candidates:
+        if not email or "@" not in email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        recipients.append(email)
+
+    if not recipients:
+        return
+
+    is_success = run_obj.status == "succeeded"
+    on_success = notify.get("on_success")
+    on_failure = notify.get("on_failure")
+    if is_success and on_success is False:
+        return
+    if (not is_success) and on_failure is False:
+        return
+
+    status_text = "SUCCEEDED" if is_success else "FAILED"
+    task_id = getattr(workflow, "task_id", None)
+    subject = f"[WEU Agents] Workflow {workflow.id} {status_text}: {workflow.name}"
+    log_tail = (run_obj.logs or "")[-2000:]
+    message = (
+        f"Workflow: {workflow.name} (id={workflow.id})\n"
+        f"Run id: {run_obj.id}\n"
+        f"Status: {run_obj.status}\n"
+        f"Task id: {task_id or 'n/a'}\n"
+        f"Started: {run_obj.started_at}\n"
+        f"Finished: {run_obj.finished_at}\n\n"
+        f"Logs tail:\n{log_tail}\n"
+    )
+
+    try:
+        from django.core.mail import send_mail
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=recipients,
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.warning(f"Workflow email notification failed: {exc}")
+
+
 def _execute_workflow_run(run_id: int):
     run_obj = AgentWorkflowRun.objects.get(id=run_id)
     workflow = run_obj.workflow
@@ -2604,6 +2716,68 @@ def _execute_workflow_run(run_id: int):
         )
         run_obj.save()
 
+        # Синхронизируем связанную задачу (если workflow был создан из Task).
+        if getattr(workflow, "task_id", None):
+            try:
+                from django.urls import reverse
+                from tasks.models import Task, TaskNotification
+                from tasks.execution_report import (
+                    build_execution_report_from_run,
+                    generate_executive_summary,
+                )
+
+                task = Task.objects.filter(id=workflow.task_id).first()
+                if task:
+                    task.ai_execution_status = "COMPLETED" if run_obj.status == "succeeded" else "FAILED"
+                    if run_obj.status == "succeeded":
+                        task.status = "DONE"
+                        task.completed_at = run_obj.finished_at
+                    else:
+                        task.status = "BLOCKED"
+
+                    report = build_execution_report_from_run(run_obj)
+                    try:
+                        brief = generate_executive_summary(run_obj)
+                        if brief:
+                            report["summary"] = brief
+                    except Exception as summary_err:
+                        logger.warning(f"Executive summary for task failed: {summary_err}")
+
+                    task.ai_execution_report = report
+                    task.save(
+                        update_fields=[
+                            "ai_execution_status",
+                            "status",
+                            "completed_at",
+                            "ai_execution_report",
+                            "updated_at",
+                        ]
+                    )
+
+                    notif_user_id = run_obj.initiated_by_id or task.created_by_id
+                    if notif_user_id:
+                        notif_type = "EXECUTION_COMPLETED" if run_obj.status == "succeeded" else "EXECUTION_FAILED"
+                        notif_msg = (
+                            "Выполнение завершено успешно"
+                            if run_obj.status == "succeeded"
+                            else f"Ошибка: {run_obj.logs[-500:] if run_obj.logs else '—'}"
+                        )
+                        TaskNotification.objects.create(
+                            user_id=notif_user_id,
+                            notification_type=notif_type,
+                            task=task,
+                            title=f"Задача {task.task_key or task.id}: {'завершена' if run_obj.status == 'succeeded' else 'ошибка'}",
+                            message=notif_msg[:400],
+                            action_url=reverse("tasks:task_list") + (f"?project={task.project_id}" if task.project_id else ""),
+                        )
+            except Exception as sync_err:
+                logger.warning(f"Failed to sync task after workflow finish: {sync_err}")
+
+        try:
+            _send_workflow_finish_email_notifications(workflow, run_obj)
+        except Exception as notify_err:
+            logger.warning(f"Failed to send workflow finish notifications: {notify_err}")
+
 
 def _run_steps_with_backend(
     run_obj: AgentWorkflowRun,
@@ -2624,6 +2798,25 @@ def _run_steps_with_backend(
     # Логируем runtime для отладки
     logger.info(f"_run_steps_with_backend called with runtime={runtime} for workflow {workflow.id}")
     
+    custom_agent = None
+    custom_agent_mcp_servers: Dict[str, Any] = {}
+    custom_agent_mcp_auto_approve = False
+    try:
+        task_obj = getattr(workflow, "task", None)
+        if task_obj and getattr(task_obj, "recommended_custom_agent_id", None):
+            custom_agent = task_obj.recommended_custom_agent
+    except Exception:
+        custom_agent = None
+
+    if custom_agent and getattr(custom_agent, "is_active", False):
+        if isinstance(custom_agent.mcp_servers, dict):
+            custom_agent_mcp_servers = dict(custom_agent.mcp_servers)
+        custom_agent_mcp_auto_approve = bool(getattr(custom_agent, "mcp_auto_approve", False))
+        logger.info(
+            f"Workflow {workflow.id}: using custom agent '{custom_agent.name}' "
+            f"with {len(custom_agent_mcp_servers)} MCP server(s)"
+        )
+
     # Подготовка environment variables для CLI (cursor, claude, codex и другие)
     extra_env = None
     mcp_config_file = None  # Путь к MCP конфигу для Claude CLI (--mcp-config)
@@ -2641,7 +2834,12 @@ def _run_steps_with_backend(
         if run_obj.initiated_by_id:
             extra_env.setdefault("WEU_USER_ID", str(run_obj.initiated_by_id))
             if runtime in ["cursor", "claude"]:
-                mcp_path = _ensure_mcp_servers_config(workspace, run_obj.initiated_by_id)
+                mcp_path = _ensure_mcp_servers_config(
+                    workspace,
+                    run_obj.initiated_by_id,
+                    extra_mcp_servers=custom_agent_mcp_servers,
+                    auto_approve_all=custom_agent_mcp_auto_approve,
+                )
                 if mcp_path:
                     extra_env["MCP_CONFIG_PATH"] = mcp_path
                     mcp_config_file = mcp_path  # Для Claude CLI --mcp-config
@@ -4081,12 +4279,129 @@ def api_custom_agents_list(request):
     GET: список кастомных агентов пользователя
     POST: создание нового кастомного агента
     """
+    allowed_runtimes = {choice[0] for choice in AgentProfile.RUNTIME_CHOICES}
+    allowed_orchestrators = {"react", "ralph_internal", "ralph_cli"}
+
+    def _normalize_int(value, default: int, min_value: int, max_value: int) -> int:
+        try:
+            ivalue = int(value)
+        except (TypeError, ValueError):
+            ivalue = default
+        return max(min_value, min(max_value, ivalue))
+
+    def _normalize_float(value, default: float, min_value: float, max_value: float) -> float:
+        try:
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            fvalue = default
+        return max(min_value, min(max_value, fvalue))
+
+    def _normalize_allowed_tools(value) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out = []
+        seen = set()
+        for raw in value:
+            name = str(raw or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append(name)
+        return out
+
+    def _normalize_allowed_servers(value):
+        if value in (None, "", "all"):
+            return None
+        if not isinstance(value, list):
+            return None
+        out = []
+        seen = set()
+        for raw in value:
+            try:
+                sid = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if sid <= 0 or sid in seen:
+                continue
+            seen.add(sid)
+            out.append(sid)
+        return out
+
+    def _normalize_mcp_servers(value) -> Dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        out: Dict[str, Any] = {}
+        for raw_name, raw_cfg in value.items():
+            name = str(raw_name or "").strip()
+            if not name or not isinstance(raw_cfg, dict):
+                continue
+            cfg: Dict[str, Any] = {"enabled": bool(raw_cfg.get("enabled", True))}
+            server_type = str(raw_cfg.get("type") or "stdio").strip().lower()
+            if server_type == "sse":
+                url = str(raw_cfg.get("url") or "").strip()
+                if not url:
+                    continue
+                cfg["type"] = "sse"
+                cfg["url"] = url
+            else:
+                command = str(raw_cfg.get("command") or "").strip()
+                if not command:
+                    continue
+                cfg["type"] = "stdio"
+                cfg["command"] = command
+                cfg["args"] = [str(v) for v in (raw_cfg.get("args") or []) if str(v).strip()]
+            env = raw_cfg.get("env")
+            if isinstance(env, dict) and env:
+                cfg["env"] = {str(k): str(v) for k, v in env.items()}
+            description = str(raw_cfg.get("description") or "").strip()
+            if description:
+                cfg["description"] = description
+            auto_approve = raw_cfg.get("autoApprove")
+            if isinstance(auto_approve, list):
+                cfg["autoApprove"] = [str(v).strip() for v in auto_approve if str(v).strip()]
+            out[name] = cfg
+        return out
+
+    def _normalize_skill_ids(value) -> list[int]:
+        if not isinstance(value, list):
+            return []
+        out = []
+        seen = set()
+        for raw in value:
+            try:
+                sid = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if sid <= 0 or sid in seen:
+                continue
+            seen.add(sid)
+            out.append(sid)
+        return out
+
+    def _resolve_skill_queryset(skill_ids: list[int]):
+        if not skill_ids:
+            return None
+        from skills.models import Skill
+        from skills.services import SkillService
+
+        return (
+            Skill.objects.filter(id__in=skill_ids, is_active=True)
+            .filter(SkillService._base_scope_filter(request.user))
+            .distinct()
+        )
+
     if request.method == 'GET':
         try:
-            agents = CustomAgent.objects.filter(owner=request.user, is_active=True).order_by('-updated_at')
-            
+            agents = (
+                CustomAgent.objects.filter(owner=request.user, is_active=True)
+                .prefetch_related("skills")
+                .order_by('-updated_at')
+            )
+
             agents_data = []
             for agent in agents:
+                skill_ids = list(agent.skills.values_list("id", flat=True))
+                skill_names = list(agent.skills.values_list("name", flat=True))
                 agents_data.append({
                     'id': agent.id,
                     'name': agent.name,
@@ -4094,7 +4409,11 @@ def api_custom_agents_list(request):
                     'runtime': agent.runtime,
                     'model': agent.model,
                     'orchestrator_mode': agent.orchestrator_mode,
-                    'allowed_tools': agent.allowed_tools,
+                    'allowed_tools': agent.allowed_tools or [],
+                    'allowed_servers': agent.allowed_servers,
+                    'knowledge_base': agent.knowledge_base or '',
+                    'skill_ids': skill_ids,
+                    'skill_names': skill_names,
                     'mcp_servers': agent.mcp_servers or {},
                     'mcp_auto_approve': agent.mcp_auto_approve,
                     'usage_count': agent.usage_count,
@@ -4104,41 +4423,53 @@ def api_custom_agents_list(request):
                 })
 
             return JsonResponse({'success': True, 'agents': agents_data})
-        
+
         except Exception as e:
             logger.error(f"Error listing custom agents: {e}")
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
-    
+
     elif request.method == 'POST':
         try:
             data = _parse_json_request(request)
-            
-            # Создание агента
+            runtime = str(data.get('runtime') or 'claude').strip().lower()
+            if runtime not in allowed_runtimes:
+                runtime = 'claude'
+            orchestrator_mode = str(data.get('orchestrator_mode') or 'ralph_internal').strip()
+            if orchestrator_mode not in allowed_orchestrators:
+                orchestrator_mode = 'ralph_internal'
+
             agent = CustomAgent.objects.create(
                 owner=request.user,
-                name=data.get('name', 'New Agent'),
+                name=(data.get('name') or 'New Agent').strip() or 'New Agent',
                 description=data.get('description', ''),
                 system_prompt=data.get('system_prompt', ''),
                 instructions=data.get('instructions', ''),
-                allowed_tools=data.get('allowed_tools', []),
-                max_iterations=data.get('max_iterations', 5),
-                temperature=data.get('temperature', 0.7),
-                completion_promise=data.get('completion_promise', 'COMPLETE'),
-                runtime=data.get('runtime', 'claude'),
-                model=data.get('model', 'claude-4.5-sonnet'),
-                orchestrator_mode=data.get('orchestrator_mode', 'ralph_internal'),
-                mcp_servers=data.get('mcp_servers', {}),
-                mcp_auto_approve=data.get('mcp_auto_approve', False),
+                knowledge_base=data.get('knowledge_base', ''),
+                allowed_tools=_normalize_allowed_tools(data.get('allowed_tools')),
+                allowed_servers=_normalize_allowed_servers(data.get('allowed_servers')),
+                max_iterations=_normalize_int(data.get('max_iterations'), default=5, min_value=1, max_value=100),
+                temperature=_normalize_float(data.get('temperature'), default=0.7, min_value=0.0, max_value=1.0),
+                completion_promise=(data.get('completion_promise') or 'COMPLETE').strip() or 'COMPLETE',
+                runtime=runtime,
+                model=(data.get('model') or 'claude-4.5-sonnet').strip() or 'claude-4.5-sonnet',
+                orchestrator_mode=orchestrator_mode,
+                mcp_servers=_normalize_mcp_servers(data.get('mcp_servers')),
+                mcp_auto_approve=bool(data.get('mcp_auto_approve', False)),
             )
-            
+            skill_ids = _normalize_skill_ids(data.get('skill_ids'))
+            if skill_ids:
+                skill_qs = _resolve_skill_queryset(skill_ids)
+                if skill_qs is not None:
+                    agent.skills.set(skill_qs)
+
             logger.info(f"Created custom agent: {agent.name} (id={agent.id})")
-            
+
             return JsonResponse({
                 'success': True,
                 'message': 'Агент создан успешно',
                 'agent_id': agent.id
             })
-        
+
         except Exception as e:
             logger.error(f"Error creating custom agent: {e}")
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -4160,6 +4491,8 @@ def api_custom_agent_detail(request, agent_id: int):
         return JsonResponse({'success': False, 'error': 'Agent not found'}, status=404)
     
     if request.method == 'GET':
+        skill_ids = list(agent.skills.values_list("id", flat=True))
+        skill_names = list(agent.skills.values_list("name", flat=True))
         return JsonResponse({
             'success': True,
             'agent': {
@@ -4168,7 +4501,11 @@ def api_custom_agent_detail(request, agent_id: int):
                 'description': agent.description,
                 'system_prompt': agent.system_prompt,
                 'instructions': agent.instructions,
-                'allowed_tools': agent.allowed_tools,
+                'knowledge_base': agent.knowledge_base or '',
+                'allowed_tools': agent.allowed_tools or [],
+                'allowed_servers': agent.allowed_servers,
+                'skill_ids': skill_ids,
+                'skill_names': skill_names,
                 'max_iterations': agent.max_iterations,
                 'temperature': agent.temperature,
                 'completion_promise': agent.completion_promise,
@@ -4187,36 +4524,124 @@ def api_custom_agent_detail(request, agent_id: int):
     elif request.method == 'PUT':
         try:
             data = _parse_json_request(request)
-            
-            # Обновление полей
+
+            allowed_runtimes = {choice[0] for choice in AgentProfile.RUNTIME_CHOICES}
+            allowed_orchestrators = {"react", "ralph_internal", "ralph_cli"}
             if 'name' in data:
-                agent.name = data['name']
+                agent.name = (data.get('name') or '').strip() or agent.name
             if 'description' in data:
-                agent.description = data['description']
+                agent.description = data.get('description') or ''
             if 'system_prompt' in data:
-                agent.system_prompt = data['system_prompt']
+                agent.system_prompt = data.get('system_prompt') or ''
             if 'instructions' in data:
-                agent.instructions = data['instructions']
+                agent.instructions = data.get('instructions') or ''
+            if 'knowledge_base' in data:
+                agent.knowledge_base = data.get('knowledge_base') or ''
             if 'allowed_tools' in data:
-                agent.allowed_tools = data['allowed_tools']
+                agent.allowed_tools = [
+                    str(v).strip()
+                    for v in (data.get('allowed_tools') if isinstance(data.get('allowed_tools'), list) else [])
+                    if str(v).strip()
+                ]
+            if 'allowed_servers' in data:
+                raw_allowed_servers = data.get('allowed_servers')
+                if raw_allowed_servers in (None, "", "all"):
+                    agent.allowed_servers = None
+                elif isinstance(raw_allowed_servers, list):
+                    allowed_servers = []
+                    for raw_server in raw_allowed_servers:
+                        try:
+                            sid = int(raw_server)
+                        except (TypeError, ValueError):
+                            continue
+                        if sid > 0 and sid not in allowed_servers:
+                            allowed_servers.append(sid)
+                    agent.allowed_servers = allowed_servers
             if 'max_iterations' in data:
-                agent.max_iterations = data['max_iterations']
+                try:
+                    max_iterations = int(data.get('max_iterations'))
+                except (TypeError, ValueError):
+                    max_iterations = agent.max_iterations
+                agent.max_iterations = max(1, min(100, max_iterations))
             if 'temperature' in data:
-                agent.temperature = data['temperature']
+                try:
+                    temperature = float(data.get('temperature'))
+                except (TypeError, ValueError):
+                    temperature = agent.temperature
+                agent.temperature = max(0.0, min(1.0, temperature))
             if 'completion_promise' in data:
-                agent.completion_promise = data['completion_promise']
+                agent.completion_promise = (data.get('completion_promise') or 'COMPLETE').strip() or 'COMPLETE'
             if 'runtime' in data:
-                agent.runtime = data['runtime']
+                runtime = str(data.get('runtime') or '').strip().lower()
+                if runtime in allowed_runtimes:
+                    agent.runtime = runtime
             if 'model' in data:
-                agent.model = data['model']
+                agent.model = (data.get('model') or 'auto').strip() or 'auto'
             if 'orchestrator_mode' in data:
-                agent.orchestrator_mode = data['orchestrator_mode']
+                orchestrator_mode = str(data.get('orchestrator_mode') or '').strip()
+                if orchestrator_mode in allowed_orchestrators:
+                    agent.orchestrator_mode = orchestrator_mode
             if 'mcp_servers' in data:
-                agent.mcp_servers = data['mcp_servers']
+                raw_mcp = data.get('mcp_servers')
+                if isinstance(raw_mcp, dict):
+                    normalized_mcp = {}
+                    for raw_name, raw_cfg in raw_mcp.items():
+                        name = str(raw_name or '').strip()
+                        if not name or not isinstance(raw_cfg, dict):
+                            continue
+                        cfg = {"enabled": bool(raw_cfg.get("enabled", True))}
+                        server_type = str(raw_cfg.get("type") or "stdio").strip().lower()
+                        if server_type == "sse":
+                            url = str(raw_cfg.get("url") or "").strip()
+                            if not url:
+                                continue
+                            cfg["type"] = "sse"
+                            cfg["url"] = url
+                        else:
+                            command = str(raw_cfg.get("command") or "").strip()
+                            if not command:
+                                continue
+                            cfg["type"] = "stdio"
+                            cfg["command"] = command
+                            cfg["args"] = [str(v) for v in (raw_cfg.get("args") or []) if str(v).strip()]
+                        env = raw_cfg.get("env")
+                        if isinstance(env, dict) and env:
+                            cfg["env"] = {str(k): str(v) for k, v in env.items()}
+                        description = str(raw_cfg.get("description") or "").strip()
+                        if description:
+                            cfg["description"] = description
+                        auto_approve = raw_cfg.get("autoApprove")
+                        if isinstance(auto_approve, list):
+                            cfg["autoApprove"] = [str(v).strip() for v in auto_approve if str(v).strip()]
+                        normalized_mcp[name] = cfg
+                    agent.mcp_servers = normalized_mcp
             if 'mcp_auto_approve' in data:
-                agent.mcp_auto_approve = data['mcp_auto_approve']
-            
+                agent.mcp_auto_approve = bool(data.get('mcp_auto_approve'))
+
             agent.save()
+
+            if 'skill_ids' in data:
+                from skills.models import Skill
+                from skills.services import SkillService
+
+                skill_ids = []
+                if isinstance(data.get('skill_ids'), list):
+                    for raw_sid in data.get('skill_ids'):
+                        try:
+                            sid = int(raw_sid)
+                        except (TypeError, ValueError):
+                            continue
+                        if sid > 0 and sid not in skill_ids:
+                            skill_ids.append(sid)
+                if skill_ids:
+                    skill_qs = (
+                        Skill.objects.filter(id__in=skill_ids, is_active=True)
+                        .filter(SkillService._base_scope_filter(request.user))
+                        .distinct()
+                    )
+                    agent.skills.set(skill_qs)
+                else:
+                    agent.skills.clear()
             
             logger.info(f"Updated custom agent: {agent.name} (id={agent.id})")
             

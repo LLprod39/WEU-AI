@@ -67,7 +67,11 @@ def api_custom_agent_run(request):
         server_id = None
     auto_execute = bool(data.get("auto_execute", True))
     project_path = (data.get("project_path") or "").strip()
-    runtime_override = "cursor"  # Всегда cursor: Composer 1.5 пишет план, workflow выполняется на auto
+    runtime_override = (data.get("runtime") or "").strip() or None
+    if runtime_override:
+        allowed_runtimes = {"internal", "cursor", "claude", "codex", "opencode", "gemini", "ralph"}
+        if runtime_override not in allowed_runtimes:
+            runtime_override = None
     skill_ids_override = data.get("skill_ids") if isinstance(data.get("skill_ids"), list) else None
     if skill_ids_override is None:
         skill_ids_override = list(custom_agent.skills.values_list("id", flat=True))

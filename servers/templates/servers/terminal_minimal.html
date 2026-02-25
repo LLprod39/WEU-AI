@@ -287,6 +287,10 @@
         .send-btn { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#4f46e5); display:flex; align-items:center; justify-content:center; color:white; font-size:16px; cursor:pointer; transition:all .2s; flex-shrink:0; box-shadow:0 2px 8px rgba(99,102,241,.35); }
         .send-btn:hover { background:linear-gradient(135deg,#7c3aed,#6366f1); box-shadow:0 4px 14px rgba(99,102,241,.45); transform:scale(1.05); }
         .ai-hint { font-size:9px; color:#1f2937; margin-top:6px; text-align:center; }
+        .ai-mode-row { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin:0 0 7px; font-size:10px; color:#6b7280; }
+        .ai-mode-row .material-icons-round { font-size:12px; color:#6366f1; }
+        .ai-mode-select { background:rgba(9,9,11,.75); color:#d1d5db; border:1px solid rgba(255,255,255,.14); border-radius:7px; padding:3px 7px; font-size:10px; outline:none; }
+        .ai-mode-select:focus { border-color:rgba(99,102,241,.45); }
 
         /* cmd cards */
         .cmd-card { background:rgba(9,9,11,.8); border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; transition:border-color .2s; flex-shrink:0; }
@@ -508,6 +512,15 @@
                     <button class="qbtn" onclick="sendQ('list processes')"><span class="material-icons-round">list</span>Procs</button>
                     <button class="qbtn" onclick="sendQ('show docker containers')"><span class="material-icons-round">view_in_ar</span>Docker</button>
                     <button class="qbtn" onclick="sendQ('check network ports')"><span class="material-icons-round">lan</span>Net</button>
+                </div>
+                <div class="ai-mode-row">
+                    <span class="material-icons-round">tune</span>
+                    <span>Mode</span>
+                    <select id="ai-mode-select-m" class="ai-mode-select" onchange="onAiModeChangeM(this.value)">
+                        <option value="auto">Auto</option>
+                        <option value="step">Step-by-step</option>
+                        <option value="fast">Fast</option>
+                    </select>
                 </div>
                 <div class="ai-inp-wrap">
                     <textarea class="ai-textarea" id="ai-input" rows="1" placeholder="Ask anything…" oninput="aiAutoResize(this)"></textarea>
@@ -1055,13 +1068,39 @@ function stopAIM() {
 
 function aiAutoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,90)+'px'; }
 
+function normalizeAiExecutionModeM(raw){
+    const v=String(raw||'').trim().toLowerCase();
+    if(v==='fast') return 'fast';
+    if(v==='step') return 'step';
+    return 'auto';
+}
+
+function onAiModeChangeM(raw){
+    const mode=normalizeAiExecutionModeM(raw);
+    const el=eid('ai-mode-select-m');
+    if(el && el.value!==mode) el.value=mode;
+    try{ localStorage.setItem('ai_execution_mode', mode); }catch{}
+}
+
+function getAiExecutionModeM(){
+    try{
+        const el=eid('ai-mode-select-m');
+        if(el && el.value) return normalizeAiExecutionModeM(el.value);
+        return normalizeAiExecutionModeM(localStorage.getItem('ai_execution_mode')||'auto');
+    }catch{ return 'auto'; }
+}
+
 function sendAI(){
     const inp=eid('ai-input'), text=(inp.value||'').trim(); if(!text)return;
     if(!activeTabId||tabs[activeTabId]?.socket?.readyState!==WebSocket.OPEN){addMsg('sys','Сначала подключитесь к серверу');return;}
     hideWelcome(); addMsg('msg-u',text); inp.value=''; inp.style.height='auto';
     if(activeTabId&&tabs[activeTabId]) tabs[activeTabId].aiStatus='thinking';
     showThinking(); setAiRunningM(true);
-    tabs[activeTabId].socket.send(JSON.stringify({type:'ai_request',message:text}));
+    tabs[activeTabId].socket.send(JSON.stringify({
+        type:'ai_request',
+        message:text,
+        execution_mode:getAiExecutionModeM(),
+    }));
 }
 function sendQ(cmd){eid('ai-input').value=cmd;sendAI();}
 function clearAIChat(){Object.keys(aiCmdEls).forEach(k=>delete aiCmdEls[k]);currentAiRunId='';const c=eid('ai-msgs');Array.from(c.children).forEach(ch=>{if(ch.id!=='ai-welcome'&&ch.id!=='ai-thinking')ch.remove();});const w=eid('ai-welcome');if(w)w.style.display='';hideThinking();setAiRunningM(false);}
@@ -1069,6 +1108,7 @@ eid('ai-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
+    onAiModeChangeM(localStorage.getItem('ai_execution_mode') || 'auto');
     const tid = createTab(INIT_ID, INIT_NAME, INIT_HOST, INIT_PORT, INIT_USER);
     activeTabId = tid;
     renderTabs();

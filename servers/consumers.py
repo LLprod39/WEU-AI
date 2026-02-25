@@ -108,7 +108,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "input", data: "<keystrokes>"}
           {type: "resize", cols, rows}
           {type: "disconnect"}
-          {type: "ai_request", message: "<text>"}
+          {type: "ai_request", message: "<text>", execution_mode?: "auto"|"step"|"fast"}
           {type: "ai_confirm", id: <int>}
           {type: "ai_cancel", id: <int>}
           {type: "ai_reply", q_id: str, text: str}
@@ -134,6 +134,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     _ai_active_cmd_id: Optional[int]
     _ai_active_output: str
     _ai_user_message: str
+    _ai_execution_mode: str
+    _ai_step_extra_count: int
 
     _terminal_tail: str
     _ai_history: list[dict]
@@ -166,6 +168,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_active_cmd_id = None
         self._ai_active_output = ""
         self._ai_user_message = ""
+        self._ai_execution_mode = "step"
+        self._ai_step_extra_count = 0
         self._terminal_tail = ""
         self._ai_history = []
         self._unavailable_cmds: set[str] = set()
@@ -223,7 +227,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             await self._disconnect_ssh()
             return
         if msg_type == "ai_request":
-            await self._handle_ai_request((content or {}).get("message", ""))
+            await self._handle_ai_request(content or {})
             return
         if msg_type == "ai_confirm":
             await self._handle_ai_confirm(content or {})
@@ -362,11 +366,18 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     errors="replace",
                 )
 
-                # Apply environment variables (if any) into the interactive session
-                if isinstance(network_config, dict) and network_config.get("environment"):
-                    exports = self._build_exports(network_config.get("environment") or {})
-                    if exports:
-                        self._ssh_proc.stdin.write(exports + "\n")
+                # Apply merged environment variables (global/group/server) into shell session.
+                merged_env: dict[str, Any] = {}
+                if self._user_id and self.server:
+                    try:
+                        merged_env = await self._get_effective_environment_vars(self._user_id, self.server.id)
+                    except Exception:
+                        merged_env = {}
+                if not merged_env and isinstance(network_config, dict):
+                    merged_env = dict(network_config.get("environment") or {})
+                exports = self._build_exports(merged_env)
+                if exports:
+                    self._ssh_proc.stdin.write(exports + "\n")
 
                 await self.send_json({"type": "status", "status": "connected"})
                 await log_user_activity_async(
@@ -516,9 +527,62 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ai_active_cmd_id = None
         self._ai_active_output = ""
         self._ai_stop_requested = False
+        self._ai_step_extra_count = 0
 
-    async def _handle_ai_request(self, message: str):
-        msg = (message or "").strip()
+    @staticmethod
+    def _normalize_execution_mode(mode: str) -> str:
+        raw = str(mode or "").strip().lower()
+        if raw in ("auto", "smart", "adaptive_auto", "recommended"):
+            return "auto"
+        if raw in ("step", "step_by_step", "step-by-step", "sequential", "adaptive"):
+            return "step"
+        if raw in ("fast", "plan", "batch"):
+            return "fast"
+        return "step"
+
+    def _resolve_auto_execution_mode(self, plan_obj: dict[str, Any], commands_raw: Any, user_message: str) -> str:
+        """
+        Resolve concrete execution mode for an auto request.
+        Priority:
+          1) planner-provided execution_mode
+          2) safety fallback from planned commands / user intent
+        """
+        planner_mode = self._normalize_execution_mode(str((plan_obj or {}).get("execution_mode") or ""))
+        if planner_mode in ("step", "fast"):
+            return planner_mode
+
+        commands_count = len(commands_raw) if isinstance(commands_raw, list) else 0
+        if commands_count <= 2:
+            # Very short, deterministic tasks are usually faster in linear mode.
+            return "fast"
+
+        text = str(user_message or "").lower()
+        danger_hints = (
+            "delete",
+            "drop",
+            "rm ",
+            "truncate",
+            "restart",
+            "stop",
+            "reboot",
+            "firewall",
+            "iptables",
+            "migration",
+            "migrate",
+            "upgrade",
+            "install",
+            "prod",
+            "production",
+        )
+        if any(h in text for h in danger_hints):
+            return "step"
+
+        return "step"
+
+    async def _handle_ai_request(self, content: Any):
+        payload = content if isinstance(content, dict) else {}
+        msg = str(payload.get("message") or "").strip()
+        requested_mode = self._normalize_execution_mode(payload.get("execution_mode") or payload.get("mode") or "")
         if not msg:
             return
 
@@ -530,6 +594,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             self._ai_plan_index = 0
             self._ai_next_id = 1
             self._ai_user_message = msg
+            self._ai_execution_mode = "step" if requested_mode == "auto" else requested_mode
+            self._ai_step_extra_count = 0
 
         if not self._ssh_proc:
             await self._send_ai_event({"type": "ai_error", "message": "SSH не подключён. Сначала нажмите Connect."})
@@ -551,18 +617,23 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             entity_name=self.server.name if self.server else '',
             metadata={
                 'message_length': len(msg),
+                'execution_mode': requested_mode,
             },
         )
-        await self._send_ai_event({"type": "ai_status", "status": "thinking"})
+        await self._send_ai_event({"type": "ai_status", "status": "thinking", "execution_mode": requested_mode})
 
         try:
-            forbidden_patterns, rules_context = await self._get_ai_rules_and_forbidden(self._user_id, self.server.id)
+            forbidden_patterns, rules_context, required_checks, _ = await self._get_ai_rules_and_forbidden(
+                self._user_id,
+                self.server.id,
+            )
             plan_obj = await self._ai_plan_commands(
                 user_message=msg,
                 rules_context=rules_context,
                 terminal_tail=(self._terminal_tail or "")[-2000:],
                 history=list(self._ai_history),
                 unavailable_cmds=set(getattr(self, "_unavailable_cmds", set())),
+                execution_mode=requested_mode,
             )
         except Exception as e:
             await self._send_ai_event({"type": "ai_error", "message": str(e)})
@@ -572,6 +643,14 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         mode = str(plan_obj.get("mode") or "execute").lower().strip()
         assistant_text = str(plan_obj.get("assistant_text") or "").strip()
         commands_raw = plan_obj.get("commands") or []
+        selected_mode = requested_mode
+        if requested_mode == "auto":
+            selected_mode = self._resolve_auto_execution_mode(plan_obj, commands_raw, msg)
+        if selected_mode not in ("step", "fast"):
+            selected_mode = "step"
+
+        async with self._ai_lock:
+            self._ai_execution_mode = selected_mode
 
         # --- answer / ask mode: just reply, no commands needed ---
         if mode in ("answer", "ask"):
@@ -581,6 +660,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 "mode": mode,
                 "assistant_text": assistant_text,
                 "commands": [],
+                "execution_mode": selected_mode,
+                "requested_execution_mode": requested_mode,
             })
             await self._send_ai_event({"type": "ai_status", "status": "idle"})
             return
@@ -596,16 +677,45 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                     continue
                 why = str(it.get("why") or "").strip()
                 commands.append({"cmd": cmd, "why": why})
-        commands = commands[:10]
+        max_initial_commands = 3 if selected_mode == "step" else 10
+        commands = commands[:max_initial_commands]
 
         plan_items: list[dict[str, Any]] = []
+        seen_cmds: set[str] = set()
         next_id = 1
+        # Always run preflight checks first (if configured).
+        for check_cmd in required_checks or []:
+            check = str(check_cmd or "").strip()
+            if not check:
+                continue
+            key = check.lower()
+            if key in seen_cmds:
+                continue
+            seen_cmds.add(key)
+            item_id = next_id
+            next_id += 1
+            plan_items.append(
+                self._build_plan_item(
+                    item_id=item_id,
+                    cmd=check,
+                    why="Обязательная preflight-проверка перед выполнением задачи",
+                    forbidden_patterns=forbidden_patterns,
+                )
+            )
+
         for c in commands:
             cmd = c["cmd"]
+            key = cmd.lower()
+            if key in seen_cmds:
+                continue
+            seen_cmds.add(key)
             why = c.get("why") or ""
             item_id = next_id
             next_id += 1
             plan_items.append(self._build_plan_item(item_id=item_id, cmd=cmd, why=why, forbidden_patterns=forbidden_patterns))
+
+        # Hard limit to keep runs predictable in terminal.
+        plan_items = plan_items[:12]
 
         async with self._ai_lock:
             self._ai_plan = plan_items
@@ -618,6 +728,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             "mode": "execute",
             "assistant_text": assistant_text,
             "commands": plan_items,
+            "execution_mode": selected_mode,
+            "requested_execution_mode": requested_mode,
         })
 
         if not plan_items:
@@ -702,13 +814,16 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     ) -> dict[str, Any]:
         clean_cmd = str(cmd or "").strip()
         reason = self._compute_confirm_reason(clean_cmd, forbidden_patterns or [])
+        blocked = reason == "forbidden"
         return {
             "id": int(item_id),
             "cmd": clean_cmd,
             "why": str(why or "").strip(),
-            "requires_confirm": bool(reason),
+            # forbidden => hard block, dangerous => explicit confirm
+            "requires_confirm": bool(reason == "dangerous"),
+            "blocked": blocked,
             "reason": reason,
-            "status": "pending",
+            "status": "blocked" if blocked else "pending",
             "streaming": self._is_streaming_command(clean_cmd),
         }
 
@@ -730,6 +845,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         Pauses when a command requires confirmation.
         """
         send_idle = True
+        step_mode = self._normalize_execution_mode(getattr(self, "_ai_execution_mode", "step")) == "step"
         try:
             while True:
                 if not self._ssh_proc:
@@ -749,6 +865,19 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
                     if status in ("done", "skipped", "cancelled"):
                         self._ai_plan_index += 1
+                        continue
+
+                    if bool(item.get("blocked")):
+                        item["status"] = "skipped"
+                        self._ai_plan_index += 1
+                        await self._send_ai_event(
+                            {
+                                "type": "ai_command_status",
+                                "id": item_id,
+                                "status": "skipped",
+                                "reason": "forbidden",
+                            }
+                        )
                         continue
 
                     if requires_confirm:
@@ -933,6 +1062,146 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
                 is_stream = bool(item.get("streaming", False))
                 await self._send_ai_event({"type": "ai_command_status", "id": item_id, "status": "done", "exit_code": exit_code, "streaming": is_stream})
+
+                # Step-by-step mode: re-evaluate after each command, not only on errors.
+                if step_mode:
+                    try:
+                        async with self._ai_lock:
+                            remaining_cmds = [
+                                str(it.get("cmd") or "").strip()
+                                for it in self._ai_plan[self._ai_plan_index :]
+                                if str(it.get("status") or "") not in ("done", "skipped", "cancelled")
+                            ]
+                        decision = await self._ai_step_decide_next(
+                            user_goal=(self._ai_user_message or ""),
+                            last_cmd=cmd,
+                            exit_code=int(exit_code if exit_code is not None else -1),
+                            output=output_snippet or "",
+                            remaining_cmds=remaining_cmds,
+                        )
+
+                        action = str(decision.get("action") or "continue").lower().strip()
+                        # Ask user if required, then re-evaluate with reply.
+                        if action == "ask":
+                            question = str(decision.get("question") or "Как продолжить дальше?").strip()
+                            q_id = f"q_step_{item_id}_{self._ai_next_id}"
+                            self._ai_next_id += 1
+                            loop = asyncio.get_event_loop()
+                            reply_fut: asyncio.Future = loop.create_future()
+                            self._ai_reply_futures[q_id] = reply_fut
+                            await self._send_ai_event(
+                                {
+                                    "type": "ai_question",
+                                    "q_id": q_id,
+                                    "question": question,
+                                    "cmd": cmd,
+                                    "exit_code": exit_code,
+                                }
+                            )
+                            try:
+                                user_reply = await asyncio.wait_for(reply_fut, timeout=300)
+                                self._add_to_history("user", f"[Ответ на шаг]: {user_reply}")
+                                decision = await self._ai_step_decide_next(
+                                    user_goal=(self._ai_user_message or ""),
+                                    last_cmd=cmd,
+                                    exit_code=int(exit_code if exit_code is not None else -1),
+                                    output=output_snippet or "",
+                                    remaining_cmds=remaining_cmds,
+                                    user_reply=user_reply,
+                                )
+                                action = str(decision.get("action") or "continue").lower().strip()
+                            except asyncio.TimeoutError:
+                                action = "continue"
+                            finally:
+                                self._ai_reply_futures.pop(q_id, None)
+
+                        if action == "next":
+                            next_cmd = str(decision.get("next_cmd") or "").strip()
+                            if next_cmd:
+                                extra_limit = 20
+                                if self._ai_step_extra_count >= extra_limit:
+                                    await self._send_ai_event(
+                                        {
+                                            "type": "ai_response",
+                                            "mode": "answer",
+                                            "assistant_text": (
+                                                "Достигнут защитный лимит дополнительных адаптивных шагов "
+                                                f"({extra_limit}) в режиме step-by-step. "
+                                                "Продолжаю выполнение уже запланированных команд. "
+                                                "Для длинных линейных задач переключите режим на Fast или Auto."
+                                            ),
+                                            "commands": [],
+                                            "execution_mode": "step",
+                                        }
+                                    )
+                                else:
+                                    async with self._ai_lock:
+                                        forbidden_patterns = list(self._ai_forbidden_patterns or [])
+                                        next_id = int(self._ai_next_id)
+                                        self._ai_next_id += 1
+                                        self._ai_step_extra_count += 1
+                                        new_item = self._build_plan_item(
+                                            item_id=next_id,
+                                            cmd=next_cmd,
+                                            why=str(decision.get("why") or "Следующий адаптивный шаг"),
+                                            forbidden_patterns=forbidden_patterns,
+                                        )
+                                        self._ai_plan.insert(self._ai_plan_index, new_item)
+                                    await self._send_ai_event(
+                                        {
+                                            "type": "ai_response",
+                                            "mode": "execute",
+                                            "assistant_text": str(decision.get("assistant_text") or "Добавляю следующий шаг по результатам проверки."),
+                                            "commands": [new_item],
+                                            "execution_mode": "step",
+                                        }
+                                    )
+
+                        elif action == "done":
+                            done_text = str(decision.get("assistant_text") or "Цель достигнута. Останавливаю дальнейшие шаги.").strip()
+                            self._add_to_history("assistant", done_text[:800])
+                            await self._send_ai_event(
+                                {
+                                    "type": "ai_response",
+                                    "mode": "answer",
+                                    "assistant_text": done_text,
+                                    "commands": [],
+                                    "execution_mode": "step",
+                                }
+                            )
+                            pending_ids: list[int] = []
+                            async with self._ai_lock:
+                                for it in self._ai_plan[self._ai_plan_index :]:
+                                    iid = int(it.get("id") or 0)
+                                    st = str(it.get("status") or "")
+                                    if iid and st not in ("done", "skipped", "cancelled"):
+                                        it["status"] = "skipped"
+                                        pending_ids.append(iid)
+                                self._ai_plan_index = len(self._ai_plan)
+                            for pid in pending_ids:
+                                await self._send_ai_event(
+                                    {
+                                        "type": "ai_command_status",
+                                        "id": pid,
+                                        "status": "skipped",
+                                        "reason": "goal_achieved",
+                                    }
+                                )
+                            break
+
+                        elif action == "abort":
+                            await self._send_ai_event(
+                                {
+                                    "type": "ai_error",
+                                    "message": str(decision.get("assistant_text") or "Выполнение остановлено из-за критического состояния."),
+                                }
+                            )
+                            break
+                        # continue => keep executing current queue
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        logger.warning("Step-by-step post-step analysis failed: %s", e)
 
             # После выполнения всех команд — сформировать отчёт по выводу (анализ логов, проблем и т.д.)
             if send_idle:
@@ -1224,6 +1493,82 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             logger.warning("_ai_handle_error JSON parse failed: %s, output: %.200s", e, out)
             return {"action": "skip", "why": "Не удалось разобрать ответ LLM — пропускаю команду"}
 
+    async def _ai_step_decide_next(
+        self,
+        user_goal: str,
+        last_cmd: str,
+        exit_code: int,
+        output: str,
+        remaining_cmds: list[str],
+        user_reply: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Step-by-step controller:
+        after each command decides whether to continue current plan, add a new command,
+        ask user, finish, or abort.
+        """
+        from app.core.llm import LLMProvider
+
+        remaining_text = (
+            "\n".join(f"  {i + 1}. {c}" for i, c in enumerate(remaining_cmds[:6]))
+            or "(нет оставшихся команд)"
+        )
+        user_reply_block = f"\n\nОтвет пользователя: «{user_reply}»" if user_reply else ""
+        prompt = f"""Ты DevOps-агент в режиме step-by-step.
+После КАЖДОГО шага ты анализируешь вывод и выбираешь следующее действие.
+
+ЦЕЛЬ ПОЛЬЗОВАТЕЛЯ:
+{user_goal}
+
+ПОСЛЕДНЯЯ КОМАНДА:
+{last_cmd}
+EXIT_CODE: {exit_code}
+ВЫВОД:
+{(output or '(нет вывода)')[:2500]}
+
+ОСТАВШИЙСЯ ПЛАН:
+{remaining_text}{user_reply_block}
+
+Выбери одно действие:
+- continue: оставить текущий план без изменений
+- next: добавить СЛЕДУЮЩУЮ команду перед оставшимся планом
+- done: цель уже достигнута, можно завершать
+- ask: нужен короткий вопрос к пользователю
+- abort: критическая ситуация, выполнение надо прервать
+
+Правила:
+- Если цель уже достигнута по выводу, выбирай done.
+- Если есть явный лучший следующий шаг, выбирай next.
+- Если данных мало или нужно решение пользователя, выбирай ask.
+- Не предлагай опасные/разрушительные команды без явной необходимости.
+
+ФОРМАТ (только JSON):
+{{
+  "action": "continue" | "next" | "done" | "ask" | "abort",
+  "assistant_text": "краткий комментарий пользователю (опционально)",
+  "next_cmd": "команда (только для action=next)",
+  "why": "зачем этот шаг (для action=next)",
+  "question": "вопрос пользователю (только для action=ask)"
+}}
+"""
+        llm = LLMProvider()
+        out = ""
+        async for chunk in llm.stream_chat(prompt, model="auto"):
+            out += chunk
+            if len(out) > 5000:
+                break
+        try:
+            result = self._extract_json_object(out)
+        except Exception as e:
+            logger.warning("_ai_step_decide_next JSON parse failed: %s, output: %.200s", e, out)
+            return {"action": "continue"}
+
+        action = str(result.get("action") or "continue").lower().strip()
+        if action not in {"continue", "next", "done", "ask", "abort"}:
+            action = "continue"
+        result["action"] = action
+        return result
+
     async def _ai_type_text(self, text: str):
         if not self._ssh_proc or not text:
             return
@@ -1240,6 +1585,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         terminal_tail: str,
         history: list[dict] | None = None,
         unavailable_cmds: set[str] | None = None,
+        execution_mode: str = "step",
     ) -> dict[str, Any]:
         """
         Ask internal LLM to decide mode and return JSON:
@@ -1273,8 +1619,26 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
    • вместо `service` → `systemctl`
 """
 
+        mode_selector_block = ""
+        if execution_mode == "auto":
+            mode_selector_block = """
+- execution_mode=auto: выбери execution_mode самостоятельно:
+  • step — если задача рискованная/неоднозначная/требует проверки после каждого шага
+  • fast — если задача линейная и предсказуемая
+"""
+        else:
+            mode_selector_block = f"""
+- execution_mode фиксирован пользователем: используй {execution_mode} (не меняй).
+"""
+
         prompt = f"""Ты умный DevOps/SSH ассистент в составе платформы управления серверами.
 Ты ведёшь диалог с пользователем и имеешь доступ к SSH-терминалу сервера.
+
+РЕЖИМ ВЫПОЛНЕНИЯ: {execution_mode}
+- auto: агент сам выбирает step/fast для этого запуска.
+- step: выдай короткий стартовый план (обычно 1-3 команды), дальше план будет адаптироваться после каждого шага.
+- fast: можно выдать полный линейный план сразу (до 6 команд).
+{mode_selector_block}
 
 ═══ ТВОЯ ЗАДАЧА ═══
 Самостоятельно решить, что делать с запросом пользователя, выбрав один из режимов:
@@ -1304,10 +1668,12 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
 ═══ ФОРМАТ ОТВЕТА (ТОЛЬКО JSON, без markdown вокруг) ═══
 {{
+  "execution_mode": "step" | "fast",
   "mode": "answer" | "execute" | "ask",
   "assistant_text": "текст пользователю (Markdown, всегда заполнен)",
   "commands": [{{"cmd": "команда", "why": "зачем эта команда"}}]
 }}
+Поле execution_mode всегда обязательно.
 Поле commands — только для mode=execute. Для остальных режимов — [].
 
 ═══ КОНТЕКСТ СЕРВЕРА/ПОЛИТИКИ ═══
@@ -1777,9 +2143,154 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         return plain_password or ""
 
     @database_sync_to_async
-    def _get_ai_rules_and_forbidden(self, user_id: int, server_id: int) -> tuple[list[str], str]:
+    def _get_ai_rules_and_forbidden(
+        self, user_id: int, server_id: int
+    ) -> tuple[list[str], str, list[str], dict[str, Any]]:
         """
-        Returns (forbidden_patterns, rules_context_text) for AI prompt and gating.
+        Returns:
+          - forbidden_patterns
+          - rules_context_text
+          - required_checks
+          - merged_environment_vars (global/group/server network_config)
+        """
+        from servers.models import GlobalServerRules, ServerGroupKnowledge, ServerKnowledge
+
+        now = timezone.now()
+        server = (
+            Server.objects.select_related("group", "user")
+            .filter(id=server_id, is_active=True)
+            .filter(
+                Q(user_id=user_id)
+                | (
+                    Q(shares__user_id=user_id, shares__is_revoked=False)
+                    & (Q(shares__expires_at__isnull=True) | Q(shares__expires_at__gt=now))
+                )
+            )
+            .distinct()
+            .first()
+        )
+        if not server:
+            return [], "", [], {}
+
+        share = None
+        if server.user_id != user_id:
+            share = (
+                ServerShare.objects.filter(server_id=server_id, user_id=user_id, is_revoked=False)
+                .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+                .first()
+            )
+        share_context_enabled = bool(share.share_context) if share else True
+
+        global_rules = GlobalServerRules.objects.filter(user_id=server.user_id).first()
+
+        forbidden: list[str] = []
+        parts: list[str] = []
+        required_checks: list[str] = []
+        env_vars: dict[str, Any] = {}
+
+        if global_rules:
+            if share_context_enabled:
+                ctx = global_rules.get_context_for_ai()
+                if ctx:
+                    parts.append(ctx)
+                required_checks.extend([str(x) for x in (global_rules.required_checks or []) if str(x).strip()])
+                env_vars.update(global_rules.environment_vars or {})
+            if global_rules.forbidden_commands:
+                forbidden.extend([str(x) for x in global_rules.forbidden_commands if x])
+
+        if server.group:
+            if share_context_enabled:
+                gctx = server.group.get_context_for_ai()
+                if gctx:
+                    parts.append(gctx)
+                env_vars.update(server.group.environment_vars or {})
+            if server.group.forbidden_commands:
+                forbidden.extend([str(x) for x in server.group.forbidden_commands if x])
+
+        if share_context_enabled:
+            try:
+                server_ctx = server.get_network_context_summary()
+                if server_ctx:
+                    parts.append("=== КОНТЕКСТ СЕРВЕРА ===\n" + server_ctx)
+            except Exception:
+                pass
+
+            # Compact knowledge context to improve AI continuity between runs.
+            try:
+                knowledge_rows = list(
+                    ServerKnowledge.objects.filter(server_id=server.id, is_active=True)
+                    .order_by("-updated_at")
+                    .values_list("category", "title", "content")[:12]
+                )
+                if knowledge_rows:
+                    k_lines = []
+                    for category, title, content in knowledge_rows:
+                        t = str(title or "").strip()
+                        c = str(content or "").strip().replace("\n", " ")
+                        if t or c:
+                            k_lines.append(f"- [{category}] {t}: {c[:220]}")
+                    if k_lines:
+                        parts.append("=== НАКОПЛЕННЫЕ ЗНАНИЯ О СЕРВЕРЕ ===\n" + "\n".join(k_lines))
+            except Exception:
+                pass
+
+            if server.group_id:
+                try:
+                    gk_rows = list(
+                        ServerGroupKnowledge.objects.filter(group_id=server.group_id, is_active=True)
+                        .order_by("-updated_at")
+                        .values_list("category", "title", "content")[:8]
+                    )
+                    if gk_rows:
+                        gk_lines = []
+                        for category, title, content in gk_rows:
+                            t = str(title or "").strip()
+                            c = str(content or "").strip().replace("\n", " ")
+                            if t or c:
+                                gk_lines.append(f"- [{category}] {t}: {c[:220]}")
+                        if gk_lines:
+                            parts.append("=== ГРУППОВЫЕ ЗНАНИЯ ===\n" + "\n".join(gk_lines))
+                except Exception:
+                    pass
+
+            # Server-level env vars from network_config have highest priority.
+            if isinstance(server.network_config, dict):
+                env_vars.update(server.network_config.get("env_vars") or {})
+                env_vars.update(server.network_config.get("environment") or {})
+
+        # De-duplicate forbidden patterns (case-insensitive)
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for p in forbidden:
+            s = (p or "").strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(s)
+
+        # De-duplicate required checks preserving order
+        req_seen: set[str] = set()
+        req_uniq: list[str] = []
+        for c in required_checks:
+            s = str(c or "").strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in req_seen:
+                continue
+            req_seen.add(k)
+            req_uniq.append(s)
+
+        return uniq, "\n\n".join([p for p in parts if p]).strip(), req_uniq, env_vars
+
+    @database_sync_to_async
+    def _get_effective_environment_vars(self, user_id: int, server_id: int) -> dict[str, Any]:
+        """
+        Get merged env vars for shell session.
+        Priority: global < group < server network_config(env_vars/environment)
         """
         from servers.models import GlobalServerRules
 
@@ -1798,7 +2309,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             .first()
         )
         if not server:
-            return [], ""
+            return {}
 
         share = None
         if server.user_id != user_id:
@@ -1809,49 +2320,19 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             )
         share_context_enabled = bool(share.share_context) if share else True
 
-        global_rules = GlobalServerRules.objects.filter(user_id=server.user_id).first()
-
-        forbidden: list[str] = []
-        parts: list[str] = []
-
-        if global_rules:
-            if share_context_enabled:
-                ctx = global_rules.get_context_for_ai()
-                if ctx:
-                    parts.append(ctx)
-            if global_rules.forbidden_commands:
-                forbidden.extend([str(x) for x in global_rules.forbidden_commands if x])
-
-        if server.group:
-            if share_context_enabled:
-                gctx = server.group.get_context_for_ai()
-                if gctx:
-                    parts.append(gctx)
-            if server.group.forbidden_commands:
-                forbidden.extend([str(x) for x in server.group.forbidden_commands if x])
-
+        env_vars: dict[str, Any] = {}
         if share_context_enabled:
-            try:
-                server_ctx = server.get_network_context_summary()
-                if server_ctx:
-                    parts.append("=== КОНТЕКСТ СЕРВЕРА ===\n" + server_ctx)
-            except Exception:
-                pass
+            global_rules = GlobalServerRules.objects.filter(user_id=server.user_id).first()
+            if global_rules:
+                env_vars.update(global_rules.environment_vars or {})
+            if server.group:
+                env_vars.update(server.group.environment_vars or {})
 
-        # De-duplicate forbidden patterns (case-insensitive)
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for p in forbidden:
-            s = (p or "").strip()
-            if not s:
-                continue
-            k = s.lower()
-            if k in seen:
-                continue
-            seen.add(k)
-            uniq.append(s)
+        if isinstance(server.network_config, dict):
+            env_vars.update(server.network_config.get("env_vars") or {})
+            env_vars.update(server.network_config.get("environment") or {})
 
-        return uniq, "\n\n".join([p for p in parts if p]).strip()
+        return env_vars
 
     @database_sync_to_async
     def _log_ai_command_history(

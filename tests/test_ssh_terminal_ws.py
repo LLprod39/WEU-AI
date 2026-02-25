@@ -27,6 +27,8 @@ class TestServersTerminalWebSocket(TransactionTestCase):
         patterns_root = [str(p.pattern) for p in web_ui_websocket_urlpatterns]
         self.assertIn("ws/servers/<int:server_id>/terminal/", patterns_servers)
         self.assertIn("ws/servers/<int:server_id>/terminal/", patterns_root)
+        self.assertIn("ws/servers/<int:server_id>/rdp/", patterns_servers)
+        self.assertIn("ws/servers/<int:server_id>/rdp/", patterns_root)
 
     def test_ws_connect_sends_ready(self):
         user = User.objects.create_user(username="ws_user", password="pw123456")

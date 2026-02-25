@@ -82,6 +82,15 @@
         <div class="p-3 border-t border-white/10">
             <textarea id="terminal-ai-input" rows="3" placeholder="Например: «проверь диск и память»"
                       class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/50 resize-none"></textarea>
+            <div class="flex items-center justify-end gap-2 mt-2 text-[11px] text-gray-400">
+                <span class="material-icons-round text-primary/80" style="font-size:13px">tune</span>
+                <span>Mode</span>
+                <select id="terminal-ai-mode" class="bg-bg-base border border-white/15 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-primary/50" onchange="onMobileAiModeChange(this.value)">
+                    <option value="auto">Auto</option>
+                    <option value="step">Step-by-step</option>
+                    <option value="fast">Fast</option>
+                </select>
+            </div>
             <div class="flex justify-end gap-2 mt-2">
                 <button type="button" onclick="sendAiToTerminal()"
                         class="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-200 text-sm rounded-lg flex items-center gap-2">
@@ -331,6 +340,30 @@ function updateAiCommandStatus(msg) {
 function confirmAiCommand(id) { if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: 'ai_confirm', id: id })); }
 function cancelAiCommand(id) { if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) terminalSocket.send(JSON.stringify({ type: 'ai_cancel', id: id })); }
 
+function normalizeMobileAiMode(raw) {
+  var v = String(raw || '').trim().toLowerCase();
+  if (v === 'fast') return 'fast';
+  if (v === 'step') return 'step';
+  return 'auto';
+}
+
+function onMobileAiModeChange(raw) {
+  var mode = normalizeMobileAiMode(raw);
+  var el = document.getElementById('terminal-ai-mode');
+  if (el && el.value !== mode) el.value = mode;
+  try { localStorage.setItem('ai_execution_mode', mode); } catch (e) {}
+}
+
+function getAiExecutionMode() {
+  try {
+    var el = document.getElementById('terminal-ai-mode');
+    if (el && el.value) return normalizeMobileAiMode(el.value);
+    return normalizeMobileAiMode(localStorage.getItem('ai_execution_mode') || 'auto');
+  } catch (e) {
+    return 'auto';
+  }
+}
+
 function sendAiToTerminal() {
   var input = document.getElementById('terminal-ai-input');
   var text = (input || {}).value ? input.value.trim() : '';
@@ -338,10 +371,11 @@ function sendAiToTerminal() {
   if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) { alert('Сначала подключитесь (Connect).'); return; }
   appendAiMessage('user', text);
   if (input) input.value = '';
-  terminalSocket.send(JSON.stringify({ type: 'ai_request', message: text }));
+  terminalSocket.send(JSON.stringify({ type: 'ai_request', message: text, execution_mode: getAiExecutionMode() }));
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+  onMobileAiModeChange(localStorage.getItem('ai_execution_mode') || 'auto');
   initTerminal();
   setTerminalStatus('disconnected');
   connectTerminal();

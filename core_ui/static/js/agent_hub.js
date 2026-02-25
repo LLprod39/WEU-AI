@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    window.__AGENT_HUB_VERSION__ = 'hub-v9';
+    window.__AGENT_HUB_VERSION__ = 'hub-v10';
 
     var presetData = [];
     var workflowsData = [];
@@ -14,8 +14,11 @@
     var serversData = [];
     var webhooksData = [];
     var webhookEditingId = null;
+    var webhookWorkflowSteps = [];
     var webhookAgents = [];
     var customAgents = [];
+    var mcpPoolServers = [];
+    var agentEditorMcpServers = {};
     var selectedAgentId = null;
     var editingProfileId = null;
     var workflowLogsInterval = null;
@@ -2018,6 +2021,184 @@
             .catch(function () { window._skillOptions = []; });
     }
 
+    function _escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function _normalizeMcpName(name) {
+        return String(name || '')
+            .trim()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-zA-Z0-9_.-]/g, '')
+            .toLowerCase();
+    }
+
+    function _parseMcpArgs(raw) {
+        if (Array.isArray(raw)) return raw.map(function (v) { return String(v); });
+        return String(raw || '')
+            .split(',')
+            .map(function (part) { return part.trim(); })
+            .filter(Boolean);
+    }
+
+    function _parseMcpEnv(rawText) {
+        var env = {};
+        String(rawText || '')
+            .split(/\r?\n/)
+            .forEach(function (line) {
+                var clean = line.trim();
+                if (!clean || clean.indexOf('=') === -1) return;
+                var eq = clean.indexOf('=');
+                var key = clean.slice(0, eq).trim();
+                var value = clean.slice(eq + 1).trim();
+                if (!key) return;
+                env[key] = value;
+            });
+        return env;
+    }
+
+    function _formatMcpEnv(env) {
+        if (!env || typeof env !== 'object') return '';
+        return Object.keys(env).map(function (key) {
+            return key + '=' + String(env[key] || '');
+        }).join('\n');
+    }
+
+    function loadMcpPoolServers() {
+        return fetch('/skills/api/mcp/pool/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                mcpPoolServers = data.servers || [];
+                populateAgentMcpPoolSelect();
+            })
+            .catch(function () {
+                mcpPoolServers = [];
+                populateAgentMcpPoolSelect();
+            });
+    }
+
+    function populateAgentMcpPoolSelect() {
+        var select = document.getElementById('agent-editor-mcp-pool');
+        if (!select) return;
+        var options = ['<option value="">Выбрать из Моих MCP...</option>'];
+        options = options.concat(mcpPoolServers.map(function (server) {
+            return '<option value="' + server.id + '">' + _escapeHtml(server.name) + '</option>';
+        }));
+        select.innerHTML = options.join('');
+    }
+
+    function renderAgentMcpServers() {
+        var container = document.getElementById('agent-editor-mcp-servers');
+        if (!container) return;
+        var names = Object.keys(agentEditorMcpServers || {});
+        if (!names.length) {
+            container.innerHTML = '<div class="hub-help">MCP не добавлены. Добавьте из пула или шаблон Zabbix.</div>';
+            return;
+        }
+
+        container.innerHTML = names.map(function (name) {
+            var cfg = agentEditorMcpServers[name] || {};
+            var args = Array.isArray(cfg.args) ? cfg.args.join(', ') : '';
+            var envText = _formatMcpEnv(cfg.env);
+            return (
+                '<div class="hub-card" data-mcp-name="' + _escapeHtml(name) + '" style="padding:10px;gap:8px;">' +
+                    '<div class="hub-card__head">' +
+                        '<div style="font-size:12px;font-weight:600;">' + _escapeHtml(name) + '</div>' +
+                        '<button type="button" class="hub-btn hub-btn-ghost mcp-remove-btn">Удалить</button>' +
+                    '</div>' +
+                    '<label class="hub-checkbox" style="margin-top:-4px;">' +
+                        '<input type="checkbox" class="mcp-enabled" ' + (cfg.enabled === false ? '' : 'checked') + '>' +
+                        'Включен' +
+                    '</label>' +
+                    '<div class="hub-form-row">' +
+                        '<input type="text" class="hub-input mcp-command" placeholder="command" value="' + _escapeHtml(cfg.command || '') + '">' +
+                        '<input type="text" class="hub-input mcp-args" placeholder="arg1, arg2, arg3" value="' + _escapeHtml(args) + '">' +
+                    '</div>' +
+                    '<textarea class="hub-textarea mcp-env" rows="2" placeholder="ENV_KEY=value (по строке)">' + _escapeHtml(envText) + '</textarea>' +
+                    '<input type="text" class="hub-input mcp-description" placeholder="Описание" value="' + _escapeHtml(cfg.description || '') + '">' +
+                '</div>'
+            );
+        }).join('');
+
+        container.querySelectorAll('.hub-card[data-mcp-name]').forEach(function (card) {
+            var name = card.getAttribute('data-mcp-name');
+            var removeBtn = card.querySelector('.mcp-remove-btn');
+            var enabledEl = card.querySelector('.mcp-enabled');
+            var commandEl = card.querySelector('.mcp-command');
+            var argsEl = card.querySelector('.mcp-args');
+            var envEl = card.querySelector('.mcp-env');
+            var descEl = card.querySelector('.mcp-description');
+
+            function syncState() {
+                var next = agentEditorMcpServers[name] || {};
+                next.enabled = !!(enabledEl && enabledEl.checked);
+                next.command = commandEl ? commandEl.value.trim() : '';
+                next.args = _parseMcpArgs(argsEl ? argsEl.value : '');
+                next.env = _parseMcpEnv(envEl ? envEl.value : '');
+                next.description = descEl ? descEl.value.trim() : '';
+                if (Object.keys(next.env).length === 0) delete next.env;
+                agentEditorMcpServers[name] = next;
+            }
+
+            if (enabledEl) enabledEl.addEventListener('change', syncState);
+            if (commandEl) commandEl.addEventListener('input', syncState);
+            if (argsEl) argsEl.addEventListener('input', syncState);
+            if (envEl) envEl.addEventListener('input', syncState);
+            if (descEl) descEl.addEventListener('input', syncState);
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function () {
+                    delete agentEditorMcpServers[name];
+                    renderAgentMcpServers();
+                });
+            }
+        });
+    }
+
+    function addAgentMcpFromPool() {
+        var select = document.getElementById('agent-editor-mcp-pool');
+        if (!select || !select.value) return;
+        var serverId = parseInt(select.value, 10);
+        var found = mcpPoolServers.find(function (s) { return s.id === serverId; });
+        if (!found) return;
+        var name = _normalizeMcpName(found.name) || ('mcp-' + String(serverId));
+        agentEditorMcpServers[name] = {
+            enabled: true,
+            command: found.command || '',
+            args: Array.isArray(found.args) ? found.args : [],
+            env: found.env || {},
+            description: found.description || ''
+        };
+        select.value = '';
+        renderAgentMcpServers();
+    }
+    window.addAgentMcpFromPool = addAgentMcpFromPool;
+
+    function addAgentMcpTemplateZabbix() {
+        var name = 'zabbix-mcp';
+        if (agentEditorMcpServers[name]) {
+            showToastSafe('Шаблон Zabbix уже добавлен', 'info');
+            return;
+        }
+        agentEditorMcpServers[name] = {
+            enabled: true,
+            command: 'uvx',
+            args: ['mcp-zabbix'],
+            env: {
+                ZABBIX_URL: 'https://zabbix.example.local',
+                ZABBIX_API_TOKEN: 'replace_me'
+            },
+            description: 'Шаблон MCP для Zabbix API (замените URL и токен)'
+        };
+        renderAgentMcpServers();
+        showToastSafe('Добавлен шаблон Zabbix MCP', 'success');
+    }
+    window.addAgentMcpTemplateZabbix = addAgentMcpTemplateZabbix;
+
     function loadCustomAgents() {
         var list = document.getElementById('custom-agents-list');
         if (list) list.innerHTML = '<div class="hub-empty">Загрузка агентов...</div>';
@@ -2062,7 +2243,7 @@
                 '<div>' +
                 '<div class="hub-row__title">' + agent.name + '</div>' +
                 '<div class="hub-row__meta">' + (agent.description || 'Нет описания') + '</div>' +
-                '<div class="hub-row__meta">model: ' + agent.model + ' • runtime: ' + agent.runtime + '</div>' +
+                '<div class="hub-row__meta">model: ' + agent.model + ' • runtime: ' + agent.runtime + ' • MCP: ' + Object.keys(agent.mcp_servers || {}).length + '</div>' +
                 '</div>' +
                 '<div class="hub-row__actions">' +
                 '<button class="hub-btn hub-btn-ghost" onclick="selectAgent(' + agent.id + ')">Select</button>' +
@@ -2100,18 +2281,83 @@
     }
     window.selectAgent = selectAgent;
 
+    function syncAgentAdvancedFromHidden() {
+        var modelHidden = document.getElementById('agent-editor-model');
+        var orchestratorHidden = document.getElementById('agent-editor-orchestrator');
+        var maxIterHidden = document.getElementById('agent-editor-max-iterations');
+        var tempHidden = document.getElementById('agent-editor-temperature');
+        var completionHidden = document.getElementById('agent-editor-completion-promise');
+
+        var modelUi = document.getElementById('agent-editor-model-ui');
+        var orchestratorUi = document.getElementById('agent-editor-orchestrator-ui');
+        var maxIterUi = document.getElementById('agent-editor-max-iterations-ui');
+        var tempUi = document.getElementById('agent-editor-temperature-ui');
+        var completionUi = document.getElementById('agent-editor-completion-promise-ui');
+
+        if (modelUi && modelHidden) modelUi.value = modelHidden.value || 'auto';
+        if (orchestratorUi && orchestratorHidden) orchestratorUi.value = orchestratorHidden.value || 'ralph_internal';
+        if (maxIterUi && maxIterHidden) maxIterUi.value = maxIterHidden.value || '10';
+        if (tempUi && tempHidden) tempUi.value = tempHidden.value || '0.7';
+        if (completionUi && completionHidden) completionUi.value = completionHidden.value || 'COMPLETE';
+    }
+
+    function syncAgentAdvancedToHidden() {
+        var modelHidden = document.getElementById('agent-editor-model');
+        var orchestratorHidden = document.getElementById('agent-editor-orchestrator');
+        var maxIterHidden = document.getElementById('agent-editor-max-iterations');
+        var tempHidden = document.getElementById('agent-editor-temperature');
+        var completionHidden = document.getElementById('agent-editor-completion-promise');
+
+        var modelUi = document.getElementById('agent-editor-model-ui');
+        var orchestratorUi = document.getElementById('agent-editor-orchestrator-ui');
+        var maxIterUi = document.getElementById('agent-editor-max-iterations-ui');
+        var tempUi = document.getElementById('agent-editor-temperature-ui');
+        var completionUi = document.getElementById('agent-editor-completion-promise-ui');
+
+        if (modelHidden && modelUi) modelHidden.value = (modelUi.value || 'auto').trim() || 'auto';
+        if (orchestratorHidden && orchestratorUi) orchestratorHidden.value = (orchestratorUi.value || 'ralph_internal').trim() || 'ralph_internal';
+        if (maxIterHidden && maxIterUi) {
+            var iter = parseInt(maxIterUi.value, 10);
+            if (!iter || iter < 1) iter = 10;
+            if (iter > 100) iter = 100;
+            maxIterHidden.value = String(iter);
+        }
+        if (tempHidden && tempUi) {
+            var temp = parseFloat(tempUi.value);
+            if (isNaN(temp) || temp < 0) temp = 0.7;
+            if (temp > 1) temp = 1;
+            tempHidden.value = String(temp);
+        }
+        if (completionHidden && completionUi) completionHidden.value = (completionUi.value || 'COMPLETE').trim() || 'COMPLETE';
+    }
+
     function openAgentEditor(agentId) {
         var modal = document.getElementById('agentEditorModal');
         if (!modal) return;
         modal.classList.remove('hidden');
         document.getElementById('agent-editor-form').reset();
+        agentEditorMcpServers = {};
         renderAgentTools([]);
         populateAgentServers([]);
         populateAgentSkills([]);
+        renderAgentMcpServers();
+        populateAgentMcpPoolSelect();
+        loadMcpPoolServers();
         document.getElementById('agent-editor-id').value = '';
         document.getElementById('agent-editor-title').textContent = agentId ? 'Редактировать агента' : 'Новый агент';
         document.getElementById('agent-editor-all-servers').checked = true;
         document.getElementById('agent-editor-allowed-servers').disabled = true;
+        var defaultModelEl = document.getElementById('agent-editor-model');
+        var defaultOrchestratorEl = document.getElementById('agent-editor-orchestrator');
+        var defaultIterEl = document.getElementById('agent-editor-max-iterations');
+        var defaultTempEl = document.getElementById('agent-editor-temperature');
+        var defaultCompletionEl = document.getElementById('agent-editor-completion-promise');
+        if (defaultModelEl) defaultModelEl.value = 'auto';
+        if (defaultOrchestratorEl) defaultOrchestratorEl.value = 'ralph_internal';
+        if (defaultIterEl) defaultIterEl.value = '10';
+        if (defaultTempEl) defaultTempEl.value = '0.7';
+        if (defaultCompletionEl) defaultCompletionEl.value = 'COMPLETE';
+        syncAgentAdvancedFromHidden();
         // Reset wizard to step 1
         goToStep(1);
         // Reset avatar
@@ -2150,7 +2396,10 @@
                     document.getElementById('agent-editor-max-iterations').value = agent.max_iterations || 10;
                     document.getElementById('agent-editor-temperature').value = agent.temperature || 0.7;
                     document.getElementById('agent-editor-completion-promise').value = agent.completion_promise || 'COMPLETE';
+                    syncAgentAdvancedFromHidden();
                     document.getElementById('agent-editor-mcp-auto').checked = !!agent.mcp_auto_approve;
+                    agentEditorMcpServers = Object.assign({}, agent.mcp_servers || {});
+                    renderAgentMcpServers();
 
                     renderAgentTools(agent.allowed_tools || []);
                     populateAgentSkills(agent.skill_ids || []);
@@ -2266,6 +2515,7 @@
                 }
                 var config = cfg.config || {};
                 if (maxIterEl && config.max_iterations != null) maxIterEl.value = config.max_iterations;
+                syncAgentAdvancedFromHidden();
                 var parts = [];
                 if (questions.length) parts.push('Уточняющие вопросы: ' + questions.join('; '));
                 if (assumptions.length) parts.push('Предположения: ' + assumptions.join('; '));
@@ -2287,6 +2537,7 @@
     window.closeAgentEditor = closeAgentEditor;
 
     function saveAgent() {
+        syncAgentAdvancedToHidden();
         var agentId = document.getElementById('agent-editor-id').value;
         var allServers = document.getElementById('agent-editor-all-servers').checked;
         var allowedServers = allServers ? 'all' : Array.from(document.getElementById('agent-editor-allowed-servers').selectedOptions).map(function (o) { return parseInt(o.value, 10); });
@@ -2306,6 +2557,7 @@
             temperature: parseFloat(document.getElementById('agent-editor-temperature').value || '0.7'),
             completion_promise: document.getElementById('agent-editor-completion-promise').value || 'COMPLETE',
             mcp_auto_approve: document.getElementById('agent-editor-mcp-auto').checked,
+            mcp_servers: agentEditorMcpServers || {},
             allowed_tools: tools,
             allowed_servers: allowedServers,
             skill_ids: skills
@@ -2454,6 +2706,22 @@
             title_template: 'Zabbix: {{trigger.name}} on {{host.name}}',
             description_template: 'Severity: {{trigger.severity}}\\nHost: {{host.name}}\\n\\n{{payload_json}}'
         },
+        incident_workflow: {
+            source: 'generic',
+            execution_mode: 'workflow',
+            workflow_template: 'remediation',
+            runtime: 'claude',
+            event_id_field: 'event_id',
+            event_name_field: 'event_name',
+            event_name: 'Incident',
+            title_template: 'Incident: {{event_name}}',
+            description_template: '{{payload_json}}',
+            workflow_name_template: 'Incident workflow: {{event_name}}',
+            workflow_description_template: 'Auto workflow generated from webhook {{webhook_name}}',
+            notify_on_success: true,
+            notify_on_failure: true,
+            verify_prompt: 'Проверь, что проблема устранена и сервис доступен. В конце выведи <promise>PASS</promise>.'
+        },
         email: {
             source: 'email',
             server_field: '',
@@ -2512,6 +2780,16 @@
         var eventNameEl = document.getElementById('webhook-event-name');
         var titleTplEl = document.getElementById('webhook-title-template');
         var descTplEl = document.getElementById('webhook-description-template');
+        var workflowScriptEl = document.getElementById('webhook-workflow-script');
+        var workflowNameTplEl = document.getElementById('webhook-workflow-name-template');
+        var workflowDescTplEl = document.getElementById('webhook-workflow-description-template');
+        var notifyEmailsEl = document.getElementById('webhook-notify-emails');
+        var notifySuccessEl = document.getElementById('webhook-notify-on-success');
+        var notifyFailureEl = document.getElementById('webhook-notify-on-failure');
+        var execModeEl = document.getElementById('webhook-execution-mode');
+        var workflowTplEl = document.getElementById('webhook-workflow-template');
+        var runtimeEl = document.getElementById('webhook-runtime');
+        var verifyTplEl = document.getElementById('webhook-verify-prompt');
 
         if (options && options.setPreset && presetEl) presetEl.value = preset;
         if (sourceEl && def.source !== undefined) sourceEl.value = def.source;
@@ -2521,6 +2799,33 @@
         if (eventNameEl && def.event_name !== undefined) eventNameEl.value = def.event_name;
         if (titleTplEl && def.title_template !== undefined) titleTplEl.value = def.title_template;
         if (descTplEl && def.description_template !== undefined) descTplEl.value = def.description_template;
+        if (workflowNameTplEl && def.workflow_name_template !== undefined) workflowNameTplEl.value = def.workflow_name_template;
+        if (workflowDescTplEl && def.workflow_description_template !== undefined) workflowDescTplEl.value = def.workflow_description_template;
+        if (notifyEmailsEl && def.notify_emails !== undefined) notifyEmailsEl.value = def.notify_emails;
+        if (notifySuccessEl && def.notify_on_success !== undefined) notifySuccessEl.checked = !!def.notify_on_success;
+        if (notifyFailureEl && def.notify_on_failure !== undefined) notifyFailureEl.checked = !!def.notify_on_failure;
+        if (workflowScriptEl) {
+            if (def.workflow_script !== undefined) {
+                workflowScriptEl.value = (typeof def.workflow_script === 'string')
+                    ? def.workflow_script
+                    : JSON.stringify(def.workflow_script || {}, null, 2);
+            } else if (preset !== 'custom') {
+                workflowScriptEl.value = '';
+            }
+        }
+        if (execModeEl && def.execution_mode !== undefined) execModeEl.value = def.execution_mode;
+        if (workflowTplEl && def.workflow_template !== undefined) workflowTplEl.value = def.workflow_template;
+        if (runtimeEl && def.runtime !== undefined) runtimeEl.value = def.runtime;
+        if (verifyTplEl && def.verify_prompt !== undefined) verifyTplEl.value = def.verify_prompt;
+        if (def.workflow_script !== undefined) {
+            loadWebhookWorkflowBuilder(def.workflow_script);
+        } else if (def.execution_mode === 'workflow') {
+            resetWebhookWorkflowBuilder();
+        } else {
+            webhookWorkflowSteps = [];
+            renderWebhookWorkflowBuilder();
+        }
+        updateWebhookWorkflowFields();
     }
 
     function resetWebhookForm() {
@@ -2540,6 +2845,12 @@
         var eventNameEl = document.getElementById('webhook-event-name');
         var titleTplEl = document.getElementById('webhook-title-template');
         var descTplEl = document.getElementById('webhook-description-template');
+        var workflowScriptEl = document.getElementById('webhook-workflow-script');
+        var workflowNameTplEl = document.getElementById('webhook-workflow-name-template');
+        var workflowDescTplEl = document.getElementById('webhook-workflow-description-template');
+        var notifyEmailsEl = document.getElementById('webhook-notify-emails');
+        var notifySuccessEl = document.getElementById('webhook-notify-on-success');
+        var notifyFailureEl = document.getElementById('webhook-notify-on-failure');
         var verifyTplEl = document.getElementById('webhook-verify-prompt');
         var skillIdsEl = document.getElementById('webhook-skill-ids');
         var autoExecEl = document.getElementById('webhook-auto-execute');
@@ -2558,9 +2869,17 @@
         if (eventNameEl) eventNameEl.value = '';
         if (titleTplEl) titleTplEl.value = '';
         if (descTplEl) descTplEl.value = '';
+        if (workflowScriptEl) workflowScriptEl.value = '';
+        if (workflowNameTplEl) workflowNameTplEl.value = '';
+        if (workflowDescTplEl) workflowDescTplEl.value = '';
+        if (notifyEmailsEl) notifyEmailsEl.value = '';
+        if (notifySuccessEl) notifySuccessEl.checked = true;
+        if (notifyFailureEl) notifyFailureEl.checked = true;
         if (verifyTplEl) verifyTplEl.value = '';
         if (skillIdsEl) skillIdsEl.selectedIndex = -1;
         if (autoExecEl) autoExecEl.checked = true;
+        webhookWorkflowSteps = [];
+        renderWebhookWorkflowBuilder();
         applyWebhookPreset('generic', { setPreset: true });
         updateWebhookWorkflowFields();
     }
@@ -2627,9 +2946,330 @@
         var isWorkflow = modeEl.value === 'workflow';
         if (isWorkflow) {
             extra.classList.remove('hidden');
+            if (!webhookWorkflowSteps.length) {
+                resetWebhookWorkflowBuilder();
+            } else {
+                renderWebhookWorkflowBuilder();
+            }
         } else {
             extra.classList.add('hidden');
         }
+    }
+
+    function _buildDefaultWebhookStep(idx) {
+        return {
+            title: 'Step ' + String(idx),
+            prompt: '',
+            completion_promise: 'STEP_DONE',
+            max_iterations: 5,
+            verify_prompt: '',
+            verify_promise: 'PASS',
+            model: ''
+        };
+    }
+
+    function _defaultWebhookWorkflowSteps() {
+        return [
+            {
+                title: 'Triage',
+                prompt: 'Собери диагностику и опиши причину инцидента.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 3,
+                verify_prompt: '',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            {
+                title: 'Fix',
+                prompt: 'Выполни исправление и кратко опиши, что изменено.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 5,
+                verify_prompt: '',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            {
+                title: 'Verify',
+                prompt: 'Проверь, что результат корректный и сервис работает.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 3,
+                verify_prompt: 'Проверь итог и выведи <promise>PASS</promise>.',
+                verify_promise: 'PASS',
+                model: ''
+            }
+        ];
+    }
+
+    function _buildWebhookStepTemplate(templateName, idx) {
+        var n = idx || (webhookWorkflowSteps.length + 1);
+        var templates = {
+            triage: {
+                title: 'Triage',
+                prompt: 'Собери диагностику: логи, состояние сервиса, ресурсы и первопричину.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 3,
+                verify_prompt: '',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            fix: {
+                title: 'Fix',
+                prompt: 'Выполни корректирующие действия и объясни, что изменено.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 5,
+                verify_prompt: '',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            verify: {
+                title: 'Verify',
+                prompt: 'Проверь, что проблема устранена и система работает стабильно.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 3,
+                verify_prompt: 'Проверь сервис/метрики и выведи <promise>PASS</promise>.',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            check_service: {
+                title: 'Check Service',
+                prompt: 'Проверь статус сервиса, последние логи и порт доступности.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 3,
+                verify_prompt: '',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            restart_service: {
+                title: 'Restart Service',
+                prompt: 'Аккуратно перезапусти сервис, проверь health-check и зафиксируй результат.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 4,
+                verify_prompt: 'Убедись, что сервис активен и доступен, затем <promise>PASS</promise>.',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            deploy_release: {
+                title: 'Deploy Release',
+                prompt: 'Выполни деплой версии, проверь конфиги/миграции и status после запуска.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 6,
+                verify_prompt: 'Подтверди версию и работоспособность после деплоя, затем <promise>PASS</promise>.',
+                verify_promise: 'PASS',
+                model: ''
+            },
+            cleanup_disk: {
+                title: 'Cleanup Disk',
+                prompt: 'Найди крупные директории/файлы и безопасно очисти временные/старые данные.',
+                completion_promise: 'STEP_DONE',
+                max_iterations: 4,
+                verify_prompt: 'Покажи свободное место до/после и выведи <promise>PASS</promise>.',
+                verify_promise: 'PASS',
+                model: ''
+            }
+        };
+        var picked = templates[templateName];
+        if (!picked) return _buildDefaultWebhookStep(n);
+        return {
+            title: picked.title || ('Step ' + String(n)),
+            prompt: picked.prompt || '',
+            completion_promise: picked.completion_promise || 'STEP_DONE',
+            max_iterations: picked.max_iterations || 5,
+            verify_prompt: picked.verify_prompt || '',
+            verify_promise: picked.verify_promise || 'PASS',
+            model: picked.model || ''
+        };
+    }
+
+    function _normalizeWebhookBuilderStep(raw, idx) {
+        var step = (raw && typeof raw === 'object') ? raw : {};
+        var maxIterations = parseInt(step.max_iterations, 10);
+        if (!maxIterations || maxIterations < 1) maxIterations = 5;
+        if (maxIterations > 30) maxIterations = 30;
+        return {
+            title: String(step.title || ('Step ' + String(idx))).trim() || ('Step ' + String(idx)),
+            prompt: String(step.prompt || '').trim(),
+            completion_promise: String(step.completion_promise || 'STEP_DONE').trim() || 'STEP_DONE',
+            max_iterations: maxIterations,
+            verify_prompt: String(step.verify_prompt || '').trim(),
+            verify_promise: String(step.verify_promise || 'PASS').trim() || 'PASS',
+            model: String(step.model || '').trim()
+        };
+    }
+
+    function _setWebhookWorkflowSteps(steps) {
+        if (!Array.isArray(steps)) {
+            webhookWorkflowSteps = [];
+            renderWebhookWorkflowBuilder();
+            return;
+        }
+        webhookWorkflowSteps = steps
+            .map(function (s, i) { return _normalizeWebhookBuilderStep(s, i + 1); })
+            .filter(function (s) { return !!s.prompt; });
+        renderWebhookWorkflowBuilder();
+    }
+
+    function renderWebhookWorkflowBuilder() {
+        var container = document.getElementById('webhook-workflow-builder');
+        if (!container) return;
+        if (!webhookWorkflowSteps.length) {
+            container.innerHTML = '<div class="hub-help">Шаги не добавлены. Нажмите "+ Step" или "Preset 3-step".</div>';
+            return;
+        }
+
+        container.innerHTML = webhookWorkflowSteps.map(function (step, idx) {
+            return (
+                '<div class="hub-card" data-wf-step="' + idx + '" style="padding:10px;gap:8px;">' +
+                    '<div class="hub-card__head">' +
+                        '<div style="font-size:12px;font-weight:600;">Step ' + (idx + 1) + '</div>' +
+                        '<div class="hub-card__actions">' +
+                            '<button type="button" class="hub-btn hub-btn-ghost webhook-step-up">Up</button>' +
+                            '<button type="button" class="hub-btn hub-btn-ghost webhook-step-down">Down</button>' +
+                            '<button type="button" class="hub-btn hub-btn-ghost webhook-step-duplicate">Copy</button>' +
+                            '<button type="button" class="hub-btn hub-btn-ghost webhook-step-remove">Удалить</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="hub-form-row">' +
+                        '<input type="text" class="hub-input webhook-step-title" placeholder="Title" value="' + _escapeHtml(step.title) + '">' +
+                        '<input type="number" min="1" max="30" class="hub-input webhook-step-max-iter" placeholder="Max iterations" value="' + String(step.max_iterations || 5) + '">' +
+                    '</div>' +
+                    '<textarea class="hub-textarea webhook-step-prompt" rows="3" placeholder="Что делать на этом шаге">' + _escapeHtml(step.prompt || '') + '</textarea>' +
+                    '<div class="hub-form-row">' +
+                        '<input type="text" class="hub-input webhook-step-completion" placeholder="Completion promise" value="' + _escapeHtml(step.completion_promise || 'STEP_DONE') + '">' +
+                        '<input type="text" class="hub-input webhook-step-model" placeholder="Model (optional)" value="' + _escapeHtml(step.model || '') + '">' +
+                    '</div>' +
+                    '<div class="hub-form-row">' +
+                        '<input type="text" class="hub-input webhook-step-verify-promise" placeholder="Verify promise" value="' + _escapeHtml(step.verify_promise || 'PASS') + '">' +
+                    '</div>' +
+                    '<textarea class="hub-textarea webhook-step-verify-prompt" rows="2" placeholder="Verify prompt (optional)">' + _escapeHtml(step.verify_prompt || '') + '</textarea>' +
+                '</div>'
+            );
+        }).join('');
+
+        container.querySelectorAll('.hub-card[data-wf-step]').forEach(function (card) {
+            var idx = parseInt(card.getAttribute('data-wf-step'), 10);
+            var removeBtn = card.querySelector('.webhook-step-remove');
+            var upBtn = card.querySelector('.webhook-step-up');
+            var downBtn = card.querySelector('.webhook-step-down');
+            var duplicateBtn = card.querySelector('.webhook-step-duplicate');
+            var titleEl = card.querySelector('.webhook-step-title');
+            var promptEl = card.querySelector('.webhook-step-prompt');
+            var completionEl = card.querySelector('.webhook-step-completion');
+            var maxIterEl = card.querySelector('.webhook-step-max-iter');
+            var verifyPromptEl = card.querySelector('.webhook-step-verify-prompt');
+            var verifyPromiseEl = card.querySelector('.webhook-step-verify-promise');
+            var modelEl = card.querySelector('.webhook-step-model');
+
+            function syncStep() {
+                var current = webhookWorkflowSteps[idx] || _buildDefaultWebhookStep(idx + 1);
+                current.title = titleEl ? String(titleEl.value || '').trim() : current.title;
+                current.prompt = promptEl ? String(promptEl.value || '').trim() : current.prompt;
+                current.completion_promise = completionEl ? (String(completionEl.value || '').trim() || 'STEP_DONE') : current.completion_promise;
+                var parsedIter = maxIterEl ? parseInt(maxIterEl.value, 10) : current.max_iterations;
+                if (!parsedIter || parsedIter < 1) parsedIter = 5;
+                if (parsedIter > 30) parsedIter = 30;
+                current.max_iterations = parsedIter;
+                current.verify_prompt = verifyPromptEl ? String(verifyPromptEl.value || '').trim() : '';
+                current.verify_promise = verifyPromiseEl ? (String(verifyPromiseEl.value || '').trim() || 'PASS') : 'PASS';
+                current.model = modelEl ? String(modelEl.value || '').trim() : '';
+                webhookWorkflowSteps[idx] = current;
+            }
+
+            [titleEl, promptEl, completionEl, maxIterEl, verifyPromptEl, verifyPromiseEl, modelEl].forEach(function (el) {
+                if (!el) return;
+                el.addEventListener('input', syncStep);
+                el.addEventListener('change', syncStep);
+            });
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function () {
+                    webhookWorkflowSteps.splice(idx, 1);
+                    renderWebhookWorkflowBuilder();
+                });
+            }
+            if (upBtn) {
+                upBtn.addEventListener('click', function () {
+                    if (idx <= 0) return;
+                    var tmpUp = webhookWorkflowSteps[idx - 1];
+                    webhookWorkflowSteps[idx - 1] = webhookWorkflowSteps[idx];
+                    webhookWorkflowSteps[idx] = tmpUp;
+                    renderWebhookWorkflowBuilder();
+                });
+            }
+            if (downBtn) {
+                downBtn.addEventListener('click', function () {
+                    if (idx >= webhookWorkflowSteps.length - 1) return;
+                    var tmpDown = webhookWorkflowSteps[idx + 1];
+                    webhookWorkflowSteps[idx + 1] = webhookWorkflowSteps[idx];
+                    webhookWorkflowSteps[idx] = tmpDown;
+                    renderWebhookWorkflowBuilder();
+                });
+            }
+            if (duplicateBtn) {
+                duplicateBtn.addEventListener('click', function () {
+                    var source = webhookWorkflowSteps[idx] || _buildDefaultWebhookStep(idx + 1);
+                    webhookWorkflowSteps.splice(idx + 1, 0, _normalizeWebhookBuilderStep(source, idx + 2));
+                    renderWebhookWorkflowBuilder();
+                });
+            }
+        });
+    }
+
+    function _buildWorkflowScriptFromBuilder(payload) {
+        var steps = (webhookWorkflowSteps || [])
+            .map(function (step, i) { return _normalizeWebhookBuilderStep(step, i + 1); })
+            .filter(function (step) { return !!step.prompt; })
+            .map(function (step) {
+                var out = {
+                    title: step.title,
+                    prompt: step.prompt,
+                    completion_promise: step.completion_promise,
+                    max_iterations: step.max_iterations
+                };
+                if (step.verify_prompt) {
+                    out.verify_prompt = step.verify_prompt;
+                    out.verify_promise = step.verify_promise || 'PASS';
+                }
+                if (step.model) out.model = step.model;
+                return out;
+            });
+
+        if (!steps.length) return null;
+        return {
+            name: (payload && payload.name) ? ('Workflow: ' + payload.name) : 'Webhook Workflow',
+            runtime: ((payload && payload.config && payload.config.runtime) || 'claude'),
+            task_type: (payload && payload.config && payload.config.target_server_id) ? 'server' : 'code',
+            steps: steps
+        };
+    }
+
+    function addWebhookWorkflowStep() {
+        webhookWorkflowSteps.push(_buildDefaultWebhookStep(webhookWorkflowSteps.length + 1));
+        renderWebhookWorkflowBuilder();
+    }
+    window.addWebhookWorkflowStep = addWebhookWorkflowStep;
+
+    function resetWebhookWorkflowBuilder() {
+        _setWebhookWorkflowSteps(_defaultWebhookWorkflowSteps());
+    }
+    window.resetWebhookWorkflowBuilder = resetWebhookWorkflowBuilder;
+
+    function addWebhookStepFromTemplate() {
+        var select = document.getElementById('webhook-step-template');
+        if (!select || !select.value) return;
+        var templateName = String(select.value || '').trim();
+        webhookWorkflowSteps.push(_buildWebhookStepTemplate(templateName, webhookWorkflowSteps.length + 1));
+        select.value = '';
+        renderWebhookWorkflowBuilder();
+    }
+    window.addWebhookStepFromTemplate = addWebhookStepFromTemplate;
+
+    function loadWebhookWorkflowBuilder(script) {
+        if (script && typeof script === 'object' && Array.isArray(script.steps)) {
+            _setWebhookWorkflowSteps(script.steps);
+            return;
+        }
+        webhookWorkflowSteps = [];
+        renderWebhookWorkflowBuilder();
     }
 
     function cancelWebhookForm() {
@@ -2662,8 +3302,12 @@
             var autoText = hook.auto_execute ? 'auto' : 'manual';
             var modeText = hook.execution_mode || 'task';
             var templateText = (hook.config && hook.config.workflow_template) || '';
+            var workflowScript = (hook.config && hook.config.workflow_script) || null;
+            var stepsCount = (workflowScript && Array.isArray(workflowScript.steps)) ? workflowScript.steps.length : 0;
+            var notifyEmails = (hook.config && hook.config.notify_emails) ? String(hook.config.notify_emails) : '';
             var serverField = (hook.config && hook.config.server_field) || '';
             var titleTemplate = (hook.config && hook.config.title_template) || '';
+            var agentName = hook.custom_agent_name || (hook.custom_agent_id ? ('agent #' + hook.custom_agent_id) : '');
             return (
                 '<div class="bg-bg-surface/60 rounded-xl border border-white/5 p-3">' +
                     '<div class="flex items-center justify-between gap-2">' +
@@ -2673,12 +3317,15 @@
                         '</div>' +
                         '<div class="text-[10px] ' + statusClass + '">' + statusText + '</div>' +
                     '</div>' +
-                    '<div class="text-[10px] text-gray-400 mt-2">source: ' + (hook.source || 'generic') + ' • ' + modeText + ' • ' + autoText + (templateText ? ' • ' + templateText : '') + '</div>' +
+                    '<div class="text-[10px] text-gray-400 mt-2">source: ' + (hook.source || 'generic') + ' • ' + modeText + ' • ' + autoText + (templateText ? ' • ' + templateText : '') + (stepsCount ? ' • steps:' + stepsCount : '') + '</div>' +
+                    (agentName ? '<div class="text-[10px] text-gray-500 mt-1">agent: ' + _escapeHtml(agentName) + '</div>' : '') +
+                    (notifyEmails ? '<div class="text-[10px] text-gray-500 mt-1">notify: ' + _escapeHtml(notifyEmails) + '</div>' : '') +
                     (serverField ? '<div class="text-[10px] text-gray-500 mt-1">server_field: ' + serverField + '</div>' : '') +
                     (titleTemplate ? '<div class="text-[10px] text-gray-500 mt-1">title: ' + titleTemplate + '</div>' : '') +
                     '<div class="mt-2 flex items-center gap-2 flex-wrap">' +
                         '<input class="w-full bg-bg-base border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300" readonly value="' + url + '">' +
                         '<button type="button" class="px-2 py-1 text-[10px] bg-white/10 text-gray-200 rounded webhook-copy" data-secret="' + hook.secret + '">Copy</button>' +
+                        '<button type="button" onclick="sendWebhookTest(' + hook.id + ')" class="px-2 py-1 text-[10px] bg-emerald-500/20 text-emerald-400 rounded">Test</button>' +
                         '<button type="button" onclick="editWebhook(' + hook.id + ')" class="px-2 py-1 text-[10px] bg-primary/20 text-primary rounded">Edit</button>' +
                         '<button type="button" onclick="deleteWebhook(' + hook.id + ')" class="px-2 py-1 text-[10px] bg-red-500/20 text-red-400 rounded">Disable</button>' +
                     '</div>' +
@@ -2728,6 +3375,117 @@
     }
     window.copyWebhookUrl = copyWebhookUrl;
 
+    function _resolveWebhookAgentId() {
+        var fromForm = parseInt(((document.getElementById('webhook-custom-agent') || {}).value || ''), 10);
+        if (fromForm) return fromForm;
+        if (selectedAgentId) return selectedAgentId;
+        if (Array.isArray(webhookAgents) && webhookAgents.length) return webhookAgents[0].id;
+        if (Array.isArray(customAgents) && customAgents.length) return customAgents[0].id;
+        return null;
+    }
+
+    function sendWebhookTest(webhookId) {
+        var hook = (webhooksData || []).filter(function (h) { return h.id === webhookId; })[0];
+        if (!hook || !hook.secret) {
+            showToastSafe('Webhook not found', 'error');
+            return;
+        }
+        var payload = {
+            event_id: 'manual-test-' + String(Date.now()),
+            event_name: 'Manual webhook test',
+            source: hook.source || 'generic',
+            host: { name: 'test-host' },
+            trigger: { name: 'test-trigger', severity: 'warning' }
+        };
+        fetch('/agents/api/webhooks/receive/' + hook.secret + '/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    var result = data.result || {};
+                    var msg = 'Test accepted';
+                    if (result.workflow_id) msg += ' • workflow #' + result.workflow_id;
+                    if (result.workflow_run_id) msg += ' • run #' + result.workflow_run_id;
+                    showToastSafe(msg, 'success');
+                } else {
+                    showToastSafe(data.error || 'Test failed', 'error');
+                }
+            })
+            .catch(function (e) {
+                showToastSafe('Test error: ' + (e && e.message || e), 'error');
+            });
+    }
+    window.sendWebhookTest = sendWebhookTest;
+
+    function createQuickTestWebhook() {
+        var agentId = _resolveWebhookAgentId();
+        if (!agentId) {
+            showToastSafe('Создайте агента и выберите его для теста', 'error');
+            return;
+        }
+
+        var payload = {
+            name: 'Quick Test Hook ' + new Date().toISOString().slice(11, 19),
+            description: 'Auto-created test webhook for workflow smoke check',
+            source: 'generic',
+            custom_agent_id: agentId,
+            agent_type: 'react',
+            execution_mode: 'workflow',
+            auto_execute: true,
+            config: {
+                workflow_template: 'custom',
+                runtime: 'claude',
+                event_id_field: 'event_id',
+                event_name_field: 'event_name',
+                event_name: 'Quick Test',
+                title_template: 'Quick test: {{event_name}}',
+                description_template: '{{payload_json}}',
+                workflow_name_template: 'Quick test workflow: {{event_name}}',
+                workflow_description_template: 'Generated quick smoke-test flow',
+                notify_on_success: false,
+                notify_on_failure: false,
+                workflow_script: {
+                    name: 'Quick webhook test',
+                    runtime: 'claude',
+                    steps: [
+                        {
+                            title: 'Webhook Smoke Test',
+                            prompt: 'Подтверди, что webhook workflow стартовал. Кратко опиши полученный payload и выведи <promise>STEP_DONE</promise>.',
+                            completion_promise: 'STEP_DONE',
+                            max_iterations: 1
+                        }
+                    ]
+                }
+            }
+        };
+
+        fetch('/agents/api/webhooks/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    showToastSafe(data.error || 'Failed to create quick test webhook', 'error');
+                    return;
+                }
+                var webhookId = data.webhook_id;
+                loadWebhooks();
+                showToastSafe('Quick test webhook created', 'success');
+                if (webhookId) {
+                    setTimeout(function () { sendWebhookTest(webhookId); }, 300);
+                }
+            })
+            .catch(function (e) {
+                showToastSafe('Error: ' + (e && e.message || e), 'error');
+            });
+    }
+    window.createQuickTestWebhook = createQuickTestWebhook;
+
     function getWebhookFormData() {
         var payload = {
             name: (document.getElementById('webhook-name') || {}).value || '',
@@ -2739,6 +3497,10 @@
             auto_execute: !!((document.getElementById('webhook-auto-execute') || {}).checked),
             config: {}
         };
+        if (payload.custom_agent_id !== null && payload.custom_agent_id !== '') {
+            var parsedAgentId = parseInt(payload.custom_agent_id, 10);
+            payload.custom_agent_id = parsedAgentId ? parsedAgentId : null;
+        }
 
         var targetServer = (document.getElementById('webhook-target-server') || {}).value || '';
         var workflowTemplate = (document.getElementById('webhook-workflow-template') || {}).value || '';
@@ -2749,6 +3511,11 @@
         var eventName = (document.getElementById('webhook-event-name') || {}).value || '';
         var titleTpl = (document.getElementById('webhook-title-template') || {}).value || '';
         var descTpl = (document.getElementById('webhook-description-template') || {}).value || '';
+        var workflowNameTpl = (document.getElementById('webhook-workflow-name-template') || {}).value || '';
+        var workflowDescTpl = (document.getElementById('webhook-workflow-description-template') || {}).value || '';
+        var notifyEmails = (document.getElementById('webhook-notify-emails') || {}).value || '';
+        var notifyOnSuccess = !!((document.getElementById('webhook-notify-on-success') || {}).checked);
+        var notifyOnFailure = !!((document.getElementById('webhook-notify-on-failure') || {}).checked);
         var verifyTpl = (document.getElementById('webhook-verify-prompt') || {}).value || '';
         var skillIds = Array.from((document.getElementById('webhook-skill-ids') || {}).selectedOptions || []).map(function (o) { return parseInt(o.value, 10); }).filter(Boolean);
 
@@ -2761,17 +3528,54 @@
         if (eventName) payload.config.event_name = eventName;
         if (titleTpl) payload.config.title_template = titleTpl;
         if (descTpl) payload.config.description_template = descTpl;
+        if (workflowNameTpl) payload.config.workflow_name_template = workflowNameTpl;
+        if (workflowDescTpl) payload.config.workflow_description_template = workflowDescTpl;
+        if (notifyEmails) payload.config.notify_emails = notifyEmails;
+        payload.config.notify_on_success = notifyOnSuccess;
+        payload.config.notify_on_failure = notifyOnFailure;
         if (verifyTpl) payload.config.verify_prompt = verifyTpl;
         if (skillIds.length) payload.config.skill_ids = skillIds;
         if (payload.custom_agent_id === '') payload.custom_agent_id = null;
+        if (payload.execution_mode === 'workflow' && !payload.custom_agent_id) {
+            showToastSafe('Для workflow выберите custom agent', 'error');
+            return null;
+        }
 
         return payload;
     }
 
     function saveWebhook() {
         var payload = getWebhookFormData();
+        if (!payload) return;
         if (!payload.name) {
             showToastSafe('Name is required', 'error');
+            return;
+        }
+        if (payload.execution_mode === 'workflow') {
+            var builtScript = _buildWorkflowScriptFromBuilder(payload);
+            if (builtScript) {
+                payload.config.workflow_script = builtScript;
+                if (!payload.config.workflow_template) payload.config.workflow_template = 'custom';
+            }
+        }
+        var workflowScriptRaw = ((document.getElementById('webhook-workflow-script') || {}).value || '').trim();
+        if (payload.execution_mode === 'workflow' && workflowScriptRaw) {
+            var parsedWorkflowScript = null;
+            try {
+                parsedWorkflowScript = JSON.parse(workflowScriptRaw);
+            } catch (err) {
+                showToastSafe('Workflow JSON: invalid format', 'error');
+                return;
+            }
+            if (!parsedWorkflowScript || typeof parsedWorkflowScript !== 'object' || Array.isArray(parsedWorkflowScript)) {
+                showToastSafe('Workflow JSON must be an object', 'error');
+                return;
+            }
+            payload.config.workflow_script = parsedWorkflowScript;
+            if (!payload.config.workflow_template) payload.config.workflow_template = 'custom';
+        }
+        if (payload.execution_mode === 'workflow' && !payload.config.workflow_script && !payload.config.workflow_template) {
+            showToastSafe('Добавьте хотя бы один шаг workflow', 'error');
             return;
         }
 
@@ -2822,6 +3626,12 @@
         var eventNameEl = document.getElementById('webhook-event-name');
         var titleTplEl = document.getElementById('webhook-title-template');
         var descTplEl = document.getElementById('webhook-description-template');
+        var workflowScriptEl = document.getElementById('webhook-workflow-script');
+        var workflowNameTplEl = document.getElementById('webhook-workflow-name-template');
+        var workflowDescTplEl = document.getElementById('webhook-workflow-description-template');
+        var notifyEmailsEl = document.getElementById('webhook-notify-emails');
+        var notifySuccessEl = document.getElementById('webhook-notify-on-success');
+        var notifyFailureEl = document.getElementById('webhook-notify-on-failure');
         var verifyTplEl = document.getElementById('webhook-verify-prompt');
         var skillIdsEl = document.getElementById('webhook-skill-ids');
         var autoExecEl = document.getElementById('webhook-auto-execute');
@@ -2829,8 +3639,13 @@
         if (nameEl) nameEl.value = hook.name || '';
         if (sourceEl) sourceEl.value = hook.source || '';
         if (presetEl) {
+            var cfgForPreset = hook.config || {};
             var srcKey = (hook.source || '').toLowerCase();
-            presetEl.value = WEBHOOK_PRESETS[srcKey] ? (srcKey || 'generic') : 'custom';
+            if ((hook.execution_mode || '') === 'workflow' && (cfgForPreset.workflow_template || '') === 'remediation') {
+                presetEl.value = 'incident_workflow';
+            } else {
+                presetEl.value = WEBHOOK_PRESETS[srcKey] ? (srcKey || 'generic') : 'custom';
+            }
         }
         if (customAgentEl) customAgentEl.value = hook.custom_agent_id || '';
         if (agentTypeEl) agentTypeEl.value = hook.agent_type || 'react';
@@ -2847,6 +3662,22 @@
         if (eventNameEl) eventNameEl.value = cfg.event_name || '';
         if (titleTplEl) titleTplEl.value = cfg.title_template || '';
         if (descTplEl) descTplEl.value = cfg.description_template || '';
+        if (workflowNameTplEl) workflowNameTplEl.value = cfg.workflow_name_template || '';
+        if (workflowDescTplEl) workflowDescTplEl.value = cfg.workflow_description_template || '';
+        if (notifyEmailsEl) notifyEmailsEl.value = cfg.notify_emails || '';
+        if (notifySuccessEl) notifySuccessEl.checked = (cfg.notify_on_success !== false);
+        if (notifyFailureEl) notifyFailureEl.checked = (cfg.notify_on_failure !== false);
+        if (workflowScriptEl) {
+            workflowScriptEl.value = cfg.workflow_script ? JSON.stringify(cfg.workflow_script, null, 2) : '';
+        }
+        if (cfg.workflow_script && typeof cfg.workflow_script === 'object') {
+            loadWebhookWorkflowBuilder(cfg.workflow_script);
+        } else if ((hook.execution_mode || 'task') === 'workflow') {
+            resetWebhookWorkflowBuilder();
+        } else {
+            webhookWorkflowSteps = [];
+            renderWebhookWorkflowBuilder();
+        }
         if (verifyTplEl) verifyTplEl.value = cfg.verify_prompt || '';
         if (skillIdsEl && cfg.skill_ids && Array.isArray(cfg.skill_ids)) {
             Array.from(skillIdsEl.options).forEach(function (opt) {
@@ -2881,6 +3712,7 @@
         refreshMcpServers();
         initHubTabs();
         loadSkillOptions();
+        loadMcpPoolServers();
         loadCustomAgents();
         loadWebhookAgents();
         populateWebhookServers();
