@@ -9,7 +9,7 @@ import shutil
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
 from django.shortcuts import render, redirect
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
@@ -19,7 +19,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_GET
 from django.conf import settings
 from django.db import transaction
-from django.db.models import OuterRef, Subquery, Count
+from django.db.models import OuterRef, Subquery, Count, Q
 from django.urls import reverse
 from asgiref.sync import sync_to_async
 from dotenv import load_dotenv
@@ -37,7 +37,8 @@ from app.utils.disk_usage import get_disk_usage_report
 from app.agents.manager import get_agent_manager
 from core_ui.context_processors import user_can_feature, is_server_only_user
 from core_ui.decorators import require_feature, async_login_required, async_require_feature
-from core_ui.models import ChatSession, ChatMessage
+from core_ui.activity import log_user_activity
+from core_ui.models import ChatSession, ChatMessage, UserActivityLog
 from core_ui.middleware import get_template_name
 
 # Singleton instances
@@ -1003,6 +1004,23 @@ async def chat_api(request):
         user_id = await sync_to_async(
             lambda r: r.user.id if getattr(r.user, 'is_authenticated', False) else None
         )(request)
+        if user_id:
+            await sync_to_async(log_user_activity, thread_sensitive=True)(
+                user_id=user_id,
+                request=request,
+                category='assistant',
+                action='chat_request',
+                status=UserActivityLog.STATUS_SUCCESS,
+                description=user_message[:400],
+                entity_type='chat_session',
+                entity_id=str(chat_id or ''),
+                metadata={
+                    'model': model,
+                    'specific_model': specific_model or '',
+                    'use_rag': bool(use_rag),
+                    'workspace': workspace_param or '',
+                },
+            )
 
         # Загрузить сессию или подготовить создание новой (id отдадим в первом чанке)
         session = None
@@ -1454,8 +1472,26 @@ def api_clear_history(request):
         ChatSession.objects.filter(user=request.user).delete()
         orchestrator = asyncio.run(get_unified_orchestrator())
         orchestrator.clear_history()
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='assistant',
+            action='chat_history_clear',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description='Cleared chat history',
+            entity_type='chat',
+        )
         return JsonResponse({'success': True, 'message': 'History cleared'})
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='assistant',
+            action='chat_history_clear',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Failed to clear chat history: {e}',
+            entity_type='chat',
+        )
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -1593,8 +1629,30 @@ def api_settings(request):
                     user=request.user,
                     defaults={'delegate_ui': data['delegate_ui']},
                 )
+            changed_keys = sorted([k for k, v in data.items() if k in allowed and v is not None])
+            if 'delegate_ui' in data and data.get('delegate_ui') in ('chat', 'task_form'):
+                changed_keys.append('delegate_ui')
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='settings',
+                action='settings_update',
+                status=UserActivityLog.STATUS_SUCCESS,
+                description='Updated settings',
+                entity_type='settings',
+                metadata={'changed_keys': changed_keys},
+            )
             return JsonResponse({'success': True, 'message': 'Settings updated'})
         except Exception as e:
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='settings',
+                action='settings_update',
+                status=UserActivityLog.STATUS_ERROR,
+                description=f'Settings update failed: {e}',
+                entity_type='settings',
+            )
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -1625,6 +1683,157 @@ def api_settings_check(request):
     except Exception as e:
         logger.exception('api_settings_check error: %s', e)
         return JsonResponse({'configured': False, 'missing': ['gemini_key', 'grok_key']}, status=500)
+
+
+@login_required
+@require_feature('settings')
+@require_GET
+def api_settings_activity_logs(request):
+    """Activity log stream + aggregated stats for settings page."""
+    try:
+        try:
+            limit = int(request.GET.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        try:
+            offset = int(request.GET.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            days = int(request.GET.get('days', 14))
+        except (TypeError, ValueError):
+            days = 14
+
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+        days = max(1, min(days, 365))
+
+        user_id_raw = (request.GET.get('user_id') or '').strip()
+        category = (request.GET.get('category') or '').strip().lower()
+        action = (request.GET.get('action') or '').strip().lower()
+        status = (request.GET.get('status') or '').strip().lower()
+        search = (request.GET.get('search') or '').strip()
+
+        base_qs = UserActivityLog.objects.select_related('user')
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        filtered = base_qs.filter(created_at__gte=since)
+
+        if user_id_raw:
+            try:
+                filtered = filtered.filter(user_id=int(user_id_raw))
+            except (TypeError, ValueError):
+                return JsonResponse({'success': False, 'error': 'Invalid user_id'}, status=400)
+        if category and category != 'all':
+            filtered = filtered.filter(category=category)
+        if action and action != 'all':
+            filtered = filtered.filter(action=action)
+        if status and status != 'all':
+            filtered = filtered.filter(status=status)
+        if search:
+            filtered = filtered.filter(
+                Q(username_snapshot__icontains=search)
+                | Q(action__icontains=search)
+                | Q(category__icontains=search)
+                | Q(description__icontains=search)
+                | Q(entity_name__icontains=search)
+            )
+
+        total = filtered.count()
+        rows = list(filtered.order_by('-created_at')[offset: offset + limit])
+        events = []
+        for row in rows:
+            username = ''
+            if row.user_id and row.user:
+                username = row.user.username
+            elif row.username_snapshot:
+                username = row.username_snapshot
+            events.append(
+                {
+                    'id': row.id,
+                    'created_at': row.created_at.isoformat(),
+                    'user_id': row.user_id,
+                    'username': username or 'unknown',
+                    'category': row.category,
+                    'action': row.action,
+                    'status': row.status,
+                    'description': row.description,
+                    'entity_type': row.entity_type,
+                    'entity_id': row.entity_id,
+                    'entity_name': row.entity_name,
+                    'ip_address': row.ip_address or '',
+                    'user_agent': row.user_agent or '',
+                    'metadata': row.metadata or {},
+                }
+            )
+
+        summary = {
+            'total_events': total,
+            'total_users': filtered.exclude(user_id__isnull=True).values('user_id').distinct().count(),
+            'login_count': filtered.filter(action='login').count(),
+            'assistant_requests': filtered.filter(action__in=['chat_request', 'terminal_ai_request']).count(),
+            'server_connections': filtered.filter(action__in=['terminal_connect', 'rdp_connect']).count(),
+            'server_changes': filtered.filter(action__in=['server_create', 'server_update', 'server_delete', 'servers_bulk_update']).count(),
+        }
+
+        user_stats_rows = (
+            filtered.values('user_id', 'user__username', 'username_snapshot')
+            .annotate(
+                events_total=Count('id'),
+                logins=Count('id', filter=Q(action='login')),
+                ai_requests=Count('id', filter=Q(action__in=['chat_request', 'terminal_ai_request'])),
+                server_connections=Count('id', filter=Q(action__in=['terminal_connect', 'rdp_connect'])),
+                server_changes=Count('id', filter=Q(action__in=['server_create', 'server_update', 'server_delete', 'servers_bulk_update'])),
+            )
+            .order_by('-events_total')[:50]
+        )
+
+        user_stats = []
+        for row in user_stats_rows:
+            username = row.get('user__username') or row.get('username_snapshot') or 'unknown'
+            user_stats.append(
+                {
+                    'user_id': row.get('user_id'),
+                    'username': username,
+                    'events_total': row.get('events_total', 0),
+                    'logins': row.get('logins', 0),
+                    'ai_requests': row.get('ai_requests', 0),
+                    'server_connections': row.get('server_connections', 0),
+                    'server_changes': row.get('server_changes', 0),
+                }
+            )
+
+        users = list(
+            UserActivityLog.objects.exclude(user_id__isnull=True)
+            .values('user_id', 'user__username')
+            .distinct()
+            .order_by('user__username')[:500]
+        )
+        user_options = [
+            {
+                'id': u.get('user_id'),
+                'username': u.get('user__username') or 'unknown',
+            }
+            for u in users
+        ]
+
+        return JsonResponse(
+            {
+                'success': True,
+                'events': events,
+                'summary': summary,
+                'user_stats': user_stats,
+                'users': user_options,
+                'paging': {
+                    'limit': limit,
+                    'offset': offset,
+                    'total': total,
+                    'has_more': (offset + limit) < total,
+                },
+            }
+        )
+    except Exception as e:
+        logger.exception('api_settings_activity_logs error: %s', e)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @login_required

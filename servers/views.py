@@ -26,6 +26,8 @@ from .models import (
 )
 from app.tools.ssh_tools import ssh_manager
 from passwords.encryption import PasswordEncryption
+from core_ui.activity import log_user_activity
+from core_ui.models import UserActivityLog
 from core_ui.decorators import require_feature
 from core_ui.middleware import get_template_name
 
@@ -257,6 +259,18 @@ def group_create(request):
     if tag_ids:
         group.tags.set(ServerGroupTag.objects.filter(id__in=tag_ids, user=request.user))
 
+    log_user_activity(
+        user=request.user,
+        request=request,
+        category='servers',
+        action='group_create',
+        status=UserActivityLog.STATUS_SUCCESS,
+        description=f'Created server group "{group.name}"',
+        entity_type='server_group',
+        entity_id=group.id,
+        entity_name=group.name,
+    )
+
     return JsonResponse({"success": True, "group_id": group.id})
 
 
@@ -279,6 +293,18 @@ def group_update(request, group_id):
     if "tag_ids" in data:
         group.tags.set(ServerGroupTag.objects.filter(id__in=data.get("tag_ids", []), user=request.user))
 
+    log_user_activity(
+        user=request.user,
+        request=request,
+        category='servers',
+        action='group_update',
+        status=UserActivityLog.STATUS_SUCCESS,
+        description=f'Updated server group "{group.name}"',
+        entity_type='server_group',
+        entity_id=group.id,
+        entity_name=group.name,
+    )
+
     return JsonResponse({"success": True})
 
 
@@ -290,7 +316,19 @@ def group_delete(request, group_id):
     group = get_object_or_404(ServerGroup, id=group_id)
     if _get_group_role(group, request.user) != "owner":
         return JsonResponse({"error": "Only owner can delete group"}, status=403)
+    group_name = group.name
     group.delete()
+    log_user_activity(
+        user=request.user,
+        request=request,
+        category='servers',
+        action='group_delete',
+        status=UserActivityLog.STATUS_SUCCESS,
+        description=f'Deleted server group "{group_name}"',
+        entity_type='server_group',
+        entity_id=group_id,
+        entity_name=group_name,
+    )
     return JsonResponse({"success": True})
 
 
@@ -375,7 +413,23 @@ def bulk_update_servers(request):
     if "is_active" in data:
         updates["is_active"] = bool(data.get("is_active"))
 
-    Server.objects.filter(user=request.user, id__in=server_ids).update(**updates)
+    updated_count = Server.objects.filter(user=request.user, id__in=server_ids).update(**updates)
+    if updated_count:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='servers_bulk_update',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description=f'Bulk updated {updated_count} servers',
+            entity_type='server',
+            entity_name='bulk',
+            metadata={
+                'server_ids': server_ids[:200],
+                'updated_fields': sorted(list(updates.keys())),
+                'updated_count': updated_count,
+            },
+        )
     return JsonResponse({"success": True})
 
 
@@ -449,6 +503,24 @@ def server_create(request):
         elif password and not master_password:
             return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
         
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_create',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description=f'Created server "{server.name}"',
+            entity_type='server',
+            entity_id=server.id,
+            entity_name=server.name,
+            metadata={
+                'host': server.host,
+                'port': server.port,
+                'server_type': server.server_type,
+                'group_id': server.group_id,
+            },
+        )
+
         return JsonResponse({
             'success': True,
             'server_id': server.id,
@@ -456,6 +528,15 @@ def server_create(request):
         })
         
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_create',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Server create failed: {e}',
+            entity_type='server',
+        )
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -547,7 +628,20 @@ def server_update(request, server_id):
             elif password and not master_password:
                 return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
         
+        changed_fields = sorted(list(data.keys()))
         server.save()
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_update',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description=f'Updated server "{server.name}"',
+            entity_type='server',
+            entity_id=server.id,
+            entity_name=server.name,
+            metadata={'changed_fields': changed_fields},
+        )
         
         return JsonResponse({
             'success': True,
@@ -562,6 +656,16 @@ def server_update(request, server_id):
         })
         
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_update',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Server update failed: {e}',
+            entity_type='server',
+            entity_id=server_id,
+        )
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -602,10 +706,45 @@ def server_test_connection(request, server_id):
         if result['success']:
             server.last_connected = timezone.now()
             server.save(update_fields=['last_connected'])
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='servers',
+                action='server_test_connection',
+                status=UserActivityLog.STATUS_SUCCESS,
+                description=f'Server connection test succeeded for "{server.name}"',
+                entity_type='server',
+                entity_id=server.id,
+                entity_name=server.name,
+                metadata={'host': server.host, 'port': server.port},
+            )
+        else:
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='servers',
+                action='server_test_connection',
+                status=UserActivityLog.STATUS_ERROR,
+                description=f'Server connection test failed for "{server.name}": {result.get("error", "unknown error")}',
+                entity_type='server',
+                entity_id=server.id,
+                entity_name=server.name,
+                metadata={'host': server.host, 'port': server.port},
+            )
         
         return JsonResponse(result)
         
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_test_connection',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Server connection test failed: {e}',
+            entity_type='server',
+            entity_id=server_id,
+        )
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -665,9 +804,50 @@ def server_execute_command(request, server_id):
                 return {'success': False, 'error': str(e)}
         
         result = async_to_sync(exec_cmd)()
+        if result.get('success'):
+            output = result.get('output') or {}
+            command_preview = command if len(command) <= 400 else command[:397] + '...'
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='servers',
+                action='server_command_execute',
+                status=UserActivityLog.STATUS_SUCCESS,
+                description=f'Executed command on "{server.name}": {command_preview}',
+                entity_type='server',
+                entity_id=server.id,
+                entity_name=server.name,
+                metadata={
+                    'command': command_preview,
+                    'exit_code': output.get('exit_code'),
+                },
+            )
+        else:
+            log_user_activity(
+                user=request.user,
+                request=request,
+                category='servers',
+                action='server_command_execute',
+                status=UserActivityLog.STATUS_ERROR,
+                description=f'Command execution failed on "{server.name}": {result.get("error", "unknown error")}',
+                entity_type='server',
+                entity_id=server.id,
+                entity_name=server.name,
+                metadata={'command': command[:400]},
+            )
         return JsonResponse(result)
 
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_command_execute',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Command execution failed: {e}',
+            entity_type='server',
+            entity_id=server_id,
+        )
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -679,9 +859,31 @@ def server_delete(request, server_id):
     """Delete a server"""
     try:
         server = get_object_or_404(Server, id=server_id, user=request.user)
+        server_name = server.name
         server.delete()
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_delete',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description=f'Deleted server "{server_name}"',
+            entity_type='server',
+            entity_id=server_id,
+            entity_name=server_name,
+        )
         return JsonResponse({'success': True, 'message': 'Server deleted'})
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_delete',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Server delete failed: {e}',
+            entity_type='server',
+            entity_id=server_id,
+        )
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -760,6 +962,25 @@ def server_share_create(request, server_id):
             },
         )
 
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_share_create',
+            status=UserActivityLog.STATUS_SUCCESS,
+            description=f'Shared server "{server.name}" with user "{target_user.username}"',
+            entity_type='server_share',
+            entity_id=share.id,
+            entity_name=server.name,
+            metadata={
+                'server_id': server.id,
+                'shared_with_user_id': target_user.id,
+                'shared_with_username': target_user.username,
+                'share_context': bool(share_context),
+                'expires_at': share.expires_at.isoformat() if share.expires_at else None,
+            },
+        )
+
         return JsonResponse(
             {
                 "success": True,
@@ -776,6 +997,16 @@ def server_share_create(request, server_id):
             }
         )
     except Exception as e:
+        log_user_activity(
+            user=request.user,
+            request=request,
+            category='servers',
+            action='server_share_create',
+            status=UserActivityLog.STATUS_ERROR,
+            description=f'Server share create failed: {e}',
+            entity_type='server',
+            entity_id=server_id,
+        )
         return JsonResponse({"error": str(e)}, status=500)
 
 
@@ -791,6 +1022,22 @@ def server_share_revoke(request, server_id, share_id):
         share.is_revoked = True
         share.revoked_at = timezone.now()
         share.save(update_fields=["is_revoked", "revoked_at", "updated_at"])
+    log_user_activity(
+        user=request.user,
+        request=request,
+        category='servers',
+        action='server_share_revoke',
+        status=UserActivityLog.STATUS_SUCCESS,
+        description=f'Revoked server share for "{server.name}"',
+        entity_type='server_share',
+        entity_id=share.id,
+        entity_name=server.name,
+        metadata={
+            'server_id': server.id,
+            'shared_user_id': share.user_id,
+            'shared_username': share.user.username,
+        },
+    )
     return JsonResponse({"success": True})
 
 

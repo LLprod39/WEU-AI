@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserAppPermission
+from .models import UserAppPermission, UserActivityLog
 
 
 @admin.register(UserAppPermission)
@@ -9,3 +9,12 @@ class UserAppPermissionAdmin(admin.ModelAdmin):
     search_fields = ['user__username', 'user__email']
     ordering = ['user', 'feature']
     list_editable = ['allowed']
+
+
+@admin.register(UserActivityLog)
+class UserActivityLogAdmin(admin.ModelAdmin):
+    list_display = ['created_at', 'username_snapshot', 'category', 'action', 'status', 'entity_name', 'ip_address']
+    list_filter = ['category', 'action', 'status', 'created_at']
+    search_fields = ['username_snapshot', 'description', 'entity_name', 'entity_id', 'action']
+    ordering = ['-created_at']
+    readonly_fields = ['created_at']

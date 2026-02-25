@@ -61,6 +61,7 @@ urlpatterns = [
     # Settings API
     path('api/settings/', views.api_settings, name='api_settings'),
     path('api/settings/check/', views.api_settings_check, name='api_settings_check'),
+    path('api/settings/activity/', views.api_settings_activity_logs, name='api_settings_activity_logs'),
     path('api/disk/', views.api_disk_usage, name='api_disk_usage'),
     path('api/clear-history/', views.api_clear_history, name='api_clear_history'),
 

@@ -15,6 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 from loguru import logger
 
+from core_ui.activity import log_user_activity_async
 from passwords.encryption import PasswordEncryption
 from servers.guacd_tunnel import _parse_guac_instruction, connect_guacd_rdp
 from servers.models import Server
@@ -179,9 +180,33 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
                 "RDP guacd handshake success: server_id={} host={} port={} user={} domain={}",
                 self.server_id, self.server.host, port, self.server.username, domain or "",
             )
+            await log_user_activity_async(
+                user_id=getattr(self.user, "id", None),
+                category='servers',
+                action='rdp_connect',
+                status='success',
+                description=f'Connected to RDP server "{self.server.name}"',
+                entity_type='server',
+                entity_id=self.server.id if self.server else '',
+                entity_name=self.server.name if self.server else '',
+                metadata={
+                    'host': self.server.host if self.server else '',
+                    'port': port,
+                },
+            )
         except Exception as e:
             err_msg = str(e) or "Unknown error"
             logger.exception("RDP guacd handshake failed (server_id={}): {}", self.server_id, err_msg)
+            await log_user_activity_async(
+                user_id=getattr(self.user, "id", None),
+                category='servers',
+                action='rdp_connect',
+                status='error',
+                description=f'RDP connect failed: {err_msg}',
+                entity_type='server',
+                entity_id=self.server.id if self.server else '',
+                entity_name=self.server.name if self.server else '',
+            )
             await self._send_ws_error(err_msg, "guacd_failed")
             await self.close(code=4500)
             return
@@ -273,6 +298,7 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         logger.info("RDP WS disconnected: server_id={} close_code={}", self.server_id, close_code)
+        was_connected = bool(self.guacd_writer or self.guacd_reader)
         self._client_disconnected = True
         if self._pipe_task and not self._pipe_task.done():
             self._pipe_task.cancel()
@@ -280,3 +306,14 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
                 await self._pipe_task
         self._pipe_task = None
         await self._close_guacd()
+        if was_connected and self.server:
+            await log_user_activity_async(
+                user_id=getattr(self.user, "id", None),
+                category='servers',
+                action='rdp_disconnect',
+                status='info',
+                description=f'Disconnected from RDP server "{self.server.name}"',
+                entity_type='server',
+                entity_id=self.server.id,
+                entity_name=self.server.name,
+            )

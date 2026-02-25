@@ -21,6 +21,7 @@ from django.utils import timezone
 from loguru import logger
 
 from app.tools.safety import is_dangerous_command
+from core_ui.activity import log_user_activity_async
 from core_ui.context_processors import user_can_feature
 from passwords.encryption import PasswordEncryption
 from servers.models import Server, ServerShare
@@ -368,6 +369,21 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         self._ssh_proc.stdin.write(exports + "\n")
 
                 await self.send_json({"type": "status", "status": "connected"})
+                await log_user_activity_async(
+                    user_id=self._user_id,
+                    category='servers',
+                    action='terminal_connect',
+                    status='success',
+                    description=f'Connected to server terminal "{self.server.name}"',
+                    entity_type='server',
+                    entity_id=self.server.id,
+                    entity_name=self.server.name,
+                    metadata={
+                        'host': self.server.host,
+                        'port': self.server.port,
+                        'auth_method': self.server.auth_method,
+                    },
+                )
 
                 self._stdout_task = asyncio.create_task(self._stream_reader(self._ssh_proc.stdout, "stdout"))
                 self._stderr_task = asyncio.create_task(self._stream_reader(self._ssh_proc.stderr, "stderr"))
@@ -375,6 +391,16 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
             except Exception as e:
                 logger.exception("SSH terminal connect failed")
+                await log_user_activity_async(
+                    user_id=self._user_id,
+                    category='servers',
+                    action='terminal_connect',
+                    status='error',
+                    description=f'SSH terminal connect failed: {e}',
+                    entity_type='server',
+                    entity_id=self.server.id if self.server else '',
+                    entity_name=self.server.name if self.server else '',
+                )
                 await self.send_json({"type": "error", "message": f"SSH connect failed: {e}"})
                 await self.send_json({"type": "status", "status": "disconnected"})
                 await self._disconnect_ssh()
@@ -514,6 +540,19 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
 
         # Save user message to history
         self._add_to_history("user", msg)
+        await log_user_activity_async(
+            user_id=self._user_id,
+            category='assistant',
+            action='terminal_ai_request',
+            status='success',
+            description=msg[:400],
+            entity_type='server',
+            entity_id=self.server.id if self.server else '',
+            entity_name=self.server.name if self.server else '',
+            metadata={
+                'message_length': len(msg),
+            },
+        )
         await self._send_ai_event({"type": "ai_status", "status": "thinking"})
 
         try:
@@ -1432,6 +1471,8 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         return False
 
     async def _disconnect_ssh(self):
+        was_connected = bool(self._ssh_conn or self._ssh_proc)
+
         # Cancel streaming tasks first to avoid sending on closed socket
         await self._cancel_ai()
         current = asyncio.current_task()
@@ -1471,6 +1512,18 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
             except Exception:
                 # Socket already closed
                 pass
+
+        if was_connected and self.server and self._user_id:
+            await log_user_activity_async(
+                user_id=self._user_id,
+                category='servers',
+                action='terminal_disconnect',
+                status='info',
+                description=f'Disconnected from server terminal "{self.server.name}"',
+                entity_type='server',
+                entity_id=self.server.id,
+                entity_name=self.server.name,
+            )
 
     async def _stream_reader(self, reader: asyncssh.SSHReader[str], stream: str):
         try:

@@ -104,6 +104,12 @@
                                 <span>Сессия и история</span>
                                 <span class="material-icons-round text-base text-gray-500">history</span>
                             </a>
+                            {% if user_can_settings %}
+                            <a href="#settings-activity" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+                                <span>Логи активности</span>
+                                <span class="material-icons-round text-base text-gray-500">fact_check</span>
+                            </a>
+                            {% endif %}
                             <a href="#settings-about" data-settings-nav class="settings-nav-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
                                 <span>О системе</span>
                                 <span class="material-icons-round text-base text-gray-500">info</span>
@@ -607,6 +613,139 @@
                     Clear chat history
                 </button>
             </div>
+
+            {% if user_can_settings %}
+            <div class="glass-card rounded-xl p-6" id="settings-activity">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                            <span class="material-icons-round text-cyan-400">fact_check</span>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Логи активности пользователей</h2>
+                            <p class="text-sm text-gray-500">Кто, когда и что делал: входы, серверы, подключения, обращения к ИИ</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" id="btn-activity-refresh" class="btn-primary">
+                            <span class="material-icons-round text-lg">refresh</span>
+                            Обновить
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-5">
+                    <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div class="text-[11px] uppercase tracking-wider text-gray-500">Событий</div>
+                        <div class="text-xl font-semibold text-white" id="activity-stat-total">0</div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div class="text-[11px] uppercase tracking-wider text-gray-500">Входы</div>
+                        <div class="text-xl font-semibold text-white" id="activity-stat-logins">0</div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div class="text-[11px] uppercase tracking-wider text-gray-500">Запросы к ИИ</div>
+                        <div class="text-xl font-semibold text-white" id="activity-stat-ai">0</div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div class="text-[11px] uppercase tracking-wider text-gray-500">Подключения</div>
+                        <div class="text-xl font-semibold text-white" id="activity-stat-connects">0</div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div class="text-[11px] uppercase tracking-wider text-gray-500">Изменения серверов</div>
+                        <div class="text-xl font-semibold text-white" id="activity-stat-server-changes">0</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="activity-days">Период</label>
+                        <select id="activity-days" class="input-field w-full">
+                            <option value="1">24 часа</option>
+                            <option value="7">7 дней</option>
+                            <option value="14" selected>14 дней</option>
+                            <option value="30">30 дней</option>
+                            <option value="90">90 дней</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="activity-user-filter">Пользователь</label>
+                        <select id="activity-user-filter" class="input-field w-full">
+                            <option value="">Все пользователи</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="activity-action-filter">Событие</label>
+                        <select id="activity-action-filter" class="input-field w-full">
+                            <option value="all">Все события</option>
+                            <option value="login">Вход</option>
+                            <option value="server_create">Создание сервера</option>
+                            <option value="server_update">Обновление сервера</option>
+                            <option value="server_delete">Удаление сервера</option>
+                            <option value="terminal_connect">Подключение к терминалу</option>
+                            <option value="terminal_disconnect">Отключение от терминала</option>
+                            <option value="rdp_connect">Подключение к RDP</option>
+                            <option value="rdp_disconnect">Отключение от RDP</option>
+                            <option value="chat_request">Чат ИИ</option>
+                            <option value="terminal_ai_request">ИИ в терминале</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2" for="activity-search">Поиск</label>
+                        <input id="activity-search" type="text" class="input-field w-full" placeholder="Пользователь, сервер, действие…">
+                    </div>
+                </div>
+
+                <div id="activity-loading" class="hidden py-4 text-center text-gray-400">
+                    <span class="material-icons-round animate-pulse text-3xl">hourglass_empty</span>
+                    <p class="mt-2 text-sm">Загрузка логов…</p>
+                </div>
+                <div id="activity-error" class="hidden py-3 px-4 rounded-xl bg-red-500/10 text-red-400 text-sm mb-4"></div>
+
+                <div class="overflow-x-auto rounded-xl border border-white/10">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-white/10 text-left text-gray-400">
+                                <th class="py-3 px-3 font-medium">Время</th>
+                                <th class="py-3 px-3 font-medium">Пользователь</th>
+                                <th class="py-3 px-3 font-medium">Действие</th>
+                                <th class="py-3 px-3 font-medium">Объект</th>
+                                <th class="py-3 px-3 font-medium">Детали</th>
+                                <th class="py-3 px-3 font-medium">IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-logs-tbody">
+                            <tr>
+                                <td colspan="6" class="py-4 px-3 text-center text-gray-500">Нет данных</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-5">
+                    <h3 class="text-sm font-semibold text-white mb-2">Активность по пользователям</h3>
+                    <div class="overflow-x-auto rounded-xl border border-white/10">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-white/10 text-left text-gray-400">
+                                    <th class="py-3 px-3 font-medium">Пользователь</th>
+                                    <th class="py-3 px-3 font-medium">Событий</th>
+                                    <th class="py-3 px-3 font-medium">Входы</th>
+                                    <th class="py-3 px-3 font-medium">Запросы к ИИ</th>
+                                    <th class="py-3 px-3 font-medium">Подключения</th>
+                                    <th class="py-3 px-3 font-medium">Изменения серверов</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-users-tbody">
+                                <tr>
+                                    <td colspan="6" class="py-4 px-3 text-center text-gray-500">Нет данных</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Место на диске (только для пользователей с доступом к настройкам; API /api/disk/ защищён login_required + require_feature('settings')) -->
             {% if user_can_settings %}
@@ -1302,6 +1441,143 @@
         }
     }
 
+    var activitySearchTimer = null;
+
+    function formatActivityDateTime(value) {
+        if (!value) return '—';
+        try {
+            var dt = new Date(value);
+            if (isNaN(dt.getTime())) return String(value);
+            return dt.toLocaleString();
+        } catch (e) {
+            return String(value);
+        }
+    }
+
+    function setActivitySummary(summary) {
+        summary = summary || {};
+        var setText = function(id, value) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = String(value || 0);
+        };
+        setText('activity-stat-total', summary.total_events || 0);
+        setText('activity-stat-logins', summary.login_count || 0);
+        setText('activity-stat-ai', summary.assistant_requests || 0);
+        setText('activity-stat-connects', summary.server_connections || 0);
+        setText('activity-stat-server-changes', summary.server_changes || 0);
+    }
+
+    function renderActivityEvents(events) {
+        var tbody = document.getElementById('activity-logs-tbody');
+        if (!tbody) return;
+        events = events || [];
+        if (!events.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-4 px-3 text-center text-gray-500">События не найдены</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        events.forEach(function(ev) {
+            var tr = document.createElement('tr');
+            tr.className = 'border-b border-white/5 hover:bg-white/5 align-top';
+            var statusColor = 'text-gray-300';
+            if (ev.status === 'success') statusColor = 'text-emerald-400';
+            if (ev.status === 'error') statusColor = 'text-red-400';
+            var entity = ev.entity_name || ev.entity_type || '';
+            if (!entity && ev.entity_id) entity = '#' + ev.entity_id;
+            var details = ev.description || '';
+            if (details.length > 140) details = details.slice(0, 137) + '...';
+            tr.innerHTML =
+                '<td class="py-3 px-3 text-gray-300 whitespace-nowrap">' + formatActivityDateTime(ev.created_at) + '</td>' +
+                '<td class="py-3 px-3 text-white">' + (ev.username || 'unknown') + '</td>' +
+                '<td class="py-3 px-3"><span class="' + statusColor + '">' + (ev.action || '—') + '</span></td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (entity || '—') + '</td>' +
+                '<td class="py-3 px-3 text-gray-400">' + (details || '—') + '</td>' +
+                '<td class="py-3 px-3 text-gray-500">' + (ev.ip_address || '—') + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderActivityUserStats(rows) {
+        var tbody = document.getElementById('activity-users-tbody');
+        if (!tbody) return;
+        rows = rows || [];
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-4 px-3 text-center text-gray-500">Нет активности</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        rows.forEach(function(row) {
+            var tr = document.createElement('tr');
+            tr.className = 'border-b border-white/5 hover:bg-white/5';
+            tr.innerHTML =
+                '<td class="py-3 px-3 text-white">' + (row.username || 'unknown') + '</td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (row.events_total || 0) + '</td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (row.logins || 0) + '</td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (row.ai_requests || 0) + '</td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (row.server_connections || 0) + '</td>' +
+                '<td class="py-3 px-3 text-gray-300">' + (row.server_changes || 0) + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    function fillActivityUsers(users) {
+        var sel = document.getElementById('activity-user-filter');
+        if (!sel) return;
+        var current = sel.value || '';
+        sel.innerHTML = '<option value="">Все пользователи</option>';
+        (users || []).forEach(function(u) {
+            var opt = document.createElement('option');
+            opt.value = String(u.id || '');
+            opt.textContent = u.username || ('user #' + String(u.id || ''));
+            sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+    }
+
+    var loadActivityLogs = async function() {
+        var block = document.getElementById('settings-activity');
+        if (!block) return;
+        var loading = document.getElementById('activity-loading');
+        var errorEl = document.getElementById('activity-error');
+        var btnRefresh = document.getElementById('btn-activity-refresh');
+        var days = (document.getElementById('activity-days') && document.getElementById('activity-days').value) || '14';
+        var userId = (document.getElementById('activity-user-filter') && document.getElementById('activity-user-filter').value) || '';
+        var action = (document.getElementById('activity-action-filter') && document.getElementById('activity-action-filter').value) || 'all';
+        var search = (document.getElementById('activity-search') && document.getElementById('activity-search').value.trim()) || '';
+
+        if (loading) loading.classList.remove('hidden');
+        if (errorEl) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
+        if (btnRefresh) { btnRefresh.disabled = true; btnRefresh.classList.add('btn-loading'); }
+        try {
+            var params = new URLSearchParams();
+            params.set('limit', '100');
+            params.set('days', String(days));
+            if (userId) params.set('user_id', String(userId));
+            if (action && action !== 'all') params.set('action', action);
+            if (search) params.set('search', search);
+
+            var r = await fetch('/api/settings/activity/?' + params.toString(), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            var data = await r.json();
+            if (!r.ok || !data.success) {
+                throw new Error((data && data.error) || ('HTTP ' + r.status));
+            }
+            setActivitySummary(data.summary || {});
+            renderActivityEvents(data.events || []);
+            renderActivityUserStats(data.user_stats || []);
+            fillActivityUsers(data.users || []);
+        } catch (e) {
+            if (errorEl) {
+                errorEl.textContent = 'Ошибка загрузки логов: ' + (e.message || String(e));
+                errorEl.classList.remove('hidden');
+            }
+        } finally {
+            if (loading) loading.classList.add('hidden');
+            if (btnRefresh) { btnRefresh.disabled = false; btnRefresh.classList.remove('btn-loading'); }
+        }
+    };
+
     // Место на диске: запрос /api/disk/ и отображение таблицы (только для user_can_settings)
     var loadDiskUsage = async function() {
         var card = document.getElementById('disk-usage-card');
@@ -1383,6 +1659,24 @@
         // Кнопка «Обновить» для места на диске (блок виден только при user_can_settings)
         var btnDiskRefresh = document.getElementById('btn-disk-refresh');
         if (btnDiskRefresh) btnDiskRefresh.addEventListener('click', loadDiskUsage);
+
+        // Блок логов активности (виден только при user_can_settings)
+        var btnActivityRefresh = document.getElementById('btn-activity-refresh');
+        if (btnActivityRefresh) btnActivityRefresh.addEventListener('click', loadActivityLogs);
+        var activityDays = document.getElementById('activity-days');
+        if (activityDays) activityDays.addEventListener('change', loadActivityLogs);
+        var activityUserFilter = document.getElementById('activity-user-filter');
+        if (activityUserFilter) activityUserFilter.addEventListener('change', loadActivityLogs);
+        var activityActionFilter = document.getElementById('activity-action-filter');
+        if (activityActionFilter) activityActionFilter.addEventListener('change', loadActivityLogs);
+        var activitySearch = document.getElementById('activity-search');
+        if (activitySearch) {
+            activitySearch.addEventListener('input', function() {
+                if (activitySearchTimer) clearTimeout(activitySearchTimer);
+                activitySearchTimer = setTimeout(loadActivityLogs, 350);
+            });
+        }
+        if (document.getElementById('settings-activity')) loadActivityLogs();
     });
     var btnSave = document.getElementById('btn-save-models');
     if (btnSave) btnSave.addEventListener('click', saveSettings);
