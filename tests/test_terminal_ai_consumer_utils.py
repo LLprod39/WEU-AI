@@ -237,3 +237,54 @@ def test_ai_process_queue_step_limit_sends_soft_notice_not_error():
     payloads = [call.args[0] for call in c._send_ai_event.await_args_list if call.args]
     assert any(p.get("type") == "ai_response" and "защитный лимит" in str(p.get("assistant_text", "")) for p in payloads)
     assert not any(p.get("type") == "ai_error" for p in payloads)
+
+
+def test_sanitize_memory_line_redacts_sensitive_values():
+    raw = "db_password=SuperSecret123 token: abcdefghijklmnop"
+    clean = SSHTerminalConsumer._sanitize_memory_line(raw)
+    assert "SuperSecret123" not in clean
+    assert "abcdefghijklmnop" not in clean
+    assert "[REDACTED]" in clean
+
+
+def test_ai_process_queue_saves_memory_snapshot_after_report():
+    c = _consumer()
+    c._ai_lock = asyncio.Lock()
+    c._ssh_proc = object()
+    c.server = type("S", (), {"id": 11})()
+    c._user_id = 1
+    c._ai_execution_mode = "step"
+    c._ai_user_message = "check server and summarize"
+    c._ai_forbidden_patterns = []
+    c._ai_reply_futures = {}
+    c._ai_error_retries = {}
+    c._unavailable_cmds = set()
+    c._ai_next_id = 2
+    c._ai_step_extra_count = 0
+    c._ai_plan = [
+        {
+            "id": 1,
+            "cmd": "echo ok",
+            "why": "",
+            "requires_confirm": False,
+            "blocked": False,
+            "reason": "",
+            "status": "pending",
+            "streaming": False,
+        }
+    ]
+    c._ai_plan_index = 0
+    c._send_ai_event = AsyncMock()
+    c._ai_execute_command = AsyncMock(return_value=(0, "ok output"))
+    c._log_ai_command_history = AsyncMock()
+    c._ai_step_decide_next = AsyncMock(return_value={"action": "continue"})
+    c._ai_make_report = AsyncMock(return_value="report")
+    c._ai_extract_server_memory = AsyncMock(return_value={"summary": "profile updated", "facts": ["OS Ubuntu"], "issues": []})
+    c._save_ai_server_profile = AsyncMock(return_value={"saved": 1, "titles": ["Профиль сервера (авто)"]})
+
+    async_to_sync(c._ai_process_queue)()
+
+    c._ai_extract_server_memory.assert_awaited_once()
+    c._save_ai_server_profile.assert_awaited_once()
+    payloads = [call.args[0] for call in c._send_ai_event.await_args_list if call.args]
+    assert any(p.get("type") == "ai_response" and "Память сервера обновлена" in str(p.get("assistant_text", "")) for p in payloads)

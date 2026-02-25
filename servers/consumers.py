@@ -1257,6 +1257,40 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                         self._add_to_history("assistant", exec_summary)
                         self._add_to_history("assistant", f"[Отчёт]\n{report[:400]}")
 
+                    # Save concise server memory snapshot for future AI context.
+                    if done_with_output and self.server and self._user_id:
+                        try:
+                            memory_obj = await self._ai_extract_server_memory(
+                                user_message=user_msg,
+                                commands_with_output=done_with_output,
+                                report=report,
+                            )
+                            mem_summary = str(memory_obj.get("summary") or "").strip()
+                            mem_facts = memory_obj.get("facts") or []
+                            mem_issues = memory_obj.get("issues") or []
+                            if mem_summary or mem_facts or mem_issues:
+                                save_info = await self._save_ai_server_profile(
+                                    user_id=self._user_id,
+                                    server_id=self.server.id,
+                                    summary=mem_summary,
+                                    facts=mem_facts,
+                                    issues=mem_issues,
+                                )
+                                if int(save_info.get("saved") or 0) > 0:
+                                    short_msg = mem_summary or "Обновил профиль сервера и важные факты для следующих задач."
+                                    await self._send_ai_event(
+                                        {
+                                            "type": "ai_response",
+                                            "mode": "answer",
+                                            "assistant_text": f"🧠 Память сервера обновлена: {short_msg}",
+                                            "commands": [],
+                                            "execution_mode": str(getattr(self, "_ai_execution_mode", "step")),
+                                        }
+                                    )
+                                    self._add_to_history("assistant", f"[Память сервера] {short_msg[:300]}")
+                        except Exception as e:
+                            logger.warning("Server memory snapshot save failed: %s", e)
+
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -1779,6 +1813,183 @@ EXIT_CODE: {exit_code}
             if len(out) > 12000:
                 break
         return (out or "").strip()
+
+    @staticmethod
+    def _sanitize_memory_line(text: str) -> str:
+        line = str(text or "").replace("\n", " ").replace("\r", " ").strip()
+        if not line:
+            return ""
+        # Never persist obvious secrets in long-term server memory.
+        if re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", line, flags=re.IGNORECASE):
+            return ""
+        line = re.sub(
+            r"(?i)\b([a-z0-9_.-]*(?:password|passwd|token|secret|api[_-]?key|authorization)[a-z0-9_.-]*)\b\s*[:=]\s*([^\s,;]+)",
+            r"\1=[REDACTED]",
+            line,
+        )
+        line = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{10,}\b", "Bearer [REDACTED]", line)
+        line = re.sub(r"\s+", " ", line).strip(" -")
+        if len(line) > 260:
+            line = line[:257].rstrip() + "..."
+        return line
+
+    async def _ai_extract_server_memory(
+        self,
+        user_message: str,
+        commands_with_output: list[dict[str, Any]],
+        report: str = "",
+    ) -> dict[str, Any]:
+        """
+        Build concise, durable server context from current run:
+        key facts, important paths/services, and active issues.
+        """
+        from app.core.llm import LLMProvider
+
+        blocks: list[str] = []
+        for idx, row in enumerate((commands_with_output or [])[:8], 1):
+            cmd = str(row.get("cmd") or "").strip()
+            code = row.get("exit_code")
+            out = str(row.get("output") or "").strip()
+            blocks.append(
+                f"{idx}. CMD: {cmd}\nEXIT: {code}\nOUT:\n{out[:1200]}"
+            )
+        commands_block = "\n\n---\n\n".join(blocks) if blocks else "(нет данных)"
+        report_block = (report or "").strip()[:1800] or "(нет отчёта)"
+
+        prompt = f"""Ты формируешь долгосрочную память о сервере после выполненной задачи.
+Нужны только факты, которые помогут будущим задачам на этом сервере.
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ:
+{(user_message or '')[:300]}
+
+КРАТКИЙ ОТЧЁТ:
+{report_block}
+
+ВЫПОЛНЕННЫЕ КОМАНДЫ И ВЫВОД:
+{commands_block}
+
+Верни только JSON:
+{{
+  "summary": "1-2 коротких предложения, что важно запомнить",
+  "facts": [
+    "стабильный факт с конкретикой (версия, путь, сервис, порт, стек)"
+  ],
+  "issues": [
+    "актуальная проблема/риск с привязкой к факту"
+  ]
+}}
+
+Правила:
+- facts: максимум 8 пунктов, только подтверждённые по выводу.
+- issues: максимум 4 пункта.
+- Не добавляй секреты: пароли, токены, ключи.
+- Если данных мало, верни пустые списки, но summary оставь.
+"""
+
+        llm = LLMProvider()
+        out = ""
+        async for chunk in llm.stream_chat(prompt, model="auto"):
+            out += chunk
+            if len(out) > 7000:
+                break
+
+        try:
+            obj = self._extract_json_object(out)
+        except Exception as e:
+            logger.warning("_ai_extract_server_memory JSON parse failed: %s, output: %.200s", e, out)
+            return {"summary": "", "facts": [], "issues": []}
+
+        summary = self._sanitize_memory_line(str(obj.get("summary") or ""))
+
+        def _clean_list(raw: Any, limit: int) -> list[str]:
+            if not isinstance(raw, list):
+                return []
+            seen: set[str] = set()
+            cleaned: list[str] = []
+            for it in raw:
+                line = self._sanitize_memory_line(str(it or ""))
+                if not line:
+                    continue
+                key = line.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                cleaned.append(line)
+                if len(cleaned) >= limit:
+                    break
+            return cleaned
+
+        facts = _clean_list(obj.get("facts"), 8)
+        issues = _clean_list(obj.get("issues"), 4)
+        return {
+            "summary": summary,
+            "facts": facts,
+            "issues": issues,
+        }
+
+    @database_sync_to_async
+    def _save_ai_server_profile(
+        self,
+        user_id: int,
+        server_id: int,
+        summary: str,
+        facts: list[str],
+        issues: list[str],
+    ) -> dict[str, Any]:
+        from django.contrib.auth.models import User
+        from servers.knowledge_service import ServerKnowledgeService
+        from servers.models import Server
+
+        user = User.objects.filter(id=user_id).first()
+        server = Server.objects.filter(id=server_id).first()
+        if not server:
+            return {"saved": 0, "titles": []}
+
+        cleaned_summary = self._sanitize_memory_line(summary)
+        cleaned_facts = [self._sanitize_memory_line(x) for x in (facts or [])]
+        cleaned_facts = [x for x in cleaned_facts if x]
+        cleaned_issues = [self._sanitize_memory_line(x) for x in (issues or [])]
+        cleaned_issues = [x for x in cleaned_issues if x]
+
+        saved = 0
+        titles: list[str] = []
+        now_str = timezone.now().strftime("%Y-%m-%d %H:%M")
+
+        if cleaned_summary or cleaned_facts:
+            profile_parts = [f"Обновлено: {now_str}"]
+            if cleaned_summary:
+                profile_parts.append(f"Кратко: {cleaned_summary}")
+            if cleaned_facts:
+                profile_parts.append("Факты:")
+                profile_parts.extend([f"- {x}" for x in cleaned_facts[:10]])
+            profile_content = "\n".join(profile_parts)[:3500]
+            ServerKnowledgeService.save_ai_knowledge(
+                server=server,
+                title="Профиль сервера (авто)",
+                content=profile_content,
+                category="config",
+                user=user,
+                confidence=0.88,
+            )
+            saved += 1
+            titles.append("Профиль сервера (авто)")
+
+        if cleaned_issues:
+            issues_parts = [f"Обновлено: {now_str}", "Риски/замечания:"]
+            issues_parts.extend([f"- {x}" for x in cleaned_issues[:8]])
+            issues_content = "\n".join(issues_parts)[:2500]
+            ServerKnowledgeService.save_ai_knowledge(
+                server=server,
+                title="Текущие риски (авто)",
+                content=issues_content,
+                category="issues",
+                user=user,
+                confidence=0.8,
+            )
+            saved += 1
+            titles.append("Текущие риски (авто)")
+
+        return {"saved": saved, "titles": titles}
 
     @staticmethod
     def _extract_json_object(text: str) -> dict[str, Any]:

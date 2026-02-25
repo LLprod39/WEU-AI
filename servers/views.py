@@ -19,6 +19,7 @@ from .models import (
     ServerGroup,
     ServerConnection,
     ServerCommandHistory,
+    ServerKnowledge,
     ServerGroupMember,
     ServerGroupTag,
     ServerGroupSubscription,
@@ -1188,3 +1189,133 @@ def server_get(request, server_id):
         'is_active': server.is_active,
         'network_config': server.network_config,
     })
+
+
+@login_required
+@require_feature('servers')
+@require_http_methods(["GET"])
+def server_knowledge_list(request, server_id):
+    """List AI/manual knowledge items for server edit modal."""
+    server = get_object_or_404(Server, id=server_id, user=request.user)
+    rows = (
+        ServerKnowledge.objects.filter(server=server)
+        .order_by("-updated_at")[:100]
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "items": [
+                {
+                    "id": k.id,
+                    "title": k.title,
+                    "content": k.content,
+                    "category": k.category,
+                    "category_label": k.get_category_display(),
+                    "source": k.source,
+                    "source_label": k.get_source_display(),
+                    "confidence": float(k.confidence or 0.0),
+                    "is_active": bool(k.is_active),
+                    "updated_at": k.updated_at.isoformat() if k.updated_at else None,
+                }
+                for k in rows
+            ],
+            "categories": [{"value": c[0], "label": c[1]} for c in ServerKnowledge.CATEGORY_CHOICES],
+        }
+    )
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_knowledge_create(request, server_id):
+    """Create knowledge entry in edit modal."""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user)
+        data = json.loads(request.body or "{}")
+        title = str(data.get("title") or "").strip()
+        content = str(data.get("content") or "").strip()
+        category = str(data.get("category") or "other").strip()
+        is_active = bool(data.get("is_active", True))
+
+        valid_categories = {x[0] for x in ServerKnowledge.CATEGORY_CHOICES}
+        if category not in valid_categories:
+            category = "other"
+        if not title:
+            return JsonResponse({"success": False, "error": "Title is required"}, status=400)
+        if not content:
+            return JsonResponse({"success": False, "error": "Content is required"}, status=400)
+
+        knowledge = ServerKnowledge.objects.create(
+            server=server,
+            category=category,
+            title=title[:200],
+            content=content[:8000],
+            source="manual",
+            confidence=1.0,
+            is_active=is_active,
+            created_by=request.user,
+        )
+        return JsonResponse({"success": True, "id": knowledge.id})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_knowledge_update(request, server_id, knowledge_id):
+    """Update title/content/category/flags for knowledge entry."""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user)
+        knowledge = get_object_or_404(ServerKnowledge, id=knowledge_id, server=server)
+        data = json.loads(request.body or "{}")
+
+        if "title" in data:
+            title = str(data.get("title") or "").strip()
+            if not title:
+                return JsonResponse({"success": False, "error": "Title is required"}, status=400)
+            knowledge.title = title[:200]
+
+        if "content" in data:
+            content = str(data.get("content") or "").strip()
+            if not content:
+                return JsonResponse({"success": False, "error": "Content is required"}, status=400)
+            knowledge.content = content[:8000]
+
+        if "category" in data:
+            category = str(data.get("category") or "").strip()
+            valid_categories = {x[0] for x in ServerKnowledge.CATEGORY_CHOICES}
+            if category in valid_categories:
+                knowledge.category = category
+
+        if "is_active" in data:
+            knowledge.is_active = bool(data.get("is_active"))
+
+        if "confidence" in data:
+            try:
+                c = float(data.get("confidence"))
+                knowledge.confidence = max(0.0, min(1.0, c))
+            except Exception:
+                pass
+
+        knowledge.save()
+        return JsonResponse({"success": True})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+@require_feature('servers')
+@require_http_methods(["POST"])
+def server_knowledge_delete(request, server_id, knowledge_id):
+    """Delete knowledge entry."""
+    try:
+        server = get_object_or_404(Server, id=server_id, user=request.user)
+        knowledge = get_object_or_404(ServerKnowledge, id=knowledge_id, server=server)
+        knowledge.delete()
+        return JsonResponse({"success": True})
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)

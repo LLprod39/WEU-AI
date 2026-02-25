@@ -956,6 +956,61 @@
 • Environment variables"
                               class="w-full bg-bg-base border border-white/10 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors font-mono text-xs resize-none"></textarea>
                 </div>
+
+                <!-- AI Memory (Server Knowledge) -->
+                <div class="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-4 lg:col-span-2">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="material-icons-round text-cyan-400 text-lg">psychology_alt</span>
+                            <span class="text-sm font-medium text-white">AI Memory (Server Knowledge)</span>
+                        </div>
+                        <button type="button" onclick="reloadServerKnowledge()"
+                                class="px-2.5 py-1.5 rounded-lg text-xs border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/15 transition-colors">
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-3">
+                        <div class="md:col-span-2">
+                            <label class="block text-[11px] text-gray-400 mb-1">Category</label>
+                            <select id="knowledge-new-category"
+                                    class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500/50 transition-colors">
+                                <option value="other">Другое</option>
+                                <option value="system">Система</option>
+                                <option value="services">Сервисы</option>
+                                <option value="network">Сеть</option>
+                                <option value="security">Безопасность</option>
+                                <option value="performance">Производительность</option>
+                                <option value="storage">Хранилище</option>
+                                <option value="packages">Пакеты/ПО</option>
+                                <option value="config">Конфигурация</option>
+                                <option value="issues">Известные проблемы</option>
+                                <option value="solutions">Решения</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-[11px] text-gray-400 mb-1">Title</label>
+                            <input type="text" id="knowledge-new-title" placeholder="Например: Nginx config path"
+                                   class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500/50 transition-colors">
+                        </div>
+                        <div class="md:col-span-6">
+                            <label class="block text-[11px] text-gray-400 mb-1">Content</label>
+                            <textarea id="knowledge-new-content" rows="3" placeholder="Короткий факт/заметка для будущих задач..."
+                                      class="w-full bg-bg-base border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500/50 transition-colors resize-none"></textarea>
+                        </div>
+                    </div>
+                    <div class="flex justify-end mb-3">
+                        <button type="button" onclick="createServerKnowledge()"
+                                class="px-3 py-2 rounded-lg text-xs bg-cyan-600 hover:bg-cyan-500 text-white transition-colors flex items-center gap-1.5">
+                            <span class="material-icons-round text-sm">add</span>
+                            Add Memory Item
+                        </button>
+                    </div>
+
+                    <div id="knowledge-list" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+                        <div class="text-xs text-gray-500">Open server to load memory...</div>
+                    </div>
+                </div>
             </div>
             </div>
             <div class="server-modal-footer flex justify-end gap-3">
@@ -1192,6 +1247,22 @@ function escHtml(value) {
 }
 
 const shareModalState = { serverId: null };
+const knowledgeModalState = {
+    serverId: null,
+    categories: [
+        { value: 'system', label: 'Система' },
+        { value: 'services', label: 'Сервисы' },
+        { value: 'network', label: 'Сеть' },
+        { value: 'security', label: 'Безопасность' },
+        { value: 'performance', label: 'Производительность' },
+        { value: 'storage', label: 'Хранилище' },
+        { value: 'packages', label: 'Пакеты/ПО' },
+        { value: 'config', label: 'Конфигурация' },
+        { value: 'issues', label: 'Известные проблемы' },
+        { value: 'solutions', label: 'Решения' },
+        { value: 'other', label: 'Другое' },
+    ],
+};
 
 // Group collapse
 function toggleGroup(groupId) {
@@ -1635,6 +1706,208 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+function getKnowledgeCategoryOptions(selectedValue) {
+    const selected = String(selectedValue || 'other');
+    return (knowledgeModalState.categories || []).map((c) => {
+        const isSel = c.value === selected ? 'selected' : '';
+        return `<option value="${escHtml(c.value)}" ${isSel}>${escHtml(c.label)}</option>`;
+    }).join('');
+}
+
+function formatKnowledgeDate(value) {
+    if (!value) return 'unknown';
+    try {
+        return new Date(value).toLocaleString();
+    } catch {
+        return String(value);
+    }
+}
+
+function renderKnowledgeList(items) {
+    const list = document.getElementById('knowledge-list');
+    if (!list) return;
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+        list.innerHTML = '<div class="text-xs text-gray-500 border border-white/10 rounded-lg px-3 py-2">No memory entries yet</div>';
+        return;
+    }
+    list.innerHTML = rows.map((k) => {
+        const kid = Number(k.id || 0);
+        const sourceBadge = k.source === 'ai_auto' || k.source === 'ai_task'
+            ? '<span class="px-2 py-0.5 rounded text-[10px] border border-violet-500/30 text-violet-300 bg-violet-500/15">AI</span>'
+            : '<span class="px-2 py-0.5 rounded text-[10px] border border-gray-500/30 text-gray-300 bg-gray-500/15">Manual</span>';
+        const activeBadge = k.is_active
+            ? '<span class="px-2 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-300 bg-emerald-500/15">active</span>'
+            : '<span class="px-2 py-0.5 rounded text-[10px] border border-amber-500/30 text-amber-300 bg-amber-500/15">inactive</span>';
+        return `
+            <div class="border border-white/10 rounded-lg p-3 bg-white/[0.02] space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    ${sourceBadge}
+                    ${activeBadge}
+                    <span class="text-[10px] text-gray-500">updated: ${escHtml(formatKnowledgeDate(k.updated_at))}</span>
+                    <span class="text-[10px] text-gray-500">confidence: ${escHtml((Number(k.confidence || 0)).toFixed(2))}</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
+                    <div class="md:col-span-2">
+                        <select id="knowledge-category-${kid}" class="w-full bg-bg-base border border-white/10 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:border-cyan-500/50 transition-colors">
+                            ${getKnowledgeCategoryOptions(k.category)}
+                        </select>
+                    </div>
+                    <div class="md:col-span-4">
+                        <input id="knowledge-title-${kid}" type="text" value="${escHtml(k.title || '')}" class="w-full bg-bg-base border border-white/10 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:border-cyan-500/50 transition-colors">
+                    </div>
+                    <div class="md:col-span-6">
+                        <textarea id="knowledge-content-${kid}" rows="3" class="w-full bg-bg-base border border-white/10 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:border-cyan-500/50 transition-colors resize-none">${escHtml(k.content || '')}</textarea>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-2 text-xs text-gray-300">
+                        <input type="checkbox" id="knowledge-active-${kid}" ${k.is_active ? 'checked' : ''}>
+                        Active
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="updateServerKnowledge(${kid})"
+                                class="px-2.5 py-1.5 rounded text-xs border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/15 transition-colors">
+                            Save
+                        </button>
+                        <button type="button" onclick="deleteServerKnowledge(${kid})"
+                                class="px-2.5 py-1.5 rounded text-xs border border-red-500/30 text-red-300 hover:bg-red-500/15 transition-colors">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadServerKnowledge(serverId) {
+    const list = document.getElementById('knowledge-list');
+    if (!list || !serverId) return;
+    list.innerHTML = '<div class="text-xs text-gray-500">Loading memory...</div>';
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/knowledge/', {
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            list.innerHTML = '<div class="text-xs text-red-400">' + escHtml(data.error || 'Failed to load memory') + '</div>';
+            return;
+        }
+        if (Array.isArray(data.categories) && data.categories.length) {
+            knowledgeModalState.categories = data.categories.map((x) => ({
+                value: String(x.value || ''),
+                label: String(x.label || x.value || ''),
+            }));
+        }
+        renderKnowledgeList(data.items || []);
+    } catch (e) {
+        console.error('Error loading server knowledge:', e);
+        list.innerHTML = '<div class="text-xs text-red-400">Failed to load memory</div>';
+    }
+}
+
+async function reloadServerKnowledge() {
+    if (!knowledgeModalState.serverId) return;
+    await loadServerKnowledge(knowledgeModalState.serverId);
+}
+
+async function createServerKnowledge() {
+    const serverId = knowledgeModalState.serverId;
+    if (!serverId) return;
+    const payload = {
+        category: document.getElementById('knowledge-new-category')?.value || 'other',
+        title: (document.getElementById('knowledge-new-title')?.value || '').trim(),
+        content: (document.getElementById('knowledge-new-content')?.value || '').trim(),
+        is_active: true,
+    };
+    if (!payload.title) {
+        alert('Title is required');
+        return;
+    }
+    if (!payload.content) {
+        alert('Content is required');
+        return;
+    }
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/knowledge/create/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'Failed to create memory item'));
+            return;
+        }
+        document.getElementById('knowledge-new-title').value = '';
+        document.getElementById('knowledge-new-content').value = '';
+        if (window.showToast) window.showToast('Memory item added', 'success');
+        await loadServerKnowledge(serverId);
+    } catch (e) {
+        console.error('Error creating memory item:', e);
+        alert('Error creating memory item');
+    }
+}
+
+async function updateServerKnowledge(knowledgeId) {
+    const serverId = knowledgeModalState.serverId;
+    if (!serverId || !knowledgeId) return;
+    const payload = {
+        category: document.getElementById('knowledge-category-' + knowledgeId)?.value || 'other',
+        title: (document.getElementById('knowledge-title-' + knowledgeId)?.value || '').trim(),
+        content: (document.getElementById('knowledge-content-' + knowledgeId)?.value || '').trim(),
+        is_active: !!document.getElementById('knowledge-active-' + knowledgeId)?.checked,
+    };
+    if (!payload.title) {
+        alert('Title is required');
+        return;
+    }
+    if (!payload.content) {
+        alert('Content is required');
+        return;
+    }
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/knowledge/' + knowledgeId + '/update/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'Failed to update memory item'));
+            return;
+        }
+        if (window.showToast) window.showToast('Memory item updated', 'success');
+        await loadServerKnowledge(serverId);
+    } catch (e) {
+        console.error('Error updating memory item:', e);
+        alert('Error updating memory item');
+    }
+}
+
+async function deleteServerKnowledge(knowledgeId) {
+    const serverId = knowledgeModalState.serverId;
+    if (!serverId || !knowledgeId) return;
+    if (!confirm('Delete this memory item?')) return;
+    try {
+        const resp = await fetch('/servers/api/' + serverId + '/knowledge/' + knowledgeId + '/delete/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'Failed to delete memory item'));
+            return;
+        }
+        if (window.showToast) window.showToast('Memory item deleted', 'success');
+        await loadServerKnowledge(serverId);
+    } catch (e) {
+        console.error('Error deleting memory item:', e);
+        alert('Error deleting memory item');
+    }
+}
+
 
 // ========== Edit Server Modal ==========
 function toggleEditAuthFields() {
@@ -1682,6 +1955,8 @@ async function openEditModal(serverId) {
         groupSel.value = s.group_id || '';
         toggleEditServerTypeFields();
         toggleEditAuthFields();
+        knowledgeModalState.serverId = s.id;
+        await loadServerKnowledge(s.id);
         document.getElementById('editServerModal').classList.remove('hidden');
     } catch(e) {
         console.error('Error loading server:', e);
@@ -1694,6 +1969,12 @@ function closeEditModal() {
     document.getElementById('editServerForm').reset();
     const authEl = document.getElementById('edit-server-auth-method');
     if (authEl) authEl.disabled = false;
+    knowledgeModalState.serverId = null;
+    const list = document.getElementById('knowledge-list');
+    if (list) list.innerHTML = '<div class="text-xs text-gray-500">Open server to load memory...</div>';
+    if (document.getElementById('knowledge-new-title')) document.getElementById('knowledge-new-title').value = '';
+    if (document.getElementById('knowledge-new-content')) document.getElementById('knowledge-new-content').value = '';
+    if (document.getElementById('knowledge-new-category')) document.getElementById('knowledge-new-category').value = 'other';
 }
 
 async function saveEditServer(e) {
