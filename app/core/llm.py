@@ -1,5 +1,6 @@
 import os
 import asyncio
+import time
 from google import genai
 from loguru import logger
 from typing import AsyncGenerator, Optional
@@ -8,6 +9,23 @@ from app.core.model_config import model_manager
 # Таймаут для стрима Gemini (сек), экспоненциальная задержка при retry
 GEMINI_STREAM_TIMEOUT = 90  # в диапазоне 60–120 сек
 RETRY_BACKOFF = [1, 2, 4]
+
+
+def _log_llm_usage(provider: str, model_name: str, input_text: str, output_text: str,
+                    duration_ms: int, status: str = 'success'):
+    """Log LLM API usage for monitoring. Never raises — errors are silently logged."""
+    try:
+        from core_ui.models import LLMUsageLog
+        LLMUsageLog.objects.create(
+            provider=provider,
+            model_name=model_name,
+            input_tokens=len(input_text) // 4,
+            output_tokens=len(output_text) // 4,
+            duration_ms=duration_ms,
+            status=status,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log LLM usage: {e}")
 
 
 def _is_retryable_error(e: Exception) -> bool:
@@ -163,7 +181,7 @@ class LLMProvider:
             if not model_manager.config.gemini_enabled:
                 yield "Error: Gemini API disabled. Enable in settings or use CLI agent (ralph/cursor/claude)."
                 return
-            
+
             if not self.gemini_client:
                 yield "Error: Gemini API Key not configured."
                 return
@@ -171,6 +189,7 @@ class LLMProvider:
             target_model = specific_model or model_manager.get_chat_model("gemini")
             logger.info(f"Using Gemini model: {target_model}")
             max_attempts = 3
+            _t0 = time.monotonic()
 
             for attempt in range(max_attempts):
                 try:
@@ -187,11 +206,17 @@ class LLMProvider:
                         return out
 
                     chunks = await asyncio.wait_for(consume(), timeout=GEMINI_STREAM_TIMEOUT)
+                    _output = ""
                     for c in chunks:
+                        _output += c
                         yield c
+                    _log_llm_usage("gemini", target_model, prompt, _output,
+                                   int((time.monotonic() - _t0) * 1000))
                     return
                 except asyncio.TimeoutError:
                     logger.error("Gemini stream timeout")
+                    _log_llm_usage("gemini", target_model, prompt, "",
+                                   int((time.monotonic() - _t0) * 1000), "timeout")
                     yield "Error: Timeout (Gemini stream)."
                     return
                 except Exception as e:
@@ -201,6 +226,8 @@ class LLMProvider:
                         await asyncio.sleep(delay)
                     else:
                         logger.error(f"Gemini Error: {e}")
+                        _log_llm_usage("gemini", target_model, prompt, "",
+                                       int((time.monotonic() - _t0) * 1000), "error")
                         yield f"Error calling Gemini: {str(e)}"
                         return
 
@@ -209,7 +236,7 @@ class LLMProvider:
             if not model_manager.config.grok_enabled:
                 yield "Error: Grok API disabled. Enable in settings or use CLI agent (ralph/cursor/claude)."
                 return
-            
+
             if not self.grok_api_key:
                 yield "Error: Grok API Key not configured."
                 return
@@ -234,12 +261,14 @@ class LLMProvider:
             # ClientTimeout(total=60) — уже используется для Grok
             timeout = aiohttp.ClientTimeout(total=60.0)
             max_attempts = 3
+            _t0 = time.monotonic()
 
             for attempt in range(max_attempts):
                 try:
                     async with aiohttp.ClientSession(timeout=timeout) as session:
                         async with session.post("https://api.x.ai/v1/chat/completions", headers=headers, json=data) as response:
                             if response.status == 200:
+                                _output = ""
                                 async for line_bytes in response.content:
                                     line = line_bytes.decode('utf-8').strip()
                                     if line.startswith("data: "):
@@ -250,9 +279,12 @@ class LLMProvider:
                                             chunk_json = json.loads(chunk_str)
                                             content = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
                                             if content:
+                                                _output += content
                                                 yield content
                                         except json.JSONDecodeError:
                                             continue
+                                _log_llm_usage("grok", grok_model, prompt, _output,
+                                               int((time.monotonic() - _t0) * 1000))
                                 return
                             error_text = await response.text()
                             is_retryable = response.status == 429 or (500 <= response.status < 600)
@@ -261,6 +293,8 @@ class LLMProvider:
                                 delay = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
                                 await asyncio.sleep(delay)
                             else:
+                                _log_llm_usage("grok", grok_model, prompt, "",
+                                               int((time.monotonic() - _t0) * 1000), "error")
                                 yield f"Error from Grok API: {response.status} - {error_text}"
                                 return
                 except Exception as e:
@@ -271,6 +305,8 @@ class LLMProvider:
                         await asyncio.sleep(delay)
                     else:
                         logger.error(f"Grok Error: {e}")
+                        _log_llm_usage("grok", grok_model, prompt, "",
+                                       int((time.monotonic() - _t0) * 1000), "error")
                         yield f"Error calling Grok: {str(e)}"
                         return
         
@@ -287,17 +323,22 @@ class LLMProvider:
             target_model = specific_model or model_manager.get_chat_model("claude")
             logger.info(f"Using Claude model: {target_model}")
             max_attempts = 3
+            _t0 = time.monotonic()
 
             for attempt in range(max_attempts):
                 try:
                     import anthropic as _anthropic_pkg
+                    _output = ""
                     async with client.messages.stream(
                         model=target_model,
                         max_tokens=8192,
                         messages=[{"role": "user", "content": prompt}],
                     ) as stream:
                         async for text in stream.text_stream:
+                            _output += text
                             yield text
+                    _log_llm_usage("claude", target_model, prompt, _output,
+                                   int((time.monotonic() - _t0) * 1000))
                     return
                 except Exception as e:
                     if _is_retryable_error(e) and attempt < max_attempts - 1:
@@ -306,6 +347,8 @@ class LLMProvider:
                         await asyncio.sleep(delay)
                     else:
                         logger.error(f"Claude Error: {e}")
+                        _log_llm_usage("claude", target_model, prompt, "",
+                                       int((time.monotonic() - _t0) * 1000), "error")
                         yield f"Error calling Claude: {str(e)}"
                         return
         
@@ -338,12 +381,14 @@ class LLMProvider:
             }
             timeout = aiohttp.ClientTimeout(total=90.0)
             max_attempts = 3
+            _t0 = time.monotonic()
 
             for attempt in range(max_attempts):
                 try:
                     async with aiohttp.ClientSession(timeout=timeout) as session:
                         async with session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data) as response:
                             if response.status == 200:
+                                _output = ""
                                 async for line_bytes in response.content:
                                     line = line_bytes.decode("utf-8").strip()
                                     if not line.startswith("data: "):
@@ -358,7 +403,10 @@ class LLMProvider:
 
                                     content = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
                                     if content:
+                                        _output += content
                                         yield content
+                                _log_llm_usage("openai", target_model, prompt, _output,
+                                               int((time.monotonic() - _t0) * 1000))
                                 return
 
                             error_text = await response.text()
@@ -368,6 +416,8 @@ class LLMProvider:
                                 delay = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
                                 await asyncio.sleep(delay)
                             else:
+                                _log_llm_usage("openai", target_model, prompt, "",
+                                               int((time.monotonic() - _t0) * 1000), "error")
                                 yield f"Error from OpenAI API: {response.status} - {error_text}"
                                 return
                 except Exception as e:
@@ -378,6 +428,8 @@ class LLMProvider:
                         await asyncio.sleep(delay)
                     else:
                         logger.error(f"OpenAI Error: {e}")
+                        _log_llm_usage("openai", target_model, prompt, "",
+                                       int((time.monotonic() - _t0) * 1000), "error")
                         yield f"Error calling OpenAI: {str(e)}"
                         return
 

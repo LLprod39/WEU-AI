@@ -29,6 +29,7 @@ urlpatterns = [
 
     # Dashboard API
     path('api/dashboard/stats/', views.api_dashboard_stats, name='api_dashboard_stats'),
+    path('api/admin/dashboard/', views.api_admin_dashboard, name='api_admin_dashboard'),
     path('settings/', views.settings_view, name='settings'),
     path('settings/projects/<int:pk>/', task_project_views.project_settings, name='settings_project'),
     path('settings/access/', views.settings_access_view, name='settings_access'),

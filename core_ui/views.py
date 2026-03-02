@@ -246,6 +246,9 @@ def dashboard_view(request):
     if is_server_only_user(request.user):
         return redirect('servers:server_list')
 
+    if request.user.is_staff:
+        return _admin_dashboard_view(request)
+
     from datetime import date, timedelta
     from django.utils import timezone as tz
     from servers.models import Server
@@ -405,6 +408,306 @@ def api_dashboard_stats(request):
         + failed_runs_count
     )
 
+    return JsonResponse({'success': True, 'data': data})
+
+
+def _admin_dashboard_view(request):
+    """Admin monitoring dashboard — staff only. Called from dashboard_view()."""
+    from datetime import date, timedelta
+    from django.utils import timezone as tz
+    from django.contrib.auth.models import User
+    from django.db.models import Count, Sum, Q
+    from django.db.models.functions import TruncHour
+    from servers.models import Server, ServerConnection
+    from tasks.models import Task
+    from agent_hub.models import AgentRun, AgentWorkflow
+    from core_ui.models import LLMUsageLog
+
+    now = tz.now()
+    today = date.today()
+    last_24h = now - timedelta(hours=24)
+    last_5min = now - timedelta(minutes=5)
+    last_7d = now - timedelta(days=7)
+
+    # Online users (active in last 5 min)
+    online_user_ids = list(
+        UserActivityLog.objects.filter(created_at__gte=last_5min)
+        .values_list('user_id', flat=True).distinct()
+    )
+    online_users_qs = User.objects.filter(id__in=online_user_ids)
+    online_users_list = []
+    for u in online_users_qs:
+        last_log = UserActivityLog.objects.filter(user=u).order_by('-created_at').first()
+        online_users_list.append({
+            'username': u.username,
+            'action': last_log.action if last_log else '',
+            'time': last_log.created_at.isoformat() if last_log else '',
+        })
+
+    # AI requests today
+    ai_requests_today = UserActivityLog.objects.filter(
+        action__in=['chat_request', 'terminal_ai_request', 'chat_message'],
+        created_at__date=today,
+    ).count()
+
+    # Active terminals
+    active_connections = ServerConnection.objects.filter(status='connected').select_related('server', 'user')
+    terminals_list = []
+    for conn in active_connections:
+        terminals_list.append({
+            'server': conn.server.name,
+            'user': conn.user.username if conn.user_id else 'unknown',
+            'connected_at': conn.connected_at.isoformat(),
+        })
+
+    # Agent stats
+    agents_running = AgentRun.objects.filter(status='running').count()
+    agents_today = AgentRun.objects.filter(created_at__date=today).count()
+    succeeded_24h = AgentRun.objects.filter(status='completed', created_at__gte=last_24h).count()
+    failed_24h = AgentRun.objects.filter(status='failed', created_at__gte=last_24h).count()
+    total_finished_24h = succeeded_24h + failed_24h
+    success_rate = round(succeeded_24h / total_finished_24h * 100) if total_finished_24h > 0 else 100
+
+    # LLM / API usage today
+    COST_PER_1K = {'gemini': 0.0005, 'grok': 0.005, 'claude': 0.003, 'openai': 0.002}
+    api_usage = {}
+    for provider in ('gemini', 'grok', 'claude', 'openai'):
+        qs = LLMUsageLog.objects.filter(provider=provider, created_at__date=today)
+        calls = qs.count()
+        agg = qs.aggregate(
+            inp=Sum('input_tokens'),
+            out=Sum('output_tokens'),
+        )
+        inp = agg['inp'] or 0
+        out = agg['out'] or 0
+        errors = qs.filter(status__in=['error', 'timeout']).count()
+        cost = round((inp + out) / 1000 * COST_PER_1K.get(provider, 0.001), 4)
+        api_usage[provider] = {
+            'calls': calls, 'input_tokens': inp, 'output_tokens': out,
+            'errors': errors, 'cost_usd': cost,
+        }
+    api_calls_today = sum(v['calls'] for v in api_usage.values())
+
+    # Provider status
+    providers = {
+        'gemini': {
+            'enabled': model_manager.config.gemini_enabled,
+            'model': model_manager.get_chat_model('gemini') if model_manager.config.gemini_enabled else '',
+        },
+        'grok': {
+            'enabled': model_manager.config.grok_enabled,
+            'model': model_manager.get_chat_model('grok') if model_manager.config.grok_enabled else '',
+        },
+        'claude': {
+            'enabled': model_manager.config.claude_enabled,
+            'model': model_manager.get_chat_model('claude') if model_manager.config.claude_enabled else '',
+        },
+        'openai': {
+            'enabled': model_manager.config.openai_enabled,
+            'model': model_manager.get_chat_model('openai') if model_manager.config.openai_enabled else '',
+        },
+    }
+
+    # Hourly activity (last 24h)
+    hourly_qs = (
+        UserActivityLog.objects.filter(created_at__gte=last_24h)
+        .annotate(hour=TruncHour('created_at'))
+        .values('hour')
+        .annotate(count=Count('id'))
+        .order_by('hour')
+    )
+    hourly_activity = [{'hour': h['hour'].isoformat(), 'count': h['count']} for h in hourly_qs]
+
+    # Top users (7 days)
+    top_users_qs = (
+        UserActivityLog.objects.filter(created_at__gte=last_7d, user__isnull=False)
+        .values('user__username')
+        .annotate(
+            total=Count('id'),
+            ai_requests=Count('id', filter=Q(action__in=['chat_request', 'terminal_ai_request', 'chat_message'])),
+            terminal_sessions=Count('id', filter=Q(category='terminal')),
+        )
+        .order_by('-total')[:10]
+    )
+    top_users = [
+        {
+            'username': u['user__username'],
+            'total': u['total'],
+            'ai_requests': u['ai_requests'],
+            'terminal_sessions': u['terminal_sessions'],
+        }
+        for u in top_users_qs
+    ]
+
+    # Recent activity
+    recent_activity_qs = UserActivityLog.objects.select_related('user').order_by('-created_at')[:20]
+    recent_activity = [
+        {
+            'user': log.username_snapshot or (log.user.username if log.user_id else 'system'),
+            'category': log.category,
+            'action': log.action,
+            'time': log.created_at.isoformat(),
+        }
+        for log in recent_activity_qs
+    ]
+
+    # System
+    servers_total = Server.objects.count()
+    servers_active = Server.objects.filter(is_active=True).count()
+    tasks_total = Task.objects.count()
+    tasks_in_progress = Task.objects.filter(status='IN_PROGRESS').count()
+    total_registered = User.objects.count()
+
+    context = {
+        'online_users': {'count': len(online_user_ids), 'total_registered': total_registered, 'users': online_users_list},
+        'ai': {'requests_today': ai_requests_today},
+        'terminals': {'active': active_connections.count(), 'connections': terminals_list},
+        'agents': {
+            'running': agents_running, 'today': agents_today,
+            'succeeded_24h': succeeded_24h, 'failed_24h': failed_24h,
+            'success_rate': success_rate,
+        },
+        'api_usage': api_usage,
+        'api_calls_today': api_calls_today,
+        'providers': providers,
+        'servers': {'total': servers_total, 'active': servers_active},
+        'tasks': {'total': tasks_total, 'in_progress': tasks_in_progress},
+        'hourly_activity': json.dumps(hourly_activity),
+        'top_users': top_users,
+        'recent_activity': recent_activity,
+        'app_version': getattr(settings, 'WEU_VERSION', '2.0.0'),
+    }
+    return render(request, 'admin_dashboard.html', context)
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_admin_dashboard(request):
+    """JSON API for admin dashboard auto-refresh. Staff only."""
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    from datetime import date, timedelta
+    from django.utils import timezone as tz
+    from django.contrib.auth.models import User
+    from django.db.models import Count, Sum, Q
+    from django.db.models.functions import TruncHour
+    from servers.models import Server, ServerConnection
+    from tasks.models import Task
+    from agent_hub.models import AgentRun
+    from core_ui.models import LLMUsageLog
+
+    now = tz.now()
+    today = date.today()
+    last_24h = now - timedelta(hours=24)
+    last_5min = now - timedelta(minutes=5)
+    last_7d = now - timedelta(days=7)
+
+    # Online users
+    online_user_ids = list(
+        UserActivityLog.objects.filter(created_at__gte=last_5min)
+        .values_list('user_id', flat=True).distinct()
+    )
+    online_users = []
+    for u in User.objects.filter(id__in=online_user_ids):
+        last_log = UserActivityLog.objects.filter(user=u).order_by('-created_at').first()
+        online_users.append({
+            'username': u.username,
+            'action': last_log.action if last_log else '',
+            'time': last_log.created_at.isoformat() if last_log else '',
+        })
+
+    # AI requests
+    ai_requests_today = UserActivityLog.objects.filter(
+        action__in=['chat_request', 'terminal_ai_request', 'chat_message'],
+        created_at__date=today,
+    ).count()
+
+    # Terminals
+    active_conns = ServerConnection.objects.filter(status='connected').select_related('server', 'user')
+    terminals = [
+        {'server': c.server.name, 'user': c.user.username if c.user_id else 'unknown',
+         'connected_at': c.connected_at.isoformat()}
+        for c in active_conns
+    ]
+
+    # Agents
+    agents_running = AgentRun.objects.filter(status='running').count()
+    agents_today = AgentRun.objects.filter(created_at__date=today).count()
+    succeeded_24h = AgentRun.objects.filter(status='completed', created_at__gte=last_24h).count()
+    failed_24h = AgentRun.objects.filter(status='failed', created_at__gte=last_24h).count()
+    total_fin = succeeded_24h + failed_24h
+    success_rate = round(succeeded_24h / total_fin * 100) if total_fin > 0 else 100
+
+    # API usage
+    COST_PER_1K = {'gemini': 0.0005, 'grok': 0.005, 'claude': 0.003, 'openai': 0.002}
+    api_usage = {}
+    for prov in ('gemini', 'grok', 'claude', 'openai'):
+        qs = LLMUsageLog.objects.filter(provider=prov, created_at__date=today)
+        agg = qs.aggregate(inp=Sum('input_tokens'), out=Sum('output_tokens'))
+        inp, out = agg['inp'] or 0, agg['out'] or 0
+        api_usage[prov] = {
+            'calls': qs.count(), 'input_tokens': inp, 'output_tokens': out,
+            'errors': qs.filter(status__in=['error', 'timeout']).count(),
+            'cost_usd': round((inp + out) / 1000 * COST_PER_1K.get(prov, 0.001), 4),
+        }
+
+    # Providers
+    providers = {}
+    for prov in ('gemini', 'grok', 'claude', 'openai'):
+        enabled = getattr(model_manager.config, f'{prov}_enabled', False)
+        providers[prov] = {
+            'enabled': enabled,
+            'model': model_manager.get_chat_model(prov) if enabled else '',
+        }
+
+    # Hourly
+    hourly = list(
+        UserActivityLog.objects.filter(created_at__gte=last_24h)
+        .annotate(hour=TruncHour('created_at'))
+        .values('hour').annotate(count=Count('id')).order_by('hour')
+    )
+    hourly_activity = [{'hour': h['hour'].isoformat(), 'count': h['count']} for h in hourly]
+
+    # Top users
+    top_users = list(
+        UserActivityLog.objects.filter(created_at__gte=last_7d, user__isnull=False)
+        .values('user__username')
+        .annotate(
+            total=Count('id'),
+            ai_requests=Count('id', filter=Q(action__in=['chat_request', 'terminal_ai_request', 'chat_message'])),
+            terminal_sessions=Count('id', filter=Q(category='terminal')),
+        ).order_by('-total')[:10]
+    )
+    top_users = [
+        {'username': u['user__username'], 'total': u['total'],
+         'ai_requests': u['ai_requests'], 'terminal_sessions': u['terminal_sessions']}
+        for u in top_users
+    ]
+
+    # Recent activity
+    recent = UserActivityLog.objects.select_related('user').order_by('-created_at')[:20]
+    recent_activity = [
+        {'user': l.username_snapshot or (l.user.username if l.user_id else 'system'),
+         'category': l.category, 'action': l.action, 'time': l.created_at.isoformat()}
+        for l in recent
+    ]
+
+    data = {
+        'online_users': {'count': len(online_user_ids), 'total_registered': User.objects.count(), 'users': online_users},
+        'ai': {'requests_today': ai_requests_today},
+        'terminals': {'active': active_conns.count(), 'connections': terminals},
+        'agents': {'running': agents_running, 'today': agents_today,
+                   'succeeded_24h': succeeded_24h, 'failed_24h': failed_24h, 'success_rate': success_rate},
+        'api_usage': api_usage,
+        'api_calls_today': sum(v['calls'] for v in api_usage.values()),
+        'providers': providers,
+        'servers': {'total': Server.objects.count(), 'active': Server.objects.filter(is_active=True).count()},
+        'tasks': {'total': Task.objects.count(), 'in_progress': Task.objects.filter(status='IN_PROGRESS').count()},
+        'hourly_activity': hourly_activity,
+        'top_users': top_users,
+        'recent_activity': recent_activity,
+    }
     return JsonResponse({'success': True, 'data': data})
 
 

@@ -128,3 +128,30 @@ class UserActivityLog(models.Model):
     def __str__(self):
         actor = self.username_snapshot or (self.user.username if self.user_id else 'unknown')
         return f"{actor}: {self.action} ({self.status})"
+
+
+# -----------------------------------------
+# LLM Usage Logs
+# -----------------------------------------
+
+
+class LLMUsageLog(models.Model):
+    """Tracks LLM API calls for monitoring and cost estimation."""
+    provider = models.CharField(max_length=20)  # gemini, grok, openai, claude
+    model_name = models.CharField(max_length=100)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    input_tokens = models.IntegerField(default=0)
+    output_tokens = models.IntegerField(default=0)
+    duration_ms = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, default='success')  # success, error, timeout
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['provider', '-created_at']),
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.provider}/{self.model_name} ({self.status})"
