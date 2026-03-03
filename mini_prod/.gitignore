@@ -31,7 +31,14 @@ env/
 .vscode/
 .idea/
 .cursor/
+.claude/
 .playwright-mcp/
+
+# Temporary / cache (do not commit)
+.tmp/
+.tmp_*/
+tmp_*_check.js
+.tmp_*.js
 *.swp
 *.swo
 *~
