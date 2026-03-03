@@ -1,0 +1,17 @@
+import { type NodeProps } from "@xyflow/react";
+import { NodeBase } from "./NodeBase";
+
+export function SSHCommandNode({ data, selected }: NodeProps) {
+  const d = data as Record<string, string>;
+  const command = d?.command;
+  return (
+    <NodeBase
+      selected={selected}
+      label={d?.label || "SSH Command"}
+      icon="💻"
+      description={command ? command.slice(0, 40) + (command.length > 40 ? "…" : "") : "Direct SSH command"}
+      accentColor="border-cyan-500/40"
+      status={d?.status}
+    />
+  );
+}
