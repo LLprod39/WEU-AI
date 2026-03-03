@@ -253,6 +253,42 @@ def _resolve_secret(
     return default_value.strip()
 
 
+def _resolve_value(
+    *,
+    explicit_value: Any,
+    explicit_env_name: Any,
+    profile_values: Iterable[Any],
+    profile_env_names: Iterable[Any],
+    runtime_value: Any,
+    default_value: Any,
+    label: str,
+) -> str:
+    explicit_text = _clean_text(explicit_value)
+    if explicit_text:
+        return explicit_text
+    env_name = _clean_text(explicit_env_name)
+    if env_name:
+        env_value = os.getenv(env_name, "").strip()
+        if not env_value:
+            raise ToolError(f"Config env var '{env_name}' for {label} is empty or not set")
+        return env_value
+    for profile_env_name in profile_env_names:
+        resolved_env_name = _clean_text(profile_env_name)
+        if not resolved_env_name:
+            continue
+        env_value = os.getenv(resolved_env_name, "").strip()
+        if not env_value:
+            raise ToolError(f"Config env var '{resolved_env_name}' for {label} is empty or not set")
+        return env_value
+    profile_text = _first_non_empty(*profile_values)
+    if profile_text:
+        return profile_text
+    runtime_text = _clean_text(runtime_value)
+    if runtime_text:
+        return runtime_text
+    return _clean_text(default_value)
+
+
 def _set_runtime_default(config: KeycloakConfig) -> None:
     state = {
         "profile": config.profile_name,
@@ -311,26 +347,66 @@ def _resolve_config(arguments: dict[str, Any] | None = None) -> KeycloakConfig:
 
     runtime = _get_runtime_default()
     profile_name, profile = _resolve_profile(args.get("profile") or runtime.get("profile"))
-    base_url = _first_non_empty(
-        args.get("base_url"),
-        args.get("host"),
-        profile.get("base_url"),
-        profile.get("host"),
-        runtime.get("base_url"),
-        runtime.get("host"),
-        DEFAULT_KEYCLOAK_URL,
+    base_url = _resolve_value(
+        explicit_value=_first_non_empty(args.get("base_url"), args.get("host")),
+        explicit_env_name=_first_non_empty(args.get("base_url_env"), args.get("host_env")),
+        profile_values=(profile.get("base_url"), profile.get("host")),
+        profile_env_names=(profile.get("base_url_env"), profile.get("host_env")),
+        runtime_value=_first_non_empty(runtime.get("base_url"), runtime.get("host")),
+        default_value=DEFAULT_KEYCLOAK_URL,
+        label="base_url",
     )
-    realm = _first_non_empty(args.get("realm"), profile.get("realm"), runtime.get("realm"), DEFAULT_REALM)
-    token_realm = _first_non_empty(
-        args.get("token_realm"),
-        profile.get("token_realm"),
-        runtime.get("token_realm"),
-        DEFAULT_TOKEN_REALM,
-        realm,
+    realm = _resolve_value(
+        explicit_value=args.get("realm"),
+        explicit_env_name=args.get("realm_env"),
+        profile_values=(profile.get("realm"),),
+        profile_env_names=(profile.get("realm_env"),),
+        runtime_value=runtime.get("realm"),
+        default_value=DEFAULT_REALM,
+        label="realm",
     )
-    client_id = _first_non_empty(args.get("client_id"), profile.get("client_id"), runtime.get("client_id"), DEFAULT_CLIENT_ID)
-    admin_user = _first_non_empty(args.get("admin_user"), profile.get("admin_user"), runtime.get("admin_user"), DEFAULT_ADMIN_USER)
-    verify_ssl = _parse_bool(args.get("verify_ssl", profile.get("verify_ssl", runtime.get("verify_ssl"))), default=DEFAULT_VERIFY_SSL)
+    token_realm = _resolve_value(
+        explicit_value=args.get("token_realm"),
+        explicit_env_name=args.get("token_realm_env"),
+        profile_values=(profile.get("token_realm"),),
+        profile_env_names=(profile.get("token_realm_env"),),
+        runtime_value=runtime.get("token_realm"),
+        default_value=DEFAULT_TOKEN_REALM or realm,
+        label="token_realm",
+    )
+    client_id = _resolve_value(
+        explicit_value=args.get("client_id"),
+        explicit_env_name=args.get("client_id_env"),
+        profile_values=(profile.get("client_id"),),
+        profile_env_names=(profile.get("client_id_env"),),
+        runtime_value=runtime.get("client_id"),
+        default_value=DEFAULT_CLIENT_ID,
+        label="client_id",
+    )
+    admin_user = _resolve_value(
+        explicit_value=args.get("admin_user"),
+        explicit_env_name=args.get("admin_user_env"),
+        profile_values=(profile.get("admin_user"),),
+        profile_env_names=(profile.get("admin_user_env"),),
+        runtime_value=runtime.get("admin_user"),
+        default_value=DEFAULT_ADMIN_USER,
+        label="admin_user",
+    )
+    verify_ssl = args.get("verify_ssl")
+    if verify_ssl is None and _clean_text(args.get("verify_ssl_env")):
+        verify_ssl = os.getenv(_clean_text(args.get("verify_ssl_env")))
+        if verify_ssl in {None, ""}:
+            raise ToolError(f"Config env var '{_clean_text(args.get('verify_ssl_env'))}' for verify_ssl is empty or not set")
+    if verify_ssl is None and _clean_text(profile.get("verify_ssl_env")):
+        profile_verify_ssl_env = _clean_text(profile.get("verify_ssl_env"))
+        verify_ssl = os.getenv(profile_verify_ssl_env)
+        if verify_ssl in {None, ""}:
+            raise ToolError(f"Config env var '{profile_verify_ssl_env}' for verify_ssl is empty or not set")
+    if verify_ssl is None and "verify_ssl" in profile:
+        verify_ssl = profile.get("verify_ssl")
+    if verify_ssl is None and "verify_ssl" in runtime:
+        verify_ssl = runtime.get("verify_ssl")
+    verify_ssl = _parse_bool(verify_ssl, default=DEFAULT_VERIFY_SSL)
     admin_password = _resolve_secret(
         explicit_value=args.get("admin_password"),
         explicit_env_name=args.get("admin_password_env"),
@@ -379,12 +455,18 @@ def _profile_public_summary(profile_name: str, profile: dict[str, Any]) -> dict[
         "name": profile_name,
         "display_name": _clean_text(profile.get("name")) or profile_name,
         "base_url": _first_non_empty(profile.get("base_url"), profile.get("host")) or None,
+        "base_url_env": _first_non_empty(profile.get("base_url_env"), profile.get("host_env")) or None,
         "realm": _clean_text(profile.get("realm")) or None,
+        "realm_env": _clean_text(profile.get("realm_env")) or None,
         "token_realm": _clean_text(profile.get("token_realm")) or None,
+        "token_realm_env": _clean_text(profile.get("token_realm_env")) or None,
         "client_id": _clean_text(profile.get("client_id")) or None,
+        "client_id_env": _clean_text(profile.get("client_id_env")) or None,
         "admin_user": _clean_text(profile.get("admin_user")) or None,
+        "admin_user_env": _clean_text(profile.get("admin_user_env")) or None,
         "uses_admin_password_env": bool(_clean_text(profile.get("admin_password_env"))),
         "uses_client_secret_env": bool(_clean_text(profile.get("client_secret_env"))),
+        "uses_verify_ssl_env": bool(_clean_text(profile.get("verify_ssl_env"))),
         "has_legacy_admin_password": bool(_clean_text(profile.get("admin_password"))),
         "has_legacy_client_secret": bool(_clean_text(profile.get("client_secret"))),
         "verify_ssl": profile.get("verify_ssl", DEFAULT_VERIFY_SSL),
@@ -1498,15 +1580,22 @@ TOOLS = [
         {
             "base_url": {"type": "string", "description": f"Keycloak base URL or host. Default: {DEFAULT_KEYCLOAK_URL or '(not set)'}"},
             "host": {"type": "string", "description": "Legacy alias for base_url."},
+            "base_url_env": {"type": "string", "description": "Environment variable that contains Keycloak base_url"},
+            "host_env": {"type": "string", "description": "Legacy alias for base_url_env."},
             "realm": {"type": "string", "description": f"Target realm. Default: {DEFAULT_REALM or '(not set)'}"},
+            "realm_env": {"type": "string", "description": "Environment variable that contains target realm"},
             "token_realm": {"type": "string", "description": f"Realm used for token grant. Default: {DEFAULT_TOKEN_REALM or DEFAULT_REALM or '(not set)'}"},
+            "token_realm_env": {"type": "string", "description": "Environment variable that contains token realm"},
             "client_id": {"type": "string", "description": f"Admin client_id. Default: {DEFAULT_CLIENT_ID}"},
+            "client_id_env": {"type": "string", "description": "Environment variable that contains admin client_id"},
             "admin_user": {"type": "string", "description": "Keycloak admin username"},
+            "admin_user_env": {"type": "string", "description": "Environment variable that contains Keycloak admin username"},
             "admin_password": {"type": "string", "description": "Keycloak admin password"},
             "admin_password_env": {"type": "string", "description": "Environment variable that contains Keycloak admin password"},
             "client_secret": {"type": "string", "description": "Optional client secret for confidential admin client"},
             "client_secret_env": {"type": "string", "description": "Environment variable that contains the client secret"},
             "verify_ssl": {"type": "boolean", "description": f"Verify TLS certificate. Default: {DEFAULT_VERIFY_SSL}"},
+            "verify_ssl_env": {"type": "string", "description": "Environment variable that contains verify_ssl flag"},
             "profile": PROFILE_PROPERTY["profile"],
         },
         ["admin_user"],

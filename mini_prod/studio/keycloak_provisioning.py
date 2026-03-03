@@ -15,9 +15,43 @@ KEYCLOAK_PIPELINE_DESCRIPTION = (
     "runs a read-only preflight against Keycloak, asks for approval, then lets an MCP-enabled agent "
     "create the user, assign realm roles, assign client roles, add groups, and verify the final state."
 )
+KEYCLOAK_OPS_PIPELINE_SPECS = {
+    "test": {
+        "name": "Keycloak Ops TEST",
+        "description": (
+            "Direct Keycloak operator pipeline for the TEST environment. "
+            "Accepts free-form user requests, uses the fixed 'test' MCP profile, and sends no email or Telegram messages."
+        ),
+        "label": "TEST",
+    },
+    "prod": {
+        "name": "Keycloak Ops PROD",
+        "description": (
+            "Direct Keycloak operator pipeline for the PROD environment. "
+            "Accepts free-form user requests, uses the fixed 'prod' MCP profile, and sends no email or Telegram messages."
+        ),
+        "label": "PROD",
+    },
+}
 
 SAMPLE_MANUAL_CONTEXT = {
     "profile": "prod",
+    "username": "ivan.petrov",
+    "email": "ivan.petrov@example.com",
+    "first_name": "Ivan",
+    "last_name": "Petrov",
+    "temporary_password": "Temp12345!",
+    "realm_roles": ["offline_access"],
+    "client_roles": {"crm-app": ["read", "write"]},
+    "groups": ["/sales", "/crm-users"],
+    "attributes": {"department": ["sales"]},
+    "required_actions": ["UPDATE_PASSWORD"],
+    "allow_existing_user": False,
+}
+SAMPLE_TASK_CONTEXT = {
+    "task": "Создай пользователя ivan.petrov, выдай роли crm-app: read, write и добавь в группы /sales и /crm-users",
+    "requester": "Service Desk",
+    "ticket_id": "IAM-1001",
     "username": "ivan.petrov",
     "email": "ivan.petrov@example.com",
     "first_name": "Ivan",
@@ -40,6 +74,22 @@ WEBHOOK_CONTEXT_MAP = {
     "admin_user": "admin_user",
     "admin_password_env": "admin_password_env",
     "client_secret_env": "client_secret_env",
+    "username": "username",
+    "email": "email",
+    "first_name": "first_name",
+    "last_name": "last_name",
+    "temporary_password": "temporary_password",
+    "realm_roles": "realm_roles",
+    "client_roles": "client_roles",
+    "groups": "groups",
+    "attributes": "attributes",
+    "required_actions": "required_actions",
+    "allow_existing_user": "allow_existing_user",
+}
+TASK_WEBHOOK_CONTEXT_MAP = {
+    "task": "task",
+    "requester": "requester",
+    "ticket_id": "ticket_id",
     "username": "username",
     "email": "email",
     "first_name": "first_name",
@@ -331,3 +381,204 @@ def ensure_keycloak_pipeline(user, mcp_server: MCPServerPool) -> Pipeline:
     )
     pipeline.sync_triggers_from_nodes()
     return pipeline
+
+
+def build_keycloak_ops_nodes(mcp_server_id: int, *, fixed_profile: str, environment_label: str) -> list[dict]:
+    return [
+        {
+            "id": "start_manual",
+            "type": "trigger/manual",
+            "position": {"x": 340, "y": 40},
+            "data": {
+                "label": f"Run {environment_label} Keycloak Task",
+                "is_active": True,
+                "description": "Manual run expects JSON context with a free-form task and optional user hints.",
+            },
+        },
+        {
+            "id": "start_webhook",
+            "type": "trigger/webhook",
+            "position": {"x": 820, "y": 40},
+            "data": {
+                "label": f"{environment_label} Keycloak Webhook",
+                "is_active": True,
+                "webhook_payload_map": TASK_WEBHOOK_CONTEXT_MAP,
+            },
+        },
+        {
+            "id": "environment_preflight",
+            "type": "agent/mcp_call",
+            "position": {"x": 430, "y": 220},
+            "data": {
+                "label": f"MCP: {environment_label} Environment Preflight",
+                "mcp_server_id": mcp_server_id,
+                "tool_name": "keycloak_current_environment",
+                "arguments_text": _json_payload({"profile": fixed_profile}),
+                "on_failure": "abort",
+            },
+        },
+        {
+            "id": "normalize_request",
+            "type": "agent/llm_query",
+            "position": {"x": 430, "y": 450},
+            "data": {
+                "label": f"Model: Normalize {environment_label} Request",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "system_prompt": (
+                    "You are a careful Keycloak operations planner. "
+                    "Turn free-form IAM requests into strict JSON execution briefs without inventing missing values."
+                ),
+                "prompt": (
+                    f"You are preparing an execution brief for the {environment_label} Keycloak operator pipeline.\n"
+                    f"The MCP profile is FIXED to '{fixed_profile}'. Never change it.\n\n"
+                    "## Incoming request\n"
+                    "- task: {task}\n"
+                    "- requester: {requester}\n"
+                    "- ticket_id: {ticket_id}\n"
+                    "- username: {username}\n"
+                    "- email: {email}\n"
+                    "- first_name: {first_name}\n"
+                    "- last_name: {last_name}\n"
+                    "- temporary_password: {temporary_password}\n"
+                    "- realm_roles: {realm_roles}\n"
+                    "- client_roles: {client_roles}\n"
+                    "- groups: {groups}\n"
+                    "- attributes: {attributes}\n"
+                    "- required_actions: {required_actions}\n"
+                    "- allow_existing_user: {allow_existing_user}\n\n"
+                    "## Environment preflight\n"
+                    "{environment_preflight_output}\n\n"
+                    "## Task\n"
+                    "Return STRICT JSON only. No markdown fences.\n"
+                    "Schema:\n"
+                    "{\n"
+                    f'  "profile": "{fixed_profile}",\n'
+                    '  "request_valid": true,\n'
+                    '  "requested_mode": "read_only|mutating",\n'
+                    '  "intent": "user_access|user_creation|group_update|role_update|user_audit|client_admin|mixed|unsupported",\n'
+                    '  "task_summary": "",\n'
+                    '  "target_user": {\n'
+                    '    "username": "", "email": "", "first_name": "", "last_name": "",\n'
+                    '    "temporary_password": "", "attributes": {}, "required_actions": []\n'
+                    "  },\n"
+                    '  "allow_existing_user": false,\n'
+                    '  "realm_roles": [],\n'
+                    '  "client_roles": {},\n'
+                    '  "groups": [],\n'
+                    '  "missing_fields": [],\n'
+                    '  "warnings": [],\n'
+                    '  "raw_task": ""\n'
+                    "}\n\n"
+                    "Rules:\n"
+                    f"- profile must always stay '{fixed_profile}'.\n"
+                    "- request_valid=false if the task is ambiguous, unsupported, or missing critical fields.\n"
+                    "- requested_mode must be read_only for audit/search/list requests.\n"
+                    "- Do not invent users, roles, clients, groups, passwords, or attributes.\n"
+                    "- Keep arrays and objects valid JSON."
+                ),
+                "include_all_outputs": False,
+                "on_failure": "abort",
+            },
+        },
+        {
+            "id": "execute_keycloak_task",
+            "type": "agent/react",
+            "position": {"x": 430, "y": 720},
+            "data": {
+                "label": f"Agent: Execute {environment_label} Keycloak Task",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "mcp_server_ids": [mcp_server_id],
+                "max_iterations": 20,
+                "system_prompt": (
+                    "You are a Keycloak operator. Work only through attached MCP tools. "
+                    "Be strict, deterministic, and stop instead of guessing."
+                ),
+                "goal": (
+                    f"You are executing a Keycloak task against the fixed '{fixed_profile}' profile ({environment_label}).\n\n"
+                    "Environment preflight:\n{environment_preflight_output}\n\n"
+                    "Normalized execution brief JSON:\n{normalize_request_output}\n\n"
+                    "Original requester task:\n{task}\n\n"
+                    "Rules:\n"
+                    f"1. Use ONLY the attached Keycloak MCP tools and ALWAYS pass profile='{fixed_profile}' in MCP calls.\n"
+                    "2. Parse the normalized JSON brief first. If request_valid is false or missing_fields is non-empty, stop and make no changes.\n"
+                    "3. If requested_mode is read_only, perform only search/list/read verification calls and never mutate Keycloak.\n"
+                    "4. For mutating tasks, require a clearly identified target. If the user, client, role, or group is ambiguous, stop and make no changes.\n"
+                    "5. Search/read first, then mutate, then verify final state with read tools.\n"
+                    "6. Never use allow_fuzzy_user_match unless an exact target was already verified from read-only results.\n"
+                    "7. Do not change auth connection settings, do not switch profile, and do not send email, Telegram, or external notifications.\n"
+                    "8. Support the available MCP capabilities: inspect/search users, create users, assign realm roles, assign client roles, manage groups, create clients and roles when the task is explicit.\n"
+                    "9. Return a final Markdown report with sections: Summary, Actions Performed, Verification, Skipped, Errors."
+                ),
+                "on_failure": "abort",
+            },
+        },
+        {
+            "id": "final_report",
+            "type": "output/report",
+            "position": {"x": 430, "y": 970},
+            "data": {
+                "label": f"{environment_label} Keycloak Report",
+                "template": (
+                    f"# Keycloak {environment_label} Execution Report\n\n"
+                    f"- fixed_profile: {fixed_profile}\n"
+                    "- requester: {requester}\n"
+                    "- ticket_id: {ticket_id}\n"
+                    "- task: {task}\n"
+                    "- username: {username}\n"
+                    "- email: {email}\n\n"
+                    "## Environment Preflight\n"
+                    "{environment_preflight_output}\n\n"
+                    "## Normalized Brief\n"
+                    "{normalize_request_output}\n\n"
+                    "## Execution Agent\n"
+                    "- status: {execute_keycloak_task_status}\n"
+                    "- error: {execute_keycloak_task_error}\n\n"
+                    "{execute_keycloak_task_output}\n"
+                ),
+            },
+        },
+    ]
+
+
+def build_keycloak_ops_edges() -> list[dict]:
+    return [
+        {"id": "e1", "source": "start_manual", "target": "environment_preflight", "animated": True},
+        {"id": "e2", "source": "start_webhook", "target": "environment_preflight", "animated": True},
+        {"id": "e3", "source": "environment_preflight", "target": "normalize_request", "animated": True},
+        {"id": "e4", "source": "normalize_request", "target": "execute_keycloak_task", "animated": True},
+        {"id": "e5", "source": "environment_preflight", "target": "execute_keycloak_task", "animated": True},
+        {"id": "e6", "source": "environment_preflight", "target": "final_report", "animated": True},
+        {"id": "e7", "source": "normalize_request", "target": "final_report", "animated": True},
+        {"id": "e8", "source": "execute_keycloak_task", "target": "final_report", "animated": True},
+    ]
+
+
+def ensure_keycloak_ops_pipeline(user, mcp_server: MCPServerPool, *, profile_name: str) -> Pipeline:
+    spec = KEYCLOAK_OPS_PIPELINE_SPECS[profile_name]
+    pipeline, _ = Pipeline.objects.update_or_create(
+        owner=user,
+        name=spec["name"],
+        defaults={
+            "description": spec["description"],
+            "icon": "KEY",
+            "tags": ["mcp", "keycloak", "iam", "direct", "studio", profile_name],
+            "nodes": build_keycloak_ops_nodes(
+                mcp_server.id,
+                fixed_profile=profile_name,
+                environment_label=spec["label"],
+            ),
+            "edges": build_keycloak_ops_edges(),
+            "is_shared": False,
+        },
+    )
+    pipeline.sync_triggers_from_nodes()
+    return pipeline
+
+
+def ensure_keycloak_ops_pipelines(user, mcp_server: MCPServerPool) -> dict[str, Pipeline]:
+    return {
+        profile_name: ensure_keycloak_ops_pipeline(user, mcp_server, profile_name=profile_name)
+        for profile_name in KEYCLOAK_OPS_PIPELINE_SPECS
+    }

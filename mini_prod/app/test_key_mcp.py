@@ -25,19 +25,26 @@ def test_resolve_config_reads_profile_secrets_from_env(monkeypatch: pytest.Monke
             "default_profile": "prod",
             "profiles": {
                 "prod": {
-                    "base_url": "https://sso.example.com/auth",
-                    "realm": "main",
-                    "token_realm": "master",
-                    "client_id": "kc-admin",
-                    "admin_user": "svc-keycloak",
+                    "base_url_env": "KC_URL",
+                    "realm_env": "KC_REALM",
+                    "token_realm_env": "KC_TOKEN_REALM",
+                    "client_id_env": "KC_CLIENT_ID",
+                    "admin_user_env": "KC_ADMIN_USER",
                     "admin_password_env": "KC_PASS",
                     "client_secret_env": "KC_SECRET",
+                    "verify_ssl_env": "KC_VERIFY_SSL",
                 }
             },
         },
     )
+    monkeypatch.setenv("KC_URL", "https://sso.example.com/auth")
+    monkeypatch.setenv("KC_REALM", "main")
+    monkeypatch.setenv("KC_TOKEN_REALM", "master")
+    monkeypatch.setenv("KC_CLIENT_ID", "kc-admin")
+    monkeypatch.setenv("KC_ADMIN_USER", "svc-keycloak")
     monkeypatch.setenv("KC_PASS", "top-secret")
     monkeypatch.setenv("KC_SECRET", "client-secret")
+    monkeypatch.setenv("KC_VERIFY_SSL", "true")
 
     config = key_mcp._resolve_config({})
 
@@ -48,6 +55,7 @@ def test_resolve_config_reads_profile_secrets_from_env(monkeypatch: pytest.Monke
     assert config.admin_user == "svc-keycloak"
     assert config.admin_password == "top-secret"
     assert config.client_secret == "client-secret"
+    assert config.verify_ssl is True
     assert config.profile_name == "prod"
 
 
