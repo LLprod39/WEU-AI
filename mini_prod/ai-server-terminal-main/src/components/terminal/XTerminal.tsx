@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
-import { getWsUrl } from "@/lib/api";
+import { getWsUrl, fetchWsToken } from "@/lib/api";
 
 export type TerminalConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
@@ -92,59 +92,66 @@ export const XTerminal = forwardRef<TerminalHandle, XTerminalProps>(function XTe
       socket.send(JSON.stringify(payload));
     };
 
-    const socket = new WebSocket(getWsUrl(serverId));
-    wsRef.current = socket;
-    onStatusChangeRef.current?.("connecting");
+    // Fetch a short-lived WS auth token. This is needed when the Vite dev
+    // proxy doesn't forward the session Cookie on WebSocket upgrades.
+    let cancelled = false;
+    fetchWsToken().then((wsToken) => {
+      if (cancelled) return;
+      const socket = new WebSocket(getWsUrl(serverId, wsToken ?? undefined));
+      wsRef.current = socket;
+      onStatusChangeRef.current?.("connecting");
 
-    socket.onopen = () => {
-      const cols = term.cols || 120;
-      const rows = term.rows || 32;
-      sendJson({ type: "connect", cols, rows, term_type: "xterm-256color" });
-    };
+      socket.onopen = () => {
+        const cols = term.cols || 120;
+        const rows = term.rows || 32;
+        sendJson({ type: "connect", cols, rows, term_type: "xterm-256color" });
+      };
 
-    socket.onmessage = (event) => {
-      let payload: Record<string, unknown>;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-      onEventRef.current?.(payload);
-      const type = String(payload.type || "");
-      if (type === "output") {
-        const chunk = String(payload.data || "");
-        term.write(chunk);
-        return;
-      }
-      if (type === "status") {
-        const status = String(payload.status || "disconnected") as TerminalConnectionStatus;
-        onStatusChangeRef.current?.(status);
-        if (status === "disconnected") {
-          term.writeln("\r\n\x1b[33mConnection closed.\x1b[0m");
+      socket.onmessage = (event) => {
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
         }
-        return;
-      }
-      if (type === "error") {
-        const message = String(payload.message || "Terminal error");
+        onEventRef.current?.(payload);
+        const type = String(payload.type || "");
+        if (type === "output") {
+          const chunk = String(payload.data || "");
+          term.write(chunk);
+          return;
+        }
+        if (type === "status") {
+          const status = String(payload.status || "disconnected") as TerminalConnectionStatus;
+          onStatusChangeRef.current?.(status);
+          if (status === "disconnected") {
+            term.writeln("\r\n\x1b[33mConnection closed.\x1b[0m");
+          }
+          return;
+        }
+        if (type === "error") {
+          const message = String(payload.message || "Terminal error");
+          onStatusChangeRef.current?.("error");
+          onErrorRef.current?.(message);
+          term.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
+          return;
+        }
+        if (type === "exit") {
+          const exitStatus = payload.exit_status;
+          term.writeln(`\r\n\x1b[33mProcess exited (${String(exitStatus)})\x1b[0m`);
+        }
+      };
+
+      socket.onerror = () => {
         onStatusChangeRef.current?.("error");
-        onErrorRef.current?.(message);
-        term.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
-        return;
-      }
-      if (type === "exit") {
-        const exitStatus = payload.exit_status;
-        term.writeln(`\r\n\x1b[33mProcess exited (${String(exitStatus)})\x1b[0m`);
-      }
-    };
+        onErrorRef.current?.("WebSocket error");
+      };
 
-    socket.onerror = () => {
-      onStatusChangeRef.current?.("error");
-      onErrorRef.current?.("WebSocket error");
-    };
-
-    socket.onclose = () => {
-      onStatusChangeRef.current?.("disconnected");
-    };
+      socket.onclose = () => {
+        onStatusChangeRef.current?.("disconnected");
+      };
+    });
+    onStatusChangeRef.current?.("connecting");
 
     term.onData((data) => {
       sendJson({ type: "input", data });
@@ -159,6 +166,7 @@ export const XTerminal = forwardRef<TerminalHandle, XTerminalProps>(function XTe
     }, 600);
 
     return () => {
+      cancelled = true;
       clearInterval(resizeTimer);
       observer.disconnect();
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
