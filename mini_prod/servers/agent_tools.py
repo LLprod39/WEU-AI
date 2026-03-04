@@ -248,7 +248,7 @@ def get_tools_description(enabled_tools: list[str] | None = None) -> str:
     """Build a human-readable tool description for the LLM system prompt."""
     lines = []
     for name, meta in AGENT_TOOLS.items():
-        if enabled_tools and name not in enabled_tools:
+        if enabled_tools is not None and name not in enabled_tools:
             continue
         params_parts = []
         for pname, pinfo in meta["params"].items():
@@ -263,11 +263,7 @@ def get_enabled_tools(tools_config: dict) -> list[str]:
     """Return list of enabled tool names based on agent config."""
     if not tools_config:
         return list(AGENT_TOOLS.keys())
-    enabled = []
-    for name in AGENT_TOOLS:
-        if tools_config.get(name, True):
-            enabled.append(name)
-    return enabled
+    return [name for name in AGENT_TOOLS if tools_config.get(name, False)]
 
 
 # ---------------------------------------------------------------------------

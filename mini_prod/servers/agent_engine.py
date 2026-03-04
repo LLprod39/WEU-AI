@@ -30,7 +30,7 @@ def sync_to_async(func, thread_sensitive=False):
     return _s2a(func, thread_sensitive=thread_sensitive)
 
 
-_ACTION_NAME_RE = re.compile(r"ACTION:\s*([\w_]+)\s*", re.DOTALL)
+_ACTION_NAME_RE = re.compile(r"ACTION:\s*([A-Za-z0-9_]+)\s*", re.DOTALL)
 _THOUGHT_RE = re.compile(r"THOUGHT:\s*(.+?)(?=ACTION:|$)", re.DOTALL)
 
 
@@ -95,7 +95,9 @@ class AgentEngine:
 
         self.max_iterations = min(agent.max_iterations or 20, MAX_ITERATIONS_CAP)
         self.session_timeout = agent.session_timeout_seconds or SESSION_TIMEOUT_DEFAULT
-        self.enabled_tools = get_enabled_tools(agent.tools_config or {})
+        self.tools_config = dict(agent.tools_config or {})
+        self.allowed_tool_names = {name for name, enabled in self.tools_config.items() if enabled} if self.tools_config else None
+        self.enabled_tools = get_enabled_tools(self.tools_config)
 
         self._stop_requested = False
         self._pause_event = asyncio.Event()
@@ -105,6 +107,7 @@ class AgentEngine:
         self.run_record: AgentRun | None = None
         self.mcp_servers = list(mcp_servers or [])
         self.mcp_tools = {}
+        self.disabled_mcp_tools: set[str] = set()
         self.mcp_tool_errors: list[str] = []
         self.model_preference, self.specific_model = resolve_provider_and_model(
             model_preference,
@@ -158,6 +161,15 @@ class AgentEngine:
         history: list[dict[str, str]] = []
 
         try:
+            logger.info(
+                "agent_run {} start: agent='{}' servers={} mcp_servers={} provider={} model={}",
+                run.pk,
+                self.agent.name,
+                [srv.name for srv in self.servers],
+                [srv.name for srv in self.mcp_servers],
+                self.model_preference,
+                self.specific_model,
+            )
             await self._emit("agent_status", {"status": "connecting"})
 
             if self.servers:
@@ -170,7 +182,21 @@ class AgentEngine:
                 else:
                     await self.session.open(primary_server)
 
-            self.mcp_tools, self.mcp_tool_errors = await load_mcp_tool_bindings(self.mcp_servers)
+            loaded_mcp_tools, self.mcp_tool_errors = await load_mcp_tool_bindings(self.mcp_servers)
+            if self.allowed_tool_names is None:
+                self.mcp_tools = loaded_mcp_tools
+                self.disabled_mcp_tools = set()
+            else:
+                self.mcp_tools = {
+                    name: binding for name, binding in loaded_mcp_tools.items() if name in self.allowed_tool_names
+                }
+                self.disabled_mcp_tools = set(loaded_mcp_tools) - set(self.mcp_tools)
+            logger.info(
+                "agent_run {} mcp bindings loaded: tools={} errors={}",
+                run.pk,
+                sorted(self.mcp_tools.keys()),
+                self.mcp_tool_errors,
+            )
 
             connected = self.session.get_connected_info()
             await sync_to_async(self._update_run)(run, connected_servers=[
@@ -204,13 +230,23 @@ class AgentEngine:
                     break
 
                 iteration += 1
+                logger.info("agent_run {} iteration {} start", run.pk, iteration)
                 await self._emit("agent_status", {"status": "thinking", "iteration": iteration})
 
                 llm_response = await self._call_llm(history)
                 if not llm_response:
+                    logger.warning("agent_run {} iteration {} got empty llm response", run.pk, iteration)
                     break
 
                 thought, action_name, action_args = self._parse_response(llm_response)
+                logger.info(
+                    "agent_run {} iteration {} parsed action: action={} args={} thought={}",
+                    run.pk,
+                    iteration,
+                    action_name,
+                    json.dumps(action_args, ensure_ascii=False)[:800],
+                    (thought or "")[:300],
+                )
 
                 iter_entry = {
                     "iteration": iteration,
@@ -224,6 +260,7 @@ class AgentEngine:
                 await self._emit("agent_thought", {"iteration": iteration, "thought": thought})
 
                 if action_name is None:
+                    logger.info("agent_run {} iteration {} completed with final answer", run.pk, iteration)
                     iter_entry["observation"] = "(final answer)"
                     iterations_log.append(iter_entry)
                     history.append({"role": "assistant", "content": llm_response})
@@ -242,6 +279,13 @@ class AgentEngine:
                     )
 
                 observation = await self._execute_tool(action_name, action_args)
+                logger.info(
+                    "agent_run {} iteration {} tool result: tool={} chars={}",
+                    run.pk,
+                    iteration,
+                    action_name,
+                    len(observation or ""),
+                )
 
                 if action_name == "ask_user":
                     await sync_to_async(self._update_run)(
@@ -274,6 +318,12 @@ class AgentEngine:
             elif time.monotonic() > deadline:
                 final_status = AgentRun.STATUS_FAILED
 
+            logger.info(
+                "agent_run {} generating final report: final_status={} iterations={}",
+                run.pk,
+                final_status,
+                iteration,
+            )
             final_report = await self._generate_final_report(history, iterations_log)
 
             run.status = final_status
@@ -285,6 +335,13 @@ class AgentEngine:
             run.completed_at = timezone.now()
             run.duration_ms = int((time.monotonic() - t0) * 1000)
             await sync_to_async(run.save)()
+            logger.info(
+                "agent_run {} saved: status={} duration_ms={} report_chars={}",
+                run.pk,
+                run.status,
+                run.duration_ms,
+                len(final_report or ""),
+            )
 
             await sync_to_async(self._touch_agent_last_run)()
 
@@ -362,8 +419,18 @@ class AgentEngine:
     # ------------------------------------------------------------------
 
     async def _execute_tool(self, name: str, args: dict) -> str:
+        logger.info("agent_run {} execute_tool start: tool={} args={}", self.run_record.pk if self.run_record else "?", name, json.dumps(args, ensure_ascii=False)[:800])
         if name in self.mcp_tools:
-            return await execute_bound_mcp_tool(self.mcp_tools, name, args)
+            result = await execute_bound_mcp_tool(self.mcp_tools, name, args)
+            logger.info(
+                "agent_run {} execute_tool done: tool={} result_chars={} via=mcp",
+                self.run_record.pk if self.run_record else "?",
+                name,
+                len(result or ""),
+            )
+            return result
+        if name in self.disabled_mcp_tools:
+            return f"Tool '{name}' is disabled for this agent."
 
         tool_meta = AGENT_TOOLS.get(name)
         if tool_meta is None:
@@ -374,8 +441,19 @@ class AgentEngine:
         fn = tool_meta["fn"]
         try:
             result = await fn(self.session, **args)
+            logger.info(
+                "agent_run {} execute_tool done: tool={} result_chars={} via=agent_tool",
+                self.run_record.pk if self.run_record else "?",
+                name,
+                len(result.result or ""),
+            )
             return result.result
         except Exception as exc:
+            logger.exception(
+                "agent_run {} execute_tool failed: tool={}",
+                self.run_record.pk if self.run_record else "?",
+                name,
+            )
             return f"Tool error ({name}): {exc}"
 
     # ------------------------------------------------------------------
@@ -405,6 +483,26 @@ class AgentEngine:
         if self.mcp_tool_errors:
             mcp_errors = "\n## MCP подключения с ошибками\n" + "\n".join(f"- {item}" for item in self.mcp_tool_errors)
 
+        tool_rules = [
+            "- ВСЕГДА сначала выводи THOUGHT с объяснением логики рассуждений",
+            "- Затем выводи ACTION с вызовом инструмента в формате JSON",
+            "- После каждой команды анализируй вывод и решай, что делать дальше",
+            "- Для внешних систем (Keycloak, GitHub, Docker API, cloud, IAM) используй MCP-инструменты, если они доступны",
+            "- Имена MCP-инструментов нужно использовать ТОЧНО как перечислено в секции инструментов",
+            "- НЕ запускай опасные команды (rm -rf, mkfs, shutdown и т.д.) — они будут заблокированы",
+            "- Когда цель полностью достигнута, предоставь итоговый анализ БЕЗ строки ACTION",
+            f"- Максимум {self.max_iterations} итераций доступно",
+        ]
+        if "send_ctrl_c" in self.enabled_tools:
+            tool_rules.append("- Если команда выполняется слишком долго (>30с), используй send_ctrl_c для прерывания")
+        if "read_console" in self.enabled_tools:
+            tool_rules.append("- Используй read_console для проверки текущего состояния терминала, если не уверен")
+        if "ask_user" in self.enabled_tools:
+            tool_rules.append("- Используй ask_user только когда действительно нужен ввод человека для критического решения")
+        if "report" in self.enabled_tools:
+            tool_rules.append("- Используй report для отправки промежуточного отчёта пользователю при длительных задачах")
+        rules_text = "\n".join(tool_rules)
+
         return f"""Ты — DevOps / Platform AI-агент, работающий через SSH и MCP-инструменты.
 У тебя есть доступ к терминалам серверов и внешним системам, подключённым через MCP.
 Всегда отвечай, рассуждай и пиши отчёты на русском языке.
@@ -421,18 +519,7 @@ class AgentEngine:
 {tools_desc}
 
 ## Правила
-- ВСЕГДА сначала выводи THOUGHT с объяснением логики рассуждений
-- Затем выводи ACTION с вызовом инструмента в формате JSON
-- После каждой команды анализируй вывод и решай, что делать дальше
-- Для внешних систем (Keycloak, GitHub, Docker API, cloud, IAM) используй MCP-инструменты, если они доступны
-- Имена MCP-инструментов нужно использовать ТОЧНО как перечислено в секции инструментов
-- Если команда выполняется слишком долго (>30с), используй send_ctrl_c для прерывания
-- Используй read_console для проверки текущего состояния терминала, если не уверен
-- НЕ запускай опасные команды (rm -rf, mkfs, shutdown и т.д.) — они будут заблокированы
-- Когда цель полностью достигнута, предоставь итоговый анализ БЕЗ строки ACTION
-- Используй ask_user только когда действительно нужен ввод человека для критического решения
-- Используй report для отправки промежуточного отчёта пользователю при длительных задачах
-- Максимум {self.max_iterations} итераций доступно
+{rules_text}
 {stop_conditions}
 {mcp_errors}
 
@@ -500,6 +587,11 @@ ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
         provider = LLMProvider()
         chunks = []
         try:
+            logger.info(
+                "agent_run {} final report llm start: iterations={}",
+                self.run_record.pk if self.run_record else "?",
+                len(iterations),
+            )
             async for chunk in provider.stream_chat(
                 prompt,
                 model=self.model_preference,
@@ -507,7 +599,13 @@ ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
                 purpose="agent",
             ):
                 chunks.append(chunk)
-            return "".join(chunks)
+            report = "".join(chunks)
+            logger.info(
+                "agent_run {} final report llm done: chars={}",
+                self.run_record.pk if self.run_record else "?",
+                len(report),
+            )
+            return report
         except Exception as exc:
             logger.error("Final report generation failed: {}", exc)
             return f"Report generation failed: {exc}\n\nRaw steps:\n{steps_summary}"

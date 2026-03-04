@@ -493,6 +493,33 @@ def _group_summary(group: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _client_summary(client: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": client.get("id"),
+        "clientId": client.get("clientId"),
+        "name": client.get("name"),
+        "description": client.get("description"),
+        "enabled": client.get("enabled"),
+        "protocol": client.get("protocol"),
+        "publicClient": client.get("publicClient"),
+    }
+
+
+def _protocol_mapper_summary(mapper: dict[str, Any]) -> dict[str, Any]:
+    config = mapper.get("config") if isinstance(mapper.get("config"), dict) else {}
+    return {
+        "id": mapper.get("id"),
+        "name": mapper.get("name"),
+        "protocol": mapper.get("protocol"),
+        "protocolMapper": mapper.get("protocolMapper"),
+        "userAttribute": config.get("user.attribute"),
+        "tokenClaim": config.get("claim.name"),
+        "addToIdToken": config.get("id.token.claim"),
+        "addToAccessToken": config.get("access.token.claim"),
+        "addToUserInfo": config.get("userinfo.token.claim"),
+    }
+
+
 class KeycloakAdminClient:
     def __init__(self, config: KeycloakConfig):
         self.config = config
@@ -627,6 +654,26 @@ class KeycloakAdminClient:
         return self._request("PUT", url, allow_statuses=(204,))
 
     def search_users(self, query: str, *, exact: bool = False, max_results: int = MAX_SEARCH_RESULTS) -> list[dict[str, Any]]:
+        if exact:
+            query_clean = _clean_text(query).lower()
+            exact_matches: list[dict[str, Any]] = []
+            exact_matches.extend(
+                user
+                for user in self._get_json(
+                    f"{self.config.admin_base_url}/users",
+                    params={"username": query, "exact": "true", "max": max(1, min(int(max_results), MAX_SEARCH_RESULTS))},
+                )
+                or []
+                if isinstance(user, dict) and _clean_text(user.get("username")).lower() == query_clean
+            )
+            if "@" in query_clean:
+                exact_matches.extend(
+                    user
+                    for user in self.search_users_by_email(query_clean)
+                    if _clean_text(user.get("email")).lower() == query_clean
+                )
+            return _dedupe_by_key(exact_matches)
+
         params: dict[str, Any] = {
             "search": query,
             "max": max(1, min(int(max_results), MAX_SEARCH_RESULTS)),
@@ -776,6 +823,74 @@ class KeycloakAdminClient:
         if second and int(second["score"]) >= int(top["score"]) - 5:
             raise ToolError(f"Fuzzy match for '{login_clean}' is ambiguous. Verify the user first.")
         return top["user"]
+
+    def list_clients(self, *, search: str = "", max_results: int = 50) -> list[dict[str, Any]]:
+        target = _clean_text(search).lower()
+        limit = max(1, min(int(max_results), 500))
+        page_size = 200
+        scan_limit = 1000 if target else limit
+        offset = 0
+        collected: list[dict[str, Any]] = []
+
+        while offset < scan_limit:
+            batch_size = min(page_size, scan_limit - offset)
+            batch = self._get_json(f"{self.config.admin_base_url}/clients", params={"first": offset, "max": batch_size})
+            items = [item for item in batch if isinstance(item, dict)] if isinstance(batch, list) else []
+            if not items:
+                break
+            collected.extend(items)
+            if len(items) < batch_size:
+                break
+            offset += batch_size
+            if not target and len(collected) >= limit:
+                break
+
+        clients = _dedupe_by_key(collected)
+        if not target:
+            clients.sort(key=lambda item: (_clean_text(item.get("clientId")), _clean_text(item.get("name"))))
+            return clients[:limit]
+
+        ranked: list[tuple[int, dict[str, Any]]] = []
+        for client in clients:
+            client_id = _clean_text(client.get("clientId")).lower()
+            name = _clean_text(client.get("name")).lower()
+            description = _clean_text(client.get("description")).lower()
+            score = 0
+            if client_id == target:
+                score += 200
+            if name == target:
+                score += 160
+            if target in client_id and client_id != target:
+                score += 90
+            if target in name and name != target:
+                score += 70
+            if target in description:
+                score += 30
+            normalized_target = target.replace("-", "").replace("_", "").replace(" ", "")
+            normalized_client_id = client_id.replace("-", "").replace("_", "").replace(" ", "")
+            if normalized_target and normalized_client_id == normalized_target:
+                score += 120
+            if score > 0:
+                ranked.append((score, client))
+
+        ranked.sort(key=lambda item: (-item[0], _clean_text(item[1].get("clientId"))))
+        return [client for _, client in ranked[:limit]]
+
+    def find_clients_with_role(self, role_name: str, *, search: str = "", max_results: int = 50) -> list[dict[str, Any]]:
+        target_role = _clean_text(role_name)
+        if not target_role:
+            return []
+        candidates = self.list_clients(search=search, max_results=max_results)
+        matches: list[dict[str, Any]] = []
+        for client in candidates:
+            client_uuid = _clean_text(client.get("id"))
+            client_id = _clean_text(client.get("clientId"))
+            if not client_uuid or not client_id:
+                continue
+            role_map = self.get_client_roles(client_uuid)
+            if target_role in role_map:
+                matches.append(client)
+        return matches
 
     def get_client_uuid(self, client_id: str | None = None) -> str:
         target_client_id = _clean_text(client_id) or self.config.client_id
@@ -952,6 +1067,10 @@ class KeycloakAdminClient:
         )
         return {"name": mapper_name, "userAttribute": user_attribute, "tokenClaim": token_claim}
 
+    def list_protocol_mappers(self, client_uuid: str) -> list[dict[str, Any]]:
+        mappers = self._get_json(f"{self.config.admin_base_url}/clients/{client_uuid}/protocol-mappers/models")
+        return [item for item in mappers if isinstance(item, dict)] if isinstance(mappers, list) else []
+
     def get_client_service_account_user(self, client_uuid: str) -> dict[str, Any]:
         user = self._get_json(f"{self.config.admin_base_url}/clients/{client_uuid}/service-account-user")
         if not isinstance(user, dict):
@@ -1005,10 +1124,41 @@ class KeycloakAdminClient:
     def add_user_to_group(self, user_id: str, group_id: str) -> None:
         self._put_empty(f"{self.config.admin_base_url}/users/{user_id}/groups/{group_id}")
 
+    def create_group(self, name: str, *, parent_group: str = "") -> dict[str, Any]:
+        payload = {"name": name}
+        parent_value = _clean_text(parent_group)
+        if parent_value:
+            parent = self.resolve_group(parent_value)
+            response = self._post_json(
+                f"{self.config.admin_base_url}/groups/{_clean_text(parent.get('id'))}/children",
+                payload,
+                allow_statuses=(201, 204),
+            )
+            location = response.headers.get("Location", "")
+            group_id = location.rstrip("/").split("/")[-1] if location else ""
+            if group_id:
+                created = self.resolve_group(group_id)
+            else:
+                created = self.resolve_group(f"{_clean_text(parent.get('path'))}/{name}")
+            return _group_summary(created)
+
+        response = self._post_json(f"{self.config.admin_base_url}/groups", payload, allow_statuses=(201, 204))
+        location = response.headers.get("Location", "")
+        group_id = location.rstrip("/").split("/")[-1] if location else ""
+        if group_id:
+            created = self.resolve_group(group_id)
+        else:
+            created = self.resolve_group(f"/{name}")
+        return _group_summary(created)
+
 
 @contextmanager
-def _client_from_args(arguments: dict[str, Any]):
-    client = KeycloakAdminClient(_resolve_config(arguments))
+def _client_from_args(arguments: dict[str, Any], *, strip_target_client_id: bool = False):
+    resolved_arguments = dict(arguments)
+    if strip_target_client_id:
+        resolved_arguments.pop("client_id", None)
+        resolved_arguments.pop("client_id_env", None)
+    client = KeycloakAdminClient(_resolve_config(resolved_arguments))
     try:
         yield client
     finally:
@@ -1136,6 +1286,49 @@ def handle_find_user(arguments: dict[str, Any]) -> dict[str, Any]:
     return _tool_result(payload)
 
 
+def handle_list_clients(arguments: dict[str, Any]) -> dict[str, Any]:
+    search = _clean_text(arguments.get("search"))
+    max_results = max(1, min(int(arguments.get("max_results") or 50), 500))
+    with _client_from_args(arguments) as client:
+        clients = client.list_clients(search=search, max_results=max_results)
+    payload = {"success": True, "count": len(clients), "clients": [_client_summary(item) for item in clients]}
+    return _tool_result(payload)
+
+
+def handle_find_clients_with_role(arguments: dict[str, Any]) -> dict[str, Any]:
+    role_name = _clean_text(arguments.get("role_name"))
+    if not role_name:
+        raise ToolError("role_name is required")
+    search = _clean_text(arguments.get("search"))
+    max_results = max(1, min(int(arguments.get("max_results") or 50), 500))
+    with _client_from_args(arguments) as client:
+        clients = client.find_clients_with_role(role_name, search=search, max_results=max_results)
+    payload = {
+        "success": True,
+        "role_name": role_name,
+        "count": len(clients),
+        "clients": [_client_summary(item) for item in clients],
+    }
+    return _tool_result(payload)
+
+
+def handle_list_protocol_mappers(arguments: dict[str, Any]) -> dict[str, Any]:
+    client_id = _clean_text(arguments.get("client_id"))
+    if not client_id:
+        raise ToolError("client_id is required")
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
+        client_uuid = client.get_client_uuid(client_id)
+        mappers = client.list_protocol_mappers(client_uuid)
+    payload = {
+        "success": True,
+        "client_id": client_id,
+        "client_uuid": client_uuid,
+        "count": len(mappers),
+        "protocol_mappers": [_protocol_mapper_summary(item) for item in mappers],
+    }
+    return _tool_result(payload)
+
+
 def handle_create_user(arguments: dict[str, Any]) -> dict[str, Any]:
     username = _clean_text(arguments.get("username"))
     email = _clean_text(arguments.get("email"))
@@ -1174,7 +1367,7 @@ def handle_create_user(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def handle_list_client_roles(arguments: dict[str, Any]) -> dict[str, Any]:
     client_id = _clean_text(arguments.get("client_id"))
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         resolved_client_id = client_id or client.config.client_id
         client_uuid = client.get_client_uuid(client_id or None)
         role_map = client.get_client_roles(client_uuid)
@@ -1196,7 +1389,7 @@ def handle_assign_roles(arguments: dict[str, Any]) -> dict[str, Any]:
     user_id = _clean_text(arguments.get("user_id")) or None
     allow_fuzzy = _parse_bool(arguments.get("allow_fuzzy_user_match"), default=False)
     client_id = _clean_text(arguments.get("client_id"))
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         resolved_client_id = client_id or client.config.client_id
         user = client.resolve_user(login=login, user_id=user_id, allow_fuzzy=allow_fuzzy)
         client_uuid = client.get_client_uuid(client_id or None)
@@ -1221,7 +1414,7 @@ def handle_get_user_roles(arguments: dict[str, Any]) -> dict[str, Any]:
     user_id = _clean_text(arguments.get("user_id")) or None
     client_id = _clean_text(arguments.get("client_id"))
     allow_fuzzy = _parse_bool(arguments.get("allow_fuzzy_user_match"), default=False)
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         resolved_client_id = client_id or client.config.client_id
         user = client.resolve_user(login=login, user_id=user_id, allow_fuzzy=allow_fuzzy)
         client_uuid = client.get_client_uuid(client_id or None)
@@ -1241,7 +1434,7 @@ def handle_bulk_assign_roles(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ToolError("users must be a non-empty array")
     client_id = _clean_text(arguments.get("client_id"))
     results = {"assigned": [], "errors": [], "skipped": []}
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         resolved_client_id = client_id or client.config.client_id
         client_uuid = client.get_client_uuid(client_id or None)
         role_map = client.get_client_roles(client_uuid)
@@ -1415,7 +1608,7 @@ def handle_create_client_role(arguments: dict[str, Any]) -> dict[str, Any]:
     if not client_id or not role_name:
         raise ToolError("client_id and role_name are required")
     description = _clean_text(arguments.get("description"))
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         client_uuid = client.get_client_uuid(client_id)
         role = client.create_client_role(client_uuid, role_name, description)
     payload = {"success": True, "message": "Client role created successfully", "client_id": client_id, "role": role}
@@ -1432,7 +1625,7 @@ def handle_create_client(arguments: dict[str, Any]) -> dict[str, Any]:
     direct_access_grants_enabled = _parse_bool(arguments.get("direct_access_grants_enabled"), default=True)
     standard_flow_enabled = _parse_bool(arguments.get("standard_flow_enabled"), default=True)
     public_client = _parse_bool(arguments.get("public_client"), default=False)
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         client_info = client.create_client(
             client_id=client_id,
             name=name,
@@ -1455,7 +1648,7 @@ def handle_add_protocol_mapper(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ToolError("client_id, mapper_name, user_attribute, and token_claim are required")
     add_to_id_token = _parse_bool(arguments.get("add_to_id_token"), default=True)
     add_to_access_token = _parse_bool(arguments.get("add_to_access_token"), default=True)
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         client_uuid = client.get_client_uuid(client_id)
         mapper = client.add_protocol_mapper(
             client_uuid=client_uuid,
@@ -1479,7 +1672,7 @@ def handle_assign_service_account_roles(arguments: dict[str, Any]) -> dict[str, 
     roles = arguments.get("roles")
     if not client_id or not isinstance(roles, list) or not roles:
         raise ToolError("client_id and roles are required")
-    with _client_from_args(arguments) as client:
+    with _client_from_args(arguments, strip_target_client_id=True) as client:
         client_uuid = client.get_client_uuid(client_id)
         service_account_user = client.get_client_service_account_user(client_uuid)
         role_map = client.get_client_roles(client_uuid)
@@ -1544,6 +1737,17 @@ def handle_add_user_to_groups(arguments: dict[str, Any]) -> dict[str, Any]:
     return _tool_result(payload)
 
 
+def handle_create_group(arguments: dict[str, Any]) -> dict[str, Any]:
+    group_name = _clean_text(arguments.get("group_name"))
+    if not group_name:
+        raise ToolError("group_name is required")
+    parent_group = _clean_text(arguments.get("parent_group"))
+    with _client_from_args(arguments) as client:
+        group = client.create_group(group_name, parent_group=parent_group)
+    payload = {"success": True, "message": "Group created successfully", "group": group}
+    return _tool_result(payload)
+
+
 PROFILE_PROPERTY = {
     "profile": {
         "type": "string",
@@ -1603,6 +1807,36 @@ TOOLS = [
     _tool("keycloak_use_profile", "Validate a named profile and make it the current process default.", {"profile": {"type": "string", "description": "Profile name from keycloak_profiles.json"}}, ["profile"]),
     _tool("keycloak_list_profiles", "List available Keycloak profiles without exposing secrets.", {}, []),
     _tool("keycloak_current_environment", "Show runtime default and environment-level Keycloak configuration.", {}, []),
+    _tool(
+        "keycloak_list_clients",
+        "List or search Keycloak clients in the current realm.",
+        {
+            "search": {"type": "string", "description": "Optional free-text search against clientId, name, or description"},
+            "max_results": {"type": "integer", "description": "Maximum number of clients to return. Default: 50"},
+            **PROFILE_PROPERTY,
+        },
+        [],
+    ),
+    _tool(
+        "keycloak_find_clients_with_role",
+        "Find clients that contain a specific client role, optionally limited by a search hint.",
+        {
+            "role_name": {"type": "string", "description": "Exact client role name to look for"},
+            "search": {"type": "string", "description": "Optional client search hint"},
+            "max_results": {"type": "integer", "description": "Maximum number of candidate clients to inspect. Default: 50"},
+            **PROFILE_PROPERTY,
+        },
+        ["role_name"],
+    ),
+    _tool(
+        "keycloak_list_protocol_mappers",
+        "List protocol mappers configured on a client.",
+        {
+            "client_id": {"type": "string", "description": "Target client_id"},
+            **PROFILE_PROPERTY,
+        },
+        ["client_id"],
+    ),
     _tool(
         "keycloak_search_users",
         "Search users in Keycloak by username, email, or free text.",
@@ -1680,6 +1914,7 @@ TOOLS = [
     _tool("keycloak_list_groups", "List groups and subgroup paths.", {"search": {"type": "string", "description": "Optional search term"}, "max_results": {"type": "integer", "description": f"Maximum number of groups. Default: {DEFAULT_GROUP_PAGE_SIZE}"}, **PROFILE_PROPERTY}, []),
     _tool("keycloak_get_user_groups", "List groups assigned to a user.", {**USER_REFERENCE_PROPERTIES, **PROFILE_PROPERTY}, []),
     _tool("keycloak_add_user_to_groups", "Add a user to one or more groups by exact id, name, or path.", {**USER_REFERENCE_PROPERTIES, "groups": {"type": "array", "items": {"type": "string"}, "description": "Group ids, names, or paths"}, **PROFILE_PROPERTY}, ["groups"]),
+    _tool("keycloak_create_group", "Create a top-level group or subgroup.", {"group_name": {"type": "string", "description": "New group name"}, "parent_group": {"type": "string", "description": "Optional parent group id, name, or path"}, **PROFILE_PROPERTY}, ["group_name"]),
 ]
 
 
@@ -1688,6 +1923,9 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "keycloak_use_profile": handle_use_profile,
     "keycloak_list_profiles": handle_list_profiles,
     "keycloak_current_environment": handle_current_environment,
+    "keycloak_list_clients": handle_list_clients,
+    "keycloak_find_clients_with_role": handle_find_clients_with_role,
+    "keycloak_list_protocol_mappers": handle_list_protocol_mappers,
     "keycloak_search_users": handle_search_users,
     "keycloak_find_user": handle_find_user,
     "keycloak_create_user": handle_create_user,
@@ -1707,6 +1945,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "keycloak_list_groups": handle_list_groups,
     "keycloak_get_user_groups": handle_get_user_groups,
     "keycloak_add_user_to_groups": handle_add_user_to_groups,
+    "keycloak_create_group": handle_create_group,
 }
 
 

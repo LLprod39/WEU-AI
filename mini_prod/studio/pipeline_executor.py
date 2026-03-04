@@ -26,6 +26,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import secrets
 from collections import defaultdict, deque
 from datetime import timedelta
@@ -42,6 +43,7 @@ from .mcp_client import call_mcp_tool
 from .models import PipelineRun
 
 logger = logging.getLogger(__name__)
+_SIMPLE_TEMPLATE_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def _s2a_fn(func, thread_sensitive=False):
@@ -50,10 +52,9 @@ def _s2a_fn(func, thread_sensitive=False):
 
 def _render_template_value(value: Any, context: dict[str, Any]) -> Any:
     if isinstance(value, str):
-        try:
-            return value.format_map(defaultdict(str, context))
-        except (KeyError, ValueError):
-            return value
+        # Use a narrow placeholder syntax ({name}) so JSON examples and object braces
+        # inside prompts/templates do not break interpolation.
+        return _SIMPLE_TEMPLATE_PATTERN.sub(lambda match: str(context.get(match.group(1), "")), value)
     if isinstance(value, list):
         return [_render_template_value(item, context) for item in value]
     if isinstance(value, dict):
@@ -154,15 +155,15 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
     from servers.models import AgentRun, Server, ServerAgent
 
     config = node.get("data", {})
+    node_id = node.get("id")
     agent_config_id = config.get("agent_config_id")
     server_ids = config.get("server_ids", [])
     mcp_server_ids = config.get("mcp_server_ids", [])
     goal = config.get("goal", "")
     owner = run.triggered_by or run.pipeline.owner
 
-    # Substitute context variables into goal
-    with contextlib.suppress(KeyError, ValueError):
-        goal = goal.format(**context)
+    # Substitute known context values and leave missing ones blank.
+    goal = _render_template_value(goal, context)
 
     servers = await _s2a_fn(lambda: list(Server.objects.filter(id__in=server_ids)))() if server_ids else []
 
@@ -182,7 +183,7 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
         instructions = config.get("instructions", "")
         max_iterations = config.get("max_iterations", 10)
         model = config.get("model", "gemini-2.0-flash-exp")
-        tools_config = {}
+        tools_config = dict.fromkeys(config.get("allowed_tools", []) or [], True)
         from .models import MCPServerPool
 
         mcp_servers = (
@@ -223,7 +224,24 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
         mcp_servers=mcp_servers,
     )
 
+    logger.info(
+        "pipeline run %s node %s agent/react start: provider=%s model=%s servers=%s mcp_servers=%s",
+        run.pk,
+        node_id,
+        model_preference,
+        specific_model,
+        [srv.name for srv in servers],
+        [srv.name for srv in mcp_servers],
+    )
     agent_run: AgentRun = await engine.run()
+    logger.info(
+        "pipeline run %s node %s agent/react done: agent_run_id=%s status=%s report_chars=%s",
+        run.pk,
+        node_id,
+        agent_run.pk,
+        agent_run.status,
+        len(agent_run.final_report or ""),
+    )
     return {
         "status": "completed" if agent_run.status == "completed" else "failed",
         "agent_run_id": agent_run.pk,
@@ -243,8 +261,7 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
     goal = config.get("goal", "")
     owner = run.triggered_by or run.pipeline.owner
 
-    with contextlib.suppress(KeyError, ValueError):
-        goal = goal.format(**context)
+    goal = _render_template_value(goal, context)
 
     servers = await _s2a_fn(lambda: list(Server.objects.filter(id__in=server_ids)))() if server_ids else []
 
@@ -262,7 +279,7 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
         system_prompt = config.get("system_prompt", "")
         max_iterations = config.get("max_iterations", 20)
         model = config.get("model", "gemini-2.0-flash-exp")
-        tools_config = {}
+        tools_config = dict.fromkeys(config.get("allowed_tools", []) or [], True)
         from .models import MCPServerPool
 
         mcp_servers = (
@@ -406,11 +423,7 @@ async def _execute_agent_llm_query(node: dict, context: dict, node_outputs: dict
 
     substitutions = dict(context)
     substitutions["all_outputs"] = outputs_context
-
-    try:
-        prompt = prompt_template.format_map(substitutions)
-    except (KeyError, ValueError):
-        prompt = prompt_template
+    prompt = _render_template_value(prompt_template, substitutions)
 
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
     if outputs_context and "{all_outputs}" not in prompt_template and include_all_outputs:
@@ -466,8 +479,25 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
 
     arguments = _render_template_value(arguments_template or {}, context)
     try:
+        logger.info(
+            "pipeline run %s node %s mcp_call start: server=%s tool=%s args=%s",
+            run.pk,
+            node.get("id"),
+            mcp_server.name,
+            tool_name,
+            json.dumps(arguments, ensure_ascii=False)[:800],
+        )
         result = await call_mcp_tool(mcp_server, tool_name, arguments)
         output = _mcp_result_to_text(result)
+        logger.info(
+            "pipeline run %s node %s mcp_call done: server=%s tool=%s is_error=%s output_chars=%s",
+            run.pk,
+            node.get("id"),
+            mcp_server.name,
+            tool_name,
+            bool(result.get("isError")),
+            len(output),
+        )
         if result.get("isError"):
             return {
                 "status": "failed",
@@ -620,11 +650,8 @@ async def _execute_output_report(node: dict, context: dict, node_outputs: dict[s
     template = config.get("template", "")
 
     if template:
-        try:
-            # context already has {nid}, {nid_output}, {nid_error} from enriched context
-            report = template.format_map(context)
-        except (KeyError, ValueError):
-            report = template
+        # Render what we can and leave missing values blank instead of leaking raw placeholders.
+        report = _render_template_value(template, context)
     else:
         lines = [f"# Pipeline Run Report: {run.pipeline.name}\n"]
         for nid, state in node_outputs.items():
@@ -1035,6 +1062,12 @@ def _make_run_event_callback(run: PipelineRun, node_id: str):
 async def _update_node_state(run: PipelineRun, node_id: str, state: dict):
     """Persist node state and notify WS clients."""
     run.node_states[node_id] = state
+    logger.info(
+        "pipeline run %s node %s state -> %s",
+        run.pk,
+        node_id,
+        state.get("status", "unknown"),
+    )
 
     await _s2a_fn(lambda: PipelineRun.objects.filter(pk=run.pk).update(node_states=run.node_states))()
 
@@ -1051,6 +1084,12 @@ async def _update_run_status(run: PipelineRun, status: str, **extra):
     run.status = status
     for k, v in extra.items():
         setattr(run, k, v)
+    logger.info(
+        "pipeline run %s status -> %s%s",
+        run.pk,
+        status,
+        f" extra={list(extra.keys())}" if extra else "",
+    )
     await _s2a_fn(run.save)()
 
     layer = get_channel_layer()
@@ -1093,6 +1132,14 @@ class PipelineExecutor:
         run.started_at = timezone.now()
         await _s2a_fn(run.save)()
 
+        logger.info(
+            "pipeline run %s start: pipeline=%s context_keys=%s nodes=%s edges=%s",
+            run.pk,
+            run.pipeline.name,
+            sorted(context.keys()),
+            len(run.nodes_snapshot or []),
+            len(run.edges_snapshot or []),
+        )
         await _update_run_status(run, PipelineRun.STATUS_RUNNING)
 
         nodes = run.nodes_snapshot
@@ -1102,12 +1149,19 @@ class PipelineExecutor:
         node_outputs: dict[str, dict] = {}
 
         try:
-            for layer in layers:
+            for layer_index, layer in enumerate(layers, start=1):
                 if self._stop_requested:
                     break
 
                 # Filter trigger nodes — they just inject context and pass through
                 exec_nodes = [n for n in layer if not n.get("type", "").startswith("trigger/")]
+                logger.info(
+                    "pipeline run %s layer %s start: nodes=%s exec_nodes=%s",
+                    run.pk,
+                    layer_index,
+                    [n.get("id") for n in layer],
+                    [n.get("id") for n in exec_nodes],
+                )
 
                 if not exec_nodes:
                     continue
@@ -1127,6 +1181,7 @@ class PipelineExecutor:
                 for node, result in zip(exec_nodes, results, strict=False):
                     nid = node["id"]
                     if isinstance(result, Exception):
+                        logger.exception("pipeline run %s node %s raised exception", run.pk, nid, exc_info=result)
                         state: dict[str, Any] = {
                             "status": "failed",
                             "error": str(result),
@@ -1139,6 +1194,15 @@ class PipelineExecutor:
 
                     node_outputs[nid] = state
                     await _update_node_state(run, nid, state)
+                    logger.info(
+                        "pipeline run %s node %s finished: type=%s status=%s error=%s output_chars=%s",
+                        run.pk,
+                        nid,
+                        node.get("type", ""),
+                        state.get("status"),
+                        (state.get("error") or "")[:300],
+                        len(state.get("output") or ""),
+                    )
 
                     # If a critical node failed and no condition node follows, abort
                     node_type = node.get("type", "")
@@ -1149,6 +1213,7 @@ class PipelineExecutor:
 
         except Exception as exc:
             run.error = str(exc)
+            logger.exception("pipeline run %s failed", run.pk)
             await _update_run_status(run, PipelineRun.STATUS_FAILED, error=str(exc), finished_at=timezone.now())
             return run
 
@@ -1157,6 +1222,7 @@ class PipelineExecutor:
         else:
             await _update_run_status(run, PipelineRun.STATUS_COMPLETED, finished_at=timezone.now())
 
+        logger.info("pipeline run %s finished: status=%s", run.pk, run.status)
         return run
 
     async def _execute_node(self, node: dict, context: dict, node_outputs: dict[str, dict]) -> dict:

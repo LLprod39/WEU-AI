@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   studioPipelines,
@@ -1370,6 +1371,13 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
   const [pipelineName, setPipelineName] = useState("");
   const [lastRun, setLastRun] = useState<PipelineRun | null>(null);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [runTaskText, setRunTaskText] = useState("");
+  const [runRequester, setRunRequester] = useState("Studio Manual Run");
+  const [runTicketId, setRunTicketId] = useState("");
+  const [runAllowExistingUser, setRunAllowExistingUser] = useState(true);
+  const [runContextText, setRunContextText] = useState("{}");
+  const [runContextError, setRunContextError] = useState<string | null>(null);
   const nodeIdCounter = useRef(1);
 
   // Load pipeline data
@@ -1406,15 +1414,16 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
   });
 
   const runMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (context: Record<string, unknown>) => {
       if (!pipelineId) throw new Error("Save the pipeline first");
-      return studioPipelines.run(pipelineId);
+      return studioPipelines.run(pipelineId, context);
     },
     onSuccess: (run) => {
       setLastRun(run);
       setActiveRunId(run.id);
       setSelectedNode(null);
       toast({ description: `Pipeline started — run #${run.id}` });
+      setRunDialogOpen(false);
     },
     onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
   });
@@ -1472,6 +1481,52 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
 
   const onPaneClick = useCallback(() => setSelectedNode(null), []);
 
+  const handleRunSubmit = useCallback(async () => {
+    if (!pipelineId) {
+      toast({ variant: "destructive", description: "Save the pipeline first" });
+      return;
+    }
+
+    const parsedContext = parseJsonObjectText(runContextText);
+    if (parsedContext.error) {
+      setRunContextError(parsedContext.error);
+      return;
+    }
+    setRunContextError(null);
+
+    const manualContext: Record<string, unknown> = {
+      ...(parsedContext.value || {}),
+    };
+    if (runTaskText.trim()) manualContext.task = runTaskText.trim();
+    if (runRequester.trim()) manualContext.requester = runRequester.trim();
+    if (runTicketId.trim()) manualContext.ticket_id = runTicketId.trim();
+    manualContext.allow_existing_user = runAllowExistingUser;
+
+    try {
+      await saveMutation.mutateAsync({
+        name: pipelineName || "Untitled",
+        nodes: nodes as unknown as PipelineNode[],
+        edges: edges as unknown as PipelineEdge[],
+      });
+      await runMutation.mutateAsync(manualContext);
+    } catch {
+      // Handled by mutation toasts.
+    }
+  }, [
+    pipelineId,
+    runContextText,
+    runTaskText,
+    runRequester,
+    runTicketId,
+    runAllowExistingUser,
+    saveMutation,
+    pipelineName,
+    nodes,
+    edges,
+    runMutation,
+    toast,
+  ]);
+
   if (pipelineId && isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -1518,7 +1573,7 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
           </Button>
           <Button
             size="sm"
-            onClick={() => { handleSave(); setTimeout(() => runMutation.mutate(), 500); }}
+            onClick={() => setRunDialogOpen(true)}
             disabled={runMutation.isPending || saveMutation.isPending}
             className="h-7 gap-1.5"
           >
@@ -1527,6 +1582,80 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
           </Button>
         </div>
       </div>
+
+      <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Run Pipeline</DialogTitle>
+            <DialogDescription>
+              Paste the task text here for manual runs. Studio will send it as pipeline context without using a webhook.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Task text</Label>
+              <Textarea
+                value={runTaskText}
+                onChange={(e) => setRunTaskText(e.target.value)}
+                rows={8}
+                placeholder="Просим присвоить роль в Keycloak SALESERG_MANAGER на портале SalesMarket..."
+                className="text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Requester</Label>
+                <Input
+                  value={runRequester}
+                  onChange={(e) => setRunRequester(e.target.value)}
+                  placeholder="SalesMarket Service Desk"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Ticket ID</Label>
+                <Input
+                  value={runTicketId}
+                  onChange={(e) => setRunTicketId(e.target.value)}
+                  placeholder="IAM-2007"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2">
+              <div>
+                <Label className="text-xs">Allow existing user</Label>
+                <p className="text-[11px] text-muted-foreground">Keep this enabled for role assignment requests to existing employees.</p>
+              </div>
+              <Switch checked={runAllowExistingUser} onCheckedChange={setRunAllowExistingUser} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Advanced JSON context</Label>
+              <Textarea
+                value={runContextText}
+                onChange={(e) => {
+                  setRunContextText(e.target.value);
+                  if (runContextError) setRunContextError(null);
+                }}
+                rows={6}
+                placeholder='{"client_roles":{"SalesMarket":["SALESERG_MANAGER"]}}'
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Optional extra fields merged into the manual context. Use this if the pipeline needs explicit values like client roles.
+              </p>
+              {runContextError && <p className="text-[11px] text-red-400">{runContextError}</p>}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRunDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRunSubmit} disabled={runMutation.isPending || saveMutation.isPending}>
+              {runMutation.isPending || saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Run
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">

@@ -126,7 +126,9 @@ class MultiAgentEngine:
         self.event_callback = event_callback
 
         self.session_timeout = agent.session_timeout_seconds or SESSION_TIMEOUT_DEFAULT
-        self.enabled_tools = get_enabled_tools(agent.tools_config or {})
+        self.tools_config = dict(agent.tools_config or {})
+        self.allowed_tool_names = {name for name, enabled in self.tools_config.items() if enabled} if self.tools_config else None
+        self.enabled_tools = get_enabled_tools(self.tools_config)
 
         self._stop_requested = False
         self._pause_event = asyncio.Event()
@@ -136,6 +138,7 @@ class MultiAgentEngine:
         self.run_record: AgentRun | None = None
         self.mcp_servers = list(mcp_servers or [])
         self.mcp_tools = {}
+        self.disabled_mcp_tools: set[str] = set()
         self.mcp_tool_errors: list[str] = []
         self.model_preference, self.specific_model = resolve_provider_and_model(
             model_preference,
@@ -205,7 +208,15 @@ class MultiAgentEngine:
                 else:
                     await self.session.open(primary_server)
 
-            self.mcp_tools, self.mcp_tool_errors = await load_mcp_tool_bindings(self.mcp_servers)
+            loaded_mcp_tools, self.mcp_tool_errors = await load_mcp_tool_bindings(self.mcp_servers)
+            if self.allowed_tool_names is None:
+                self.mcp_tools = loaded_mcp_tools
+                self.disabled_mcp_tools = set()
+            else:
+                self.mcp_tools = {
+                    name: binding for name, binding in loaded_mcp_tools.items() if name in self.allowed_tool_names
+                }
+                self.disabled_mcp_tools = set(loaded_mcp_tools) - set(self.mcp_tools)
 
             connected = self.session.get_connected_info()
             await sync_to_async(self._update_run)(run, connected_servers=[
@@ -1097,6 +1108,8 @@ ACTION: tool_name {{"param1": "val1"}}
     async def _execute_tool(self, name: str, args: dict) -> str:
         if name in self.mcp_tools:
             return await execute_bound_mcp_tool(self.mcp_tools, name, args)
+        if name in self.disabled_mcp_tools:
+            return f"Tool '{name}' is disabled for this agent."
 
         from servers.agent_tools import AGENT_TOOLS
         tool_meta = AGENT_TOOLS.get(name)

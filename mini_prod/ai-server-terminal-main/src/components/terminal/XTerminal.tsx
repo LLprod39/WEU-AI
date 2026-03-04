@@ -33,6 +33,7 @@ export const XTerminal = forwardRef<TerminalHandle, XTerminalProps>(function XTe
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsOpenedRef = useRef(false);
 
   // Store callbacks in refs so the WebSocket effect doesn't restart on every render.
   const onStatusChangeRef = useRef(onStatusChange);
@@ -97,13 +98,17 @@ export const XTerminal = forwardRef<TerminalHandle, XTerminalProps>(function XTe
     let cancelled = false;
     fetchWsToken().then((wsToken) => {
       if (cancelled) return;
-      const socket = new WebSocket(getWsUrl(serverId, wsToken ?? undefined));
+      const wsUrl = getWsUrl(serverId, wsToken ?? undefined);
+      const socket = new WebSocket(wsUrl);
       wsRef.current = socket;
+      wsOpenedRef.current = false;
       onStatusChangeRef.current?.("connecting");
 
       socket.onopen = () => {
+        wsOpenedRef.current = true;
         const cols = term.cols || 120;
         const rows = term.rows || 32;
+        term.writeln("\x1b[90mWebSocket connected. Starting SSH session...\x1b[0m");
         sendJson({ type: "connect", cols, rows, term_type: "xterm-256color" });
       };
 
@@ -143,12 +148,22 @@ export const XTerminal = forwardRef<TerminalHandle, XTerminalProps>(function XTe
       };
 
       socket.onerror = () => {
+        const message = "WebSocket error while connecting to terminal";
         onStatusChangeRef.current?.("error");
-        onErrorRef.current?.("WebSocket error");
+        onErrorRef.current?.(message);
+        term.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        const details = event.reason
+          ? `code ${event.code}: ${event.reason}`
+          : `code ${event.code}`;
+        const message = wsOpenedRef.current
+          ? `WebSocket closed (${details})`
+          : `WebSocket handshake failed (${details}). Check frontend host, proxy, and WS URL.`;
         onStatusChangeRef.current?.("disconnected");
+        onErrorRef.current?.(message);
+        term.writeln(`\r\n\x1b[33m${message}\x1b[0m`);
       };
     });
     onStatusChangeRef.current?.("connecting");

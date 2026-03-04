@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from .models import MCPServerPool
 
@@ -305,6 +306,13 @@ async def list_mcp_tools(server: MCPServerPool) -> list[dict[str, Any]]:
 
 async def call_mcp_tool(server: MCPServerPool, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     arguments = arguments or {}
+    logger.info(
+        "mcp call start: server={} transport={} tool={} args={}",
+        server.name,
+        server.transport,
+        tool_name,
+        json.dumps(arguments, ensure_ascii=False)[:1000],
+    )
     async with await _with_client(server) as client:
         await client.initialize()
         if isinstance(client, _StdioMCPClient):
@@ -313,5 +321,14 @@ async def call_mcp_tool(server: MCPServerPool, tool_name: str, arguments: dict[s
                 {"name": tool_name, "arguments": arguments},
                 request_id=secrets.token_hex(8),
             )
-            return await client.request(payload, timeout=120)
-        return await client.request("tools/call", {"name": tool_name, "arguments": arguments})
+            result = await client.request(payload, timeout=120)
+        else:
+            result = await client.request("tools/call", {"name": tool_name, "arguments": arguments})
+    logger.info(
+        "mcp call done: server={} tool={} is_error={} content_items={}",
+        server.name,
+        tool_name,
+        bool(result.get("isError")),
+        len(result.get("content") or []),
+    )
+    return result

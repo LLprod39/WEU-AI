@@ -144,11 +144,32 @@ async def execute_bound_mcp_tool(bindings: dict[str, MCPBoundTool], action_name:
         return "MCP tool arguments must be a JSON object."
 
     try:
+        logger.info(
+            "mcp bound tool start: action={} server={} tool={} args={}",
+            action_name,
+            binding.server.name,
+            binding.tool_name,
+            json.dumps(args, ensure_ascii=False)[:1000],
+        )
         result = await call_mcp_tool(binding.server, binding.tool_name, args)
     except Exception as exc:
+        logger.exception(
+            "mcp bound tool failed: action={} server={} tool={}",
+            action_name,
+            binding.server.name,
+            binding.tool_name,
+        )
         return f"MCP tool error ({binding.server.name}/{binding.tool_name}): {exc}"
 
     output = _mcp_result_to_text(result)
+    logger.info(
+        "mcp bound tool done: action={} server={} tool={} is_error={} output_chars={}",
+        action_name,
+        binding.server.name,
+        binding.tool_name,
+        bool(result.get("isError")),
+        len(output),
+    )
     if result.get("isError"):
         return f"MCP tool error ({binding.server.name}/{binding.tool_name}): {output}"
     return output or f"MCP tool {binding.tool_name} completed successfully."

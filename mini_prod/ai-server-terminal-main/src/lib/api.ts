@@ -221,14 +221,21 @@ export interface ActivityLogsResponse {
   };
 }
 
+function normalizeWsOrigin(rawValue: string): string {
+  const raw = (rawValue || "").trim().replace(/\/$/, "");
+  if (!raw) return "";
+  if (raw.startsWith("ws://") || raw.startsWith("wss://")) return raw;
+  if (raw.startsWith("http://")) return `ws://${raw.slice("http://".length)}`;
+  if (raw.startsWith("https://")) return `wss://${raw.slice("https://".length)}`;
+  const proto = window.location.protocol === "https:" ? "wss://" : "ws://";
+  return `${proto}${raw}`;
+}
+
 export function getWsUrl(serverId: number | string, wsToken?: string): string {
-  const explicitWs = (import.meta.env.VITE_DJANGO_WS_URL || "").replace(/\/$/, "");
+  const explicitWs = normalizeWsOrigin(import.meta.env.VITE_DJANGO_WS_URL || "");
   let base: string;
   if (explicitWs) {
     base = `${explicitWs}/ws/servers/${serverId}/terminal/`;
-  } else if (window.location.port === "8080") {
-    // Route WS through Vite proxy so session cookies (set on :8080) are forwarded.
-    base = `ws://127.0.0.1:8080/ws/servers/${serverId}/terminal/`;
   } else {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = import.meta.env.VITE_WS_HOST || window.location.host;

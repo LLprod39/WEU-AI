@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand
 from studio.keycloak_provisioning import (
     KEYCLOAK_MCP_URL,
     KEYCLOAK_OPS_PIPELINE_SPECS,
+    SAMPLE_BULK_TASK_CONTEXT,
     SAMPLE_TASK_CONTEXT,
     ensure_keycloak_mcp_server,
     ensure_keycloak_ops_pipelines,
@@ -66,6 +67,9 @@ class Command(BaseCommand):
 
         self.stdout.write("Manual/API context example:")
         self.stdout.write(json.dumps(SAMPLE_TASK_CONTEXT, ensure_ascii=False, indent=2))
+        self.stdout.write("")
+        self.stdout.write("Bulk request example:")
+        self.stdout.write(json.dumps(SAMPLE_BULK_TASK_CONTEXT, ensure_ascii=False, indent=2))
         self.stdout.write("")
         self.stdout.write("Notes:")
         self.stdout.write("  1. Start the MCP service: docker compose up -d mcp-keycloak")
