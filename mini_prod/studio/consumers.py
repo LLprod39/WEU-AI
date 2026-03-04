@@ -11,9 +11,13 @@ import json
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 class PipelineRunConsumer(AsyncWebsocketConsumer):
+    async def _send_event(self, payload: dict):
+        await self.send(text_data=json.dumps(payload, cls=DjangoJSONEncoder, ensure_ascii=False))
+
     async def connect(self):
         user = self.scope.get("user")
         if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
@@ -57,13 +61,13 @@ class PipelineRunConsumer(AsyncWebsocketConsumer):
     # ------------------------------------------------------------------
 
     async def pipeline_node_event(self, event):
-        await self.send(text_data=json.dumps({"type": "node_event", **event}))
+        await self._send_event({"type": "node_event", **event})
 
     async def pipeline_node_state(self, event):
-        await self.send(text_data=json.dumps({"type": "node_state", **event}))
+        await self._send_event({"type": "node_state", **event})
 
     async def pipeline_status(self, event):
-        await self.send(text_data=json.dumps({"type": "run_status", **event}))
+        await self._send_event({"type": "run_status", **event})
 
     async def pipeline_control(self, event):
         # Forwarded to all consumers in the group (including executor task)
