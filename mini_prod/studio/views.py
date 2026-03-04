@@ -602,14 +602,18 @@ def api_mcp_list(request):
         name = data.get("name", "").strip()
         if not name:
             return _err("name is required")
+        transport = data.get("transport", MCPServerPool.TRANSPORT_STDIO)
+        url = (data.get("url") or "").strip()
+        if transport == MCPServerPool.TRANSPORT_SSE and url:
+            url = _normalize_sse_url(url)
         mcp = MCPServerPool.objects.create(
             name=name,
             description=data.get("description", ""),
-            transport=data.get("transport", MCPServerPool.TRANSPORT_STDIO),
+            transport=transport,
             command=data.get("command", ""),
             args=data.get("args", []),
             env=data.get("env", {}),
-            url=data.get("url", ""),
+            url=url,
             owner=request.user,
         )
         return _ok(_mcp_to_dict(mcp), status=201)
@@ -631,7 +635,10 @@ def api_mcp_detail(request, mcp_id: int):
         data = _json_body(request)
         for field in ("name", "description", "transport", "command", "args", "env", "url", "is_shared"):
             if field in data:
-                setattr(mcp, field, data[field])
+                val = data[field]
+                if field == "url" and (mcp.transport or data.get("transport")) == MCPServerPool.TRANSPORT_SSE and val:
+                    val = _normalize_sse_url((val or "").strip())
+                setattr(mcp, field, val)
         mcp.save()
         return _ok(_mcp_to_dict(mcp))
 
@@ -658,15 +665,28 @@ def api_mcp_test(request, mcp_id: int):
     return _ok({"ok": ok, "error": error})
 
 
+def _normalize_sse_url(url: str) -> str:
+    """Ensure SSE URL has http:// or https:// so httpx/requests accept it."""
+    u = (url or "").strip()
+    if not u:
+        return u
+    if u.startswith(("http://", "https://")):
+        return u
+    return "http://" + u
+
+
 def _test_mcp_connection(mcp: MCPServerPool) -> tuple[bool, str | None]:
     """Basic connectivity test for MCP server."""
     import subprocess
 
     if mcp.transport == MCPServerPool.TRANSPORT_SSE:
+        url = _normalize_sse_url(mcp.url or "")
+        if not url:
+            return False, "SSE URL is required"
         try:
             import httpx
 
-            httpx.get(mcp.url, timeout=10)
+            httpx.get(url, timeout=10)
             return True, None
         except Exception as exc:
             return False, str(exc)

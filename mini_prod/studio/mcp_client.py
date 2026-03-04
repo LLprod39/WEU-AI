@@ -15,6 +15,14 @@ from .models import MCPServerPool
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 
+def _normalize_sse_url(url: str) -> str:
+    """Ensure SSE URL has http:// or https:// for httpx."""
+    u = (url or "").strip()
+    if not u or u.startswith(("http://", "https://")):
+        return u
+    return "http://" + u
+
+
 class MCPClientError(RuntimeError):
     pass
 
@@ -169,6 +177,7 @@ class _StdioMCPClient:
 class _HttpMCPClient:
     def __init__(self, server: MCPServerPool):
         self.server = server
+        self._sse_url = _normalize_sse_url(server.url or "")
         self.client = httpx.AsyncClient(timeout=30)
         self.protocol_version = SUPPORTED_PROTOCOL_VERSIONS[0]
 
@@ -199,6 +208,8 @@ class _HttpMCPClient:
         )
 
     async def _request(self, payload: dict[str, Any], *, include_protocol_header: bool = True) -> dict[str, Any]:
+        if not self._sse_url:
+            raise MCPClientError("SSE URL is required")
         headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json",
@@ -208,7 +219,7 @@ class _HttpMCPClient:
 
         request_id = str(payload.get("id") or "")
         try:
-            async with self.client.stream("POST", self.server.url, json=payload, headers=headers) as response:
+            async with self.client.stream("POST", self._sse_url, json=payload, headers=headers) as response:
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
                 if "application/json" in content_type:
@@ -246,7 +257,7 @@ class _HttpMCPClient:
     async def notify(self, method: str, params: dict[str, Any] | None = None):
         headers = {"Content-Type": "application/json", "MCP-Protocol-Version": self.protocol_version}
         try:
-            await self.client.post(self.server.url, json=_json_rpc_payload(method, params), headers=headers)
+            await self.client.post(self._sse_url, json=_json_rpc_payload(method, params), headers=headers)
         except Exception:
             # Notifications are best-effort for direct tool calls.
             return
