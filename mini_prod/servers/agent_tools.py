@@ -8,6 +8,7 @@ Tools are registered in AGENT_TOOLS and described for the LLM prompt.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -168,6 +169,42 @@ async def tool_analyze_output(session: AgentSessionManager, *, text: str, questi
         return ToolResult(False, f"LLM analysis failed: {exc}")
 
 
+async def tool_list_skills(session: AgentSessionManager, **_kw) -> ToolResult:
+    """List attached skills available to the current agent run."""
+    skills = session.list_skills()
+    if not skills:
+        return ToolResult(True, '{"skills": []}')
+    return ToolResult(True, json.dumps({"skills": skills}, ensure_ascii=False, indent=2))
+
+
+async def tool_read_skill(session: AgentSessionManager, *, skill: str, **_kw) -> ToolResult:
+    """Read the full content of an attached skill by slug or display name."""
+    item = session.get_skill(skill)
+    if item is None:
+        return ToolResult(False, f"Skill '{skill}' is not attached to this agent.")
+
+    content = str(item.get("content") or "").strip()
+    if not content:
+        return ToolResult(False, f"Skill '{skill}' is empty.")
+
+    header = {
+        "slug": item.get("slug", ""),
+        "name": item.get("name", ""),
+        "description": item.get("description", ""),
+        "tags": list(item.get("tags") or []),
+        "service": item.get("service", ""),
+        "category": item.get("category", ""),
+        "safety_level": item.get("safety_level", ""),
+        "ui_hint": item.get("ui_hint", ""),
+        "guardrail_summary": list(item.get("guardrail_summary") or []),
+        "recommended_tools": list(item.get("recommended_tools") or []),
+        "runtime_enforced": bool(item.get("runtime_policy")),
+        "path": item.get("path", ""),
+    }
+    body = json.dumps(header, ensure_ascii=False, indent=2)
+    return ToolResult(True, f"{body}\n\n{content[:20000]}")
+
+
 # ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
@@ -239,6 +276,18 @@ AGENT_TOOLS: dict[str, dict[str, Any]] = {
         "params": {
             "text": {"type": "string", "required": True, "description": "Text to analyze"},
             "question": {"type": "string", "required": True, "description": "Question about the text"},
+        },
+    },
+    "list_skills": {
+        "fn": tool_list_skills,
+        "description": "List the attached skills available to this agent. Use before read_skill if you need service-specific guidance.",
+        "params": {},
+    },
+    "read_skill": {
+        "fn": tool_read_skill,
+        "description": "Read the full content of an attached skill by slug or name.",
+        "params": {
+            "skill": {"type": "string", "required": True, "description": "Skill slug or display name"},
         },
     },
 }

@@ -23,6 +23,11 @@ Endpoints:
   GET  /api/studio/agents/<id>/             — get agent config
   PUT  /api/studio/agents/<id>/             — update agent config
   DELETE /api/studio/agents/<id>/           — delete agent config
+  GET  /api/studio/skills/                  — list available skill packs
+  GET  /api/studio/skills/<slug>/           — get full skill pack detail
+  GET  /api/studio/skills/templates/        — list built-in skill templates
+  POST /api/studio/skills/scaffold/         — create a skill pack from UI/JSON payload
+  POST /api/studio/skills/validate/         — validate skill packs
 
   GET  /api/studio/mcp/                     — list MCP server pool
   POST /api/studio/mcp/                     — add MCP server
@@ -49,6 +54,7 @@ import asyncio
 import contextlib
 import json
 import os
+import shutil
 import threading
 from pathlib import Path
 
@@ -61,6 +67,9 @@ from django.views.decorators.http import require_http_methods
 
 from .mcp_client import MCPClientError, inspect_mcp_server
 from .models import AgentConfig, MCPServerPool, Pipeline, PipelineRun, PipelineTemplate, PipelineTrigger
+from .skill_authoring import parse_csv_items, scaffold_skill, validate_skill_dir, validate_skills
+from .skill_registry import SkillNotFoundError, get_skill, list_skills, normalise_skill_slugs
+from .skill_templates import get_skill_template, list_skill_templates
 
 # ---------------------------------------------------------------------------
 # Notification config helpers  (stored in BASE_DIR/.notification_config.json)
@@ -417,6 +426,9 @@ def api_agents(request):
             model=data.get("model", "gemini-2.0-flash-exp"),
             max_iterations=data.get("max_iterations", 10),
             allowed_tools=data.get("allowed_tools", []),
+            skill_slugs=_normalise_skill_payload(
+                data.get("skill_slugs") if "skill_slugs" in data else data.get("skills")
+            ),
             owner=request.user,
         )
         _set_m2m(
@@ -450,9 +462,23 @@ def api_agent_detail(request, agent_id: int):
 
     if request.method == "PUT":
         data = _json_body(request)
-        for field in ("name", "description", "icon", "system_prompt", "instructions", "model", "max_iterations", "allowed_tools", "is_shared"):
+        for field in (
+            "name",
+            "description",
+            "icon",
+            "system_prompt",
+            "instructions",
+            "model",
+            "max_iterations",
+            "allowed_tools",
+            "is_shared",
+        ):
             if field in data:
                 setattr(agent, field, data[field])
+        if "skill_slugs" in data or "skills" in data:
+            agent.skill_slugs = _normalise_skill_payload(
+                data.get("skill_slugs") if "skill_slugs" in data else data.get("skills")
+            )
         agent.save()
         if "mcp_server_ids" in data or "mcp_servers" in data:
             _set_m2m(
@@ -497,6 +523,142 @@ def _normalise_related_ids(raw_values) -> list[int]:
         except (TypeError, ValueError):
             continue
     return ids
+
+
+def _normalise_skill_payload(raw_values) -> list[str]:
+    return normalise_skill_slugs(raw_values)
+
+
+def _normalise_string_list(raw_values) -> list[str]:
+    return parse_csv_items(raw_values)
+
+
+# ---------------------------------------------------------------------------
+# Skills
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_skills(_request):
+    return _ok([skill.to_summary_dict() for skill in list_skills()])
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_skill_detail(_request, slug: str):
+    try:
+        skill = get_skill(slug)
+    except SkillNotFoundError:
+        return _err("Skill not found", 404)
+    return _ok(skill.to_detail_dict())
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_skill_templates(_request):
+    return _ok([item.to_dict() for item in list_skill_templates()])
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_skill_scaffold(request):
+    data = _json_body(request)
+    template_slug = str(data.get("template_slug") or "").strip()
+    template = get_skill_template(template_slug) if template_slug else None
+    if template_slug and template is None:
+        return _err("Unknown skill template")
+
+    defaults = dict(template.defaults) if template else {}
+    name = str(data.get("name") or defaults.get("name") or "").strip()
+    description = str(data.get("description") or defaults.get("description") or "").strip()
+    if not name:
+        return _err("name is required")
+    if not description:
+        return _err("description is required")
+
+    raw_runtime_policy = data.get("runtime_policy")
+    if raw_runtime_policy not in (None, "") and not isinstance(raw_runtime_policy, dict):
+        return _err("runtime_policy must be a JSON object")
+
+    runtime_policy = dict(defaults.get("runtime_policy") or {})
+    runtime_policy.update(dict(raw_runtime_policy or {}))
+
+    try:
+        skill_dir = scaffold_skill(
+            name=name,
+            description=description,
+            slug=str(data.get("slug") or "").strip() or None,
+            service=str(data.get("service") or defaults.get("service") or "").strip(),
+            category=str(data.get("category") or defaults.get("category") or "").strip(),
+            safety_level=str(data.get("safety_level") or defaults.get("safety_level") or "standard").strip() or "standard",
+            ui_hint=str(data.get("ui_hint") or defaults.get("ui_hint") or "").strip(),
+            tags=_normalise_string_list(data.get("tags") or defaults.get("tags")),
+            guardrail_summary=_normalise_string_list(data.get("guardrail_summary") or defaults.get("guardrail_summary")),
+            recommended_tools=_normalise_string_list(data.get("recommended_tools") or defaults.get("recommended_tools")),
+            runtime_policy=runtime_policy,
+            with_scripts=bool(data.get("with_scripts")),
+            with_references=bool(data.get("with_references")),
+            with_assets=bool(data.get("with_assets")),
+            force=bool(data.get("force")),
+        )
+    except (ValueError, FileExistsError) as exc:
+        return _err(str(exc))
+
+    validation = validate_skill_dir(skill_dir)
+    if validation.errors:
+        shutil.rmtree(skill_dir, ignore_errors=True)
+        return JsonResponse(
+            {
+                "error": "Skill scaffold did not pass validation",
+                "validation": validation.to_dict(),
+            },
+            status=400,
+        )
+
+    try:
+        skill = get_skill(skill_dir.name)
+    except SkillNotFoundError:
+        return _err("Skill was created but could not be loaded", 500)
+
+    return _ok(
+        {
+            "ok": True,
+            "skill": skill.to_detail_dict(),
+            "validation": validation.to_dict(),
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_skill_validate(request):
+    data = _json_body(request)
+    slugs = _normalise_string_list(data.get("slugs"))
+    strict = bool(data.get("strict"))
+    results = validate_skills(slugs or None)
+
+    if slugs:
+        found = {item.slug.lower() for item in results}
+        missing = [slug for slug in slugs if slug.lower() not in found]
+        if missing:
+            return _err(f"Skills not found: {', '.join(missing)}", 404)
+
+    error_count = sum(len(item.errors) for item in results)
+    warning_count = sum(len(item.warnings) for item in results)
+    return _ok(
+        {
+            "results": [item.to_dict() for item in results],
+            "summary": {
+                "skills": len(results),
+                "errors": error_count,
+                "warnings": warning_count,
+                "is_valid": error_count == 0 and (warning_count == 0 if strict else True),
+                "strict": strict,
+            },
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import StudioPage from "./pages/StudioPage";
 import PipelineEditorPage from "./pages/PipelineEditorPage";
 import PipelineRunsPage from "./pages/PipelineRunsPage";
 import AgentConfigPage from "./pages/AgentConfigPage";
+import StudioSkillsPage from "./pages/StudioSkillsPage";
 import NotificationsSettingsPage from "./pages/NotificationsSettingsPage";
 import MCPHubPage from "./pages/MCPHubPage";
 import { fetchAuthSession } from "./lib/api";
@@ -82,6 +83,7 @@ const App = () => (
             <Route path="/studio/pipeline/new" element={<PipelineEditorPage />} />
             <Route path="/studio/runs" element={<PipelineRunsPage />} />
             <Route path="/studio/agents" element={<AgentConfigPage />} />
+            <Route path="/studio/skills" element={<StudioSkillsPage />} />
             <Route path="/studio/mcp" element={<MCPHubPage />} />
             <Route path="/studio/notifications" element={<NotificationsSettingsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

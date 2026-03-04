@@ -14,6 +14,7 @@ import {
   Loader2,
   Clock,
   Bot,
+  BookOpen,
   Server,
   Zap,
   Bell,
@@ -291,6 +292,10 @@ export default function StudioPage() {
             <Button variant="outline" size="sm" onClick={() => navigate("/studio/agents")} className="gap-1.5">
               <Bot className="h-3.5 w-3.5" />
               Agents
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="gap-1.5">
+              <BookOpen className="h-3.5 w-3.5" />
+              Skills
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate("/studio/mcp")} className="gap-1.5">
               <Server className="h-3.5 w-3.5" />

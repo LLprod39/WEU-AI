@@ -24,6 +24,8 @@ from servers.agent_sessions import AgentSessionManager
 from servers.agent_tools import AGENT_TOOLS, get_enabled_tools, get_tools_description
 from servers.mcp_tool_runtime import build_mcp_tools_description, execute_bound_mcp_tool, load_mcp_tool_bindings
 from servers.models import AgentRun, Server, ServerAgent
+from studio.skill_policy import apply_skill_policies, compile_skill_policies
+from studio.skill_registry import SkillDefinition, build_skill_catalog_description
 
 
 def sync_to_async(func, thread_sensitive=False):
@@ -87,6 +89,8 @@ class AgentEngine:
         model_preference: str = "auto",
         specific_model: str | None = None,
         mcp_servers: list | None = None,
+        skills: list[SkillDefinition] | None = None,
+        skill_errors: list[str] | None = None,
     ):
         self.agent = agent
         self.servers = servers
@@ -109,11 +113,23 @@ class AgentEngine:
         self.mcp_tools = {}
         self.disabled_mcp_tools: set[str] = set()
         self.mcp_tool_errors: list[str] = []
+        self.skills = list(skills or [])
+        self.skill_errors = list(skill_errors or [])
+        self.skill_policies, policy_errors = compile_skill_policies(self.skills)
+        if policy_errors:
+            self.skill_errors.extend(policy_errors)
+        self._executed_mcp_tools: set[str] = set()
         self.model_preference, self.specific_model = resolve_provider_and_model(
             model_preference,
             specific_model,
             default_provider="auto",
         )
+        if self.skills:
+            for tool_name in ("list_skills", "read_skill"):
+                if tool_name not in self.enabled_tools:
+                    self.enabled_tools.append(tool_name)
+            if self.allowed_tool_names is not None:
+                self.allowed_tool_names.update({"list_skills", "read_skill"})
 
     # ------------------------------------------------------------------
     # Public control methods (called from WebSocket consumer)
@@ -154,6 +170,7 @@ class AgentEngine:
             max_connections=self.agent.max_connections or 5,
             command_timeout=30,
             event_callback=self.event_callback,
+            available_skills=[skill.to_detail_dict() for skill in self.skills],
         )
 
         iterations_log: list[dict] = []
@@ -162,11 +179,12 @@ class AgentEngine:
 
         try:
             logger.info(
-                "agent_run {} start: agent='{}' servers={} mcp_servers={} provider={} model={}",
+                "agent_run {} start: agent='{}' servers={} mcp_servers={} skills={} provider={} model={}",
                 run.pk,
                 self.agent.name,
                 [srv.name for srv in self.servers],
                 [srv.name for srv in self.mcp_servers],
+                [skill.slug for skill in self.skills],
                 self.model_preference,
                 self.specific_model,
             )
@@ -204,8 +222,8 @@ class AgentEngine:
                 for c in connected
             ])
 
-            if not self.session.connections and not self.mcp_tools:
-                raise RuntimeError("No servers connected and no MCP tools available.")
+            if not self.session.connections and not self.mcp_tools and not self.skills:
+                raise RuntimeError("No servers connected, no MCP tools available, and no skills attached.")
 
             system_prompt = self._build_system_prompt()
             history.append({"role": "system", "content": system_prompt})
@@ -421,7 +439,20 @@ class AgentEngine:
     async def _execute_tool(self, name: str, args: dict) -> str:
         logger.info("agent_run {} execute_tool start: tool={} args={}", self.run_record.pk if self.run_record else "?", name, json.dumps(args, ensure_ascii=False)[:800])
         if name in self.mcp_tools:
-            result = await execute_bound_mcp_tool(self.mcp_tools, name, args)
+            binding = self.mcp_tools[name]
+            prepared_args, policy_messages, policy_error = apply_skill_policies(
+                self.skill_policies,
+                binding,
+                args,
+                self._executed_mcp_tools,
+            )
+            if policy_error:
+                return policy_error
+            result = await execute_bound_mcp_tool(self.mcp_tools, name, prepared_args)
+            if not result.startswith("MCP tool error"):
+                self._executed_mcp_tools.add(binding.tool_name)
+            if policy_messages:
+                result = "\n".join([*policy_messages, result])
             logger.info(
                 "agent_run {} execute_tool done: tool={} result_chars={} via=mcp",
                 self.run_record.pk if self.run_record else "?",
@@ -470,6 +501,7 @@ class AgentEngine:
         custom_system = self.agent.system_prompt or ""
         tools_desc = get_tools_description(self.enabled_tools)
         mcp_tools_desc = build_mcp_tools_description(self.mcp_tools)
+        skills_desc = build_skill_catalog_description(self.skills)
         if mcp_tools_desc:
             tools_desc = f"{tools_desc}\n\n{mcp_tools_desc}" if tools_desc else mcp_tools_desc
 
@@ -483,12 +515,18 @@ class AgentEngine:
         if self.mcp_tool_errors:
             mcp_errors = "\n## MCP подключения с ошибками\n" + "\n".join(f"- {item}" for item in self.mcp_tool_errors)
 
+        skill_errors = ""
+        if self.skill_errors:
+            skill_errors = "\n## Skills с ошибками\n" + "\n".join(f"- {item}" for item in self.skill_errors)
+
         tool_rules = [
             "- ВСЕГДА сначала выводи THOUGHT с объяснением логики рассуждений",
             "- Затем выводи ACTION с вызовом инструмента в формате JSON",
             "- После каждой команды анализируй вывод и решай, что делать дальше",
             "- Для внешних систем (Keycloak, GitHub, Docker API, cloud, IAM) используй MCP-инструменты, если они доступны",
             "- Имена MCP-инструментов нужно использовать ТОЧНО как перечислено в секции инструментов",
+            "- Если подключены skills, сначала ориентируйся по их каталогу и открывай полный skill через read_skill перед сервис-специфичными изменениями",
+            "- Некоторые skills дополнительно применяют runtime guardrails к MCP-вызовам: могут подставлять обязательные аргументы и блокировать опасные действия",
             "- НЕ запускай опасные команды (rm -rf, mkfs, shutdown и т.д.) — они будут заблокированы",
             "- Когда цель полностью достигнута, предоставь итоговый анализ БЕЗ строки ACTION",
             f"- Максимум {self.max_iterations} итераций доступно",
@@ -515,6 +553,9 @@ class AgentEngine:
 ## Все доступные серверы (можно подключиться через open_connection)
 {all_servers_desc}
 
+## Attached skills
+{skills_desc or "- Skills не подключены"}
+
 ## Доступные инструменты
 {tools_desc}
 
@@ -522,6 +563,7 @@ class AgentEngine:
 {rules_text}
 {stop_conditions}
 {mcp_errors}
+{skill_errors}
 
 ## Формат вывода
 THOUGHT: <твоё рассуждение о том, что делать дальше>

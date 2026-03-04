@@ -63,18 +63,32 @@ class AgentSessionManager:
         max_connections: int = 5,
         command_timeout: int = COMMAND_TIMEOUT,
         event_callback: Callable[..., Coroutine] | None = None,
+        available_skills: list[dict[str, Any]] | None = None,
     ):
         self.allowed_servers: dict[int, Any] = {s.id: s for s in allowed_servers}
         self.max_connections = max_connections
         self.command_timeout = command_timeout
         self.event_callback = event_callback
         self.user_reply_future: asyncio.Future | None = None
+        self.available_skills = [dict(skill) for skill in (available_skills or [])]
 
         self.connections: dict[int, _ServerSession] = {}
         self._name_to_id: dict[str, int] = {}
         for s in allowed_servers:
             self._name_to_id[s.name.lower()] = s.id
             self._name_to_id[str(s.id)] = s.id
+
+        self._skills_by_slug: dict[str, dict[str, Any]] = {}
+        self._skill_lookup: dict[str, str] = {}
+        for skill in self.available_skills:
+            slug = str(skill.get("slug") or "").strip()
+            name = str(skill.get("name") or "").strip()
+            if not slug:
+                continue
+            self._skills_by_slug[slug] = skill
+            self._skill_lookup[slug.lower()] = slug
+            if name:
+                self._skill_lookup[name.lower()] = slug
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -127,6 +141,38 @@ class AgentSessionManager:
     async def close_all(self) -> None:
         for sid in list(self.connections):
             await self.close(sid)
+
+    # ------------------------------------------------------------------
+    # Skills
+    # ------------------------------------------------------------------
+
+    def list_skills(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "slug": skill.get("slug", ""),
+                "name": skill.get("name", ""),
+                "description": skill.get("description", ""),
+                "tags": list(skill.get("tags") or []),
+                "service": skill.get("service", ""),
+                "category": skill.get("category", ""),
+                "safety_level": skill.get("safety_level", ""),
+                "ui_hint": skill.get("ui_hint", ""),
+                "guardrail_summary": list(skill.get("guardrail_summary") or []),
+                "recommended_tools": list(skill.get("recommended_tools") or []),
+                "runtime_enforced": bool(skill.get("runtime_policy")),
+                "path": skill.get("path", ""),
+            }
+            for skill in self.available_skills
+        ]
+
+    def get_skill(self, skill_ref: str) -> dict[str, Any] | None:
+        needle = str(skill_ref or "").strip().lower()
+        if not needle:
+            return None
+        slug = self._skill_lookup.get(needle)
+        if slug is None:
+            return None
+        return self._skills_by_slug.get(slug)
 
     # ------------------------------------------------------------------
     # Command execution

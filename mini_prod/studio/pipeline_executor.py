@@ -41,6 +41,7 @@ from app.core.model_utils import resolve_provider_and_model
 
 from .mcp_client import call_mcp_tool
 from .models import PipelineRun
+from .skill_registry import normalise_skill_slugs, resolve_skills
 
 logger = logging.getLogger(__name__)
 _SIMPLE_TEMPLATE_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -48,6 +49,22 @@ _SIMPLE_TEMPLATE_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 def _s2a_fn(func, thread_sensitive=False):
     return _s2a(func, thread_sensitive=thread_sensitive)
+
+
+def _merge_unique_strings(*groups: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for item in group:
+            value = str(item or "").strip()
+            if not value:
+                continue
+            lowered = value.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            merged.append(value)
+    return merged
 
 
 def _render_template_value(value: Any, context: dict[str, Any]) -> Any:
@@ -159,6 +176,7 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
     agent_config_id = config.get("agent_config_id")
     server_ids = config.get("server_ids", [])
     mcp_server_ids = config.get("mcp_server_ids", [])
+    node_skill_slugs = normalise_skill_slugs(config.get("skill_slugs"))
     goal = config.get("goal", "")
     owner = run.triggered_by or run.pipeline.owner
 
@@ -172,15 +190,16 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
         from studio.models import AgentConfig
 
         agent_conf = await _s2a_fn(AgentConfig.objects.get)(id=agent_config_id)
-        system_prompt = agent_conf.system_prompt
-        instructions = agent_conf.instructions
+        system_prompt = _render_template_value(agent_conf.system_prompt, context)
+        instructions = _render_template_value(agent_conf.instructions, context)
         max_iterations = agent_conf.max_iterations
         model = agent_conf.model
         tools_config = dict.fromkeys(agent_conf.allowed_tools or [], True)
         mcp_servers = await _s2a_fn(lambda: list(agent_conf.mcp_servers.all()))()
+        skill_slugs = _merge_unique_strings(list(agent_conf.skill_slugs or []), node_skill_slugs)
     else:
-        system_prompt = config.get("system_prompt", "")
-        instructions = config.get("instructions", "")
+        system_prompt = _render_template_value(config.get("system_prompt", ""), context)
+        instructions = _render_template_value(config.get("instructions", ""), context)
         max_iterations = config.get("max_iterations", 10)
         model = config.get("model", "gemini-2.0-flash-exp")
         tools_config = dict.fromkeys(config.get("allowed_tools", []) or [], True)
@@ -191,11 +210,14 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
             if mcp_server_ids
             else []
         )
+        skill_slugs = node_skill_slugs
+
+    skills, skill_errors = resolve_skills(skill_slugs)
 
     if server_ids and not servers:
         return {"status": "failed", "error": f"Servers not found: {server_ids}"}
-    if not servers and not mcp_servers:
-        return {"status": "failed", "error": "Configure at least one server or one MCP server for this agent node"}
+    if not servers and not mcp_servers and not skills:
+        return {"status": "failed", "error": "Configure at least one server, one MCP server, or one skill for this agent node"}
 
     model_preference, specific_model = resolve_provider_and_model(
         config.get("provider"),
@@ -222,16 +244,19 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
         model_preference=model_preference,
         specific_model=specific_model,
         mcp_servers=mcp_servers,
+        skills=skills,
+        skill_errors=skill_errors,
     )
 
     logger.info(
-        "pipeline run %s node %s agent/react start: provider=%s model=%s servers=%s mcp_servers=%s",
+        "pipeline run %s node %s agent/react start: provider=%s model=%s servers=%s mcp_servers=%s skills=%s",
         run.pk,
         node_id,
         model_preference,
         specific_model,
         [srv.name for srv in servers],
         [srv.name for srv in mcp_servers],
+        [skill.slug for skill in skills],
     )
     agent_run: AgentRun = await engine.run()
     logger.info(
@@ -258,6 +283,7 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
     config = node.get("data", {})
     server_ids = config.get("server_ids", [])
     mcp_server_ids = config.get("mcp_server_ids", [])
+    node_skill_slugs = normalise_skill_slugs(config.get("skill_slugs"))
     goal = config.get("goal", "")
     owner = run.triggered_by or run.pipeline.owner
 
@@ -270,13 +296,14 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
         from studio.models import AgentConfig
 
         agent_conf = await _s2a_fn(AgentConfig.objects.get)(id=agent_config_id)
-        system_prompt = agent_conf.system_prompt
+        system_prompt = _render_template_value(agent_conf.system_prompt, context)
         max_iterations = agent_conf.max_iterations
         model = agent_conf.model
         tools_config = dict.fromkeys(agent_conf.allowed_tools or [], True)
         mcp_servers = await _s2a_fn(lambda: list(agent_conf.mcp_servers.all()))()
+        skill_slugs = _merge_unique_strings(list(agent_conf.skill_slugs or []), node_skill_slugs)
     else:
-        system_prompt = config.get("system_prompt", "")
+        system_prompt = _render_template_value(config.get("system_prompt", ""), context)
         max_iterations = config.get("max_iterations", 20)
         model = config.get("model", "gemini-2.0-flash-exp")
         tools_config = dict.fromkeys(config.get("allowed_tools", []) or [], True)
@@ -287,11 +314,17 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
             if mcp_server_ids
             else []
         )
+        skill_slugs = node_skill_slugs
+
+    skills, skill_errors = resolve_skills(skill_slugs)
 
     if server_ids and not servers:
         return {"status": "failed", "error": f"Servers not found: {server_ids}"}
-    if not servers and not mcp_servers:
-        return {"status": "failed", "error": "Configure at least one server or one MCP server for this multi agent node"}
+    if not servers and not mcp_servers and not skills:
+        return {
+            "status": "failed",
+            "error": "Configure at least one server, one MCP server, or one skill for this multi agent node",
+        }
 
     model_preference, specific_model = resolve_provider_and_model(
         config.get("provider"),
@@ -317,6 +350,8 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
         model_preference=model_preference,
         specific_model=specific_model,
         mcp_servers=mcp_servers,
+        skills=skills,
+        skill_errors=skill_errors,
     )
 
     agent_run = await engine.run()

@@ -31,6 +31,8 @@ from servers.agent_sessions import AgentSessionManager
 from servers.agent_tools import get_enabled_tools, get_tools_description
 from servers.mcp_tool_runtime import build_mcp_tools_description, execute_bound_mcp_tool, load_mcp_tool_bindings
 from servers.models import AgentRun, Server, ServerAgent
+from studio.skill_policy import apply_skill_policies, compile_skill_policies
+from studio.skill_registry import SkillDefinition, build_skill_catalog_description
 
 
 def sync_to_async(func, thread_sensitive=False):
@@ -119,6 +121,8 @@ class MultiAgentEngine:
         model_preference: str = "auto",
         specific_model: str | None = None,
         mcp_servers: list | None = None,
+        skills: list[SkillDefinition] | None = None,
+        skill_errors: list[str] | None = None,
     ):
         self.agent = agent
         self.servers = servers
@@ -140,11 +144,23 @@ class MultiAgentEngine:
         self.mcp_tools = {}
         self.disabled_mcp_tools: set[str] = set()
         self.mcp_tool_errors: list[str] = []
+        self.skills = list(skills or [])
+        self.skill_errors = list(skill_errors or [])
+        self.skill_policies, policy_errors = compile_skill_policies(self.skills)
+        if policy_errors:
+            self.skill_errors.extend(policy_errors)
+        self._executed_mcp_tools: set[str] = set()
         self.model_preference, self.specific_model = resolve_provider_and_model(
             model_preference,
             specific_model,
             default_provider="auto",
         )
+        if self.skills:
+            for tool_name in ("list_skills", "read_skill"):
+                if tool_name not in self.enabled_tools:
+                    self.enabled_tools.append(tool_name)
+            if self.allowed_tool_names is not None:
+                self.allowed_tool_names.update({"list_skills", "read_skill"})
 
     # ------------------------------------------------------------------
     # Public control methods
@@ -190,6 +206,7 @@ class MultiAgentEngine:
             max_connections=self.agent.max_connections or 5,
             command_timeout=30,
             event_callback=self.event_callback,
+            available_skills=[skill.to_detail_dict() for skill in self.skills],
         )
 
         plan_tasks: list[dict] = []
@@ -224,8 +241,8 @@ class MultiAgentEngine:
                 for c in connected
             ])
 
-            if not self.session.connections and not self.mcp_tools:
-                raise RuntimeError("No servers connected and no MCP tools available.")
+            if not self.session.connections and not self.mcp_tools and not self.skills:
+                raise RuntimeError("No servers connected, no MCP tools available, and no skills attached.")
 
             goal = self.agent.goal or self.agent.ai_prompt or "Analyse the servers."
 
@@ -584,6 +601,10 @@ class MultiAgentEngine:
         connected = self.session.get_connected_info()
         servers_desc = "\n".join(f"- {c['server_name']} (id: {c['server_id']})" for c in connected)
         custom_system = self.agent.system_prompt or ""
+        skills_desc = build_skill_catalog_description(self.skills)
+        skill_errors = ""
+        if self.skill_errors:
+            skill_errors = "\nSkills с ошибками:\n" + "\n".join(f"- {item}" for item in self.skill_errors)
 
         system_prompt = f"""Ты — мастер-оркестратор DevOps-агентов. Твоя задача — разбить цель на конкретные задачи для исполнительных агентов.
 Каждый агент умеет: выполнять SSH-команды, читать файлы, проверять сервисы, анализировать логи.
@@ -593,12 +614,17 @@ class MultiAgentEngine:
 Подключённые серверы:
 {servers_desc}
 
+Attached skills:
+{skills_desc or "- Skills не подключены"}
+{skill_errors}
+
 Правила декомпозиции:
 - Максимум {MAX_PLAN_TASKS} задач
 - Каждая задача должна быть самодостаточной и конкретной
 - Используй русский язык для имён и описаний
 - Порядок задач важен — они выполняются последовательно
-- Каждая задача должна быть выполнима за 5-7 SSH-команд максимум"""
+- Каждая задача должна быть выполнима за 5-7 SSH-команд максимум
+- Если attached skills содержат runtime guardrails, учитывай их как обязательные ограничения"""
 
         user_msg = f"""Цель: {goal}
 
@@ -658,11 +684,15 @@ class MultiAgentEngine:
         servers_desc = "\n".join(f"- {c['server_name']} (id: {c['server_id']})" for c in connected) or "- Нет активных SSH подключений"
         tools_desc = get_tools_description(self.enabled_tools)
         mcp_tools_desc = build_mcp_tools_description(self.mcp_tools)
+        skills_desc = build_skill_catalog_description(self.skills)
         if mcp_tools_desc:
             tools_desc = f"{tools_desc}\n\n{mcp_tools_desc}" if tools_desc else mcp_tools_desc
         mcp_errors = ""
         if self.mcp_tool_errors:
             mcp_errors = "\nНедоступные MCP подключения:\n" + "\n".join(f"- {item}" for item in self.mcp_tool_errors)
+        skill_errors = ""
+        if self.skill_errors:
+            skill_errors = "\nНедоступные skills:\n" + "\n".join(f"- {item}" for item in self.skill_errors)
 
         system_prompt = f"""Ты — DevOps / Platform агент, выполняющий одну конкретную задачу.
 Используй доступные SSH и MCP инструменты для выполнения задачи. Отвечай на русском языке.
@@ -670,13 +700,20 @@ class MultiAgentEngine:
 Подключённые серверы:
 {servers_desc}
 
+Attached skills:
+{skills_desc or "- Skills не подключены"}
+
 Доступные инструменты:
 {tools_desc}
 {mcp_errors}
+{skill_errors}
 
 Формат вывода на каждом шаге:
 THOUGHT: <рассуждение>
 ACTION: tool_name {{"param1": "val1"}}
+
+Если attached skills релевантны задаче, сначала открой нужный skill через read_skill перед сервис-специфичными изменениями.
+Если attached skills содержат runtime guardrails, соблюдай их как обязательные ограничения.
 
 Когда задача выполнена — напиши итоговый вывод БЕЗ строки ACTION.
 Максимум {MAX_TASK_ITERATIONS} итераций."""
@@ -1107,7 +1144,21 @@ ACTION: tool_name {{"param1": "val1"}}
 
     async def _execute_tool(self, name: str, args: dict) -> str:
         if name in self.mcp_tools:
-            return await execute_bound_mcp_tool(self.mcp_tools, name, args)
+            binding = self.mcp_tools[name]
+            prepared_args, policy_messages, policy_error = apply_skill_policies(
+                self.skill_policies,
+                binding,
+                args,
+                self._executed_mcp_tools,
+            )
+            if policy_error:
+                return policy_error
+            result = await execute_bound_mcp_tool(self.mcp_tools, name, prepared_args)
+            if not result.startswith("MCP tool error"):
+                self._executed_mcp_tools.add(binding.tool_name)
+            if policy_messages:
+                return "\n".join([*policy_messages, result])
+            return result
         if name in self.disabled_mcp_tools:
             return f"Tool '{name}' is disabled for this agent."
 

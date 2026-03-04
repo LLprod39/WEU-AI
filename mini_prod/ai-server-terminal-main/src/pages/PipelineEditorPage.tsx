@@ -33,6 +33,7 @@ import {
   Square,
   ChevronDown,
   ChevronUp,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ import {
   studioServers,
   studioRuns,
   studioMCP,
+  studioSkills,
   fetchModels,
   refreshModels,
   type MCPServerInspection,
@@ -375,9 +377,11 @@ function NodeConfigPanel({
   onClose: () => void;
   onDelete: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const { data: agents = [] } = useQuery({ queryKey: ["studio", "agents"], queryFn: studioAgents.list });
   const { data: servers = [] } = useQuery({ queryKey: ["studio", "servers"], queryFn: studioServers.list });
   const { data: mcpList = [] } = useQuery({ queryKey: ["studio", "mcp"], queryFn: studioMCP.list });
+  const { data: skillList = [] } = useQuery({ queryKey: ["studio", "skills"], queryFn: studioSkills.list });
   const queryClient = useQueryClient();
   const { data: modelsData } = useQuery({ queryKey: ["api", "models"], queryFn: fetchModels });
   const [d, setD] = useState<Record<string, unknown>>(node.data || {});
@@ -411,6 +415,8 @@ function NodeConfigPanel({
   const selectedAgent = agents.find((agent) => String(agent.id) === String(d.agent_config_id || ""));
   const selectedMcpId = d.mcp_server_id ? Number(d.mcp_server_id) : null;
   const selectedMcp = mcpList.find((mcp) => mcp.id === selectedMcpId) || null;
+  const selectedSkillSlugs = Array.isArray(d.skill_slugs) ? (d.skill_slugs as string[]) : [];
+  const selectedSkills = skillList.filter((skill) => selectedSkillSlugs.includes(skill.slug));
   const webhookState = parseJsonObjectText(webhookMapText);
   const mcpArgsState = parseJsonObjectText(mcpArgsText);
 
@@ -622,10 +628,30 @@ function NodeConfigPanel({
                   <Badge variant="outline" className="text-[10px]">{selectedAgent.model}</Badge>
                   <Badge variant="secondary" className="text-[10px]">{selectedAgent.max_iterations} iter</Badge>
                   {selectedAgent.mcp_servers?.length > 0 && <Badge variant="secondary" className="text-[10px]">{selectedAgent.mcp_servers.length} MCP</Badge>}
+                  {selectedAgent.skills?.length > 0 && <Badge variant="secondary" className="text-[10px]">{selectedAgent.skills.length} skills</Badge>}
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Saved agent config controls prompt, model, tools and attached MCP servers. This agent can invoke those MCP tools directly during the run.
+                  Saved agent config controls prompt, model, tools, attached MCP servers, and attached skills. The agent can inspect those skills during the run when service-specific rules matter.
                 </p>
+                {selectedAgent.skills?.length > 0 && (
+                  <div className="space-y-1">
+                    {selectedAgent.skills.slice(0, 2).map((skill) => (
+                      <div key={skill.slug} className="rounded bg-muted/30 px-2 py-1">
+                        <p className="text-[10px] font-medium">{skill.name}</p>
+                        {skill.guardrail_summary?.slice(0, 2).map((item) => (
+                          <p key={item} className="text-[10px] text-muted-foreground">• {item}</p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedAgent.skill_errors?.length > 0 && (
+                  <div className="rounded bg-red-900/10 border border-red-500/20 px-2 py-1">
+                    {selectedAgent.skill_errors.map((item) => (
+                      <p key={item} className="text-[10px] text-red-200">{item}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {!(d.agent_config_id) && (
@@ -747,6 +773,73 @@ function NodeConfigPanel({
                   <p className="text-[10px] text-muted-foreground">
                     Attached MCP servers expose their tools directly to this agent at runtime.
                   </p>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs">Skills</Label>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]" onClick={() => navigate("/studio/skills")}>
+                      <BookOpen className="h-3 w-3" />
+                      Browse Catalog
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    {selectedSkillSlugs.map((skillSlug) => {
+                      const skill = skillList.find((item) => item.slug === skillSlug);
+                      return (
+                        <div key={skillSlug} className="flex items-center justify-between bg-muted/30 rounded px-2 py-1 text-xs">
+                          <span>{skill?.name || skillSlug}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5"
+                            onClick={() => set("skill_slugs", selectedSkillSlugs.filter((slug) => slug !== skillSlug))}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    <Select
+                      onValueChange={(value) => {
+                        if (!selectedSkillSlugs.includes(value)) set("skill_slugs", [...selectedSkillSlugs, value]);
+                      }}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Add skill..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {skillList.map((skill) => (
+                          <SelectItem key={skill.slug} value={skill.slug}>
+                            {skill.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Attached skills are not expanded into the prompt by default. The agent sees their catalog and can open the full skill only when needed.
+                  </p>
+                  {selectedSkills.length > 0 && (
+                    <div className="space-y-1">
+                      {selectedSkills.map((skill) => (
+                        <div key={skill.slug} className="rounded bg-muted/30 px-2 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-medium">{skill.name}</span>
+                            {skill.runtime_enforced && <Badge variant="secondary" className="text-[9px]">enforced</Badge>}
+                            {skill.safety_level && <Badge variant="outline" className="text-[9px]">{skill.safety_level}</Badge>}
+                          </div>
+                          {skill.ui_hint && <p className="text-[10px] text-muted-foreground mt-1">{skill.ui_hint}</p>}
+                          {skill.guardrail_summary?.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {skill.guardrail_summary.map((item) => (
+                                <p key={item} className="text-[10px] text-muted-foreground">• {item}</p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}

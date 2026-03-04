@@ -125,6 +125,11 @@ class AgentConfig(models.Model):
         blank=True,
         related_name="agent_configs",
     )
+    skill_slugs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of attached skill slugs, e.g. ["keycloak-safety", "keycloak-prod-profile"]',
+    )
 
     # Servers this agent is allowed to operate on (empty = all accessible servers)
     server_scope = models.ManyToManyField(
@@ -147,6 +152,11 @@ class AgentConfig(models.Model):
         return self.name
 
     def to_dict(self) -> dict:
+        from .skill_policy import compile_skill_policies
+        from .skill_registry import resolve_skills
+
+        skills, skill_errors = resolve_skills(self.skill_slugs or [])
+        _, policy_errors = compile_skill_policies(skills)
         return {
             "id": self.pk,
             "name": self.name,
@@ -158,6 +168,9 @@ class AgentConfig(models.Model):
             "max_iterations": self.max_iterations,
             "allowed_tools": self.allowed_tools,
             "mcp_servers": list(self.mcp_servers.values("id", "name", "transport")),
+            "skill_slugs": list(self.skill_slugs or []),
+            "skills": [skill.to_summary_dict() for skill in skills],
+            "skill_errors": [*skill_errors, *policy_errors],
             "server_scope": list(self.server_scope.values("id", "name")),
         }
 

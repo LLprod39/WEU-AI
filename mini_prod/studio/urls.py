@@ -19,6 +19,11 @@ urlpatterns = [
     # Agent Configs
     path("agents/", views.api_agents, name="agents"),
     path("agents/<int:agent_id>/", views.api_agent_detail, name="agent_detail"),
+    path("skills/", views.api_skills, name="skills"),
+    path("skills/templates/", views.api_skill_templates, name="skill_templates"),
+    path("skills/scaffold/", views.api_skill_scaffold, name="skill_scaffold"),
+    path("skills/validate/", views.api_skill_validate, name="skill_validate"),
+    path("skills/<slug:slug>/", views.api_skill_detail, name="skill_detail"),
     # MCP Pool
     path("mcp/", views.api_mcp_list, name="mcp_list"),
     path("mcp/templates/", views.api_mcp_templates, name="mcp_templates"),

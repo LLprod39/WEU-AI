@@ -1197,8 +1197,95 @@ export interface AgentConfig {
   model: string;
   max_iterations: number;
   allowed_tools: string[];
+  skill_slugs: string[];
+  skills: StudioSkill[];
+  skill_errors?: string[];
   mcp_servers: Array<{ id: number; name: string; transport: string }>;
   server_scope: Array<{ id: number; name: string }>;
+}
+
+export interface StudioSkill {
+  slug: string;
+  name: string;
+  description: string;
+  tags: string[];
+  service: string;
+  category: string;
+  safety_level: string;
+  ui_hint: string;
+  guardrail_summary: string[];
+  recommended_tools: string[];
+  runtime_enforced: boolean;
+  path: string;
+}
+
+export interface StudioSkillDetail extends StudioSkill {
+  runtime_policy: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  content: string;
+}
+
+export interface StudioSkillTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  summary: string;
+  defaults: {
+    name?: string;
+    description?: string;
+    service?: string;
+    category?: string;
+    safety_level?: string;
+    ui_hint?: string;
+    tags?: string[];
+    guardrail_summary?: string[];
+    recommended_tools?: string[];
+    runtime_policy?: Record<string, unknown>;
+  };
+}
+
+export interface StudioSkillValidationResult {
+  slug: string;
+  path: string;
+  errors: string[];
+  warnings: string[];
+  is_valid: boolean;
+}
+
+export interface StudioSkillValidationResponse {
+  results: StudioSkillValidationResult[];
+  summary: {
+    skills: number;
+    errors: number;
+    warnings: number;
+    is_valid: boolean;
+    strict: boolean;
+  };
+}
+
+export interface StudioSkillScaffoldPayload {
+  template_slug?: string;
+  name: string;
+  description: string;
+  slug?: string;
+  service?: string;
+  category?: string;
+  safety_level?: string;
+  ui_hint?: string;
+  tags?: string[];
+  guardrail_summary?: string[];
+  recommended_tools?: string[];
+  runtime_policy?: Record<string, unknown>;
+  with_scripts?: boolean;
+  with_references?: boolean;
+  with_assets?: boolean;
+  force?: boolean;
+}
+
+export interface StudioSkillScaffoldResponse {
+  ok: boolean;
+  skill: StudioSkillDetail;
+  validation: StudioSkillValidationResult;
 }
 
 export interface MCPServer {
@@ -1273,6 +1360,19 @@ export const studioAgents = {
   create: (data: Partial<AgentConfig>) => apiFetch<AgentConfig>("/api/studio/agents/", { method: "POST", body: JSON.stringify(data) }),
   update: (id: number, data: Partial<AgentConfig>) => apiFetch<AgentConfig>(`/api/studio/agents/${id}/`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: number) => apiFetch<{ ok: boolean }>(`/api/studio/agents/${id}/`, { method: "DELETE" }),
+};
+
+export const studioSkills = {
+  list: () => apiFetch<StudioSkill[]>("/api/studio/skills/"),
+  get: (slug: string) => apiFetch<StudioSkillDetail>(`/api/studio/skills/${encodeURIComponent(slug)}/`),
+  templates: () => apiFetch<StudioSkillTemplate[]>("/api/studio/skills/templates/"),
+  scaffold: (data: StudioSkillScaffoldPayload) =>
+    apiFetch<StudioSkillScaffoldResponse>("/api/studio/skills/scaffold/", { method: "POST", body: JSON.stringify(data) }),
+  validate: (slugs?: string[], strict = false) =>
+    apiFetch<StudioSkillValidationResponse>("/api/studio/skills/validate/", {
+      method: "POST",
+      body: JSON.stringify({ slugs: slugs || [], strict }),
+    }),
 };
 
 // MCP

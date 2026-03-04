@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Save, X, Loader2, Bot, ArrowLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, X, Loader2, Bot, ArrowLeft, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { studioAgents, studioMCP, studioServers, type AgentConfig } from "@/lib/api";
+import { studioAgents, studioMCP, studioServers, studioSkills, type AgentConfig } from "@/lib/api";
 
 const ALL_TOOLS = [
   { id: "ssh_execute", label: "SSH Execute", desc: "Run commands on servers" },
@@ -34,15 +34,61 @@ const LLM_MODELS = [
   "gpt-5.2",
 ];
 
+const BOT_STARTER_PRESETS = [
+  {
+    id: "keycloak-test",
+    label: "Keycloak TEST Bot",
+    description: "Safe Keycloak bot pinned to the TEST profile.",
+    requiredSkills: ["keycloak-safety", "keycloak-test-profile"],
+    patch: {
+      name: "Keycloak TEST Bot",
+      description: "Service bot for Keycloak TEST tasks with enforced profile guardrails.",
+      system_prompt: "You are a cautious Keycloak operator. Work only through attached MCP tools and stop instead of guessing.",
+      instructions: "Before mutating anything, read the relevant skills, confirm the environment, discover the exact target, then verify the final state.",
+      allowed_tools: ["report", "ask_user", "analyze_output"],
+      skill_slugs: ["keycloak-safety", "keycloak-test-profile"],
+    },
+  },
+  {
+    id: "keycloak-prod",
+    label: "Keycloak PROD Bot",
+    description: "Production Keycloak bot with pinned profile and stricter safety posture.",
+    requiredSkills: ["keycloak-safety", "keycloak-prod-profile"],
+    patch: {
+      name: "Keycloak PROD Bot",
+      description: "Production Keycloak bot with enforced profile pinning and mandatory preflight guardrails.",
+      system_prompt: "You are a production Keycloak operator. Be deterministic, conservative, and stop whenever a target is ambiguous.",
+      instructions: "Read the attached skills before service-specific changes. Resolve exact targets, run preflight before mutations, and verify everything after changes.",
+      allowed_tools: ["report", "ask_user", "analyze_output"],
+      skill_slugs: ["keycloak-safety", "keycloak-prod-profile"],
+    },
+  },
+  {
+    id: "investigator",
+    label: "Investigation Bot",
+    description: "General investigation agent for read-heavy tasks and operator handoff.",
+    requiredSkills: [],
+    patch: {
+      name: "Investigation Bot",
+      description: "General-purpose investigation bot for diagnostics, reviews, and evidence collection.",
+      system_prompt: "You are a careful investigation agent. Gather evidence first, summarize clearly, and ask before risky actions.",
+      instructions: "Prefer discovery and explanation over mutation. Use intermediate reports for long runs.",
+      allowed_tools: ["report", "ask_user", "analyze_output", "read_console"],
+    },
+  },
+] as const;
+
 function AgentForm({
   initial,
   onSave,
   onCancel,
+  onOpenSkillCatalog,
   isPending,
 }: {
   initial: Partial<AgentConfig>;
   onSave: (data: Partial<AgentConfig>) => void;
   onCancel: () => void;
+  onOpenSkillCatalog: () => void;
   isPending: boolean;
 }) {
   const [form, setForm] = useState<Partial<AgentConfig>>({
@@ -54,6 +100,7 @@ function AgentForm({
     model: "gemini-2.0-flash-exp",
     max_iterations: 10,
     allowed_tools: ["ssh_execute", "report", "ask_user"],
+    skill_slugs: [],
     mcp_servers: [],
     server_scope: [],
     ...initial,
@@ -61,6 +108,7 @@ function AgentForm({
 
   const { data: mcpList = [] } = useQuery({ queryKey: ["studio", "mcp"], queryFn: studioMCP.list });
   const { data: servers = [] } = useQuery({ queryKey: ["studio", "servers"], queryFn: studioServers.list });
+  const { data: skillList = [] } = useQuery({ queryKey: ["studio", "skills"], queryFn: studioSkills.list });
 
   const set = (key: keyof AgentConfig, val: unknown) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -75,10 +123,58 @@ function AgentForm({
     set("mcp_servers", next as unknown as AgentConfig["mcp_servers"]);
   };
 
+  const toggleSkill = (skillSlug: string) => {
+    const slugs = form.skill_slugs || [];
+    const next = slugs.includes(skillSlug) ? slugs.filter((slug) => slug !== skillSlug) : [...slugs, skillSlug];
+    set("skill_slugs", next);
+  };
+
   const mcpIds = (form.mcp_servers || []).map((m) => (typeof m === "number" ? m : m.id));
+  const skillSlugs = Array.isArray(form.skill_slugs) ? form.skill_slugs : [];
+  const selectedSkills = skillList.filter((skill) => skillSlugs.includes(skill.slug));
+  const availablePresets = BOT_STARTER_PRESETS.filter((preset) => preset.requiredSkills.every((slug) => skillList.some((skill) => skill.slug === slug)));
+
+  const applyPreset = (presetId: string) => {
+    const preset = availablePresets.find((item) => item.id === presetId);
+    if (!preset) return;
+    setForm((prev) => ({
+      ...prev,
+      ...preset.patch,
+      skill_slugs: Array.isArray(preset.patch.skill_slugs) ? [...preset.patch.skill_slugs] : prev.skill_slugs || [],
+    }));
+  };
 
   return (
     <div className="space-y-5">
+      <div className="rounded-lg border border-border bg-muted/20 px-3 py-3 space-y-2">
+        <p className="text-xs font-medium">How admins should build a bot</p>
+        <div className="space-y-1 text-[11px] text-muted-foreground">
+          <p>1. Start from a preset or describe the bot in plain language.</p>
+          <p>2. Attach the MCP server for the target system.</p>
+          <p>3. Attach the relevant skill pack so the bot follows the company workflow.</p>
+          <p>4. Keep only the tools the bot actually needs.</p>
+        </div>
+      </div>
+
+      {availablePresets.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-xs">Starter Presets</Label>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {availablePresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyPreset(preset.id)}
+                className="rounded-lg border border-border bg-card/50 px-3 py-3 text-left hover:border-primary/50 hover:bg-muted/20 transition-colors"
+              >
+                <p className="text-xs font-medium">{preset.label}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">{preset.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Name + Icon */}
       <div className="flex gap-2">
         <div className="space-y-1.5">
@@ -194,6 +290,102 @@ function AgentForm({
         </div>
       )}
 
+      {skillList.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">Skills</Label>
+            <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]" onClick={onOpenSkillCatalog}>
+              <BookOpen className="h-3 w-3" />
+              Browse Catalog
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Attached skills are shown to the agent as a catalog. The agent can open the full skill on demand during the run.
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            When any skill is attached, the runtime automatically enables the internal `list_skills` and `read_skill` actions for that agent.
+          </p>
+          <div className="space-y-1">
+            {skillList.map((skill) => (
+              <label key={skill.slug} className="flex items-start gap-2 cursor-pointer px-2 py-1.5 rounded border border-border hover:bg-muted/30 transition-colors">
+                <Checkbox
+                  checked={skillSlugs.includes(skill.slug)}
+                  onCheckedChange={() => toggleSkill(skill.slug)}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium">{skill.name}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">{skill.slug}</span>
+                    {skill.runtime_enforced && <Badge variant="secondary" className="text-[9px]">runtime enforced</Badge>}
+                    {skill.safety_level && <Badge variant="outline" className="text-[9px]">{skill.safety_level}</Badge>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    {skill.service && <span className="text-[10px] text-muted-foreground">{skill.service}</span>}
+                    {skill.category && <span className="text-[10px] text-muted-foreground">· {skill.category}</span>}
+                  </div>
+                  {skill.description && <p className="text-[10px] text-muted-foreground mt-0.5">{skill.description}</p>}
+                  {skill.ui_hint && <p className="text-[10px] text-muted-foreground mt-1">{skill.ui_hint}</p>}
+                  {skill.recommended_tools?.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Recommended agent tools: {skill.recommended_tools.join(", ")}
+                    </p>
+                  )}
+                  {skill.guardrail_summary?.length > 0 && (
+                    <div className="space-y-0.5 mt-1">
+                      {skill.guardrail_summary.map((item) => (
+                        <p key={item} className="text-[10px] text-muted-foreground">• {item}</p>
+                      ))}
+                    </div>
+                  )}
+                  {skill.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {skill.tags.map((tag) => (
+                        <span key={tag} className="text-[9px] bg-muted/60 rounded px-1 py-0.5 text-muted-foreground">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedSkills.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-xs">Guardrails Preview</Label>
+          <div className="space-y-2">
+            {selectedSkills.map((skill) => (
+              <div key={skill.slug} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-medium">{skill.name}</p>
+                  {skill.runtime_enforced && <Badge variant="secondary" className="text-[9px]">enforced</Badge>}
+                  {skill.safety_level && <Badge variant="outline" className="text-[9px]">{skill.safety_level}</Badge>}
+                </div>
+                {skill.guardrail_summary?.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {skill.guardrail_summary.map((item) => (
+                      <p key={item} className="text-[10px] text-muted-foreground">• {item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {form.skill_errors && form.skill_errors.length > 0 && (
+        <div className="rounded-lg border border-red-500/30 bg-red-900/10 px-3 py-2">
+          <p className="text-xs font-medium text-red-300">Skill configuration issues</p>
+          <div className="mt-1 space-y-0.5">
+            {form.skill_errors.map((item) => (
+              <p key={item} className="text-[10px] text-red-200">{item}</p>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
         <Button size="sm" onClick={() => onSave(form)} disabled={!form.name?.trim() || isPending} className="gap-1.5">
@@ -248,17 +440,21 @@ export default function AgentConfigPage() {
   });
 
   const handleSave = (data: Partial<AgentConfig>) => {
+    const payload: Partial<AgentConfig> = {
+      ...data,
+      skill_slugs: data.skill_slugs || data.skills?.map((skill) => skill.slug) || [],
+    };
     if ((editAgent as AgentConfig)?.id) {
-      updateMutation.mutate({ id: (editAgent as AgentConfig).id, data });
+      updateMutation.mutate({ id: (editAgent as AgentConfig).id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-border px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate("/studio")}>
               <ArrowLeft className="h-4 w-4" />
@@ -271,10 +467,16 @@ export default function AgentConfigPage() {
               <p className="text-sm text-muted-foreground mt-0.5">Reusable agent configurations for pipeline nodes</p>
             </div>
           </div>
-          <Button size="sm" onClick={() => setEditAgent({})} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            New Agent
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="gap-1.5">
+              <BookOpen className="h-3.5 w-3.5" />
+              Skill Catalog
+            </Button>
+            <Button size="sm" onClick={() => setEditAgent({})} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              New Agent
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -322,6 +524,9 @@ export default function AgentConfigPage() {
                     {agent.mcp_servers?.length > 0 && (
                       <Badge variant="secondary" className="text-[10px]">{agent.mcp_servers.length} MCP</Badge>
                     )}
+                    {agent.skills?.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px]">{agent.skills.length} skills</Badge>
+                    )}
                   </div>
                   {agent.allowed_tools?.length > 0 && (
                     <div className="flex flex-wrap gap-0.5">
@@ -331,6 +536,11 @@ export default function AgentConfigPage() {
                       {agent.allowed_tools.length > 4 && (
                         <span className="text-[9px] text-muted-foreground">+{agent.allowed_tools.length - 4} more</span>
                       )}
+                    </div>
+                  )}
+                  {agent.skill_errors?.length > 0 && (
+                    <div className="rounded bg-red-900/10 border border-red-500/20 px-2 py-1 text-[10px] text-red-200">
+                      {agent.skill_errors[0]}
                     </div>
                   )}
                 </CardContent>
@@ -351,6 +561,7 @@ export default function AgentConfigPage() {
               initial={editAgent}
               onSave={handleSave}
               onCancel={() => setEditAgent(null)}
+              onOpenSkillCatalog={() => navigate("/studio/skills")}
               isPending={createMutation.isPending || updateMutation.isPending}
             />
           )}
