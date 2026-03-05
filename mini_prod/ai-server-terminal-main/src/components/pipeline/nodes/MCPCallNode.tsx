@@ -1,9 +1,12 @@
 import { type NodeProps } from "@xyflow/react";
 import { NodeBase } from "./NodeBase";
+import { useI18n } from "@/lib/i18n";
+import { getNodeTypeInfo, localize } from "./nodeMeta";
 
 export function MCPCallNode({ data, selected }: NodeProps) {
+  const { lang } = useI18n();
   const d = data as Record<string, string>;
-  const label = d?.label || "MCP Call";
+  const label = d?.label || getNodeTypeInfo("agent/mcp_call", lang).label;
   const toolName = d?.tool_name;
   const serverName = d?.mcp_server_name;
 
@@ -12,7 +15,7 @@ export function MCPCallNode({ data, selected }: NodeProps) {
       selected={selected}
       label={label}
       icon="🧩"
-      description={toolName ? `tool: ${toolName}` : "Direct MCP tools/call"}
+      description={toolName ? `${localize(lang, "инструмент", "tool")}: ${toolName}` : localize(lang, "Прямой вызов MCP-инструмента", "Direct MCP tools/call")}
       accentColor="border-teal-500/40"
       status={d?.status}
     >

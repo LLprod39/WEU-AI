@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ElementType, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { studioNotifications, type NotificationConfig } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 // ---------------------------------------------------------------------------
 // Section wrapper
@@ -29,23 +30,53 @@ function Section({
   description,
   children,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+    <section className="enterprise-panel rounded-md p-6 sm:p-7 space-y-6">
       <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-primary/10">
+        <div className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10">
           <Icon className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h3 className="font-semibold text-sm">{title}</h3>
-          {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+          <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+          {description && <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>}
         </div>
       </div>
       {children}
+    </section>
+  );
+}
+
+function ReadinessCard({
+  title,
+  value,
+  description,
+  ready,
+  lang,
+}: {
+  title: string;
+  value: string;
+  description: string;
+  ready: boolean;
+  lang: "ru" | "en";
+}) {
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
+  return (
+    <div className="enterprise-stat rounded-md px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
+          <p className="mt-3 text-lg font-semibold text-foreground">{value}</p>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${ready ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
+          {ready ? tr("Готово", "Ready") : tr("Требует настройки", "Needs setup")}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -72,15 +103,15 @@ function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`pr-9 ${className || "h-8 text-xs"}`}
+        className={`pr-11 ${className || ""}`}
       />
       <button
         type="button"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         onClick={() => setShow(!show)}
         tabIndex={-1}
       >
-        {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
     </div>
   );
@@ -122,20 +153,20 @@ function TestButton({
         size="sm"
         onClick={run}
         disabled={disabled || loading}
-        className="h-7 gap-1.5 text-xs"
+        className="gap-2"
       >
-        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         {label}
       </Button>
       {state && (
         <div
-          className={`flex items-center gap-1.5 text-xs rounded px-2 py-1 ${
+          className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
             state.ok
               ? "bg-green-900/20 border border-green-600/30 text-green-300"
               : "bg-red-900/20 border border-red-600/30 text-red-300"
           }`}
         >
-          {state.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
+          {state.ok ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
           {state.message}
         </div>
       )}
@@ -147,6 +178,8 @@ function TestButton({
 // Main page
 // ---------------------------------------------------------------------------
 export default function NotificationsSettingsPage() {
+  const { lang } = useI18n();
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -191,90 +224,129 @@ export default function NotificationsSettingsPage() {
     mutationFn: () => studioNotifications.save(form),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["studio", "notifications"] });
-      toast({ description: "Notification settings saved" });
+      toast({ description: tr("Настройки уведомлений сохранены", "Notification settings saved") });
     },
     onError: (e: Error) => toast({ variant: "destructive", description: e.message }),
   });
 
+  const telegramReady = Boolean(form.telegram_bot_token && form.telegram_chat_id);
+  const emailReady = Boolean(
+    form.notify_email && form.smtp_host && form.smtp_user && form.smtp_password
+  );
+  const siteUrlReady = Boolean(form.site_url);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
+        <Loader2 className="h-4 w-4 animate-spin mr-2" /> {tr("Загрузка...", "Loading…")}
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10">
-            <Bell className="h-6 w-6 text-primary" />
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+      <section className="enterprise-panel rounded-md px-6 py-6 sm:px-7 sm:py-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-3">
+            <div className="enterprise-kicker">{tr("Контроль доставки", "Delivery Control")}</div>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">{tr("Настройки уведомлений", "Notification Settings")}</h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                {tr(
+                  "Настройте один раз, и Studio будет использовать эти каналы для запросов подтверждения, планов обновлений, сводок и операционных алертов во всех пайплайнах.",
+                  "Configure once and let Studio reuse these channels for approval requests, update plans, summaries and operational alerts across all pipelines.",
+                )}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold">Notification Settings</h1>
-            <p className="text-sm text-muted-foreground">
-              Configure once — all pipelines use these credentials automatically
-            </p>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="gap-2"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {tr("Сохранить настройки уведомлений", "Save notification settings")}
+          </Button>
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <ReadinessCard
+            title={tr("Telegram", "Telegram")}
+            value={telegramReady ? tr("Подключено", "Connected") : tr("Не настроено", "Not configured")}
+            description={tr("Используйте токен бота и chat ID, чтобы получать обновления рантайма прямо в Telegram.", "Use a bot token and chat ID to receive runtime updates directly in Telegram.")}
+            ready={telegramReady}
+            lang={lang}
+          />
+          <ReadinessCard
+            title={tr("Email", "Email")}
+            value={emailReady ? tr("Подключено", "Connected") : tr("Нужен SMTP", "Needs SMTP")}
+            description={tr("Ссылки подтверждения, отчёты и эскалации зависят от рабочего SMTP-профиля.", "Approval links, reports and escalation notices depend on a working SMTP profile.")}
+            ready={emailReady}
+            lang={lang}
+          />
+          <ReadinessCard
+            title={tr("Публичный URL", "Public URL")}
+            value={siteUrlReady ? tr("Указан", "Present") : tr("Отсутствует", "Missing")}
+            description={tr("Ссылки уведомлений должны вести на адрес, который операторы реально могут открыть.", "Notification links must point to a routable URL that operators can actually open.")}
+            ready={siteUrlReady}
+            lang={lang}
+          />
+        </div>
+
+        <div className="mt-6 rounded-md border border-blue-500/25 bg-blue-500/10 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-500/15">
+              <Info className="h-4 w-4 text-blue-300" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-blue-100">{tr("Как работает глобальная доставка", "How global delivery works")}</p>
+              <p className="text-sm leading-6 text-blue-200/90">
+                {tr("Настройки сохраняются в ", "Settings are saved to ")}<code>.notification_config.json</code>{tr(" и переопределяют значения из ", " and override values from ")}<code>.env</code>.
+                {tr(" Отдельные ноды пайплайна могут переопределять эти значения, если workflow нужен отдельный канал.", " Individual pipeline nodes can still override these defaults if a workflow needs a dedicated channel.")}
+              </p>
+            </div>
           </div>
         </div>
-        <Button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="gap-1.5"
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Save
-        </Button>
-      </div>
+      </section>
 
-      {/* Info banner */}
-      <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-900/10 px-4 py-3 text-xs text-blue-300">
-        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-        <span>
-          Settings are saved to <code>.notification_config.json</code> and override values from <code>.env</code>.
-          Individual pipeline nodes can still override these global defaults.
-        </span>
-      </div>
-
-      {/* ── Telegram ───────────────────────────────────────────────────── */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
       <Section
         icon={Bot}
-        title="Telegram Bot"
-        description="Receive update plans, approval requests and reports directly in Telegram"
+        title={tr("Telegram-бот", "Telegram Bot")}
+        description={tr("Получайте планы обновлений, запросы подтверждения и отчёты прямо в Telegram", "Receive update plans, approval requests and reports directly in Telegram")}
       >
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Bot Token</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Токен бота", "Bot Token")}</Label>
             <PasswordField
               value={form.telegram_bot_token || ""}
               onChange={(v) => set("telegram_bot_token", v)}
-              placeholder="1234567890:AAFxxx... (from @BotFather)"
+              placeholder={tr("1234567890:AAFxxx... (из @BotFather)", "1234567890:AAFxxx... (from @BotFather)")}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">Chat ID</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Chat ID", "Chat ID")}</Label>
             <Input
               value={form.telegram_chat_id || ""}
               onChange={(e) => set("telegram_chat_id", e.target.value)}
-              placeholder="123456789  (use @userinfobot to find yours)"
-              className="h-8 text-xs font-mono"
+              placeholder={tr("123456789  (узнать можно через @userinfobot)", "123456789  (use @userinfobot to find yours)")}
+              className="font-mono"
             />
           </div>
 
-          <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs space-y-1.5">
-            <p className="font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Quick setup (2 min)</p>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Open Telegram → search <strong>@BotFather</strong> → /newbot → get token</li>
-              <li>Start your new bot (send it /start)</li>
+          <div className="rounded-md border border-border bg-background/35 p-4 text-sm space-y-2">
+            <p className="font-medium text-muted-foreground uppercase text-[11px] tracking-[0.14em]">{tr("Быстрая настройка", "Quick setup")}</p>
+            <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground leading-6">
+              <li>{tr("Откройте Telegram → найдите ", "Open Telegram -> search ")}<strong>@BotFather</strong>{tr(" → /newbot → получите токен", " -> /newbot -> get token")}</li>
+              <li>{tr("Запустите нового бота (отправьте /start)", "Start your new bot (send it /start)")}</li>
               <li>
-                Find your Chat ID: open{" "}
+                {tr("Узнайте ваш Chat ID: откройте ", "Find your Chat ID: open ")}
                 <a
                   href="https://t.me/userinfobot"
                   target="_blank"
@@ -284,12 +356,12 @@ export default function NotificationsSettingsPage() {
                   @userinfobot <ExternalLink className="h-2.5 w-2.5" />
                 </a>
               </li>
-              <li>Paste both values above and save</li>
+              <li>{tr("Вставьте оба значения выше и сохраните", "Paste both values above and save")}</li>
             </ol>
           </div>
 
           <TestButton
-            label="Send Test Message"
+            label={tr("Отправить тестовое сообщение", "Send Test Message")}
             disabled={!form.telegram_bot_token || !form.telegram_chat_id}
             onTest={() => studioNotifications.testTelegram()}
           />
@@ -299,91 +371,86 @@ export default function NotificationsSettingsPage() {
       {/* ── Email ──────────────────────────────────────────────────────── */}
       <Section
         icon={Mail}
-        title="Email (SMTP)"
-        description="Send approval links, update plans and final reports by email"
+        title={tr("Email (SMTP)", "Email (SMTP)")}
+        description={tr("Отправляйте ссылки подтверждения, планы и финальные отчёты по email", "Send approval links, update plans and final reports by email")}
       >
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Your email (recipient)</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Email получателя", "Recipient email")}</Label>
             <Input
               type="email"
               value={form.notify_email || ""}
               onChange={(e) => set("notify_email", e.target.value)}
               placeholder="you@gmail.com"
-              className="h-8 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground">All pipeline notifications will be sent to this address</p>
+            <p className="text-xs text-muted-foreground">{tr("Все уведомления пайплайнов будут отправляться на этот адрес.", "All pipeline notifications will be sent to this address.")}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">SMTP Host</Label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">{tr("SMTP Host", "SMTP Host")}</Label>
               <Input
                 value={form.smtp_host || ""}
                 onChange={(e) => set("smtp_host", e.target.value)}
-                placeholder="smtp.gmail.com или smtp.yandex.ru"
-                className="h-8 text-xs"
+                placeholder={tr("smtp.gmail.com или smtp.yandex.ru", "smtp.gmail.com or smtp.yandex.ru")}
               />
-              <p className="text-[10px] text-muted-foreground">
-                Яндекс: <code>smtp.yandex.ru</code>, порт <code>465</code>
+              <p className="text-xs text-muted-foreground">
+                {tr("Яндекс: ", "Yandex: ")}<code>smtp.yandex.ru</code>, {tr("порт", "port")} <code>465</code>
               </p>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Port</Label>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">{tr("Порт", "Port")}</Label>
               <Input
                 value={form.smtp_port || "587"}
                 onChange={(e) => set("smtp_port", e.target.value)}
-                placeholder="465 или 587"
-                className="h-8 text-xs"
+                placeholder={tr("465 или 587", "465 or 587")}
               />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">Login</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Логин", "Login")}</Label>
             <Input
               value={form.smtp_user || ""}
               onChange={(e) => set("smtp_user", e.target.value)}
-              placeholder="email@gmail.com или для Яндекса: часть до @"
-              className="h-8 text-xs"
+              placeholder={tr("email@gmail.com или для Яндекса: часть до @", "email@gmail.com or for Yandex: part before @")}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">Password / App Password</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Пароль / App Password", "Password / App Password")}</Label>
             <PasswordField
               value={form.smtp_password || ""}
               onChange={(v) => set("smtp_password", v)}
-              placeholder="For Gmail — create an App Password (not your main password)"
+              placeholder={tr("Для Gmail используйте App Password, а не основной пароль", "For Gmail — create an App Password (not your main password)")}
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Gmail:{" "}
               <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                 App Password
               </a>
               {" · "}
-              Яндекс:{" "}
+              {tr("Яндекс", "Yandex")}:{" "}
               <a href="https://yandex.ru/support/yandex-360/customers/mail/ru/mail-clients/others" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                пароль приложения
+                {tr("пароль приложения", "app password")}
               </a>
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-xs">From address (optional)</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-foreground">{tr("Адрес отправителя", "From address")}</Label>
             <Input
               value={form.from_email || ""}
               onChange={(e) => set("from_email", e.target.value)}
-              placeholder="WEU Platform <логин@yandex.ru>"
-              className="h-8 text-xs"
+              placeholder={tr("WEU Platform <логин@yandex.ru>", "WEU Platform <login@yandex.ru>")}
             />
-            <p className="text-[10px] text-muted-foreground">
-              Должен быть ваш реальный ящик на SMTP-сервере. Для Яндекса: <code>WEU Platform &lt;логин@yandex.ru&gt;</code>
+            <p className="text-xs text-muted-foreground">
+              {tr("Должен быть ваш реальный ящик на SMTP-сервере. Для Яндекса:", "Must be a real mailbox on your SMTP server. For Yandex:")} <code>{tr("WEU Platform <логин@yandex.ru>", "WEU Platform <login@yandex.ru>")}</code>
             </p>
           </div>
 
           <TestButton
-            label="Send Test Email"
+            label={tr("Отправить тестовый email", "Send Test Email")}
             disabled={!form.smtp_user || !form.notify_email}
             onTest={() => studioNotifications.testEmail()}
           />
@@ -393,40 +460,92 @@ export default function NotificationsSettingsPage() {
       {/* ── General ────────────────────────────────────────────────────── */}
       <Section
         icon={ExternalLink}
-        title="Server URL"
-        description="Used in approval links sent via email and Telegram"
+        title={tr("URL сервера", "Server URL")}
+        description={tr("Используется в ссылках подтверждения в email и Telegram", "Used in approval links sent via email and Telegram")}
       >
-        <div className="space-y-1.5">
-          <Label className="text-xs">Public URL of this server</Label>
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-foreground">{tr("Публичный URL этого сервера", "Public URL of this server")}</Label>
           <Input
             value={form.site_url || ""}
             onChange={(e) => set("site_url", e.target.value)}
             placeholder="https://your-server.example.com"
-            className="h-8 text-xs"
           />
-          <p className="text-[10px] text-muted-foreground">
-            Approve/Reject links in notifications will point to this address.
-            Example: <code>http://192.168.1.100:8000</code>
+          <p className="text-xs text-muted-foreground">
+            {tr("Ссылки Approve/Reject в уведомлениях будут вести на этот адрес.", "Approve/Reject links in notifications will point to this address.")}
+            {tr(" Пример:", " Example:")} <code>http://192.168.1.100:8000</code>
           </p>
         </div>
       </Section>
 
-      {/* Save button (bottom) */}
-      <div className="flex justify-end pt-2">
-        <Button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          size="lg"
-          className="gap-2"
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Save Settings
-        </Button>
+          <div className="flex justify-end pt-1">
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              size="lg"
+              className="gap-2"
+            >
+              {saveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {tr("Сохранить настройки", "Save settings")}
+            </Button>
+          </div>
+        </div>
+
+        <aside className="space-y-6">
+          <section className="enterprise-panel rounded-md p-6 sticky top-24">
+            <div className="enterprise-kicker">{tr("Чеклист оператора", "Operator Checklist")}</div>
+            <h2 className="mt-3 text-xl font-semibold text-foreground">{tr("Готовность каналов", "Channel readiness")}</h2>
+            <div className="mt-5 space-y-3">
+              <div className="rounded-md border border-border/70 bg-background/35 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-foreground">{tr("Доставка в Telegram", "Telegram delivery")}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${telegramReady ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
+                    {telegramReady ? tr("Готово", "Ready") : tr("Ожидание", "Pending")}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {tr("Лучше всего подходит для быстрых подтверждений, согласования планов и оперативных алертов во время активных запусков.", "Best for fast approvals, plan confirmations and operational alerts during active runs.")}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/70 bg-background/35 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-foreground">{tr("Доставка по email", "Email delivery")}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${emailReady ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
+                    {emailReady ? tr("Готово", "Ready") : tr("Ожидание", "Pending")}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {tr("Нужна для детальных отчётов, ссылок подтверждения и длинного audit trail для заинтересованных сторон.", "Required for detailed reports, approval links and longer audit trails shared with stakeholders.")}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/70 bg-background/35 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-foreground">{tr("Публичные ссылки", "Public links")}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${siteUrlReady ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
+                    {siteUrlReady ? tr("Готово", "Ready") : tr("Ожидание", "Pending")}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {tr("Подтверждающие должны иметь доступ к сгенерированным URL из своей рабочей сетевой зоны.", "Approvers must be able to open the generated URLs from the network segment they actually use.")}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-md border border-border/70 bg-background/30 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{tr("Рекомендуемый порядок", "Recommended rollout")}</p>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                <li>{tr("1. Сначала настройте публичный URL сервера, чтобы ссылки подтверждения были валидны.", "1. Configure the public server URL first so approval links are valid.")}</li>
+                <li>{tr("2. Включите Telegram для быстрого обратного цикла с операторами.", "2. Enable Telegram for fast operator feedback loops.")}</li>
+                <li>{tr("3. Добавьте SMTP для формальных отчётов и эскалационных сценариев.", "3. Add SMTP for formal reports and escalation workflows.")}</li>
+              </ul>
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   );
 }
+

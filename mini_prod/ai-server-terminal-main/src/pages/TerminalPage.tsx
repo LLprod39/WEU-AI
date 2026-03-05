@@ -448,7 +448,7 @@ export default function TerminalPage() {
             {tabs.length > 1 && (
               <span role="button" aria-label={`Close ${tab.name}`}
                 onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity">
+                className="rounded p-0.5 text-muted-foreground/75 transition-colors hover:bg-secondary/60 hover:text-destructive">
                 <X className="h-3 w-3" />
               </span>
             )}

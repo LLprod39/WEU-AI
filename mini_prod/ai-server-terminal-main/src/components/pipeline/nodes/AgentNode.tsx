@@ -1,10 +1,13 @@
 import { type NodeProps } from "@xyflow/react";
 import { NodeBase } from "./NodeBase";
+import { useI18n } from "@/lib/i18n";
+import { getNodeTypeInfo, localize } from "./nodeMeta";
 
 export function AgentNode({ data, selected, type }: NodeProps) {
+  const { lang } = useI18n();
   const isMulti = type === "agent/multi";
   const d = data as Record<string, string>;
-  const label = d?.label || (isMulti ? "Multi-Agent" : "ReAct Agent");
+  const label = d?.label || getNodeTypeInfo(type as string, lang).label;
   const goal = d?.goal;
   const model = d?.model;
 
@@ -13,7 +16,13 @@ export function AgentNode({ data, selected, type }: NodeProps) {
       selected={selected}
       label={label}
       icon={isMulti ? "🦾" : "🤖"}
-      description={goal ? goal.slice(0, 50) + (goal.length > 50 ? "…" : "") : isMulti ? "Orchestrated pipeline" : "Single server loop"}
+      description={
+        goal
+          ? goal.slice(0, 50) + (goal.length > 50 ? "…" : "")
+          : isMulti
+            ? localize(lang, "Оркестрация нескольких исполнителей", "Orchestrated pipeline")
+            : localize(lang, "Один агентный цикл", "Single server loop")
+      }
       accentColor="border-violet-500/40"
       status={d?.status}
     >

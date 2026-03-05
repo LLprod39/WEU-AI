@@ -1,14 +1,11 @@
 import { type NodeProps } from "@xyflow/react";
 import { NodeBase } from "./NodeBase";
-
-const TRIGGER_META: Record<string, { label: string; icon: string; description: string }> = {
-  "trigger/manual": { label: "Manual Trigger", icon: "▶️", description: "Run manually" },
-  "trigger/webhook": { label: "Webhook", icon: "🔗", description: "Receive HTTP POST" },
-  "trigger/schedule": { label: "Schedule", icon: "⏰", description: "Cron expression" },
-};
+import { useI18n } from "@/lib/i18n";
+import { getNodeTypeInfo, localize } from "./nodeMeta";
 
 export function TriggerNode({ data, selected, type }: NodeProps) {
-  const meta = TRIGGER_META[type as string] || TRIGGER_META["trigger/manual"];
+  const { lang } = useI18n();
+  const meta = getNodeTypeInfo(type as string, lang);
   const cron = (data as Record<string, string>)?.cron_expression;
   const label = (data as Record<string, string>)?.label || meta.label;
 
@@ -17,7 +14,15 @@ export function TriggerNode({ data, selected, type }: NodeProps) {
       selected={selected}
       label={label}
       icon={meta.icon}
-      description={cron ? `cron: ${cron}` : meta.description}
+      description={
+        cron
+          ? `${localize(lang, "cron", "cron")}: ${cron}`
+          : type === "trigger/manual"
+            ? localize(lang, "Запуск вручную", "Run manually")
+            : type === "trigger/webhook"
+              ? localize(lang, "Приём HTTP POST", "Receive HTTP POST")
+              : localize(lang, "Cron-выражение", "Cron expression")
+      }
       hasTarget={false}
       accentColor="border-emerald-500/40"
       status={(data as Record<string, string>)?.status}

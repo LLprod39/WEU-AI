@@ -1,9 +1,12 @@
 import { type NodeProps } from "@xyflow/react";
 import { NodeBase } from "./NodeBase";
+import { useI18n } from "@/lib/i18n";
+import { getNodeTypeInfo } from "./nodeMeta";
 
 export function LLMQueryNode({ data, selected }: NodeProps) {
+  const { lang } = useI18n();
   const d = data as Record<string, string>;
-  const label = d?.label || "LLM Query";
+  const label = d?.label || getNodeTypeInfo("agent/llm_query", lang).label;
   const prompt = d?.prompt;
   const model = d?.model || "gemini-2.0-flash-exp";
 

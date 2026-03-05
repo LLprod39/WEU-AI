@@ -790,6 +790,16 @@ def build_keycloak_ops_nodes(mcp_server_id: int, *, fixed_profile: str, environm
             },
         },
         {
+            "id": "start_webhook",
+            "type": "trigger/webhook",
+            "position": {"x": 820, "y": 40},
+            "data": {
+                "label": f"Webhook {environment_label} Keycloak Task",
+                "is_active": True,
+                "webhook_payload_map": TASK_WEBHOOK_CONTEXT_MAP,
+            },
+        },
+        {
             "id": "environment_preflight",
             "type": "agent/mcp_call",
             "position": {"x": 480, "y": 180},
@@ -1046,6 +1056,7 @@ def build_keycloak_ops_nodes(mcp_server_id: int, *, fixed_profile: str, environm
 def build_keycloak_ops_edges() -> list[dict]:
     return [
         {"id": "e1", "source": "start_manual", "target": "environment_preflight", "animated": True},
+        {"id": "e2w", "source": "start_webhook", "target": "environment_preflight", "animated": True},
         {"id": "e2", "source": "environment_preflight", "target": "normalize_request", "animated": True},
         {"id": "e3", "source": "normalize_request", "target": "discover_clients_roles", "animated": True},
         {"id": "e4", "source": "normalize_request", "target": "discover_users", "animated": True},

@@ -11,10 +11,15 @@ Run as a persistent daemon:
     python manage.py run_scheduled_pipelines --daemon
 """
 
-import asyncio
 import time
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 
-from croniter import croniter
+try:
+    from croniter import croniter
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in local mini env
+    croniter = None
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -49,15 +54,19 @@ class Command(BaseCommand):
 
         self.stdout.write("Starting pipeline scheduler...")
         if once or not daemon:
-            self._tick()
+            self._tick(interval)
         else:
             while True:
-                self._tick()
+                self._tick(interval)
                 self.stdout.write(f"Next check in {interval}s...")
                 time.sleep(interval)
 
-    def _tick(self):
+    def _tick(self, interval_seconds: int = 60):
+        if croniter is None:
+            self.stderr.write("croniter is not installed; schedule triggers are unavailable in this environment.")
+            return
         now = timezone.now()
+        window_start = now - timedelta(seconds=max(interval_seconds, 60))
         triggers = PipelineTrigger.objects.select_related("pipeline").filter(
             trigger_type=PipelineTrigger.TYPE_SCHEDULE,
             is_active=True,
@@ -66,13 +75,18 @@ class Command(BaseCommand):
             if not trigger.cron_expression:
                 continue
             try:
-                cron = croniter(trigger.cron_expression, trigger.last_triggered_at or now)
-                next_run = cron.get_next(float)
-                # If next_run is in the past (or now), it's time to fire
-                from datetime import datetime, timezone as dt_tz
+                cron = croniter(trigger.cron_expression, now)
+                last_due_ts = cron.get_prev(float)
+                last_due_dt = datetime.fromtimestamp(last_due_ts, tz=dt_timezone.utc)
+                if timezone.is_aware(now):
+                    last_due_dt = last_due_dt.astimezone(now.tzinfo)
 
-                next_run_dt = datetime.fromtimestamp(next_run, tz=dt_tz.utc)
-                if next_run_dt <= now:
+                if trigger.last_triggered_at:
+                    should_fire = last_due_dt > trigger.last_triggered_at
+                else:
+                    should_fire = window_start <= last_due_dt <= now
+
+                if should_fire:
                     self._fire_trigger(trigger)
             except Exception as exc:
                 self.stderr.write(f"Error evaluating trigger #{trigger.pk}: {exc}")

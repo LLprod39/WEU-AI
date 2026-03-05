@@ -2,6 +2,7 @@ import { Server, Activity, Wifi, WifiOff, AlertTriangle } from "lucide-react";
 import { fetchFrontendBootstrap } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
 
 function toRelativeTime(value: string | null): string {
   if (!value) return "just now";
@@ -17,7 +18,7 @@ function toRelativeTime(value: string | null): string {
 
 export default function Dashboard() {
   const { t } = useI18n();
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["frontend", "bootstrap"],
     queryFn: fetchFrontendBootstrap,
     staleTime: 20_000,
@@ -49,14 +50,30 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold text-foreground">{t("dash.title")}</h1>
+    <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <div className="enterprise-kicker">Overview</div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("dash.title")}</h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
+                Quick health snapshot for the accessible server inventory and the latest operational activity.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl px-4" onClick={() => refetch()}>
+            <Activity className={`h-3.5 w-3.5 ${isFetching ? "animate-pulse" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
           <div
             key={stat.labelKey}
-            className="bg-card border border-border rounded-lg p-4"
+            className="enterprise-stat rounded-2xl p-4"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">{t(stat.labelKey)}</span>
@@ -67,14 +84,14 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="bg-card border border-border rounded-lg">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
           <Activity className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-medium text-foreground">{t("dash.activity")}</h2>
         </div>
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border/60">
           {(data.recent_activity || []).map((item) => (
-            <div key={item.id} className="flex items-center gap-4 px-4 py-3">
+            <div key={item.id} className="flex items-center gap-4 px-5 py-3">
               <div className="flex-1">
                 <p className="text-sm text-foreground">{item.description || item.action}</p>
                 <p className="text-xs text-muted-foreground font-mono">{item.entity_name || "-"}</p>
@@ -87,3 +104,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

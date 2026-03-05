@@ -67,9 +67,12 @@ def test_ensure_keycloak_ops_pipelines_create_fixed_test_and_prod_without_approv
         assert nodes["start_webhook"]["type"] == "trigger/webhook"
         assert nodes["environment_preflight"]["data"]["mcp_server_id"] == server.id
         assert json.loads(nodes["environment_preflight"]["data"]["arguments_text"]) == {"profile": profile_name}
-        assert nodes["execute_keycloak_task"]["type"] == "agent/react"
-        assert nodes["execute_keycloak_task"]["data"]["mcp_server_ids"] == [server.id]
-        assert profile_name in nodes["execute_keycloak_task"]["data"]["goal"]
+        assert nodes["execute_identity_actions"]["type"] == "agent/react"
+        assert nodes["execute_identity_actions"]["data"]["mcp_server_ids"] == [server.id]
+        assert profile_name in nodes["execute_identity_actions"]["data"]["goal"]
+        assert nodes["execute_platform_actions"]["type"] == "agent/react"
+        assert nodes["execute_platform_actions"]["data"]["mcp_server_ids"] == [server.id]
+        assert profile_name in nodes["execute_platform_actions"]["data"]["goal"]
         assert "logic/human_approval" not in node_types
         assert "output/email" not in node_types
         assert "output/telegram" not in node_types

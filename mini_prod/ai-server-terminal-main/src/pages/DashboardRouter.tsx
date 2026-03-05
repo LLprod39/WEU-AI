@@ -12,7 +12,7 @@ export default function DashboardRouter() {
   });
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
+    return <div className="px-6 py-6 text-sm text-muted-foreground">Loading...</div>;
   }
 
   if (data?.user?.is_staff) {

@@ -102,20 +102,46 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{t("adash.title")}</h1>
-          <p className="text-xs text-muted-foreground">v{d.app_version}</p>
+    <div className="mx-auto max-w-7xl space-y-6 px-6 py-6">
+      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-4xl space-y-4">
+            <div className="enterprise-kicker">Administrative Control Plane</div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("adash.title")}</h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground md:text-[15px]">
+                Observe user activity, fleet health, active terminals, and AI spend from a single operational cockpit.
+              </p>
+              <p className="text-[11px] text-muted-foreground">v{d.app_version}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{t("adash.users_online")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{d.online_users.count}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">/{d.online_users.total_registered} registered accounts.</p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{t("adash.alerts")}</p>
+                <p className={`mt-2 text-2xl font-semibold ${d.active_alerts_count > 0 ? "text-red-400" : "text-green-400"}`}>{d.active_alerts_count}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{d.servers.active} active servers in the inventory.</p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{t("adash.api_cost")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">${totalCost.toFixed(2)}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{d.api_calls_today} provider calls recorded today.</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-start xl:justify-end">
+            <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl px-4" onClick={refresh}>
+              <RefreshCw className="h-3.5 w-3.5" /> {t("udash.refresh")}
+            </Button>
+          </div>
         </div>
-        <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-7" onClick={refresh}>
-          <RefreshCw className="h-3 w-3" /> {t("udash.refresh")}
-        </Button>
       </div>
 
       {/* Top metrics - single row */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label={t("adash.users_online")} value={d.online_users.count} sub={`/ ${d.online_users.total_registered}`} color="text-green-400" />
         <Metric label={t("adash.servers")} value={d.servers.active} sub={`/ ${d.servers.total}`} color="text-blue-400" />
         <Metric label={t("adash.alerts")} value={d.active_alerts_count} color={d.active_alerts_count > 0 ? "text-red-400" : "text-green-400"} />
@@ -127,7 +153,7 @@ export default function AdminDashboard() {
       {/* Two columns: Fleet health + Online users */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Fleet health */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Server className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-medium">{t("adash.fleet_health")}</span>
@@ -150,7 +176,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Online users */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3 lg:col-span-2">
+        <div className="rounded-xl border border-border bg-card p-5 space-y-3 lg:col-span-2">
           <div className="flex items-center gap-2">
             <Users className="h-3.5 w-3.5 text-green-400" />
             <span className="text-xs font-medium">{t("adash.online_users")}</span>
@@ -184,7 +210,7 @@ export default function AdminDashboard() {
 
       {/* Activity chart */}
       {hourlyData.length > 0 && (
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-medium">{t("adash.hourly_activity")}</span>
@@ -212,30 +238,30 @@ export default function AdminDashboard() {
 
       {/* AI Analysis result */}
       {analysisResult && (
-        <div className="bg-card border border-primary/20 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-primary/5 border-b border-primary/10">
+        <div className="overflow-hidden rounded-xl border border-primary/20 bg-card">
+          <div className="flex items-center justify-between border-b border-primary/10 bg-primary/5 px-5 py-3">
             <div className="flex items-center gap-2">
               <Bot className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-medium">AI: {analysisResult.name}</span>
             </div>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setAnalysisResult(null)}>
+            <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2" onClick={() => setAnalysisResult(null)}>
               <X className="h-3 w-3" />
             </Button>
           </div>
-          <div className="p-4 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
+          <div className="p-5 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
             <ReactMarkdown>{analysisResult.text}</ReactMarkdown>
           </div>
         </div>
       )}
 
       {/* Tabs: activity / top users / alerts / api */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-border bg-secondary/20">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-border bg-secondary/20 px-4 py-2">
           {(["activity", "users", "alerts", "api"] as const).map((t2) => (
             <button
               key={t2}
               onClick={() => setTab(t2)}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === t2 ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`rounded-xl px-3 py-1.5 text-[11px] font-medium transition-colors ${tab === t2 ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               {t2 === "activity" ? t("adash.activity_feed") : t2 === "users" ? t("adash.top_users") : t2 === "alerts" ? `${t("adash.alert_center")}${d.active_alerts_count > 0 ? ` (${d.active_alerts_count})` : ""}` : t("adash.api_usage")}
             </button>
@@ -333,12 +359,12 @@ export default function AdminDashboard() {
 
       {/* Active terminals */}
       {d.terminals.connections.length > 0 && (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="flex items-center gap-2 border-b border-border px-5 py-3">
             <Eye className="h-3.5 w-3.5 text-cyan-400" />
             <span className="text-xs font-medium">{t("adash.active_terminals")} ({d.terminals.active})</span>
           </div>
-          <div className="flex flex-wrap gap-2 p-3">
+          <div className="flex flex-wrap gap-2 p-4">
             {d.terminals.connections.map((c, i) => (
               <div key={i} className="flex items-center gap-1.5 bg-secondary/20 rounded px-2 py-1 text-[10px]">
                 <Terminal className="h-3 w-3 text-cyan-400" />
@@ -355,7 +381,7 @@ export default function AdminDashboard() {
 
 function Metric({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="bg-card border border-border rounded-lg px-3 py-2.5">
+    <div className="enterprise-stat rounded-2xl px-3 py-3">
       <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">{label}</p>
       <p className={`text-lg font-semibold ${color}`}>
         {value}
@@ -364,3 +390,4 @@ function Metric({ label, value, sub, color }: { label: string; value: string | n
     </div>
   );
 }
+

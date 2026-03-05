@@ -18,7 +18,14 @@ const Index = () => {
     }
   }, [data, navigate]);
 
-  return null;
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-6">
+      <div className="enterprise-panel flex min-w-[260px] items-center gap-3 rounded-3xl px-5 py-4 text-sm text-muted-foreground">
+        <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+        Redirecting to dashboard…
+      </div>
+    </div>
+  );
 };
 
 export default Index;

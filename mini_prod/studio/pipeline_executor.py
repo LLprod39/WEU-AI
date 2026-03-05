@@ -41,6 +41,7 @@ from app.core.model_utils import resolve_provider_and_model
 
 from .mcp_client import call_mcp_tool
 from .models import PipelineRun
+from .pipeline_validation import validate_pipeline_definition
 from .skill_registry import normalise_skill_slugs, resolve_skills
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,28 @@ def _mcp_result_to_text(result: dict[str, Any]) -> str:
     return "\n\n".join(part for part in parts if part)
 
 
+async def _load_owned_servers(owner, server_ids: list[int]):
+    from servers.models import Server
+
+    if not server_ids:
+        return []
+    return await _s2a_fn(lambda: list(Server.objects.filter(id__in=server_ids, user=owner)))()
+
+
+async def _load_owned_agent_config(owner, agent_config_id: int):
+    from studio.models import AgentConfig
+
+    return await _s2a_fn(
+        lambda: AgentConfig.objects.filter(id=agent_config_id, owner=owner).prefetch_related("mcp_servers", "server_scope").first()
+    )()
+
+
+async def _load_agent_scope_ids(agent_conf) -> set[int]:
+    if not agent_conf:
+        return set()
+    return set(await _s2a_fn(lambda: list(agent_conf.server_scope.values_list("id", flat=True)))())
+
+
 # ---------------------------------------------------------------------------
 # Topological sort (Kahn's algorithm)
 # ---------------------------------------------------------------------------
@@ -169,7 +192,7 @@ def _topo_sort(nodes: list[dict], edges: list[dict]) -> list[list[dict]]:
 async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> dict:
     """Execute an agent/react node using AgentEngine."""
     from servers.agent_engine import AgentEngine
-    from servers.models import AgentRun, Server, ServerAgent
+    from servers.models import AgentRun, ServerAgent
 
     config = node.get("data", {})
     node_id = node.get("id")
@@ -178,18 +201,22 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
     mcp_server_ids = config.get("mcp_server_ids", [])
     node_skill_slugs = normalise_skill_slugs(config.get("skill_slugs"))
     goal = config.get("goal", "")
-    owner = run.triggered_by or run.pipeline.owner
+    owner = await _s2a_fn(lambda: run.pipeline.owner)()
 
     # Substitute known context values and leave missing ones blank.
     goal = _render_template_value(goal, context)
 
-    servers = await _s2a_fn(lambda: list(Server.objects.filter(id__in=server_ids)))() if server_ids else []
+    servers = await _load_owned_servers(owner, server_ids) if server_ids else []
 
     # Create a temporary ServerAgent from AgentConfig or inline config
     if agent_config_id:
-        from studio.models import AgentConfig
-
-        agent_conf = await _s2a_fn(AgentConfig.objects.get)(id=agent_config_id)
+        try:
+            agent_conf_pk = int(agent_config_id)
+        except (TypeError, ValueError):
+            return {"status": "failed", "error": f"Invalid agent config id: {agent_config_id}"}
+        agent_conf = await _load_owned_agent_config(owner, agent_conf_pk)
+        if agent_conf is None:
+            return {"status": "failed", "error": f"Agent config not found: {agent_config_id}"}
         system_prompt = _render_template_value(agent_conf.system_prompt, context)
         instructions = _render_template_value(agent_conf.instructions, context)
         max_iterations = agent_conf.max_iterations
@@ -197,6 +224,14 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
         tools_config = dict.fromkeys(agent_conf.allowed_tools or [], True)
         mcp_servers = await _s2a_fn(lambda: list(agent_conf.mcp_servers.all()))()
         skill_slugs = _merge_unique_strings(list(agent_conf.skill_slugs or []), node_skill_slugs)
+        allowed_server_ids = await _load_agent_scope_ids(agent_conf)
+        if allowed_server_ids:
+            disallowed = [server_id for server_id in server_ids if server_id not in allowed_server_ids]
+            if disallowed:
+                return {
+                    "status": "failed",
+                    "error": f"Node references servers outside agent scope: {disallowed}",
+                }
     else:
         system_prompt = _render_template_value(config.get("system_prompt", ""), context)
         instructions = _render_template_value(config.get("instructions", ""), context)
@@ -239,7 +274,7 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
     engine = AgentEngine(
         agent=sa,
         servers=servers,
-        user=run.triggered_by,
+        user=owner,
         event_callback=_make_run_event_callback(run, node["id"]),
         model_preference=model_preference,
         specific_model=specific_model,
@@ -277,7 +312,7 @@ async def _execute_agent_react(node: dict, context: dict, run: PipelineRun) -> d
 
 async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> dict:
     """Execute an agent/multi node using MultiAgentEngine."""
-    from servers.models import Server, ServerAgent
+    from servers.models import ServerAgent
     from servers.multi_agent_engine import MultiAgentEngine
 
     config = node.get("data", {})
@@ -285,23 +320,35 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
     mcp_server_ids = config.get("mcp_server_ids", [])
     node_skill_slugs = normalise_skill_slugs(config.get("skill_slugs"))
     goal = config.get("goal", "")
-    owner = run.triggered_by or run.pipeline.owner
+    owner = await _s2a_fn(lambda: run.pipeline.owner)()
 
     goal = _render_template_value(goal, context)
 
-    servers = await _s2a_fn(lambda: list(Server.objects.filter(id__in=server_ids)))() if server_ids else []
+    servers = await _load_owned_servers(owner, server_ids) if server_ids else []
 
     agent_config_id = config.get("agent_config_id")
     if agent_config_id:
-        from studio.models import AgentConfig
-
-        agent_conf = await _s2a_fn(AgentConfig.objects.get)(id=agent_config_id)
+        try:
+            agent_conf_pk = int(agent_config_id)
+        except (TypeError, ValueError):
+            return {"status": "failed", "error": f"Invalid agent config id: {agent_config_id}"}
+        agent_conf = await _load_owned_agent_config(owner, agent_conf_pk)
+        if agent_conf is None:
+            return {"status": "failed", "error": f"Agent config not found: {agent_config_id}"}
         system_prompt = _render_template_value(agent_conf.system_prompt, context)
         max_iterations = agent_conf.max_iterations
         model = agent_conf.model
         tools_config = dict.fromkeys(agent_conf.allowed_tools or [], True)
         mcp_servers = await _s2a_fn(lambda: list(agent_conf.mcp_servers.all()))()
         skill_slugs = _merge_unique_strings(list(agent_conf.skill_slugs or []), node_skill_slugs)
+        allowed_server_ids = await _load_agent_scope_ids(agent_conf)
+        if allowed_server_ids:
+            disallowed = [server_id for server_id in server_ids if server_id not in allowed_server_ids]
+            if disallowed:
+                return {
+                    "status": "failed",
+                    "error": f"Node references servers outside agent scope: {disallowed}",
+                }
     else:
         system_prompt = _render_template_value(config.get("system_prompt", ""), context)
         max_iterations = config.get("max_iterations", 20)
@@ -345,7 +392,7 @@ async def _execute_agent_multi(node: dict, context: dict, run: PipelineRun) -> d
     engine = MultiAgentEngine(
         agent=sa,
         servers=servers,
-        user=run.triggered_by,
+        user=owner,
         event_callback=_make_run_event_callback(run, node["id"]),
         model_preference=model_preference,
         specific_model=specific_model,
@@ -397,7 +444,11 @@ async def _execute_agent_ssh_cmd(node: dict, context: dict, run: PipelineRun) ->
                      "или смените тип узла на «ReAct Agent» если нужен ИИ-агент.",
         }
 
-    server = await _s2a_fn(Server.objects.get)(id=server_id)
+    owner = await _s2a_fn(lambda: run.pipeline.owner)()
+    try:
+        server = await _s2a_fn(Server.objects.get)(id=server_id, user=owner)
+    except Server.DoesNotExist:
+        return {"status": "failed", "error": f"Server not found: {server_id}"}
 
     try:
         from servers.monitor import _build_connect_kwargs
@@ -494,7 +545,7 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
     from .models import MCPServerPool
 
     config = node.get("data", {})
-    owner = run.triggered_by or run.pipeline.owner
+    owner = await _s2a_fn(lambda: run.pipeline.owner)()
     mcp_server_id = config.get("mcp_server_id")
     tool_name = str(config.get("tool_name") or "").strip()
 
@@ -508,9 +559,11 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
         return {"status": "failed", "error": error}
 
     try:
-        mcp_server = await _s2a_fn(MCPServerPool.objects.get)(id=mcp_server_id, owner=owner)
+        mcp_server = await _s2a_fn(MCPServerPool.objects.get)(id=int(mcp_server_id), owner=owner)
     except MCPServerPool.DoesNotExist:
         return {"status": "failed", "error": f"MCP server not found: {mcp_server_id}"}
+    except (TypeError, ValueError):
+        return {"status": "failed", "error": f"Invalid MCP server id: {mcp_server_id}"}
 
     arguments = _render_template_value(arguments_template or {}, context)
     try:
@@ -1159,7 +1212,42 @@ class PipelineExecutor:
 
     async def execute(self, context: dict | None = None) -> PipelineRun:
         run = self.run
-        context = dict(context or {})
+        owner = await _s2a_fn(lambda: run.pipeline.owner)()
+        if context is None:
+            context = {}
+        if not isinstance(context, dict):
+            await _update_run_status(
+                run,
+                PipelineRun.STATUS_FAILED,
+                error="Pipeline run context must be a JSON object.",
+                finished_at=timezone.now(),
+            )
+            return run
+        context = dict(context)
+
+        validation_errors = await _s2a_fn(
+            lambda: validate_pipeline_definition(
+                nodes=run.pipeline.nodes or [],
+                edges=run.pipeline.edges or [],
+                owner=owner,
+            )
+        )()
+        if validation_errors:
+            await _update_run_status(
+                run,
+                PipelineRun.STATUS_FAILED,
+                error=f"Pipeline validation failed: {'; '.join(validation_errors)}",
+                finished_at=timezone.now(),
+            )
+            return run
+        if not any(not str(node.get("type") or "").startswith("trigger/") for node in (run.pipeline.nodes or [])):
+            await _update_run_status(
+                run,
+                PipelineRun.STATUS_FAILED,
+                error="Pipeline has no executable nodes.",
+                finished_at=timezone.now(),
+            )
+            return run
 
         run.nodes_snapshot = run.pipeline.nodes
         run.edges_snapshot = run.pipeline.edges

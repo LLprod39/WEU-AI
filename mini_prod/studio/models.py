@@ -270,11 +270,19 @@ class Pipeline(models.Model):
                 "cron_expression": str(data.get("cron_expression") or "").strip(),
                 "webhook_payload_map": payload_map,
             }
-            trigger, created = PipelineTrigger.objects.get_or_create(
-                pipeline=self,
-                node_id=node_id,
-                defaults=defaults,
-            )
+            existing = list(self.triggers.filter(node_id=node_id).order_by("id"))
+            if existing:
+                trigger = existing[0]
+                created = False
+                if len(existing) > 1:
+                    self.triggers.filter(node_id=node_id).exclude(pk=trigger.pk).delete()
+            else:
+                trigger = PipelineTrigger.objects.create(
+                    pipeline=self,
+                    node_id=node_id,
+                    **defaults,
+                )
+                created = True
 
             if not created:
                 changed = False

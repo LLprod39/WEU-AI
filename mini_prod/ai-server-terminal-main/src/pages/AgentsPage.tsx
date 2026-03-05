@@ -13,10 +13,9 @@ import {
   type AgentTemplate,
   type AgentRunResult,
 } from "@/lib/api";
-import { useI18n } from "@/lib/i18n";
 import {
   Bot, Plus, Play, Trash2, RefreshCw, Clock, Zap, Eye,
-  FileText, Server, ChevronDown, ChevronUp, X, Square,
+  FileText, Server, X, Square,
   Brain, Target, Settings2, Layers, Terminal, CheckCircle2,
   AlertTriangle, Activity,
 } from "lucide-react";
@@ -27,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter,
 } from "@/components/ui/dialog";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 function formatDuration(ms: number): string {
   if (!ms) return "—";
@@ -57,7 +57,6 @@ function relativeTime(iso: string | null): string {
 }
 
 export default function AgentsPage() {
-  const { t } = useI18n();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [modeFilter, setModeFilter] = useState<"all" | "mini" | "full" | "multi">("all");
@@ -65,6 +64,7 @@ export default function AgentsPage() {
   const [runningId, setRunningId] = useState<number | null>(null);
   const [result, setResult] = useState<AgentRunResult | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AgentItem | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["agents", "list"],
@@ -72,9 +72,19 @@ export default function AgentsPage() {
     refetchInterval: 10_000,
   });
 
-  const agents = (data?.agents || []).filter(
+  const allAgents = data?.agents || [];
+  const agents = allAgents.filter(
     (a) => modeFilter === "all" || a.mode === modeFilter,
   );
+  const runningAgents = allAgents.filter((agent) => !!agent.active_run_id).length;
+  const scheduledAgents = allAgents.filter((agent) => agent.schedule_minutes > 0).length;
+  const autonomousAgents = allAgents.filter((agent) => agent.mode === "full" || agent.mode === "multi").length;
+  const modeCounts = {
+    all: allAgents.length,
+    mini: allAgents.filter((agent) => agent.mode === "mini").length,
+    full: allAgents.filter((agent) => agent.mode === "full").length,
+    multi: allAgents.filter((agent) => agent.mode === "multi").length,
+  } as const;
 
   const onRun = async (ag: AgentItem) => {
     setRunningId(ag.id);
@@ -103,7 +113,6 @@ export default function AgentsPage() {
   };
 
   const onDelete = async (id: number) => {
-    if (!confirm("Delete this agent?")) return;
     await deleteAgent(id);
     await queryClient.invalidateQueries({ queryKey: ["agents"] });
   };
@@ -111,34 +120,106 @@ export default function AgentsPage() {
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Bot className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-semibold text-foreground">Agents</h1>
-          <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded">{agents.length}</span>
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+      <section className="enterprise-panel rounded-2xl px-6 py-6 sm:px-7 sm:py-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-3">
+            <div className="enterprise-kicker">Agent Operations</div>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">Server Agents</h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                Configure lightweight command agents, autonomous ReAct workers, and multi-agent pipelines
+                from one workspace. Templates stay simple for admins, while runtime controls stay visible.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["agents"] })}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh fleet
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New agent
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px] font-semibold">
-            {(["all", "mini", "full", "multi"] as const).map((m) => (
-              <button key={m} onClick={() => setModeFilter(m)}
-                className={`px-2.5 py-1 transition-colors ${modeFilter === m ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >{m === "all" ? "All" : m === "mini" ? "Mini" : m === "full" ? "Full" : "Pipeline"}</button>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="enterprise-stat rounded-2xl px-4 py-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Total fleet</p>
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <span className="text-3xl font-semibold text-foreground">{allAgents.length}</span>
+              <Bot className="h-5 w-5 text-primary" />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Configured agents available to operators.</p>
+          </div>
+          <div className="enterprise-stat rounded-2xl px-4 py-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Active runs</p>
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <span className="text-3xl font-semibold text-foreground">{runningAgents}</span>
+              <Activity className="h-5 w-5 text-blue-400" />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Agents that currently hold a live execution slot.</p>
+          </div>
+          <div className="enterprise-stat rounded-2xl px-4 py-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Scheduled</p>
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <span className="text-3xl font-semibold text-foreground">{scheduledAgents}</span>
+              <RefreshCw className="h-5 w-5 text-emerald-400" />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Bots with recurring execution windows.</p>
+          </div>
+          <div className="enterprise-stat rounded-2xl px-4 py-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Autonomous</p>
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <span className="text-3xl font-semibold text-foreground">{autonomousAgents}</span>
+              <Brain className="h-5 w-5 text-violet-400" />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Full and pipeline agents with reasoning loops.</p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-background/35 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Catalog filters</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Narrow the list by execution model. Counts reflect the whole fleet, not just the current filter.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "all", label: "All" },
+              { key: "mini", label: "Mini" },
+              { key: "full", label: "Full" },
+              { key: "multi", label: "Pipeline" },
+            ] as const).map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                onClick={() => setModeFilter(entry.key)}
+                className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
+                  modeFilter === entry.key
+                    ? "border-primary/60 bg-primary/12 text-primary"
+                    : "border-border bg-secondary/20 text-muted-foreground hover:border-primary/25 hover:text-foreground"
+                }`}
+              >
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{entry.label}</div>
+                <div className="mt-1 text-sm font-semibold text-foreground">{modeCounts[entry.key]}</div>
+              </button>
             ))}
           </div>
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => queryClient.invalidateQueries({ queryKey: ["agents"] })}>
-            <RefreshCw className="h-3 w-3" />
-          </Button>
-          <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-3 w-3" /> New Agent
-          </Button>
         </div>
-      </div>
+      </section>
 
       {/* Last run result toast */}
       {result && !reportModalOpen && (
-        <div className="bg-card border border-primary/20 rounded-lg px-4 py-2.5 flex items-center gap-3">
+        <div className="enterprise-panel flex items-center gap-3 rounded-2xl px-4 py-3">
           <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${result.status === "completed" ? "bg-green-500/15" : "bg-red-500/15"}`}>
             {result.status === "completed" ? <CheckCircle2 className="h-3.5 w-3.5 text-green-400" /> : <AlertTriangle className="h-3.5 w-3.5 text-red-400" />}
           </div>
@@ -162,80 +243,114 @@ export default function AgentsPage() {
 
       {/* Agent list */}
       {agents.length === 0 ? (
-        <div className="bg-card border border-border rounded-lg p-8 text-center">
+        <div className="enterprise-panel rounded-2xl p-10 text-center">
           <Bot className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground mb-3">No agents yet</p>
-          <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1">
-            <Plus className="h-3 w-3" /> Create your first agent
+          <p className="text-base font-medium text-foreground">No agents match this filter</p>
+          <p className="mt-2 text-sm text-muted-foreground">Create a new agent or switch the fleet filter to review other execution models.</p>
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="mt-4 gap-2">
+            <Plus className="h-4 w-4" /> Create agent
           </Button>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <section className="enterprise-panel overflow-hidden rounded-2xl">
+          <div className="flex flex-col gap-3 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Agent catalog</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Showing {agents.length} of {allAgents.length} configured agents.
+              </p>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Visible actions stay pinned so operators do not need to hunt for controls on hover.
+            </div>
+          </div>
           <div className="divide-y divide-border/50">
             {agents.map((ag) => {
               const ModeIcon = MODE_ICONS[ag.mode] || Zap;
               const isRunning = runningId === ag.id || !!ag.active_run_id;
               return (
-                <div key={ag.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
-                  <span className="text-lg shrink-0">{AGENT_ICONS[ag.agent_type] || "🔧"}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium text-foreground">{ag.name}</span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${ag.mode === "full" ? "bg-purple-500/20 text-purple-400" : ag.mode === "multi" ? "bg-violet-500/20 text-violet-400" : "bg-blue-500/20 text-blue-400"}`}>
-                        <ModeIcon className="inline h-2.5 w-2.5 mr-0.5" />{ag.mode === "multi" ? "Pipeline" : ag.mode}
-                      </span>
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-secondary text-muted-foreground">{ag.agent_type_display}</span>
-                      {ag.active_run_id && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-bold animate-pulse">RUNNING</span>
-                      )}
+                <div key={ag.id} className="grid gap-4 px-5 py-4 transition-colors hover:bg-secondary/15 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="flex min-w-0 gap-3">
+                    <span className="text-lg shrink-0">{AGENT_ICONS[ag.agent_type] || "🔧"}</span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold text-foreground">{ag.name}</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${ag.mode === "full" ? "bg-purple-500/18 text-purple-300" : ag.mode === "multi" ? "bg-violet-500/18 text-violet-300" : "bg-blue-500/18 text-blue-300"}`}>
+                          <ModeIcon className="h-3 w-3" />{ag.mode === "multi" ? "Pipeline" : ag.mode}
+                        </span>
+                        <span className="rounded-full bg-secondary/60 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {ag.agent_type_display}
+                        </span>
+                        {ag.active_run_id && (
+                          <span className="rounded-full bg-green-500/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-green-300">
+                            Running
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Server className="h-3 w-3" /> {ag.server_count} servers</span>
+                        {ag.last_run_at && <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last run {relativeTime(ag.last_run_at)} ago</span>}
+                        {ag.schedule_minutes > 0 && <span className="flex items-center gap-1"><RefreshCw className="h-3 w-3" /> Every {ag.schedule_minutes} min</span>}
+                        {(ag.mode === "full" || ag.mode === "multi") && <span className="flex items-center gap-1"><Target className="h-3 w-3" /> {ag.mode === "multi" ? "Task decomposition" : `${ag.max_iterations} iterations`}</span>}
+                      </div>
+                      {ag.goal && <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{ag.goal}</p>}
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
-                      <span className="flex items-center gap-0.5"><Server className="h-2.5 w-2.5" /> {ag.server_count} servers</span>
-                      {ag.last_run_at && <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" /> {relativeTime(ag.last_run_at)}</span>}
-                      {ag.schedule_minutes > 0 && <span className="flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> every {ag.schedule_minutes}m</span>}
-                      {(ag.mode === "full" || ag.mode === "multi") && <span className="flex items-center gap-0.5"><Target className="h-2.5 w-2.5" /> {ag.mode === "multi" ? "Pipeline" : `${ag.max_iterations} iters`}</span>}
-                    </div>
-                    {ag.goal && <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-md">{ag.goal}</p>}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 lg:justify-end">
                     {ag.active_run_id ? (
                       <>
                         <Link to={`/agents/run/${ag.active_run_id}`}>
-                          <Button size="sm" variant="outline" className="h-7 text-[10px] px-2 gap-1">
-                            <Eye className="h-3 w-3" /> Watch
+                          <Button size="sm" variant="outline" className="gap-2">
+                            <Eye className="h-4 w-4" /> Watch
                           </Button>
                         </Link>
-                        <Button size="sm" variant="outline" className="h-7 text-[10px] px-2 gap-1 text-red-400" onClick={() => onStop(ag)}>
-                          <Square className="h-3 w-3" /> Stop
+                        <Button size="sm" variant="outline" className="gap-2 text-red-300 hover:text-red-200" onClick={() => onStop(ag)}>
+                          <Square className="h-4 w-4" /> Stop
                         </Button>
                       </>
                     ) : (
                       <>
                         {ag.last_run_id && (
                           <Link to={`/agents/run/${ag.last_run_id}`}>
-                            <Button size="sm" variant="ghost" className="h-7 text-[10px] px-2 gap-1 text-muted-foreground hover:text-foreground">
-                              <FileText className="h-3 w-3" /> Report
+                            <Button size="sm" variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground">
+                              <FileText className="h-4 w-4" /> Report
                             </Button>
                           </Link>
                         )}
-                        <Button size="sm" variant="outline" className="h-7 text-[10px] px-2 gap-1" disabled={isRunning} onClick={() => onRun(ag)}>
-                          {isRunning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run
+                        <Button size="sm" variant="outline" className="gap-2" disabled={isRunning} onClick={() => onRun(ag)}>
+                          {isRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Run
                         </Button>
                       </>
                     )}
-                    <Button size="sm" variant="ghost" className="h-7 px-1 text-muted-foreground hover:text-red-400" onClick={() => onDelete(ag.id)}>
-                      <Trash2 className="h-3 w-3" />
+                    <Button size="sm" variant="ghost" className="gap-2 text-muted-foreground hover:text-red-300" onClick={() => setDeleteTarget(ag)}>
+                      <Trash2 className="h-4 w-4" />
+                      Delete
                     </Button>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
       <CreateAgentDialog open={createOpen} onClose={() => setCreateOpen(false)}
         onCreated={() => { setCreateOpen(false); queryClient.invalidateQueries({ queryKey: ["agents"] }); }} />
+
+      <ConfirmActionDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete agent"
+        description={deleteTarget ? `Delete agent "${deleteTarget.name}" and remove it from the fleet catalog?` : ""}
+        confirmLabel="Delete agent"
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          void onDelete(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -309,136 +424,180 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{step === "template" ? "Create Agent" : `Configure ${mode === "multi" ? "Pipeline" : mode === "full" ? "Full" : "Mini"} Agent`}</DialogTitle>
+      <DialogContent className="max-w-4xl border-border/70 bg-card/95 p-0">
+        <DialogHeader className="border-b border-border/70 px-6 py-5 sm:px-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="enterprise-kicker">{step === "template" ? "Template Library" : "Configuration"}</div>
+              <DialogTitle className="mt-2">
+                {step === "template" ? "Create agent" : `Configure ${mode === "multi" ? "multi-agent pipeline" : mode === "full" ? "full agent" : "mini agent"}`}
+              </DialogTitle>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {step === "template"
+                  ? "Start from a standard operating template or open a custom agent from scratch."
+                  : "Define runtime behavior, target servers and execution cadence before saving the bot."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/40 px-2 py-2 text-xs text-muted-foreground">
+              <span className={`rounded-full px-3 py-1 ${step === "template" ? "bg-primary/15 text-primary" : ""}`}>1. Template</span>
+              <span className={`rounded-full px-3 py-1 ${step === "config" ? "bg-primary/15 text-primary" : ""}`}>2. Configure</span>
+            </div>
+          </div>
         </DialogHeader>
-        <DialogBody className="max-h-[70vh] overflow-y-auto">
+        <DialogBody className="max-h-[75vh] overflow-y-auto px-6 py-6 sm:px-7 sm:py-7">
           {step === "template" ? (
             <div className="space-y-4">
               {/* Mode selector */}
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={() => setMode("mini")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "mini" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
+              <div className="grid gap-3 lg:grid-cols-3">
+                <button onClick={() => setMode("mini")} className={`enterprise-stat text-left rounded-2xl p-4 transition-colors ${mode === "mini" ? "border-primary/50 bg-primary/10" : "hover:border-primary/20"}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <Zap className="h-4 w-4 text-blue-400" />
                     <span className="text-sm font-medium">Mini Agent</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Run a list of commands and get AI analysis. Simple and fast.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Run a defined command set on selected servers and add an AI-generated summary afterward.</p>
                 </button>
-                <button onClick={() => setMode("full")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "full" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
+                <button onClick={() => setMode("full")} className={`enterprise-stat text-left rounded-2xl p-4 transition-colors ${mode === "full" ? "border-primary/50 bg-primary/10" : "hover:border-primary/20"}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <Brain className="h-4 w-4 text-purple-400" />
                     <span className="text-sm font-medium">Full Agent (ReAct)</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Autonomous agent with goal, reasoning loop, and multi-server support.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Autonomous worker with a reasoning loop, goal tracking and optional multi-server execution.</p>
                 </button>
-                <button onClick={() => setMode("multi")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "multi" ? "border-violet-500 bg-violet-500/5" : "border-border hover:border-violet-500/30"}`}>
+                <button onClick={() => setMode("multi")} className={`enterprise-stat text-left rounded-2xl p-4 transition-colors ${mode === "multi" ? "border-violet-500/50 bg-violet-500/10" : "hover:border-violet-500/20"}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <Layers className="h-4 w-4 text-violet-400" />
                     <span className="text-sm font-medium">Multi-Agent Pipeline</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Orchestrator breaks goal into tasks. Each task runs a separate AI agent. Best for complex goals.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">An orchestrator decomposes a complex goal into tasks and coordinates separate agent executions.</p>
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 {templates.map((tpl) => (
                   <button key={tpl.type} onClick={() => onSelectTemplate(tpl)}
-                    className="text-left bg-secondary/30 border border-border rounded-lg p-3 hover:border-primary/50 transition-colors">
+                    className="enterprise-stat text-left rounded-2xl p-4 transition-colors hover:border-primary/35">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-lg">{AGENT_ICONS[tpl.type] || "🔧"}</span>
                       <span className="text-sm font-medium text-foreground">{tpl.name}</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs leading-5 text-muted-foreground">
                       {tpl.mode === "full" ? (tpl.goal || "").slice(0, 80) + "..." : `${tpl.command_count} commands`}
                     </p>
                   </button>
                 ))}
                 <button onClick={() => { setSelectedType("custom"); setStep("config"); }}
-                  className="text-left bg-secondary/30 border border-border rounded-lg p-3 hover:border-primary/50 transition-colors">
+                  className="enterprise-stat text-left rounded-2xl p-4 transition-colors hover:border-primary/35">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-lg">🔧</span>
                     <span className="text-sm font-medium text-foreground">Custom</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Build from scratch</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Build a new agent with your own goal, commands and schedule.</p>
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Name</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Agent" className="bg-secondary/50 h-8 text-sm" />
-              </div>
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Name</label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Agent" className="bg-background/70" />
+                  </div>
 
-              {(mode === "full" || mode === "multi") && (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                      <Target className="h-3 w-3" /> Goal
-                      {mode === "multi" && <span className="text-[9px] text-violet-400 bg-violet-500/10 px-1 rounded">Orchestrator will decompose this into tasks</span>}
-                    </label>
-                    <Textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={3} className="bg-secondary/50 text-xs"
-                      placeholder={mode === "multi" ? "Describe the complex goal. E.g.: 'Perform a full security audit: check users, open ports, failed logins, suspicious processes and provide recommendations.'" : "What should this agent achieve? Be specific about the end result."} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Settings2 className="h-3 w-3" /> System Prompt (optional)</label>
-                    <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={2} className="bg-secondary/50 text-xs"
-                      placeholder="Custom role/personality for the agent" />
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="flex-1 space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Max Iterations</label>
-                      <Input type="number" min={1} max={100} value={maxIter} onChange={(e) => setMaxIter(Number(e.target.value))} className="bg-secondary/50 h-8 text-sm" />
+                  {(mode === "full" || mode === "multi") && (
+                    <>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <Target className="h-4 w-4 text-primary" /> Goal
+                        </label>
+                        <Textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={4} className="bg-background/70 text-sm"
+                          placeholder={mode === "multi" ? "Describe the complex goal. E.g.: 'Perform a full security audit: check users, open ports, failed logins, suspicious processes and provide recommendations.'" : "What should this agent achieve? Be specific about the end result."} />
+                        {mode === "multi" && (
+                          <p className="text-xs text-violet-300">The orchestrator will break this goal into separate tasks and coordinate child agents.</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground"><Settings2 className="h-4 w-4 text-primary" /> System Prompt</label>
+                        <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={3} className="bg-background/70 text-sm"
+                          placeholder="Optional role, tone or non-default instructions for the agent." />
+                      </div>
+                    </>
+                  )}
+
+                  {mode === "mini" && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Commands</label>
+                      <Textarea value={commands} onChange={(e) => setCommands(e.target.value)} rows={6} className="bg-background/70 font-mono text-[13px]"
+                        placeholder="hostname&#10;uptime&#10;free -m" />
+                      <p className="text-xs text-muted-foreground">One command per line. Keep the list deterministic for routine checks and reports.</p>
                     </div>
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer pt-5">
-                      <input type="checkbox" checked={multiServer} onChange={(e) => setMultiServer(e.target.checked)} className="rounded" />
-                      Multi-server
-                    </label>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">AI Prompt</label>
+                    <Textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="bg-background/70 text-sm"
+                      placeholder="Extra instructions for AI analysis, output format or reporting." />
                   </div>
-                </>
-              )}
-
-              {mode === "mini" && mode !== "multi" && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Commands (one per line)</label>
-                  <Textarea value={commands} onChange={(e) => setCommands(e.target.value)} rows={5} className="bg-secondary/50 font-mono text-[11px]"
-                    placeholder="hostname&#10;uptime&#10;free -m" />
                 </div>
-              )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">AI Prompt</label>
-                <Textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={2} className="bg-secondary/50 text-xs"
-                  placeholder="Extra instructions for AI analysis" />
-              </div>
+                <div className="space-y-4">
+                  <div className="enterprise-stat rounded-2xl px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Execution settings</p>
+                    {(mode === "full" || mode === "multi") && (
+                      <div className="mt-4 space-y-2">
+                        <label className="text-sm font-medium text-foreground">Max iterations</label>
+                        <Input type="number" min={1} max={100} value={maxIter} onChange={(e) => setMaxIter(Number(e.target.value))} className="bg-background/70" />
+                      </div>
+                    )}
+                    {(mode === "full" || mode === "multi") && (
+                      <label className="mt-4 flex items-center gap-3 rounded-2xl border border-border/70 bg-background/40 px-3 py-3 text-sm text-muted-foreground cursor-pointer">
+                        <input type="checkbox" checked={multiServer} onChange={(e) => setMultiServer(e.target.checked)} className="h-4 w-4 rounded border-border bg-background accent-primary" />
+                        Allow multi-server execution
+                      </label>
+                    )}
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-foreground">Schedule</label>
+                        <span className="text-xs font-mono text-muted-foreground">{schedule === 0 ? "Manual" : `${schedule} min`}</span>
+                      </div>
+                      <input type="range" min={0} max={1440} step={5} value={schedule} onChange={(e) => setSchedule(Number(e.target.value))}
+                        className="enterprise-range" />
+                      <p className="text-xs text-muted-foreground">Set to zero for manual execution only.</p>
+                    </div>
+                  </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Servers</label>
-                <div className="flex flex-wrap gap-1.5">
-                  <button onClick={selectAll} className={`px-2 py-1 text-[10px] rounded border transition-colors ${selectedServers.length === servers.length ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>All</button>
-                  {servers.map((s) => (
-                    <button key={s.id} onClick={() => toggleServer(s.id)}
-                      className={`px-2 py-1 text-[10px] rounded border transition-colors ${selectedServers.includes(s.id) ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground"}`}>
-                      {s.name}
-                    </button>
-                  ))}
+                  <div className="enterprise-stat rounded-2xl px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Target servers</p>
+                        <p className="mt-1 text-sm text-foreground">{selectedServers.length} selected</p>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" className="gap-2" onClick={selectAll}>
+                        {selectedServers.length === servers.length ? "Clear all" : "Select all"}
+                      </Button>
+                    </div>
+                    <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+                      {servers.map((s) => (
+                        <button key={s.id} type="button" onClick={() => toggleServer(s.id)}
+                          className={`flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left text-sm transition-colors ${selectedServers.includes(s.id) ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/70 bg-background/35 text-muted-foreground hover:border-primary/20 hover:text-foreground"}`}>
+                          <span>{s.name}</span>
+                          <span className={`h-2.5 w-2.5 rounded-full ${selectedServers.includes(s.id) ? "bg-primary" : "bg-border"}`} />
+                        </button>
+                      ))}
+                      {servers.length === 0 && (
+                        <div className="rounded-2xl border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
+                          No servers available in the frontend bootstrap catalog.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-muted-foreground">Schedule</label>
-                  <span className="text-xs font-mono text-foreground">{schedule === 0 ? "Manual" : `${schedule} min`}</span>
-                </div>
-                <input type="range" min={0} max={1440} step={5} value={schedule} onChange={(e) => setSchedule(Number(e.target.value))}
-                  className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" />
               </div>
             </div>
           )}
         </DialogBody>
         {step === "config" && (
-          <DialogFooter>
+          <DialogFooter className="border-t border-border/70 px-6 py-4 sm:px-7">
             <Button size="sm" variant="outline" onClick={() => setStep("template")}>Back</Button>
             <Button size="sm" onClick={onSave} disabled={saving || !selectedServers.length}>
               {saving ? "Creating..." : "Create Agent"}
@@ -563,3 +722,4 @@ function ReportModal({ result, open, onClose }: { result: AgentRunResult; open: 
     </Dialog>
   );
 }
+

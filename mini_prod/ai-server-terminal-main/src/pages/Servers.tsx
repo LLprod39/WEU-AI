@@ -51,11 +51,13 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -172,6 +174,7 @@ function formatCommandOutput(output: unknown): string {
 
 export default function Servers() {
   const { t } = useI18n();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<MainTab>("servers");
   const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("access");
@@ -190,6 +193,10 @@ export default function Servers() {
   const [editingServer, setEditingServer] = useState<FrontendServer | null>(null);
   const [form, setForm] = useState<ServerForm>(initialForm());
   const [saving, setSaving] = useState(false);
+  const [serverDeleteTarget, setServerDeleteTarget] = useState<FrontendServer | null>(null);
+  const [groupDeleteTarget, setGroupDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [groupRenameTarget, setGroupRenameTarget] = useState<{ id: number; name: string } | null>(null);
+  const [groupRenameValue, setGroupRenameValue] = useState("");
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedServer, setAdvancedServer] = useState<FrontendServer | null>(null);
@@ -205,6 +212,10 @@ export default function Servers() {
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [knowledgeCategory, setKnowledgeCategory] = useState("other");
   const [knowledgeEditingId, setKnowledgeEditingId] = useState<number | null>(null);
+  const [knowledgeDeleteTarget, setKnowledgeDeleteTarget] = useState<KnowledgeItem | null>(null);
+  const [knowledgeEditTarget, setKnowledgeEditTarget] = useState<KnowledgeItem | null>(null);
+  const [knowledgeEditTitle, setKnowledgeEditTitle] = useState("");
+  const [knowledgeEditContent, setKnowledgeEditContent] = useState("");
 
   const [globalRules, setGlobalRules] = useState("");
   const [globalForbidden, setGlobalForbidden] = useState("");
@@ -294,15 +305,20 @@ export default function Servers() {
   };
 
   const onDelete = async (server: FrontendServer) => {
-    if (!confirm(`Delete server ${server.name}?`)) return;
     await deleteServer(server.id);
     await reload();
   };
 
   const onTest = async (server: FrontendServer) => {
     const result = await testServer(server.id, {});
-    if (result.success) alert(`Connection successful for ${server.name}`);
-    else alert(`Connection failed: ${result.error || "unknown error"}`);
+    if (result.success) {
+      toast({ description: `Connection successful for ${server.name}` });
+    } else {
+      toast({
+        variant: "destructive",
+        description: `Connection failed: ${result.error || "unknown error"}`,
+      });
+    }
     await reload();
   };
 
@@ -325,14 +341,12 @@ export default function Servers() {
   };
 
   const onRenameGroup = async (groupId: number, name: string) => {
-    const next = prompt("New group name", name);
-    if (!next || next.trim() === name) return;
-    await updateServerGroup(groupId, { name: next.trim() });
+    if (!name.trim()) return;
+    await updateServerGroup(groupId, { name: name.trim() });
     await reload();
   };
 
   const onDeleteGroup = async (groupId: number, name: string) => {
-    if (!confirm(`Delete group ${name}?`)) return;
     await deleteServerGroup(groupId);
     await reload();
   };
@@ -357,7 +371,10 @@ export default function Servers() {
     }
 
     if (Object.keys(payload).length === 1) {
-      alert("Set at least one field for bulk update");
+      toast({
+        variant: "destructive",
+        description: "Set at least one field for bulk update",
+      });
       return;
     }
 
@@ -465,18 +482,8 @@ export default function Servers() {
     await refreshKnowledge();
   };
 
-  const onKnowledgeEdit = async (item: KnowledgeItem) => {
+  const onKnowledgeEdit = async (item: KnowledgeItem, title: string, content: string) => {
     if (!advancedServer) return;
-    const title = prompt("Knowledge title", item.title);
-    if (!title) {
-      setKnowledgeEditingId(null);
-      return;
-    }
-    const content = prompt("Knowledge content", item.content);
-    if (!content) {
-      setKnowledgeEditingId(null);
-      return;
-    }
     await updateServerKnowledge(advancedServer.id, item.id, {
       title: title.trim(),
       content: content.trim(),
@@ -498,7 +505,10 @@ export default function Servers() {
     try {
       env = toJson(globalEnvJson);
     } catch {
-      alert("Invalid Global context JSON");
+      toast({
+        variant: "destructive",
+        description: "Invalid global context JSON",
+      });
       return;
     }
     await saveGlobalServerContext({
@@ -507,7 +517,7 @@ export default function Servers() {
       required_checks: globalRequired,
       environment_vars: env,
     });
-    alert("Global context saved");
+    toast({ description: "Global context saved" });
   };
 
   const onSaveGroupContext = async () => {
@@ -516,7 +526,10 @@ export default function Servers() {
     try {
       env = toJson(groupEnvJson);
     } catch {
-      alert("Invalid Group context JSON");
+      toast({
+        variant: "destructive",
+        description: "Invalid group context JSON",
+      });
       return;
     }
     await saveGroupServerContext(advancedServer.group_id, {
@@ -524,46 +537,54 @@ export default function Servers() {
       forbidden_commands: groupForbidden,
       environment_vars: env,
     });
-    alert("Group context saved");
+    toast({ description: "Group context saved" });
   };
 
   const onAddGroupMember = async () => {
     if (!advancedServer?.group_id || !groupMemberUser.trim()) return;
     await addServerGroupMember(advancedServer.group_id, { user: groupMemberUser.trim(), role: groupMemberRole });
     setGroupMemberUser("");
-    alert("Group member updated");
+    toast({ description: "Group member updated" });
   };
 
   const onRemoveGroupMember = async () => {
     if (!advancedServer?.group_id || !groupRemoveUserId.trim()) return;
     const userId = Number(groupRemoveUserId);
     if (!Number.isFinite(userId) || userId <= 0) {
-      alert("Invalid user id");
+      toast({
+        variant: "destructive",
+        description: "Invalid user id",
+      });
       return;
     }
     await removeServerGroupMember(advancedServer.group_id, userId);
     setGroupRemoveUserId("");
-    alert("Group member removed");
+    toast({ description: "Group member removed" });
   };
 
   const onSetMasterPassword = async () => {
     if (!masterPassword.trim()) return;
     await setMasterPassword(masterPassword.trim());
     setHasMasterPassword(true);
-    alert("Master password stored in session");
+    toast({ description: "Master password stored in session" });
   };
 
   const onClearMasterPassword = async () => {
     await clearMasterPassword();
     setHasMasterPassword(false);
-    alert("Master password cleared from session");
+    toast({ description: "Master password cleared from session" });
   };
 
   const onRevealPassword = async () => {
     if (!advancedServer) return;
     const resp = await revealServerPassword(advancedServer.id, masterPassword.trim());
     if (resp.success) setRevealedPassword(resp.password || "");
-    else alert(resp.error || "Failed to reveal password");
+    else {
+      toast({
+        variant: "destructive",
+        description: resp.error || "Failed to reveal password",
+      });
+    }
   };
 
   const onExecuteCommand = async () => {
@@ -577,32 +598,54 @@ export default function Servers() {
   if (error || !data) return <div className="p-6 text-sm text-destructive">{t("srv.error")}</div>;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">{t("srv.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {servers.length} {t("srv.servers_count")} — {Object.keys(grouped).length} {t("srv.groups").toLowerCase()}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("srv.search")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 w-56 bg-secondary border-border"
-            />
+    <div className="mx-auto max-w-7xl space-y-6 px-6 py-6">
+      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-4xl space-y-4">
+            <div className="enterprise-kicker">Infrastructure Inventory</div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("srv.title")}</h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground md:text-[15px]">
+                Manage server access, group structure, shared context, and operational metadata from one workspace.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{t("srv.servers_count")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{servers.length}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{filtered.length} visible under the current filter.</p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{t("srv.groups")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{Object.keys(grouped).length}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Server groups represented in the current result set.</p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">Access</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{servers.filter((s) => s.status === "online").length}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Online servers currently reachable from the platform.</p>
+              </div>
+            </div>
           </div>
-          <Button size="sm" className="gap-1.5" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> {t("srv.add")}
-          </Button>
+          <div className="flex flex-col gap-3 xl:min-w-[340px] xl:items-end">
+            <div className="relative w-full xl:max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t("srv.search")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9"
+              />
+            </div>
+            <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> {t("srv.add")}
+            </Button>
+          </div>
         </div>
       </div>
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)} className="space-y-3">
-        <TabsList className="w-full justify-start">
+        <TabsList className="w-full justify-start gap-1 overflow-x-auto">
           <TabsTrigger value="servers" className="gap-2">
             <Server className="h-4 w-4" /> {t("srv.list")}
           </TabsTrigger>
@@ -618,10 +661,10 @@ export default function Servers() {
           {Object.entries(grouped).map(([group, inGroup]) => {
             const isCollapsed = collapsed[group];
             return (
-              <div key={group} className="bg-card border border-border rounded-lg overflow-hidden">
+              <div key={group} className="overflow-hidden rounded-xl border border-border bg-card">
                 <button
                   onClick={() => toggleGroup(group)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-secondary/35"
                   aria-label={`Toggle ${group} group`}
                 >
                   {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -643,7 +686,7 @@ export default function Servers() {
                         {inGroup.map((server, i) => (
                           <div
                             key={server.id}
-                            className={`flex items-center gap-4 px-4 py-3 hover:bg-secondary/30 transition-colors ${
+                            className={`flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-secondary/20 ${
                               i < inGroup.length - 1 ? "border-b border-border/50" : ""
                             }`}
                           >
@@ -657,29 +700,29 @@ export default function Servers() {
                             <StatusIndicator status={server.status} />
                             <div className="flex gap-1.5 shrink-0">
                               <Link to={`/servers/${server.id}/terminal`}>
-                                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-border hover:border-primary hover:text-primary">
+                                <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border-border px-3 text-xs hover:border-primary hover:text-primary">
                                   <Terminal className="h-3 w-3" /> SSH
                                 </Button>
                               </Link>
                               {server.rdp && (
                                 <Link to={`/servers/${server.id}/rdp`}>
-                                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-border hover:border-info hover:text-info">
+                                  <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border-border px-3 text-xs hover:border-info hover:text-info">
                                     <Monitor className="h-3 w-3" /> RDP
                                   </Button>
                                 </Link>
                               )}
-                              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openAdvanced(server)}>
+                              <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openAdvanced(server)}>
                                 <Sparkles className="h-3.5 w-3.5" />
                               </Button>
                               {server.can_edit && (
                                 <>
-                                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onTest(server)}>
+                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => onTest(server)}>
                                     <Plug className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(server)}>
+                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openEdit(server)}>
                                     <Settings className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => onDelete(server)}>
+                                  <Button size="sm" variant="destructive" className="h-8 rounded-xl px-2.5" onClick={() => setServerDeleteTarget(server)}>
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </>
@@ -697,7 +740,7 @@ export default function Servers() {
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-3">
-          <section className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
             <h2 className="text-sm font-medium">{t("srv.groups")}</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <Input placeholder={t("srv.group_name")} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
@@ -707,7 +750,7 @@ export default function Servers() {
                 onChange={(e) => setGroupDescription(e.target.value)}
               />
               <Input type="color" value={groupColor} onChange={(e) => setGroupColor(e.target.value)} />
-              <Button onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
+              <Button className="rounded-xl" onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
                 {groupSaving ? "..." : t("srv.create_group")}
               </Button>
             </div>
@@ -715,22 +758,22 @@ export default function Servers() {
               {groups
                 .filter((g) => g.id !== null)
                 .map((g) => (
-                  <div key={g.id!} className="flex items-center gap-2 border border-border rounded px-3 py-2">
+                  <div key={g.id!} className="flex items-center gap-2 rounded-2xl border border-border px-4 py-3">
                     <div className="text-sm">
                       {g.name}
                       <span className="text-xs text-muted-foreground ml-2">{g.server_count} servers</span>
                     </div>
                     <div className="ml-auto flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => subscribeServerGroup(g.id!, "follow")}>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "follow")}>
                         Follow
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
                         Favorite
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => onRenameGroup(g.id!, g.name)}>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setGroupRenameTarget({ id: g.id!, name: g.name }); setGroupRenameValue(g.name); }}>
                         Rename
                       </Button>
-                      <Button size="sm" variant="destructive" onClick={() => onDeleteGroup(g.id!, g.name)}>
+                      <Button size="sm" variant="destructive" className="rounded-xl" onClick={() => setGroupDeleteTarget({ id: g.id!, name: g.name })}>
                         Delete
                       </Button>
                     </div>
@@ -741,13 +784,13 @@ export default function Servers() {
         </TabsContent>
 
         <TabsContent value="bulk" className="space-y-3">
-          <section className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
             <h2 className="text-sm font-medium">Bulk Update Filtered Servers ({filtered.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <select
                 value={bulkGroupId}
                 onChange={(e) => setBulkGroupId(e.target.value)}
-                className="bg-secondary border border-border rounded-md px-3 py-2 text-sm"
+                className="enterprise-select"
               >
                 <option value="__keep__">Keep group</option>
                 <option value="__none__">Remove group</option>
@@ -763,13 +806,13 @@ export default function Servers() {
               <select
                 value={bulkActive}
                 onChange={(e) => setBulkActive(e.target.value)}
-                className="bg-secondary border border-border rounded-md px-3 py-2 text-sm"
+                className="enterprise-select"
               >
                 <option value="__keep__">Keep active state</option>
                 <option value="active">Set active</option>
                 <option value="inactive">Set inactive</option>
               </select>
-              <Button onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
+              <Button className="rounded-xl" onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
                 {bulkSaving ? "Applying..." : "Apply Bulk Update"}
               </Button>
             </div>
@@ -778,7 +821,7 @@ export default function Servers() {
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">
           <DialogHeader>
             <DialogTitle>{editingServer ? t("srv.edit_server") : t("srv.create_server")}</DialogTitle>
             <DialogDescription>{t("srv.server_settings")}</DialogDescription>
@@ -807,7 +850,7 @@ export default function Servers() {
                 <select
                   value={form.server_type}
                   onChange={(e) => setForm((s) => ({ ...s, server_type: e.target.value as "ssh" | "rdp" }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="enterprise-select"
                 >
                   <option value="ssh">SSH</option>
                   <option value="rdp">RDP</option>
@@ -858,7 +901,7 @@ export default function Servers() {
                 <select
                   value={form.group_id ?? ""}
                   onChange={(e) => setForm((s) => ({ ...s, group_id: e.target.value ? Number(e.target.value) : null }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="enterprise-select"
                 >
                   <option value="">{t("srv.no_group")}</option>
                   {groups
@@ -891,7 +934,7 @@ export default function Servers() {
       </Dialog>
 
       <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-5xl rounded-2xl border-border bg-background/95">
           <DialogHeader>
             <DialogTitle>{t("srv.advanced")}: {advancedServer?.name || "Server"}</DialogTitle>
             <DialogDescription>{t("srv.sharing")}</DialogDescription>
@@ -1000,10 +1043,10 @@ export default function Servers() {
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => onKnowledgeToggle(k)}>
                               {k.is_active ? t("srv.disable") : t("srv.enable")}
                             </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setKnowledgeEditingId(k.id); void onKnowledgeEdit(k); }}>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setKnowledgeEditingId(k.id); setKnowledgeEditTarget(k); setKnowledgeEditTitle(k.title); setKnowledgeEditContent(k.content); }}>
                               {t("srv.edit")}
                             </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => onKnowledgeDelete(k.id)}>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setKnowledgeDeleteTarget(k)}>
                               {t("srv.delete")}
                             </Button>
                           </div>
@@ -1103,6 +1146,145 @@ export default function Servers() {
           </DialogBody>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!groupRenameTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGroupRenameTarget(null);
+            setGroupRenameValue("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border bg-background/95">
+          <DialogHeader>
+            <DialogTitle>Rename group</DialogTitle>
+            <DialogDescription>Update the display name for this server group.</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Group name</Label>
+              <Input value={groupRenameValue} onChange={(e) => setGroupRenameValue(e.target.value)} />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setGroupRenameTarget(null); setGroupRenameValue(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!groupRenameTarget) return;
+                void onRenameGroup(groupRenameTarget.id, groupRenameValue);
+                setGroupRenameTarget(null);
+                setGroupRenameValue("");
+              }}
+              disabled={!groupRenameValue.trim()}
+            >
+              Save name
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!knowledgeEditTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setKnowledgeEditTarget(null);
+            setKnowledgeEditTitle("");
+            setKnowledgeEditContent("");
+            setKnowledgeEditingId(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">
+          <DialogHeader>
+            <DialogTitle>Edit knowledge entry</DialogTitle>
+            <DialogDescription>Adjust the title and content stored for this server knowledge item.</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Title</Label>
+              <Input value={knowledgeEditTitle} onChange={(e) => setKnowledgeEditTitle(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Content</Label>
+              <Textarea value={knowledgeEditContent} onChange={(e) => setKnowledgeEditContent(e.target.value)} className="min-h-36" />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setKnowledgeEditTarget(null);
+                setKnowledgeEditTitle("");
+                setKnowledgeEditContent("");
+                setKnowledgeEditingId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!knowledgeEditTarget) return;
+                void onKnowledgeEdit(knowledgeEditTarget, knowledgeEditTitle, knowledgeEditContent);
+                setKnowledgeEditTarget(null);
+                setKnowledgeEditTitle("");
+                setKnowledgeEditContent("");
+              }}
+              disabled={!knowledgeEditTitle.trim() || !knowledgeEditContent.trim()}
+            >
+              Save entry
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmActionDialog
+        open={!!serverDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setServerDeleteTarget(null);
+        }}
+        title="Delete server"
+        description={serverDeleteTarget ? `Delete server "${serverDeleteTarget.name}" from the infrastructure inventory?` : ""}
+        confirmLabel="Delete server"
+        onConfirm={() => {
+          if (!serverDeleteTarget) return;
+          void onDelete(serverDeleteTarget);
+          setServerDeleteTarget(null);
+        }}
+      />
+
+      <ConfirmActionDialog
+        open={!!groupDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setGroupDeleteTarget(null);
+        }}
+        title="Delete group"
+        description={groupDeleteTarget ? `Delete group "${groupDeleteTarget.name}" and remove it from the server catalog?` : ""}
+        confirmLabel="Delete group"
+        onConfirm={() => {
+          if (!groupDeleteTarget) return;
+          void onDeleteGroup(groupDeleteTarget.id, groupDeleteTarget.name);
+          setGroupDeleteTarget(null);
+        }}
+      />
+
+      <ConfirmActionDialog
+        open={!!knowledgeDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setKnowledgeDeleteTarget(null);
+        }}
+        title="Delete knowledge entry"
+        description={knowledgeDeleteTarget ? `Delete knowledge entry "${knowledgeDeleteTarget.title}" from this server?` : ""}
+        confirmLabel="Delete entry"
+        onConfirm={() => {
+          if (!knowledgeDeleteTarget) return;
+          void onKnowledgeDelete(knowledgeDeleteTarget.id);
+          setKnowledgeDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
+

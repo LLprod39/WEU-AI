@@ -7,8 +7,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { AiExecutionMode } from "./XTerminal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -106,13 +104,9 @@ function CodeBlock({ children, language }: { children: string; language?: string
           {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
         </button>
       </div>
-      <SyntaxHighlighter
-        language={language || "bash"}
-        style={oneDark}
-        customStyle={{ margin: 0, background: "hsl(220, 25%, 5%)", fontSize: "12px", lineHeight: "1.5" }}
-      >
-        {children}
-      </SyntaxHighlighter>
+      <pre className="overflow-x-auto bg-[hsl(220,25%,5%)] px-4 py-3 text-[12px] leading-6 text-foreground/85">
+        <code className="font-mono">{children}</code>
+      </pre>
     </div>
   );
 }

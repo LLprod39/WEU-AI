@@ -51,28 +51,31 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border">
-      <div className="flex h-14 items-center gap-2 px-4 border-b border-border">
-        <Terminal className="h-5 w-5 text-primary shrink-0" />
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
+      <div className="flex h-14 items-center gap-3 border-b border-sidebar-border px-3.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sidebar-border bg-sidebar-accent">
+          <Terminal className="h-4 w-4 text-sidebar-primary shrink-0" />
+        </div>
         {!collapsed && (
-          <span className="font-semibold text-foreground tracking-tight">
-            WebTerm<span className="text-primary">AI</span>
-          </span>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Platform</p>
+            <span className="block text-sm font-semibold text-foreground">WebTerm AI</span>
+          </div>
         )}
       </div>
 
       <SidebarContent className="pt-2">
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="space-y-1 px-1.5">
               {allowedItems.map((item) => (
                 <SidebarMenuItem key={item.titleKey}>
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
                       end={item.url === "/dashboard"}
-                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                      activeClassName="bg-sidebar-accent text-primary font-medium"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span>{t(item.titleKey)}</span>}
@@ -85,40 +88,40 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border p-3 space-y-3">
+      <SidebarFooter className="border-t border-sidebar-border p-2.5 space-y-2.5">
         {!collapsed && (
-          <div className="flex justify-center">
-            <div className="inline-flex rounded-md border border-border overflow-hidden text-[11px] font-semibold">
+          <div className="flex">
+            <div className="inline-flex w-full overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent text-[11px] font-semibold">
               <button
                 onClick={() => setLang("en")}
-                className={`px-2.5 py-1 transition-colors ${lang === "en" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex-1 px-3 py-1.5 transition-colors ${lang === "en" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
                 EN
               </button>
               <button
                 onClick={() => setLang("ru")}
-                className={`px-2.5 py-1 transition-colors ${lang === "ru" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex-1 px-3 py-1.5 transition-colors ${lang === "ru" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
                 RU
               </button>
             </div>
           </div>
         )}
-        <div className="flex items-center gap-3">
-          <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center text-xs font-medium text-primary-foreground shrink-0">
+        <div className="flex items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
             {(data?.user?.username || "U").slice(0, 1).toUpperCase()}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{data?.user?.username || "user"}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 {data?.user?.is_staff ? t("nav.admin") : t("nav.operator")}
               </p>
             </div>
           )}
           {!collapsed && (
             <button
-              className="text-muted-foreground hover:text-destructive transition-colors"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               aria-label={t("nav.signout")}
               onClick={handleLogout}
             >

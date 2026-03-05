@@ -294,6 +294,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Common
     "loading": "Loading...",
+    "app.loading_workspace": "Loading workspace...",
     "not_found.title": "404",
     "not_found.text": "Page not found",
     "not_found.back": "Back to home",
@@ -588,6 +589,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Common
     "loading": "Загрузка...",
+    "app.loading_workspace": "Загрузка рабочего пространства...",
     "not_found.title": "404",
     "not_found.text": "Страница не найдена",
     "not_found.back": "На главную",
@@ -601,7 +603,7 @@ interface I18nContextValue {
 }
 
 const I18nContext = createContext<I18nContextValue>({
-  lang: "en",
+  lang: "ru",
   setLang: () => {},
   t: (k) => k,
 });
@@ -609,7 +611,8 @@ const I18nContext = createContext<I18nContextValue>({
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored === "ru" ? "ru" : "en";
+    if (stored === "ru" || stored === "en") return stored;
+    return "ru";
   });
 
   const setLang = useCallback((l: Lang) => {

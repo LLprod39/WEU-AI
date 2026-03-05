@@ -1334,6 +1334,46 @@ export interface PipelineTrigger {
   last_triggered_at: string | null;
 }
 
+export interface StudioPipelineAssistantPayload {
+  pipeline_id?: number | null;
+  pipeline_name: string;
+  nodes: PipelineNode[];
+  edges: PipelineEdge[];
+  selected_node?: PipelineNode | null;
+  user_message: string;
+}
+
+export interface StudioPipelineGraphPatchNode {
+  ref: string;
+  type: string;
+  data: Record<string, unknown>;
+  label?: string;
+  x_offset?: number;
+  y_offset?: number;
+}
+
+export interface StudioPipelineGraphPatchEdge {
+  source: string;
+  target: string;
+  label?: string;
+  source_handle?: string;
+  target_handle?: string;
+}
+
+export interface StudioPipelineGraphPatch {
+  anchor_node_id: string | null;
+  nodes: StudioPipelineGraphPatchNode[];
+  edges: StudioPipelineGraphPatchEdge[];
+}
+
+export interface StudioPipelineAssistantResponse {
+  reply: string;
+  target_node_id: string | null;
+  node_patch: Record<string, unknown>;
+  graph_patch: StudioPipelineGraphPatch;
+  warnings: string[];
+}
+
 // Pipelines
 export const studioPipelines = {
   list: (q?: string) => apiFetch<PipelineListItem[]>(`/api/studio/pipelines/${q ? `?q=${encodeURIComponent(q)}` : ""}`),
@@ -1344,6 +1384,11 @@ export const studioPipelines = {
   run: (id: number, context?: Record<string, unknown>) => apiFetch<PipelineRun>(`/api/studio/pipelines/${id}/run/`, { method: "POST", body: JSON.stringify({ context: context || {} }) }),
   clone: (id: number) => apiFetch<PipelineDetail>(`/api/studio/pipelines/${id}/clone/`, { method: "POST" }),
   runs: (id: number) => apiFetch<PipelineRun[]>(`/api/studio/pipelines/${id}/runs/`),
+  assistant: (data: StudioPipelineAssistantPayload) =>
+    apiFetch<StudioPipelineAssistantResponse>("/api/studio/pipelines/assistant/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
 
 // Runs

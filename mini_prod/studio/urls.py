@@ -7,6 +7,7 @@ app_name = "studio"
 urlpatterns = [
     # Pipelines
     path("pipelines/", views.api_pipelines, name="pipelines"),
+    path("pipelines/assistant/", views.api_pipeline_assistant, name="pipeline_assistant"),
     path("pipelines/<int:pipeline_id>/", views.api_pipeline_detail, name="pipeline_detail"),
     path("pipelines/<int:pipeline_id>/run/", views.api_pipeline_run, name="pipeline_run"),
     path("pipelines/<int:pipeline_id>/clone/", views.api_pipeline_clone, name="pipeline_clone"),

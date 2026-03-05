@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionCard } from "@/components/ui/page-shell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchModels,
@@ -38,9 +39,14 @@ import {
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-function relativeTime(value: string): string {
+function relativeTime(value: string, lang: "ru" | "en"): string {
   const d = new Date(value);
   const diff = Math.max(1, Math.floor((Date.now() - d.getTime()) / 60000));
+  if (lang === "ru") {
+    if (diff < 60) return `${diff} мин назад`;
+    if (diff < 1440) return `${Math.floor(diff / 60)} ч назад`;
+    return `${Math.floor(diff / 1440)} дн назад`;
+  }
   if (diff < 60) return `${diff}m ago`;
   if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
   return `${Math.floor(diff / 1440)}d ago`;
@@ -52,27 +58,7 @@ function statusBadge(status: string) {
   return "bg-blue-500/15 text-blue-400";
 }
 
-function SectionCard({ title, icon: Icon, children, description }: {
-  title: string;
-  icon: React.ElementType;
-  children: React.ReactNode;
-  description?: string;
-}) {
-  return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border bg-secondary/20">
-        <Icon className="h-4 w-4 text-primary" />
-        <div>
-          <h2 className="text-sm font-medium text-foreground">{title}</h2>
-          {description && <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>}
-        </div>
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  );
-}
-
-function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange, onCritChange, unit = "%" }: {
+function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange, onCritChange, unit = "%", lang }: {
   label: string;
   icon: React.ElementType;
   warnValue: number;
@@ -80,9 +66,11 @@ function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange
   onWarnChange: (v: number) => void;
   onCritChange: (v: number) => void;
   unit?: string;
+  lang: "ru" | "en";
 }) {
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   return (
-    <div className="space-y-3 bg-secondary/20 rounded-lg p-4">
+    <div className="space-y-3 rounded-[22px] border border-border bg-secondary/20 p-4">
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">{label}</span>
@@ -91,7 +79,7 @@ function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <label className="text-xs text-yellow-400 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Warning
+              <AlertTriangle className="h-3 w-3" /> {tr("Предупреждение", "Warning")}
             </label>
             <span className="text-xs font-mono text-foreground">{warnValue}{unit}</span>
           </div>
@@ -101,13 +89,13 @@ function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange
             max={99}
             value={warnValue}
             onChange={(e) => onWarnChange(Number(e.target.value))}
-            className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer accent-yellow-500"
+            className="enterprise-range accent-yellow-500"
           />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <label className="text-xs text-red-400 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Critical
+              <AlertTriangle className="h-3 w-3" /> {tr("Критично", "Critical")}
             </label>
             <span className="text-xs font-mono text-foreground">{critValue}{unit}</span>
           </div>
@@ -117,7 +105,7 @@ function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange
             max={99}
             value={critValue}
             onChange={(e) => onCritChange(Number(e.target.value))}
-            className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer accent-red-500"
+            className="enterprise-range accent-red-500"
           />
         </div>
       </div>
@@ -142,6 +130,7 @@ function PurposeModelSelector({
   onModelChange,
   onRefresh,
   refreshing,
+  lang,
 }: {
   label: string;
   description: string;
@@ -152,20 +141,24 @@ function PurposeModelSelector({
   onModelChange: (m: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  lang: "ru" | "en";
 }) {
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   return (
-    <div className="space-y-3 bg-secondary/20 rounded-lg p-4">
+    <div className="space-y-3 rounded-[22px] border border-border bg-secondary/20 p-4">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Провайдер</label>
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            {tr("Провайдер", "Provider")}
+          </label>
           <select
             value={provider}
             onChange={(e) => onProviderChange(e.target.value)}
-            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            className="enterprise-select"
           >
             {LLM_PROVIDERS.map((p) => (
               <option key={p.value} value={p.value}>{p.label}</option>
@@ -173,12 +166,14 @@ function PurposeModelSelector({
           </select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Модель</label>
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            {tr("Модель", "Model")}
+          </label>
           {availableModels.length > 0 ? (
             <select
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
-              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              className="enterprise-select"
             >
               {availableModels.map((m) => (
                 <option key={m} value={m}>{m}</option>
@@ -189,10 +184,10 @@ function PurposeModelSelector({
               <Input
                 value={model}
                 onChange={(e) => onModelChange(e.target.value)}
-                placeholder="Введите модель или нажмите Refresh"
+                placeholder={tr("Введите модель или нажмите «Обновить»", "Enter model or click Refresh")}
                 className="bg-secondary h-[38px] text-sm"
               />
-              <Button size="sm" variant="outline" className="shrink-0 h-[38px] px-2.5" onClick={onRefresh} disabled={refreshing}>
+              <Button size="sm" variant="outline" className="h-[38px] shrink-0 rounded-xl px-2.5" onClick={onRefresh} disabled={refreshing}>
                 <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
               </Button>
             </div>
@@ -201,8 +196,8 @@ function PurposeModelSelector({
       </div>
       {availableModels.length > 0 && (
         <div className="flex justify-end">
-          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2 gap-1 text-muted-foreground" onClick={onRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-2.5 w-2.5 ${refreshing ? "animate-spin" : ""}`} /> Обновить список
+          <Button size="sm" variant="ghost" className="h-7 gap-1 rounded-xl px-2 text-[10px] text-muted-foreground" onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-2.5 w-2.5 ${refreshing ? "animate-spin" : ""}`} /> {tr("Обновить список", "Refresh list")}
           </Button>
         </div>
       )}
@@ -211,7 +206,8 @@ function PurposeModelSelector({
 }
 
 export default function SettingsPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -428,16 +424,52 @@ export default function SettingsPage() {
 
   const config = settingsData.config;
   const apiKeys = settingsData.api_keys as Record<string, boolean> | undefined;
+  const configuredProviders = [
+    config.gemini_enabled,
+    config.grok_enabled,
+    config.openai_enabled,
+    config.claude_enabled,
+  ].filter(Boolean).length;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">{t("settings.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t("set.subtitle")}</p>
+    <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <div className="enterprise-kicker">{tr("Конфигурация платформы", "Platform Configuration")}</div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("settings.title")}</h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">{t("set.subtitle")}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Провайдеры", "Providers")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{configuredProviders}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {tr("Количество LLM-провайдеров, включенных в конфигурации платформы.", "Number of enabled LLM providers in platform config.")}
+                </p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Активность", "Activity")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{activityData?.summary?.total_events || 0}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {tr("Недавние административные события в видимом окне аудита.", "Recent administrative events in visible audit range.")}
+                </p>
+              </div>
+              <div className="enterprise-stat rounded-2xl px-4 py-3">
+                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Мониторинг", "Monitoring")}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {tr("Серверы, входящие в активный контур мониторинга.", "Servers included in active monitoring scope.")}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="ai" className="space-y-4">
-        <TabsList className="w-full justify-start bg-secondary/30 p-1">
+        <TabsList className="w-full justify-start gap-1 overflow-x-auto bg-secondary/30 p-1">
           <TabsTrigger value="ai" className="gap-2 data-[state=active]:bg-card">
             <Bot className="h-4 w-4" /> {t("set.tab_ai")}
           </TabsTrigger>
@@ -456,7 +488,7 @@ export default function SettingsPage() {
 
         {/* ==================== AI TAB ==================== */}
         <TabsContent value="ai" className="space-y-4">
-          <SectionCard title={t("set.ai_models")} icon={Bot} description={t("set.ai_models_desc")}>
+          <SectionCard title={t("set.ai_models")} icon={<Bot className="h-4 w-4 text-primary" />} description={t("set.ai_models_desc")}>
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -464,7 +496,7 @@ export default function SettingsPage() {
                   <select
                     value={provider}
                     onChange={(e) => setProvider(e.target.value)}
-                    className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                    className="enterprise-select"
                   >
                     <option value="grok">Grok</option>
                     <option value="gemini">Gemini</option>
@@ -478,7 +510,7 @@ export default function SettingsPage() {
                     <select
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                      className="enterprise-select"
                     >
                       {availableModels.map((m) => (
                         <option key={m} value={m}>{m}</option>
@@ -497,7 +529,7 @@ export default function SettingsPage() {
                         className="bg-secondary h-[42px]"
                       />
                       <p className="text-[10px] text-muted-foreground">
-                        Нажмите «Refresh Models» чтобы загрузить список из API
+                        {tr("Нажмите «Обновить модели», чтобы загрузить список из API", "Click “Refresh models” to load list from API")}
                       </p>
                     </div>
                   )}
@@ -505,10 +537,10 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex items-center gap-3 pt-1">
-                <Button size="sm" className="gap-1.5 px-4" onClick={onSave} disabled={saving}>
+                <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSave} disabled={saving}>
                   <Save className="h-3.5 w-3.5" /> {saving ? t("set.saving") : t("set.save")}
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={onRefreshModels} disabled={refreshing}>
+                <Button size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={onRefreshModels} disabled={refreshing}>
                   <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /> {t("set.refresh_models")}
                 </Button>
               </div>
@@ -517,14 +549,14 @@ export default function SettingsPage() {
 
           {/* Purpose-based model settings */}
           <SectionCard
-            title="Модели по назначению"
-            icon={Cpu}
-            description="Отдельные модели для чата, агентов и оркестратора"
+            title={tr("Модели по назначению", "Models by purpose")}
+            icon={<Cpu className="h-4 w-4 text-primary" />}
+            description={tr("Отдельные модели для чата, агентов и оркестратора", "Separate models for chat, agents and orchestrator")}
           >
             <div className="space-y-4">
               <PurposeModelSelector
-                label="Чат / Терминальный AI"
-                description="Используется при общении в терминале сервера и AI-помощнике"
+                label={tr("Чат / Терминальный AI", "Chat / Terminal AI")}
+                description={tr("Используется при общении в терминале сервера и AI-помощнике", "Used in terminal chat and AI helper")}
                 provider={chatProvider}
                 model={chatModel}
                 availableModels={getModelsForProvider(chatProvider)}
@@ -532,10 +564,11 @@ export default function SettingsPage() {
                 onModelChange={setChatModel}
                 onRefresh={() => onRefreshPurpose(chatProvider)}
                 refreshing={refreshingPurpose === chatProvider}
+                lang={lang}
               />
               <PurposeModelSelector
-                label="Агенты (ReAct / Full)"
-                description="Используется при выполнении задач агентом — итерации, инструменты"
+                label={tr("Агенты (ReAct / Full)", "Agents (ReAct / Full)")}
+                description={tr("Используется при выполнении задач агентом — итерации, инструменты", "Used while agents execute tasks, iterations and tools")}
                 provider={agentProvider}
                 model={agentModel}
                 availableModels={getModelsForProvider(agentProvider)}
@@ -543,10 +576,11 @@ export default function SettingsPage() {
                 onModelChange={setAgentModel}
                 onRefresh={() => onRefreshPurpose(agentProvider)}
                 refreshing={refreshingPurpose === agentProvider}
+                lang={lang}
               />
               <PurposeModelSelector
-                label="Оркестратор (Pipeline)"
-                description="Используется для планирования и синтеза в многоагентном пайплайне"
+                label={tr("Оркестратор (Pipeline)", "Orchestrator (Pipeline)")}
+                description={tr("Используется для планирования и синтеза в многоагентном пайплайне", "Used for planning and synthesis in multi-agent pipelines")}
                 provider={orchProvider}
                 model={orchModel}
                 availableModels={getModelsForProvider(orchProvider)}
@@ -554,37 +588,37 @@ export default function SettingsPage() {
                 onModelChange={setOrchModel}
                 onRefresh={() => onRefreshPurpose(orchProvider)}
                 refreshing={refreshingPurpose === orchProvider}
+                lang={lang}
               />
               {/* OpenAI Reasoning effort */}
               <div className="border-t border-border pt-4 mt-2">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-medium text-foreground">OpenAI Reasoning Effort</p>
+                    <p className="text-xs font-medium text-foreground">{tr("Уровень рассуждения OpenAI", "OpenAI Reasoning Effort")}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Управляет reasoning в Responses API (gpt-5.x).
-                      <span className="text-green-400"> none</span> — без мышления, мгновенно;
-                      <span className="text-yellow-400"> low</span> — быстро;
-                      <span className="text-blue-400"> medium</span> — баланс;
-                      <span className="text-purple-400"> high</span> — максимум.
+                      {tr(
+                        "Управляет reasoning в Responses API (gpt-5.x). none — без мышления; low — быстро; medium — баланс; high — максимум.",
+                        "Controls reasoning in Responses API (gpt-5.x). none — no reasoning; low — fast; medium — balanced; high — maximum.",
+                      )}
                     </p>
                   </div>
                   <select
                     value={reasoningEffort}
                     onChange={(e) => setReasoningEffort(e.target.value)}
-                    className="shrink-0 bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                    className="enterprise-select shrink-0"
                   >
-                    <option value="">— авто (модель решает)</option>
-                    <option value="none">none — без мышления ⚡⚡</option>
-                    <option value="low">low — минимум ⚡</option>
-                    <option value="medium">medium — баланс ⚖️</option>
-                    <option value="high">high — глубоко 🔬</option>
+                    <option value="">{tr("— авто (модель решает)", "— auto (model decides)")}</option>
+                    <option value="none">{tr("none — без мышления", "none — no reasoning")}</option>
+                    <option value="low">{tr("low — минимум", "low — minimum")}</option>
+                    <option value="medium">{tr("medium — баланс", "medium — balanced")}</option>
+                    <option value="high">{tr("high — глубоко", "high — deep")}</option>
                   </select>
                 </div>
               </div>
 
               <div className="pt-1">
-                <Button size="sm" className="gap-1.5 px-4" onClick={onSavePurpose} disabled={saving}>
-                  <Save className="h-3.5 w-3.5" /> {saving ? t("set.saving") : "Сохранить настройки моделей"}
+                <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSavePurpose} disabled={saving}>
+                  <Save className="h-3.5 w-3.5" /> {saving ? t("set.saving") : tr("Сохранить настройки моделей", "Save model settings")}
                 </Button>
               </div>
             </div>
@@ -592,7 +626,7 @@ export default function SettingsPage() {
 
           {/* API Keys Status */}
           {apiKeys && isAdmin && (
-            <SectionCard title={t("set.api_keys")} icon={Key} description={t("set.api_keys_desc")}>
+            <SectionCard title={t("set.api_keys")} icon={<Key className="h-4 w-4 text-primary" />} description={t("set.api_keys_desc")}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { name: "Gemini", key: "gemini_set", enabled: config.gemini_enabled },
@@ -617,19 +651,19 @@ export default function SettingsPage() {
 
           {/* Domain Auth (admin only) */}
           {isAdmin && config.domain_auth_enabled !== undefined && (
-            <SectionCard title={t("set.domain_auth")} icon={Globe} description={t("set.domain_auth_desc")}>
+            <SectionCard title={t("set.domain_auth")} icon={<Globe className="h-4 w-4 text-primary" />} description={t("set.domain_auth_desc")}>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.status")}</p>
                   <p className="text-sm font-medium text-foreground">{config.domain_auth_enabled ? t("set.enabled") : t("set.disabled")}</p>
                 </div>
                 <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
-                  <p className="text-[10px] text-muted-foreground uppercase">Header</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">{tr("Заголовок", "Header")}</p>
                   <p className="text-sm font-mono text-foreground">{config.domain_auth_header || "REMOTE_USER"}</p>
                 </div>
                 <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.auto_create")}</p>
-                  <p className="text-sm font-medium text-foreground">{config.domain_auth_auto_create ? "Yes" : "No"}</p>
+                  <p className="text-sm font-medium text-foreground">{config.domain_auth_auto_create ? tr("Да", "Yes") : tr("Нет", "No")}</p>
                 </div>
               </div>
             </SectionCard>
@@ -647,16 +681,16 @@ export default function SettingsPage() {
               <Link
                 key={page.url}
                 to={page.url}
-                className="flex items-center gap-4 bg-card border border-border rounded-lg p-5 hover:border-primary/50 hover:bg-card/80 transition-all group"
+                className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-[border-color,background-color,box-shadow] hover:border-primary/40 hover:bg-card/90"
               >
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10">
                   <page.icon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{page.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{page.desc}</p>
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
               </Link>
             ))}
           </div>
@@ -668,65 +702,68 @@ export default function SettingsPage() {
             {/* Stats overview */}
             {monConfig && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-card border border-border rounded-lg p-4">
+                <div className="enterprise-stat rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_servers")}</span>
                     <Server className="h-3.5 w-3.5 text-blue-400" />
                   </div>
                   <p className="text-xl font-semibold text-foreground">{monConfig.stats.monitored_servers}</p>
                 </div>
-                <div className="bg-card border border-border rounded-lg p-4">
+                <div className="enterprise-stat rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_checks")}</span>
                     <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
                   </div>
                   <p className="text-xl font-semibold text-foreground">{monConfig.stats.total_checks}</p>
                 </div>
-                <div className="bg-card border border-border rounded-lg p-4">
+                <div className="enterprise-stat rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_alerts")}</span>
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
                   </div>
                   <p className="text-xl font-semibold text-foreground">{monConfig.stats.active_alerts}</p>
                 </div>
-                <div className="bg-card border border-border rounded-lg p-4">
+                <div className="enterprise-stat rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_last")}</span>
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
                   <p className="text-sm font-medium text-foreground mt-1">
-                    {monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at) : "—"}
+                    {monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}
                   </p>
                 </div>
               </div>
             )}
 
             {/* Thresholds */}
-            <SectionCard title={t("set.mon_thresholds")} icon={Gauge} description={t("set.mon_thresholds_desc")}>
+            <SectionCard title={t("set.mon_thresholds")} icon={<Gauge className="h-4 w-4 text-primary" />} description={t("set.mon_thresholds_desc")}>
               <div className="space-y-4">
                 <ThresholdSlider
-                  label="CPU Load"
+                  label={tr("Нагрузка CPU", "CPU Load")}
                   icon={Cpu}
                   warnValue={cpuWarn}
                   critValue={cpuCrit}
                   onWarnChange={setCpuWarn}
                   onCritChange={setCpuCrit}
+                  lang={lang}
                 />
                 <ThresholdSlider
-                  label="Memory (RAM)"
+                  label={tr("Память (RAM)", "Memory (RAM)")}
                   icon={MemoryStick}
                   warnValue={memWarn}
                   critValue={memCrit}
                   onWarnChange={setMemWarn}
                   onCritChange={setMemCrit}
+                  lang={lang}
                 />
                 <ThresholdSlider
-                  label="Disk Usage"
+                  label={tr("Использование диска", "Disk Usage")}
                   icon={HardDrive}
                   warnValue={diskWarn}
                   critValue={diskCrit}
                   onWarnChange={setDiskWarn}
                   onCritChange={setDiskCrit}
+                  lang={lang}
                 />
 
                 <div className="flex items-center gap-3 pt-2">
@@ -738,7 +775,7 @@ export default function SettingsPage() {
             </SectionCard>
 
             {/* How monitoring works */}
-            <SectionCard title={t("set.mon_how")} icon={Eye} description={t("set.mon_how_desc")}>
+            <SectionCard title={t("set.mon_how")} icon={<Eye className="h-4 w-4 text-primary" />} description={t("set.mon_how_desc")}>
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-secondary/20 rounded-lg p-4 space-y-2">
@@ -772,7 +809,7 @@ export default function SettingsPage() {
 
         {/* ==================== ACTIVITY TAB ==================== */}
         <TabsContent value="activity">
-          <SectionCard title={t("set.activity_log")} icon={Activity} description={t("set.activity_desc")}>
+          <SectionCard title={t("set.activity_log")} icon={<Activity className="h-4 w-4 text-primary" />} description={t("set.activity_desc")}>
             <div className="space-y-4">
               {/* Search */}
               <div className="relative">
@@ -818,7 +855,7 @@ export default function SettingsPage() {
                         {log.entity_name ? ` · ${log.entity_name}` : ""}
                       </p>
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{relativeTime(log.created_at)}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{relativeTime(log.created_at, lang)}</span>
                   </div>
                 ))}
               </div>
@@ -829,3 +866,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

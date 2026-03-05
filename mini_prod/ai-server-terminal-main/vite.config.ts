@@ -5,6 +5,88 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return;
+          }
+
+          if (id.includes("@xterm") || id.includes("xterm")) {
+            return "terminal-vendor";
+          }
+          if (id.includes("@xyflow") || id.includes("zustand")) {
+            return "flow-vendor";
+          }
+          if (
+            id.includes("react-markdown") ||
+            id.includes("remark-") ||
+            id.includes("rehype") ||
+            id.includes("micromark") ||
+            id.includes("mdast") ||
+            id.includes("hast") ||
+            id.includes("unist") ||
+            id.includes("vfile") ||
+            id.includes("property-information") ||
+            id.includes("parse-entities") ||
+            id.includes("character-entities") ||
+            id.includes("comma-separated-tokens") ||
+            id.includes("space-separated-tokens") ||
+            id.includes("style-to-object") ||
+            id.includes("style-to-js") ||
+            id.includes("html-url-attributes") ||
+            id.includes("trim-lines") ||
+            id.includes("bail") ||
+            id.includes("devlop") ||
+            id.includes("inline-style-parser") ||
+            id.includes("hastscript")
+          ) {
+            return "content-vendor";
+          }
+          if (
+            id.includes("recharts") ||
+            id.includes("framer-motion") ||
+            id.includes("embla-carousel-react") ||
+            id.includes("d3-") ||
+            id.includes("lodash") ||
+            id.includes("decimal-js-light") ||
+            id.includes("react-smooth") ||
+            id.includes("victory-vendor")
+          ) {
+            return "visual-vendor";
+          }
+          if (
+            id.includes("@radix-ui") ||
+            id.includes("cmdk") ||
+            id.includes("vaul") ||
+            id.includes("@floating-ui") ||
+            id.includes("react-remove-scroll") ||
+            id.includes("react-style-singleton") ||
+            id.includes("aria-hidden") ||
+            id.includes("use-sidecar") ||
+            id.includes("use-callback-ref")
+          ) {
+            return "ui-vendor";
+          }
+          if (id.includes("lucide-react")) {
+            return "icons-vendor";
+          }
+          if (
+            id.includes("@tanstack/react-query") ||
+            id.includes("@tanstack/query-core") ||
+            id.includes("react-router-dom") ||
+            id.includes("@remix-run/router") ||
+            id.includes("react-dom") ||
+            /node_modules[\\/](react|scheduler)[\\/]/.test(id)
+          ) {
+            return "react-vendor";
+          }
+          return "vendor";
+        },
+      },
+    },
+  },
   server: {
     host: "::",
     port: 8080,
