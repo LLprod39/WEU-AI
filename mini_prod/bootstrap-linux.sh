@@ -17,6 +17,7 @@ SKIP_FRONTEND=0
 NO_DOCKER=0
 FORCE_CONFIG=0
 COMPOSE_FILE="docker-compose.yml"
+PYTHON_BIN_OVERRIDE=""
 
 print_help() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ Options:
   --skip-frontend      Skip npm install in ai-server-terminal-main
   --no-docker          Do not run docker compose
   --compose-file FILE  Compose file to use (default: docker-compose.yml)
+  --python-bin BIN     Python interpreter to use (must be >= 3.10)
   --force-config       Overwrite existing .env/.notification_config.json from templates
   -h, --help           Show this help
 
@@ -59,6 +61,14 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
+    --python-bin)
+      PYTHON_BIN_OVERRIDE="${2:-}"
+      if [[ -z "$PYTHON_BIN_OVERRIDE" ]]; then
+        echo "Error: --python-bin requires a value" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     --force-config)
       FORCE_CONFIG=1
       shift
@@ -81,6 +91,51 @@ require_cmd() {
     echo "Error: command not found: $cmd" >&2
     exit 1
   fi
+}
+
+python_version_ok() {
+  local py_bin="$1"
+  "$py_bin" - <<'PY' >/dev/null 2>&1
+import sys
+sys.exit(0 if sys.version_info >= (3, 10) else 1)
+PY
+}
+
+python_version_text() {
+  local py_bin="$1"
+  "$py_bin" - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+PY
+}
+
+select_python_bin() {
+  if [[ -n "$PYTHON_BIN_OVERRIDE" ]]; then
+    if ! command -v "$PYTHON_BIN_OVERRIDE" >/dev/null 2>&1; then
+      echo "Error: --python-bin not found: $PYTHON_BIN_OVERRIDE" >&2
+      exit 1
+    fi
+    if ! python_version_ok "$PYTHON_BIN_OVERRIDE"; then
+      echo "Error: $PYTHON_BIN_OVERRIDE is $(python_version_text "$PYTHON_BIN_OVERRIDE"), but Python >= 3.10 is required." >&2
+      exit 1
+    fi
+    echo "$PYTHON_BIN_OVERRIDE"
+    return 0
+  fi
+
+  local candidates=(python3.12 python3.11 python3.10 python3 python)
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_version_ok "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "Error: Python >= 3.10 not found." >&2
+  echo "Install Python 3.10+ and rerun, or pass --python-bin /path/to/python3.11" >&2
+  echo "Example (Ubuntu): sudo apt-get update && sudo apt-get install -y python3.11 python3.11-venv" >&2
+  exit 1
 }
 
 copy_template_if_needed() {
@@ -133,16 +188,10 @@ copy_template_if_needed ".env.example" ".env"
 copy_template_if_needed ".notification_config.example.json" ".notification_config.json"
 
 echo "==> Preparing Python environment"
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-  PYTHON_BIN="python"
-else
-  echo "Error: Python not found (python3/python)." >&2
-  exit 1
-fi
+PYTHON_BIN="$(select_python_bin)"
+echo "[ok] using Python: $PYTHON_BIN ($(python_version_text "$PYTHON_BIN"))"
 
-"$PYTHON_BIN" -m venv .venv
+"$PYTHON_BIN" -m venv --clear .venv
 VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
 VENV_PIP="$ROOT_DIR/.venv/bin/pip"
 
@@ -158,6 +207,11 @@ fi
 if [[ "$NO_DOCKER" -eq 0 ]]; then
   echo "==> Starting Docker services from $COMPOSE_FILE"
   require_cmd docker
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Error: docker compose plugin is not available." >&2
+    echo "Install Docker Compose v2 (docker compose) and rerun." >&2
+    exit 1
+  fi
   docker compose -f "$COMPOSE_FILE" up -d --build postgres mcp-demo mcp-keycloak
 
   wait_for_container_health "mini-prod-postgres" 180
