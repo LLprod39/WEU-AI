@@ -44,6 +44,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EmptyState,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, useNavigate } from "react-router-dom";
@@ -220,63 +229,76 @@ export default function UserDashboard() {
   const recentRuns = runsData?.recent || [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl space-y-4">
-            <div className="enterprise-kicker">Operations Workspace</div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("udash.title")}</h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                Track server health, active agents, and operational alerts without leaving the daily control surface.
-              </p>
+    <PageShell>
+      <PageHero
+        kicker="Operations Workspace"
+        title={t("udash.title")}
+        description={
+          <>
+            Track server health, active agents, and operational alerts without leaving the daily control surface.
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge label={problemCount > 0 ? "attention required" : "healthy now"} tone={problemCount > 0 ? "danger" : "success"} />
+              <span>{activeRuns.length} active runs</span>
+              <span>·</span>
+              <span>{filteredAlerts.length} alerts</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{t("udash.my_servers")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{summary.total_servers}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{summary.healthy} {t("udash.healthy_lc")}</p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{t("udash.problems")}</p>
-                <p className={`mt-2 text-2xl font-semibold ${problemCount > 0 ? "text-red-400" : "text-green-400"}`}>{problemCount}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
-                </p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{t("udash.active_alerts")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{filteredAlerts.length}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{activeRuns.length} active runs · {recentRuns.length} recent</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-start xl:justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 gap-1.5 rounded-xl px-4"
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ["monitoring"] });
-                queryClient.invalidateQueries({ queryKey: ["agents", "dashboard-runs"] });
-              }}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              {t("udash.refresh")}
-            </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 gap-1.5 rounded-xl px-4"
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ["monitoring"] });
+              queryClient.invalidateQueries({ queryKey: ["agents", "dashboard-runs"] });
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t("udash.refresh")}
+          </Button>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label={t("udash.my_servers")}
+            value={summary.total_servers}
+            description={`${summary.healthy} ${t("udash.healthy_lc")}`}
+            icon={<Server className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label={t("udash.problems")}
+            value={problemCount}
+            description={problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
+            icon={<AlertTriangle className="h-5 w-5 text-red-300" />}
+            tone={problemCount > 0 ? "danger" : "success"}
+          />
+          <MetricCard
+            label={t("udash.active_alerts")}
+            value={filteredAlerts.length}
+            description={`${activeRuns.length} active runs · ${recentRuns.length} recent`}
+            icon={<Shield className="h-5 w-5 text-amber-300" />}
+            tone={filteredAlerts.length > 0 ? "danger" : "success"}
+          />
+          <MetricCard
+            label={t("agent.title")}
+            value={agents.length}
+            description="Runtime agents available from the dashboard surface."
+            icon={<Bot className="h-5 w-5 text-sky-300" />}
+            tone="info"
+          />
+        </MetricGrid>
+      </PageHero>
 
       {/* Alerts */}
-      {filteredAlerts.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border bg-secondary/20 px-5 py-3.5">
-            <Shield className="h-3.5 w-3.5 text-red-400" />
-            <span className="text-xs font-medium text-foreground">{t("udash.alerts")}</span>
-            <span className="text-[10px] text-red-400 font-semibold">{filteredAlerts.length}</span>
-          </div>
-          <div className="max-h-60 divide-y divide-border/50 overflow-y-auto">
+      <SectionCard
+        title={t("udash.alerts")}
+        description="Current infrastructure issues that likely need a human decision or AI-assisted triage."
+        icon={<Shield className="h-4 w-4 text-red-300" />}
+      >
+        {filteredAlerts.length > 0 ? (
+          <div className="max-h-72 divide-y divide-border/50 overflow-y-auto rounded-xl border border-border bg-background/35">
             {filteredAlerts.map((a: ServerAlertItem) => (
               <div key={a.id} className="flex items-center gap-2 px-5 py-3 text-xs">
                 <span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${a.severity === "critical" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
@@ -299,8 +321,14 @@ export default function UserDashboard() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <EmptyState
+            icon={<Shield className="h-5 w-5" />}
+            title="No active alerts"
+            description="The operator surface is quiet right now. Use the sections below to inspect active runs, recent automation, and runtime agents."
+          />
+        )}
+      </SectionCard>
 
       {/* AI / Agent analysis result */}
       {(analysisResult || agentResult) && (
@@ -353,51 +381,63 @@ export default function UserDashboard() {
       )}
 
       {/* ===== ACTIVE AGENTS ===== */}
-      {activeRuns.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-blue-500/20 bg-card">
-          <div className="flex items-center gap-2 border-b border-blue-500/10 bg-blue-500/5 px-5 py-3.5">
-            <Activity className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
-            <span className="text-xs font-medium text-foreground">{t("agent.active_runs")}</span>
-            <span className="text-[10px] text-blue-400 font-semibold">{activeRuns.length}</span>
+      <SectionCard
+        title={t("agent.active_runs")}
+        description="Live runtime executions that are currently occupying an agent slot."
+        icon={<Activity className="h-4 w-4 text-blue-400" />}
+      >
+        {activeRuns.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border border-blue-500/20 bg-background/35">
+            <div className="divide-y divide-border/30">
+              {activeRuns.map((run) => (
+                <ActiveRunCard
+                  key={run.id}
+                  run={run}
+                  onOpen={() => navigate(`/agents/run/${run.id}`)}
+                  onStop={() => onStopAgent(run.agent_id)}
+                  stopping={stoppingAgentId === run.agent_id}
+                  t={t}
+                />
+              ))}
+            </div>
           </div>
-
-          <div className="divide-y divide-border/30">
-            {activeRuns.map((run) => (
-              <ActiveRunCard
-                key={run.id}
-                run={run}
-                onOpen={() => navigate(`/agents/run/${run.id}`)}
-                onStop={() => onStopAgent(run.agent_id)}
-                stopping={stoppingAgentId === run.agent_id}
-                t={t}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        ) : (
+          <EmptyState
+            icon={<Activity className="h-5 w-5" />}
+            title="No active agent runs"
+            description="When an agent is running right now, this area becomes the live runtime board with duration, iteration count, and quick stop/open actions."
+          />
+        )}
+      </SectionCard>
 
       {/* ===== RECENT RUNS ===== */}
-      {recentRuns.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border bg-secondary/20 px-5 py-3.5">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium text-foreground">{t("agent.recent_runs")}</span>
-            <span className="text-[10px] text-muted-foreground">{recentRuns.length}</span>
+      <SectionCard
+        title={t("agent.recent_runs")}
+        description="Recently completed automation results. Use this list for quick post-run inspection before opening the full runtime report."
+        icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+      >
+        {recentRuns.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border border-border bg-background/35">
+            <div className="divide-y divide-border/30">
+              {recentRuns.map((run) => (
+                <RecentRunCard
+                  key={run.id}
+                  run={run}
+                  onViewReport={() => setReportOpen(run)}
+                  onOpen={() => navigate(`/agents/run/${run.id}`)}
+                  t={t}
+                />
+              ))}
+            </div>
           </div>
-
-          <div className="divide-y divide-border/30">
-            {recentRuns.map((run) => (
-              <RecentRunCard
-                key={run.id}
-                run={run}
-                onViewReport={() => setReportOpen(run)}
-                onOpen={() => navigate(`/agents/run/${run.id}`)}
-                t={t}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        ) : (
+          <EmptyState
+            icon={<Clock className="h-5 w-5" />}
+            title="No recent automation results"
+            description="Completed runs and reports will appear here. Until then, use the agent catalog below to trigger the first execution."
+          />
+        )}
+      </SectionCard>
 
       {/* Agents list */}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -607,7 +647,7 @@ export default function UserDashboard() {
           setDeleteAgentTarget(null);
         }}
       />
-    </div>
+    </PageShell>
   );
 }
 
@@ -904,4 +944,3 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
     </Dialog>
   );
 }
-

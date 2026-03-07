@@ -21,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState, StatusBadge as UiStatusBadge } from "@/components/ui/page-shell";
 import { studioRuns, studioPipelines, type PipelineRun, type PipelineNode } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -278,31 +279,10 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
       <div className="flex-1 overflow-auto">
         <div className="p-5 space-y-5">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="enterprise-stat rounded-md px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{tr("Завершено нод", "Nodes completed")}</p>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <span className="text-3xl font-semibold text-foreground">{completedNodes}</span>
-                <CheckCircle2 className="h-5 w-5 text-green-400" />
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">{tr("Успешные ноды в текущем снимке запуска.", "Successful nodes across the current run snapshot.")}</p>
-            </div>
-            <div className="enterprise-stat rounded-md px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{tr("Ошибки", "Failures")}</p>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <span className="text-3xl font-semibold text-foreground">{failedNodes}</span>
-                <XCircle className="h-5 w-5 text-red-400" />
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">{tr("Ноды с состоянием неуспешного выполнения.", "Nodes that currently report a failed execution state.")}</p>
-            </div>
-            <div className="enterprise-stat rounded-md px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{tr("Действия агента", "Agent actions")}</p>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <span className="text-3xl font-semibold text-foreground">{activeAgentActions}</span>
-                <Brain className="h-5 w-5 text-violet-400" />
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">{tr("Шаги рассуждения и инструментов, полученные в реальном времени от агентных нод.", "Reasoning and tool steps streamed from live agent nodes.")}</p>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+            <span>{tr(`${completedNodes} нод завершено`, `${completedNodes} nodes completed`)}</span>
+            <span>{tr(`${failedNodes} с ошибкой`, `${failedNodes} failed`)}</span>
+            <span>{tr(`${activeAgentActions} agent actions`, `${activeAgentActions} agent actions`)}</span>
           </div>
 
           {/* Error banner */}
@@ -318,7 +298,7 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
           {/* Summary / Report */}
           {run.summary && (
             <div className="enterprise-panel rounded-md">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+              <div className="flex items-center justify-between border-b border-white/[0.04] px-4 py-2">
                 <span className="text-sm font-medium">{tr("Отчёт", "Report")}</span>
                 <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => copyOutput(run.summary)}>
                   <Copy className="h-3 w-3" /> {tr("Копировать", "Copy")}
@@ -481,6 +461,26 @@ export default function PipelineRunsPage() {
     if (pipelineFilter && r.pipeline_id !== pipelineFilter) return false;
     return true;
   });
+  const failureBuckets = runs
+    .filter((run) => run.status === "failed")
+    .reduce<Record<string, number>>((acc, run) => {
+      const message = (run.error || "").toLowerCase();
+      const bucket =
+        message.includes("timeout")
+          ? tr("Таймауты", "Timeouts")
+          : message.includes("mcp")
+            ? "MCP"
+            : message.includes("permission") || message.includes("forbidden")
+              ? tr("Права доступа", "Permissions")
+              : message.includes("ssh") || message.includes("connection")
+                ? tr("Подключения", "Connectivity")
+                : tr("Прочее", "Other");
+      acc[bucket] = (acc[bucket] || 0) + 1;
+      return acc;
+    }, {});
+  const failureHighlights = Object.entries(failureBuckets)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
 
   const statusCount = (s: string) => runs.filter((r) => r.status === s).length;
   const statusLabels: Record<StatusFilter, string> = {
@@ -516,22 +516,10 @@ export default function PipelineRunsPage() {
               </Button>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <div className="enterprise-stat rounded-md px-4 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{tr("Выполнено", "Completed")}</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{statusCount("completed")}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{tr("Успешные исполнения в текущем списке.", "Successful executions in the current list.")}</p>
-              </div>
-              <div className="enterprise-stat rounded-md px-4 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{tr("Выполняются", "Running")}</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{statusCount("running")}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{tr("Запуски, которые ещё выполняются или ждут обновлений.", "Runs that are still progressing or waiting for updates.")}</p>
-              </div>
-              <div className="enterprise-stat rounded-md px-4 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{tr("Ошибки", "Failed")}</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{statusCount("failed")}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{tr("Исполнения, требующие внимания оператора.", "Executions that currently require operator attention.")}</p>
-              </div>
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              <span>{tr(`${statusCount("completed")} выполнено`, `${statusCount("completed")} completed`)}</span>
+              <span>{tr(`${statusCount("running")} выполняются`, `${statusCount("running")} running`)}</span>
+              <span>{tr(`${statusCount("failed")} требуют внимания`, `${statusCount("failed")} need attention`)}</span>
             </div>
 
             <div className="mt-5 space-y-3">
@@ -540,10 +528,10 @@ export default function PipelineRunsPage() {
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
-                    className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                    className={`rounded-md px-3 py-2 text-left transition-colors ${
                       statusFilter === status
-                        ? "border-primary/60 bg-primary/12 text-primary"
-                        : "border-border/70 bg-secondary/20 text-muted-foreground hover:border-primary/25 hover:text-foreground"
+                        ? "bg-primary/12 text-primary"
+                        : "bg-secondary/20 text-muted-foreground hover:bg-secondary/35 hover:text-foreground"
                     }`}
                   >
                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{statusLabels[status]}</div>
@@ -579,12 +567,25 @@ export default function PipelineRunsPage() {
             )}
 
             {!isLoading && filtered.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-sm gap-2 px-6 text-center">
-                  <Workflow className="h-8 w-8 text-muted-foreground/30" />
-                <p>{tr("По текущим фильтрам запусков не найдено", "No runs match the current filters")}</p>
-                <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate("/studio")}>
-                  {tr("Перейти к пайплайнам", "Go to pipelines")}
-                </Button>
+              <div className="p-4">
+                <EmptyState
+                  icon={<Workflow className="h-5 w-5" />}
+                  title={tr("По текущим фильтрам запусков не найдено", "No runs match the current filters")}
+                  description={tr(
+                    "Runs — это операторский слой инспекции. Измените статус или pipeline filter, либо вернитесь в Studio и запустите automation вручную.",
+                    "Runs are the operator-side inspection layer. Change the status or pipeline filter, or go back to Studio and start an automation manually.",
+                  )}
+                  actions={
+                    <>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setStatusFilter("all"); setPipelineFilter(null); }}>
+                        {tr("Сбросить фильтры", "Clear filters")}
+                      </Button>
+                      <Button size="sm" className="rounded-xl" onClick={() => navigate("/studio")}>
+                        {tr("Перейти к пайплайнам", "Go to pipelines")}
+                      </Button>
+                    </>
+                  }
+                />
               </div>
             )}
 
@@ -624,12 +625,36 @@ export default function PipelineRunsPage() {
             <RunDetail runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
           ) : (
             <div className="flex h-full w-full items-center justify-center px-8 text-center">
-              <div className="max-w-md space-y-3">
+              <div className="max-w-xl space-y-4 text-left">
                 <div className="enterprise-kicker">{tr("Инспекция запуска", "Run Inspection")}</div>
                 <h2 className="text-2xl font-semibold text-foreground">{tr("Выберите запуск пайплайна", "Select a pipeline run")}</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  {tr("Выберите исполнение слева, чтобы изучить выводы нод, шаги рассуждения агента и финальные отчёты.", "Choose an execution from the left to inspect node-level outputs, agent reasoning steps and final reports.")}
+                  {tr("Справа появится операторский inspector: summary, timeline нод, live agent steps, logs, errors и итоговый отчёт.", "The operator inspector appears here: summary, node timeline, live agent steps, logs, errors, and the final report.")}
                 </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl bg-background/30 p-4">
+                    <div className="text-sm font-semibold text-foreground">{tr("Что доступно после выбора", "What becomes visible after selection")}</div>
+                    <div className="mt-2 space-y-2 text-xs leading-5 text-muted-foreground">
+                      <div>{tr("1. Краткая сводка run-status и длительности.", "1. A summary of run status and duration.")}</div>
+                      <div>{tr("2. Timeline нод с outputs и errors по каждой из них.", "2. A node timeline with outputs and errors per step.")}</div>
+                      <div>{tr("3. Live agent reasoning и финальный report.", "3. Live agent reasoning and the final report.")}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-background/30 p-4">
+                    <div className="text-sm font-semibold text-foreground">{tr("Последние категории сбоев", "Recent failure categories")}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {failureHighlights.length > 0 ? (
+                        failureHighlights.map(([label, count]) => (
+                          <UiStatusBadge key={label} label={`${label} · ${count}`} tone="danger" />
+                        ))
+                      ) : (
+                        <div className="text-xs leading-5 text-muted-foreground">
+                          {tr("Недавних failure buckets нет. Когда появятся неуспешные запуски, здесь будет краткая классификация причин.", "No recent failure buckets yet. When failed runs appear, this block will show a lightweight classification of causes.")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -644,4 +669,3 @@ export default function PipelineRunsPage() {
     </div>
   );
 }
-

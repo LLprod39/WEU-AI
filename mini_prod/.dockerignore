@@ -51,3 +51,11 @@ qdrant_data
 *.rar
 *.zip
 media
+media/
+agent_projects
+agent_projects/
+db.sqlite3-shm
+db.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-wal
+ai-server-terminal-main/.vite

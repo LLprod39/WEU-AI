@@ -38,9 +38,8 @@ import { useI18n } from "@/lib/i18n";
 import {
   Terminal,
   Monitor,
-  ChevronDown,
-  ChevronRight,
   Plus,
+  RefreshCw,
   Search,
   Server,
   Settings,
@@ -49,13 +48,25 @@ import {
   Sparkles,
   Layers,
   WandSparkles,
+  Clock3,
+  FolderTree,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EmptyState,
+  FilterBar,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -172,6 +183,17 @@ function formatCommandOutput(output: unknown): string {
   }
 }
 
+function relativeTime(value: string | null): string {
+  if (!value) return "—";
+  const diffMs = Date.now() - new Date(value).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export default function Servers() {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -179,7 +201,9 @@ export default function Servers() {
   const [mainTab, setMainTab] = useState<MainTab>("servers");
   const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("access");
   const [search, setSearch] = useState("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "unknown">("all");
+  const [groupFilter, setGroupFilter] = useState<string>("all");
+  const [scopeFilter, setScopeFilter] = useState<"all" | "owned" | "shared">("all");
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [groupColor, setGroupColor] = useState("#3b82f6");
@@ -246,20 +270,20 @@ export default function Servers() {
   const groups = data?.groups || [];
 
   const filtered = useMemo(() => {
-    if (!search) return servers;
-    const q = search.toLowerCase();
-    return servers.filter((s) => s.name.toLowerCase().includes(q) || s.host.includes(q));
-  }, [servers, search]);
-
-  const grouped = useMemo(() => {
-    const map: Record<string, typeof filtered> = {};
-    filtered.forEach((s) => {
-      (map[s.group_name] ??= []).push(s);
+    return servers.filter((server) => {
+      const q = search.trim().toLowerCase();
+      if (q && !server.name.toLowerCase().includes(q) && !server.host.toLowerCase().includes(q)) return false;
+      if (statusFilter !== "all" && server.status !== statusFilter) return false;
+      if (groupFilter !== "all" && server.group_name !== groupFilter) return false;
+      if (scopeFilter === "owned" && server.is_shared) return false;
+      if (scopeFilter === "shared" && !server.is_shared) return false;
+      return true;
     });
-    return map;
-  }, [filtered]);
+  }, [groupFilter, scopeFilter, search, servers, statusFilter]);
 
-  const toggleGroup = (g: string) => setCollapsed((c) => ({ ...c, [g]: !c[g] }));
+  const visibleGroups = useMemo(() => {
+    return Array.from(new Set(servers.map((server) => server.group_name).filter(Boolean))).sort();
+  }, [servers]);
 
   const reload = async () => {
     await queryClient.invalidateQueries({ queryKey: ["frontend", "bootstrap"] });
@@ -598,51 +622,62 @@ export default function Servers() {
   if (error || !data) return <div className="p-6 text-sm text-destructive">{t("srv.error")}</div>;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-6 py-6">
-      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-4xl space-y-4">
-            <div className="enterprise-kicker">Infrastructure Inventory</div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("srv.title")}</h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                Manage server access, group structure, shared context, and operational metadata from one workspace.
-              </p>
+    <PageShell width="7xl">
+      <PageHero
+        kicker="Infrastructure Inventory"
+        title={t("srv.title")}
+        description={
+          <>
+            Manage server access, group structure, shared context, and operational metadata from one workspace.
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge label="inventory workspace" tone="info" />
+              <span>Default view is a compact server table for fast operator scanning.</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{t("srv.servers_count")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{servers.length}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{filtered.length} visible under the current filter.</p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{t("srv.groups")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{Object.keys(grouped).length}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">Server groups represented in the current result set.</p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">Access</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{servers.filter((s) => s.status === "online").length}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">Online servers currently reachable from the platform.</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 xl:min-w-[340px] xl:items-end">
-            <div className="relative w-full xl:max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("srv.search")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9"
-              />
-            </div>
+          </>
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={reload}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh inventory
+            </Button>
             <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4" onClick={openCreate}>
               <Plus className="h-4 w-4" /> {t("srv.add")}
             </Button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label={t("srv.servers_count")}
+            value={servers.length}
+            description={`${filtered.length} visible under the current filter.`}
+            icon={<Server className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label="Reachable"
+            value={servers.filter((server) => server.status === "online").length}
+            description="Servers currently reachable from the platform."
+            icon={<Shield className="h-5 w-5 text-emerald-300" />}
+            tone="success"
+          />
+          <MetricCard
+            label="Groups"
+            value={groups.filter((group) => group.id !== null).length}
+            description="Reusable server groups available for inventory organization."
+            icon={<FolderTree className="h-5 w-5 text-sky-300" />}
+            tone="info"
+          />
+          <MetricCard
+            label="Shared"
+            value={servers.filter((server) => server.is_shared).length}
+            description="Servers currently inherited or shared into your workspace."
+            icon={<Layers className="h-5 w-5 text-amber-300" />}
+            tone="warning"
+          />
+        </MetricGrid>
+      </PageHero>
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)} className="space-y-3">
         <TabsList className="w-full justify-start gap-1 overflow-x-auto">
@@ -658,55 +693,120 @@ export default function Servers() {
         </TabsList>
 
         <TabsContent value="servers" className="space-y-3">
-          {Object.entries(grouped).map(([group, inGroup]) => {
-            const isCollapsed = collapsed[group];
-            return (
-              <div key={group} className="overflow-hidden rounded-xl border border-border bg-card">
-                <button
-                  onClick={() => toggleGroup(group)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-secondary/35"
-                  aria-label={`Toggle ${group} group`}
-                >
-                  {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                  <Server className="h-4 w-4 text-primary" />
-                  <span className="font-medium text-foreground">{group}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">{inGroup.length} {t("srv.servers_count")}</span>
-                </button>
+          <SectionCard
+            title="Server table"
+            description="Operational inventory view with compact controls, reachability, access scope, and quick actions."
+            icon={<Server className="h-4 w-4 text-primary" />}
+          >
+            <div className="space-y-4">
+              <FilterBar>
+                <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
+                  <div className="relative min-w-[240px] flex-1 xl:max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={t("srv.search")}
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full rounded-xl pl-9"
+                    />
+                  </div>
+                  <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="enterprise-select min-w-[180px]">
+                    <option value="all">All groups</option>
+                    {visibleGroups.map((groupName) => (
+                      <option key={groupName} value={groupName}>
+                        {groupName}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="enterprise-select min-w-[160px]">
+                    <option value="all">All statuses</option>
+                    <option value="online">Healthy</option>
+                    <option value="offline">Failed</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                  <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)} className="enterprise-select min-w-[160px]">
+                    <option value="all">All scope</option>
+                    <option value="owned">Owned</option>
+                    <option value="shared">Shared</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setMainTab("bulk")}>
+                    <WandSparkles className="h-4 w-4" />
+                    Bulk actions
+                  </Button>
+                </div>
+              </FilterBar>
 
-                <AnimatePresence initial={false}>
-                  {!isCollapsed && (
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: "auto" }}
-                      exit={{ height: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="border-t border-border">
-                        {inGroup.map((server, i) => (
-                          <div
-                            key={server.id}
-                            className={`flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-secondary/20 ${
-                              i < inGroup.length - 1 ? "border-b border-border/50" : ""
-                            }`}
-                          >
-                            <StatusIndicator status={server.status} showLabel={false} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{server.name}</p>
-                              <p className="text-xs text-muted-foreground font-mono">
-                                {server.host}:{server.port}
-                              </p>
+              {filtered.length === 0 ? (
+                <EmptyState
+                  icon={<Server className="h-5 w-5" />}
+                  title="No servers match this inventory view"
+                  description="Adjust the group, status, or scope filters, or create a new server entry to start building the inventory."
+                  actions={
+                    <>
+                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setSearch(""); setGroupFilter("all"); setStatusFilter("all"); setScopeFilter("all"); }}>
+                        Clear filters
+                      </Button>
+                      <Button size="sm" className="rounded-xl" onClick={openCreate}>
+                        <Plus className="h-4 w-4" />
+                        {t("srv.add")}
+                      </Button>
+                    </>
+                  }
+                />
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border bg-background/35">
+                  <table className="enterprise-table">
+                    <thead>
+                      <tr>
+                        <th>Server</th>
+                        <th>Group</th>
+                        <th>Access</th>
+                        <th>Status</th>
+                        <th>Last activity</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((server) => (
+                        <tr key={server.id}>
+                          <td>
+                            <div className="min-w-[200px]">
+                              <div className="font-medium text-foreground">{server.name}</div>
+                              <div className="mt-1 text-xs font-mono text-muted-foreground">
+                                {server.host}:{server.port} · {server.server_type.toUpperCase()}
+                              </div>
                             </div>
+                          </td>
+                          <td>
+                            <div className="text-sm text-foreground">{server.group_name || "Ungrouped"}</div>
+                          </td>
+                          <td>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge label={server.is_shared ? "shared" : "owned"} tone={server.is_shared ? "warning" : "info"} />
+                              {server.share_context_enabled ? <StatusBadge label="context" tone="success" /> : null}
+                            </div>
+                          </td>
+                          <td>
                             <StatusIndicator status={server.status} />
-                            <div className="flex gap-1.5 shrink-0">
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock3 className="h-4 w-4" />
+                              {relativeTime(server.last_connected)}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <Link to={`/servers/${server.id}/terminal`}>
-                                <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border-border px-3 text-xs hover:border-primary hover:text-primary">
+                                <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
                                   <Terminal className="h-3 w-3" /> SSH
                                 </Button>
                               </Link>
                               {server.rdp && (
                                 <Link to={`/servers/${server.id}/rdp`}>
-                                  <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border-border px-3 text-xs hover:border-info hover:text-info">
+                                  <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
                                     <Monitor className="h-3 w-3" /> RDP
                                   </Button>
                                 </Link>
@@ -728,15 +828,15 @@ export default function Servers() {
                                 </>
                               )}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-3">
@@ -1284,7 +1384,6 @@ export default function Servers() {
           setKnowledgeDeleteTarget(null);
         }}
       />
-    </div>
+    </PageShell>
   );
 }
-

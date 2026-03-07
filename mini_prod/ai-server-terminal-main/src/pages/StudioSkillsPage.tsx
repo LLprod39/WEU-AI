@@ -384,67 +384,52 @@ export default function StudioSkillsPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 py-6">
-        <div className="enterprise-panel rounded-md px-6 py-6 md:px-7">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md" onClick={() => navigate("/studio")}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <span className="enterprise-kicker">{tr("Корпоративная библиотека скиллов", "Corporate Skill Library")}</span>
-              </div>
-              <div className="space-y-2">
-                <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/20 bg-primary/10">
-                    <BookOpen className="h-5 w-5 text-primary" />
-                  </div>
-                  {tr("Каталог скиллов", "Skill Catalog")}
-                </h1>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                  {tr(
-                    "Скиллы задают корпоративный плейбук для сервисов на MCP: discovery, preflight, pinned context, guardrails и требования к отчётности.",
-                    "Skills define the company playbook for MCP-backed services: discovery, preflight, pinned context, guardrails, and reporting expectations.",
-                  )}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Скиллы", "Skills")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{skills.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Версионируемые корпоративные плейбуки в Studio.", "Versioned corporate playbooks available in Studio.")}</p>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md" onClick={() => navigate("/studio")}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <span className="enterprise-kicker">{tr("Корпоративная библиотека скиллов", "Corporate Skill Library")}</span>
+            </div>
+            <div className="space-y-2">
+              <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10">
+                  <BookOpen className="h-5 w-5 text-primary" />
                 </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Рантайм", "Runtime")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{runtimeEnforcedCount}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Скиллы, у которых включена enforced runtime-политика.", "Skills currently backed by enforced runtime policy.")}</p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Сервисы", "Services")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{serviceCount}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Уникальные сервисные домены, покрытые библиотекой скиллов.", "Distinct service domains covered by the skill library.")}</p>
-                </div>
+                {tr("Каталог скиллов", "Skill Catalog")}
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
+                {tr(
+                  "Скиллы задают корпоративный плейбук для сервисов на MCP: discovery, preflight, pinned context, guardrails и требования к отчётности.",
+                  "Skills define the company playbook for MCP-backed services: discovery, preflight, pinned context, guardrails, and reporting expectations.",
+                )}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                <span>{tr(`${skills.length} скиллов`, `${skills.length} skills`)}</span>
+                <span>{tr(`${runtimeEnforcedCount} c enforced runtime`, `${runtimeEnforcedCount} runtime-enforced`)}</span>
+                <span>{tr(`${serviceCount} сервисных доменов`, `${serviceCount} service domains`)}</span>
               </div>
             </div>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              <Button variant="outline" size="sm" onClick={() => navigate("/studio/mcp")} className="h-9 gap-1.5 rounded-md px-3">
-                <Server className="h-3.5 w-3.5" />
-                {tr("MCP Реестр", "MCP Registry")}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => validateMutation.mutate()} className="h-9 gap-1.5 rounded-md px-3">
-                {validateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
-                {tr("Проверить библиотеку", "Validate Library")}
-              </Button>
-              <Button size="sm" onClick={() => openCreateDialog()} className="h-9 gap-1.5 rounded-md px-4">
-                <WandSparkles className="h-3.5 w-3.5" />
-                {tr("Новый скилл", "New Skill")}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => navigate("/studio/agents")} className="h-9 gap-1.5 rounded-md px-3">
-                <Bot className="h-3.5 w-3.5" />
-                {tr("Конфиги агентов", "Agent Configs")}
-              </Button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/mcp")} className="h-9 gap-1.5 rounded-md px-3">
+              <Server className="h-3.5 w-3.5" />
+              {tr("MCP Реестр", "MCP Registry")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => validateMutation.mutate()} className="h-9 gap-1.5 rounded-md px-3">
+              {validateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
+              {tr("Проверить библиотеку", "Validate Library")}
+            </Button>
+            <Button size="sm" onClick={() => openCreateDialog()} className="h-9 gap-1.5 rounded-md px-4">
+              <WandSparkles className="h-3.5 w-3.5" />
+              {tr("Новый скилл", "New Skill")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate("/studio/agents")} className="h-9 gap-1.5 rounded-md px-3">
+              <Bot className="h-3.5 w-3.5" />
+              {tr("Конфиги агентов", "Agent Configs")}
+            </Button>
           </div>
         </div>
       </div>
@@ -454,7 +439,7 @@ export default function StudioSkillsPage() {
           {validationReport && <ValidationSummaryCard report={validationReport} />}
           <div className="grid gap-4 xl:grid-cols-[minmax(0,390px)_minmax(0,1fr)]">
             <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-              <Card className="overflow-hidden rounded-md border-primary/20 bg-primary/5">
+              <Card className="overflow-hidden rounded-md border-0 bg-primary/5 shadow-none">
                 <CardContent className="space-y-3 p-5">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
@@ -469,7 +454,7 @@ export default function StudioSkillsPage() {
               </Card>
 
               {templates.length > 0 && (
-                <div className="rounded-md border border-border bg-card/70 p-4">
+                <div className="rounded-md bg-card/70 p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <div>
                       <Label className="text-xs">{tr("Стартовые шаблоны", "Starter Templates")}</Label>
@@ -488,7 +473,7 @@ export default function StudioSkillsPage() {
                 </div>
               )}
 
-              <div className="rounded-md border border-border bg-card/70 p-4">
+              <div className="rounded-md bg-card/70 p-4">
                 <div className="mb-3">
                   <Label className="text-xs">{tr("Просмотр скиллов", "Browse Skills")}</Label>
                   <p className="mt-1 text-[11px] text-muted-foreground">{tr("Фильтруйте по сервису и изучайте плейбук и runtime-политику справа.", "Filter by service, then inspect the playbook and runtime policy on the right.")}</p>
@@ -524,7 +509,7 @@ export default function StudioSkillsPage() {
                       {tr("Загрузка скиллов...", "Loading skills...")}
                     </div>
                   ) : filteredSkills.length === 0 ? (
-                    <Card className="rounded-[22px] border-border bg-background/45">
+                    <Card className="rounded-[22px] border-0 bg-background/45 shadow-none">
                       <CardContent className="flex h-40 items-center justify-center text-center text-sm text-muted-foreground">
                         {tr("По текущим фильтрам скиллы не найдены.", "No skills match the current filters.")}
                       </CardContent>
@@ -548,13 +533,13 @@ export default function StudioSkillsPage() {
 
             <div className="min-w-0">
             {!selectedSlug ? (
-              <Card className="rounded-md border-border bg-card/70">
+              <Card className="rounded-md border-0 bg-card/70 shadow-none">
                 <CardContent className="flex h-72 items-center justify-center text-center text-sm text-muted-foreground">
                   {tr("Выберите скилл, чтобы изучить его плейбук и guardrails.", "Select a skill to inspect its playbook and guardrails.")}
                 </CardContent>
               </Card>
             ) : isFetchingSkill && !selectedSkill ? (
-              <Card className="rounded-md border-border bg-card/70">
+              <Card className="rounded-md border-0 bg-card/70 shadow-none">
                 <CardContent className="flex h-72 items-center justify-center text-sm text-muted-foreground">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {tr("Загрузка деталей скилла...", "Loading skill details...")}
@@ -562,7 +547,7 @@ export default function StudioSkillsPage() {
               </Card>
             ) : selectedSkill ? (
               <div className="space-y-4">
-                <Card className="rounded-md border-border bg-card">
+                <Card className="rounded-md border-0 bg-card shadow-none">
                   <CardHeader className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <CardTitle className="text-base">{selectedSkill.name}</CardTitle>
@@ -580,7 +565,7 @@ export default function StudioSkillsPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {selectedSkill.guardrail_summary?.length > 0 && (
-                      <div className="rounded-md border border-border bg-muted/20 p-4">
+                      <div className="rounded-md bg-muted/20 p-4">
                         <p className="text-xs font-medium">{tr("Guardrails", "Guardrails")}</p>
                         <div className="mt-2 space-y-1">
                           {selectedSkill.guardrail_summary.map((item) => (
@@ -591,7 +576,7 @@ export default function StudioSkillsPage() {
                     )}
 
                     {selectedSkill.recommended_tools?.length > 0 && (
-                      <div className="rounded-md border border-border bg-muted/20 p-4">
+                      <div className="rounded-md bg-muted/20 p-4">
                         <p className="text-xs font-medium">{tr("Рекомендуемые инструменты агента", "Recommended agent tools")}</p>
                         <div className="mt-2 flex flex-wrap gap-1">
                           {selectedSkill.recommended_tools.map((toolName) => (
@@ -602,9 +587,9 @@ export default function StudioSkillsPage() {
                     )}
 
                     {selectedSkill.runtime_enforced && (
-                      <div className="rounded-md border border-border bg-muted/20 p-4">
+                      <div className="rounded-md bg-muted/20 p-4">
                         <p className="text-xs font-medium">{tr("Runtime policy", "Runtime policy")}</p>
-                        <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded border border-border bg-background/60 p-3 font-mono text-[11px] leading-5 text-muted-foreground">
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded bg-background/60 p-3 font-mono text-[11px] leading-5 text-muted-foreground">
                           {JSON.stringify(selectedSkill.runtime_policy, null, 2)}
                         </pre>
                       </div>
@@ -612,7 +597,7 @@ export default function StudioSkillsPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-md border-border bg-card">
+                <Card className="rounded-md border-0 bg-card shadow-none">
                   <CardHeader>
                     <CardTitle className="text-base">{tr("Плейбук скилла", "Skill Playbook")}</CardTitle>
                   </CardHeader>
@@ -624,7 +609,7 @@ export default function StudioSkillsPage() {
                 </Card>
               </div>
             ) : (
-              <Card className="rounded-md border-border bg-card/70">
+              <Card className="rounded-md border-0 bg-card/70 shadow-none">
                 <CardContent className="flex h-72 items-center justify-center text-sm text-muted-foreground">
                   {tr("Детали скилла недоступны.", "Skill details are unavailable.")}
                 </CardContent>
@@ -903,4 +888,3 @@ export default function StudioSkillsPage() {
     </div>
   );
 }
-

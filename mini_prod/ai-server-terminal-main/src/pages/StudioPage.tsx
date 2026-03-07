@@ -25,6 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  EmptyState,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,7 +42,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { studioPipelines, studioTemplates, studioNotifications, type PipelineListItem } from "@/lib/api";
+import {
+  studioAgents,
+  studioMCP,
+  studioPipelines,
+  studioSkills,
+  studioTemplates,
+  studioNotifications,
+  type PipelineListItem,
+} from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 function RunStatusBadge({ status, lang }: { status: string; lang: "ru" | "en" }) {
@@ -240,6 +257,21 @@ export default function StudioPage() {
     queryFn: studioTemplates.list,
   });
 
+  const { data: agentConfigs = [] } = useQuery({
+    queryKey: ["studio", "agents"],
+    queryFn: studioAgents.list,
+  });
+
+  const { data: skills = [] } = useQuery({
+    queryKey: ["studio", "skills"],
+    queryFn: studioSkills.list,
+  });
+
+  const { data: mcpServers = [] } = useQuery({
+    queryKey: ["studio", "mcp"],
+    queryFn: studioMCP.list,
+  });
+
   // Check if notifications are configured (to show a warning badge)
   const { data: notifCfg } = useQuery({
     queryKey: ["studio", "notifications"],
@@ -250,6 +282,7 @@ export default function StudioPage() {
   const runningPipelines = pipelines.filter((item) => item.last_run?.status === "running").length;
   const failingPipelines = pipelines.filter((item) => item.last_run?.status === "failed").length;
   const readyTemplates = templates.length;
+  const builderAssets = agentConfigs.length + skills.length + mcpServers.length;
 
   const runMutation = useMutation({
     mutationFn: (id: number) => studioPipelines.run(id),
@@ -290,108 +323,143 @@ export default function StudioPage() {
   });
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-6">
-        <div className="enterprise-panel rounded-md px-6 py-6 md:px-7">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="enterprise-kicker">{tr("Операционный центр", "Operations Center")}</div>
-              <div className="space-y-2">
-                <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/20 bg-primary/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <Workflow className="h-5 w-5 text-primary" />
-                  </div>
-                  {tr("Студия автоматизации", "Automation Studio")}
-                </h1>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                  {tr(
-                    "Проектируйте рабочие процессы, подключайте MCP-сервисы и запускайте контролируемую автоматизацию в едином интерфейсе.",
-                    "Design workflows, attach MCP services, and run controlled automation from a single operational interface.",
-                  )}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Пайплайны", "Pipelines")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{pipelines.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Переиспользуемые workflow в текущем рабочем пространстве.", "Reusable workflows in the current workspace.")}</p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Рантайм", "Runtime")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{runningPipelines}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {failingPipelines > 0
-                      ? tr(`Сейчас выполняются · ${failingPipelines} требуют внимания`, `Running now · ${failingPipelines} need attention`)
-                      : tr("Сейчас выполняются · сбоев не обнаружено", "Running now · no failed runs detected")}
-                    .
-                  </p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Шаблоны", "Templates")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{readyTemplates}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Быстрые шаблоны для типовых сценариев автоматизации.", "Quick-start blueprints for common automation tracks.")}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex w-full max-w-xl flex-col gap-3 xl:items-end">
-              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                <Button variant="outline" size="sm" onClick={() => navigate("/studio/runs")} className="h-9 gap-1.5 rounded-md px-3">
-                  <Clock className="h-3.5 w-3.5" />
-                  {tr("Запуски", "Runs")}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/studio/agents")} className="h-9 gap-1.5 rounded-md px-3">
-                  <Bot className="h-3.5 w-3.5" />
-                  {tr("Агенты", "Agents")}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-md px-3">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  {tr("Библиотека", "Library")}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/studio/mcp")} className="h-9 gap-1.5 rounded-md px-3">
-                  <Server className="h-3.5 w-3.5" />
-                  {tr("MCP Реестр", "MCP Registry")}
-                </Button>
-                <Button
-                  variant={notifUnconfigured ? "destructive" : "outline"}
-                  size="sm"
-                  onClick={() => navigate("/studio/notifications")}
-                  className="h-9 gap-1.5 rounded-md px-3"
-                  title={notifUnconfigured ? tr("Уведомления не настроены — нажмите для настройки", "Notifications not configured — click to set up") : tr("Настройки уведомлений", "Notification settings")}
-                >
-                  {notifUnconfigured ? <AlertCircle className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
-                  {tr("Уведомления", "Notifications")}
-                </Button>
-                <Button size="sm" onClick={() => setShowCreate(true)} className="h-9 gap-1.5 rounded-md px-4">
-                  <Plus className="h-3.5 w-3.5" />
-                  {tr("Новый пайплайн", "New Pipeline")}
-                </Button>
-              </div>
-
-              <div className="relative w-full xl:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={tr("Поиск пайплайнов по названию, описанию или тегу", "Search pipelines by name, description, or tag")}
-                  className="h-11 rounded-md border-border bg-background/70 pl-10 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-                />
-              </div>
-            </div>
+    <PageShell className="space-y-8">
+      <PageHero
+        kicker={tr("Build Layer", "Build Layer")}
+        title={tr("Студия автоматизации", "Automation Studio")}
+        description={tr(
+          "Слой конструирования для управляемой автоматизации: подключайте capability-источники, упаковывайте поведение в skills и agent configs, а затем собирайте из них pipelines и runs.",
+          "The builder layer for controlled automation: connect capability sources, package behavior into skills and agent configs, then compose pipelines and runs on top.",
+        )}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/runs")} className="h-9 gap-1.5 rounded-xl px-3">
+              <Clock className="h-3.5 w-3.5" />
+              {tr("Запуски", "Runs")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/agents")} className="h-9 gap-1.5 rounded-xl px-3">
+              <Bot className="h-3.5 w-3.5" />
+              {tr("Agent Configs", "Agent Configs")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-xl px-3">
+              <BookOpen className="h-3.5 w-3.5" />
+              {tr("Skills", "Skills")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/mcp")} className="h-9 gap-1.5 rounded-xl px-3">
+              <Server className="h-3.5 w-3.5" />
+              {tr("MCP Registry", "MCP Registry")}
+            </Button>
+            <Button
+              variant={notifUnconfigured ? "destructive" : "outline"}
+              size="sm"
+              onClick={() => navigate("/studio/notifications")}
+              className="h-9 gap-1.5 rounded-xl px-3"
+              title={notifUnconfigured ? tr("Уведомления не настроены — нажмите для настройки", "Notifications not configured — click to set up") : tr("Настройки уведомлений", "Notification settings")}
+            >
+              {notifUnconfigured ? <AlertCircle className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+              {tr("Уведомления", "Notifications")}
+            </Button>
+            <Button size="sm" onClick={() => setShowCreate(true)} className="h-9 gap-1.5 rounded-xl px-4">
+              <Plus className="h-3.5 w-3.5" />
+              {tr("Новый пайплайн", "New Pipeline")}
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label={tr("Pipelines", "Pipelines")}
+            value={pipelines.length}
+            description={tr("Исполняемые автоматизации, которые операторы реально запускают.", "Executable automations operators can actually run.")}
+            icon={<Workflow className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("Runtime pressure", "Runtime pressure")}
+            value={runningPipelines}
+            description={
+              failingPipelines > 0
+                ? tr(`${failingPipelines} запусков требуют внимания прямо сейчас.`, `${failingPipelines} runs currently need attention.`)
+                : tr("Сбоев по последним run snapshots не обнаружено.", "No failing run snapshots are visible right now.")
+            }
+            icon={<Clock className="h-5 w-5 text-amber-300" />}
+            tone={failingPipelines > 0 ? "danger" : "success"}
+          />
+          <MetricCard
+            label={tr("Builder assets", "Builder assets")}
+            value={builderAssets}
+            description={tr(
+              `${mcpServers.length} MCP, ${skills.length} skills, ${agentConfigs.length} agent configs.`,
+              `${mcpServers.length} MCP services, ${skills.length} skills, ${agentConfigs.length} agent configs.`,
+            )}
+            icon={<BookOpen className="h-5 w-5 text-sky-300" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("Templates", "Templates")}
+            value={readyTemplates}
+            description={tr("Быстрые заготовки для типовых automation tracks.", "Quick blueprints for common automation tracks.")}
+            icon={<Zap className="h-5 w-5 text-violet-300" />}
+          />
+        </MetricGrid>
+      </PageHero>
 
-      <div className="flex-1 overflow-auto px-6 pb-8">
-        <div className="space-y-8">
+      <SectionCard
+        title={tr("Studio architecture", "Studio architecture")}
+        description={tr(
+          "Если эта цепочка считывается за 3 секунды, весь продукт становится понятнее: capability sources сначала, executable runs в самом конце.",
+          "If this chain reads in 3 seconds, the whole product becomes clearer: capability sources first, executable runs last.",
+        )}
+        icon={<Workflow className="h-4 w-4 text-primary" />}
+        actions={
+          <div className="relative w-full min-w-[260px] sm:w-[340px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={tr("Поиск пайплайнов по названию, описанию или тегу", "Search pipelines by name, description, or tag")}
+              className="h-10 rounded-xl border-border bg-background/70 pl-10 text-sm"
+            />
+          </div>
+        }
+      >
+        <div className="grid gap-3 lg:grid-cols-5">
+          {[
+            { title: "MCP Registry", desc: tr("Подключённые capability-источники и внешние tool-services.", "Connected capability sources and external tool services."), value: mcpServers.length, icon: <Server className="h-4 w-4 text-primary" />, href: "/studio/mcp" },
+            { title: "Skills", desc: tr("Политики, playbooks и domain behavior для управляемого поведения агентов.", "Policies, playbooks, and domain behavior for controlled agent behavior."), value: skills.length, icon: <BookOpen className="h-4 w-4 text-sky-300" />, href: "/studio/skills" },
+            { title: "Agent Configs", desc: tr("Переиспользуемые профили агента: prompts, tools, MCP и guardrails.", "Reusable agent profiles: prompts, tools, MCP, and guardrails."), value: agentConfigs.length, icon: <Bot className="h-4 w-4 text-violet-300" />, href: "/studio/agents" },
+            { title: "Pipelines", desc: tr("Исполняемые последовательности automation-нод, которые собирают builder layer в рабочий сценарий.", "Executable automation graphs that compose the builder layer into a runnable workflow."), value: pipelines.length, icon: <Workflow className="h-4 w-4 text-amber-300" />, href: "/studio" },
+            { title: "Runs", desc: tr("Операторская инспекция исполнения: timeline, outputs, errors, final report.", "Operator-side execution inspection: timeline, outputs, errors, and final report."), value: runningPipelines, icon: <Clock className="h-4 w-4 text-emerald-300" />, href: "/studio/runs" },
+          ].map((item) => (
+            <button
+              key={item.title}
+              onClick={() => navigate(item.href)}
+              className="enterprise-stat flex h-full flex-col items-start gap-3 rounded-[1rem] p-4 text-left transition-colors hover:border-primary/35 hover:bg-background/45"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/35">
+                {item.icon}
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                <div className="mt-1 text-xs leading-5 text-muted-foreground">{item.desc}</div>
+              </div>
+              <div className="mt-auto flex items-center gap-2">
+                <StatusBadge label={item.value} tone="info" />
+                <span className="text-xs text-muted-foreground">{tr("open", "open")}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      <div className="space-y-8">
         {/* Templates section (only show when no search) */}
         {!search && templates.length > 0 && pipelines.length === 0 && (
-          <section>
-            <h2 className="enterprise-kicker mb-3 flex items-center gap-2 text-muted-foreground">
+          <section className="space-y-3">
+            <div className="enterprise-kicker flex items-center gap-2 text-muted-foreground">
               <Zap className="h-3.5 w-3.5" />
               {tr("Быстрые шаблоны", "Quick Start Templates")}
-            </h2>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {(templates as Array<Record<string, string>>).map((t) => (
                 <button
@@ -412,9 +480,9 @@ export default function StudioPage() {
         )}
 
         {/* Pipelines */}
-        <section>
+        <section className="space-y-3">
           {!search && pipelines.length > 0 && (
-            <h2 className="enterprise-kicker mb-3 flex items-center gap-2 text-muted-foreground">
+            <h2 className="enterprise-kicker flex items-center gap-2 text-muted-foreground">
               <Workflow className="h-3.5 w-3.5" />
               {tr("Мои пайплайны", "My Pipelines")}
             </h2>
@@ -426,21 +494,49 @@ export default function StudioPage() {
               {tr("Загрузка...", "Loading...")}
             </div>
           ) : pipelines.length === 0 && !search ? (
-            <div className="enterprise-panel flex h-56 flex-col items-center justify-center rounded-md border border-dashed border-border text-center">
-              <Workflow className="h-10 w-10 text-muted-foreground/40 mb-3" />
-              <p className="font-medium text-sm">{tr("Пайплайнов пока нет", "No pipelines yet")}</p>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">
-                {tr("Создайте первый пайплайн или начните с шаблона", "Create your first pipeline or start from a template")}
-              </p>
-              <Button size="sm" onClick={() => setShowCreate(true)} className="h-9 gap-1.5 rounded-md px-4">
-                <Plus className="h-3.5 w-3.5" />
-                {tr("Новый пайплайн", "New Pipeline")}
-              </Button>
-            </div>
+            <EmptyState
+              icon={<Workflow className="h-5 w-5" />}
+              title={tr("Reusable automation workflows are empty", "Reusable automation workflows are empty")}
+              description={tr(
+                "Pipeline — это исполняемая последовательность automation-нод. Соберите первый workflow вручную или стартуйте с шаблона, чтобы сразу получить runnable control surface.",
+                "A pipeline is an executable automation graph. Build the first workflow manually or start from a template to get a runnable control surface immediately.",
+              )}
+              actions={
+                <>
+                  <Button size="sm" onClick={() => setShowCreate(true)} className="h-9 gap-1.5 rounded-xl px-4">
+                    <Plus className="h-3.5 w-3.5" />
+                    {tr("Новый пайплайн", "New Pipeline")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-xl px-4">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    {tr("Открыть Skills", "Open Skills")}
+                  </Button>
+                </>
+              }
+              hint={tr(
+                "Частая цепочка старта: подключите MCP service → добавьте skill → упакуйте в Agent Config → соберите Pipeline → проверьте результат в Runs.",
+                "Typical startup path: connect an MCP service -> add a skill -> package it into an Agent Config -> compose a Pipeline -> inspect the result in Runs.",
+              )}
+            />
           ) : pipelines.length === 0 ? (
-            <div className="enterprise-panel rounded-md py-12 text-center text-sm text-muted-foreground">
-              {tr(`По запросу "${search}" пайплайны не найдены`, `No pipelines match "${search}"`)}
-            </div>
+            <EmptyState
+              icon={<Search className="h-5 w-5" />}
+              title={tr("По этому запросу пайплайны не найдены", "No pipelines match this query")}
+              description={tr(
+                `Поиск не нашёл pipeline для "${search}". Попробуйте тег, часть имени или откройте шаблоны, чтобы собрать новый workflow.`,
+                `Search did not find a pipeline for \"${search}\". Try a tag, part of a name, or open templates to assemble a new workflow.`,
+              )}
+              actions={
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setSearch("")} className="h-9 rounded-xl px-4">
+                    {tr("Сбросить поиск", "Clear search")}
+                  </Button>
+                  <Button size="sm" onClick={() => setShowCreate(true)} className="h-9 rounded-xl px-4">
+                    {tr("Новый пайплайн", "New Pipeline")}
+                  </Button>
+                </>
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {pipelines.map((p) => (
@@ -457,7 +553,6 @@ export default function StudioPage() {
             </div>
           )}
         </section>
-        </div>
       </div>
 
       {/* Create dialog */}
@@ -485,7 +580,6 @@ export default function StudioPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
-

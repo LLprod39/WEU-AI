@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EmptyState,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -516,6 +525,7 @@ export default function AgentConfigPage() {
   });
   const agentsWithSkills = agents.filter((agent) => (agent.skills?.length || agent.skill_slugs?.length || 0) > 0).length;
   const agentsWithMcp = agents.filter((agent) => (agent.mcp_servers?.length || 0) > 0).length;
+  const constrainedAgents = agents.filter((agent) => (agent.allowed_tools?.length || 0) <= 3).length;
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<AgentConfig>) => studioAgents.create(data),
@@ -560,81 +570,108 @@ export default function AgentConfigPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-6">
-        <div className="enterprise-panel rounded-md px-6 py-6 md:px-7">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md" onClick={() => navigate("/studio")}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <span className="enterprise-kicker">{tr("Переиспользуемые профили ботов", "Reusable Bot Profiles")}</span>
-              </div>
-              <div className="space-y-2">
-                <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/20 bg-primary/10">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  {tr("Конфиги агентов", "Agent Configs")}
-                </h1>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                  {tr(
-                    "Упаковывайте промпты, инструменты, MCP-серверы и скиллы в переиспользуемых ботов, которых администратор может безопасно подключать к узлам пайплайнов.",
-                    "Package prompts, tools, MCP servers, and skill packs into reusable bots that admins can safely attach to pipeline nodes.",
-                  )}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Конфиги", "Configs")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{agents.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Сохранённые профили агентов в текущем пространстве Studio.", "Saved agent profiles in the current Studio workspace.")}</p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Подключены", "Connected")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{agentsWithMcp}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Конфиги, уже связанные с рабочими MCP-сервисами.", "Configs already bound to live MCP service surfaces.")}</p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Скиллы", "Skills")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{skills.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr(`${agentsWithSkills} конфигов уже используют корпоративные playbook-ограничения.`, `${agentsWithSkills} configs already use enforced corporate playbooks.`)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-md px-3">
-                <BookOpen className="h-3.5 w-3.5" />
-                {tr("Каталог скиллов", "Skill Catalog")}
+    <PageShell className="space-y-6">
+      <PageHero
+        kicker={tr("Reusable Bot Profiles", "Reusable Bot Profiles")}
+        title={tr("Конфиги агентов", "Agent Configs")}
+        description={
+          <>
+            {tr(
+              "Упаковывайте prompts, tools, MCP-серверы и skills в переиспользуемые bot profiles, которые затем подключаются к pipeline nodes.",
+              "Package prompts, tools, MCP servers, and skills into reusable bot profiles that are later attached to pipeline nodes.",
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={() => navigate("/studio")}>
+                <ArrowLeft className="h-4 w-4" />
               </Button>
-              <Button size="sm" onClick={() => setEditAgent({})} className="h-9 gap-1.5 rounded-md px-4">
-                <Plus className="h-3.5 w-3.5" />
-                {tr("Новый агент", "New Agent")}
-              </Button>
+              <StatusBadge label={tr("builder layer", "builder layer")} tone="info" />
+              <span>{tr("Это не runtime fleet page. Живые исполнения находятся в /agents.", "This is not the runtime fleet page. Live executions live in /agents.")}</span>
             </div>
+          </>
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-xl px-3">
+              <BookOpen className="h-3.5 w-3.5" />
+              {tr("Каталог скиллов", "Skill Catalog")}
+            </Button>
+            <Button size="sm" onClick={() => setEditAgent({})} className="h-9 gap-1.5 rounded-xl px-4">
+              <Plus className="h-3.5 w-3.5" />
+              {tr("Новый агент", "New Agent")}
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label={tr("Configs", "Configs")}
+            value={agents.length}
+            description={tr("Сохранённые agent profiles в текущем пространстве Studio.", "Saved agent profiles in the current Studio workspace.")}
+            icon={<Bot className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("Connected to MCP", "Connected to MCP")}
+            value={agentsWithMcp}
+            description={tr("Конфиги, уже связанные с рабочими MCP-service surfaces.", "Configs already bound to live MCP service surfaces.")}
+            icon={<Server className="h-5 w-5 text-sky-300" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("With Skills", "With Skills")}
+            value={agentsWithSkills}
+            description={tr("Профили, уже использующие корпоративные playbook-ограничения.", "Profiles already using corporate playbook constraints.")}
+            icon={<BookOpen className="h-5 w-5 text-violet-300" />}
+            tone="warning"
+          />
+          <MetricCard
+            label={tr("Tightly scoped", "Tightly scoped")}
+            value={constrainedAgents}
+            description={tr("Конфиги с минимальной инструментальной поверхностью.", "Configs with a narrow tool surface.")}
+            icon={<Shield className="h-5 w-5 text-emerald-300" />}
+            tone="success"
+          />
+        </MetricGrid>
+      </PageHero>
 
-      <div className="flex-1 overflow-auto px-6 pb-8">
+      <SectionCard
+        title={tr("How this layer fits", "How this layer fits")}
+        description={tr(
+          "Agent Configs sit between Skills/MCP and Pipelines. They are reusable execution profiles, not daily operator controls.",
+          "Agent Configs sit between Skills/MCP and Pipelines. They are reusable execution profiles, not daily operator controls.",
+        )}
+        icon={<Bot className="h-4 w-4 text-primary" />}
+      >
         {isLoading ? (
           <div className="enterprise-panel flex h-40 items-center justify-center rounded-md text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
             {tr("Загрузка...", "Loading...")}
           </div>
         ) : agents.length === 0 ? (
-          <div className="enterprise-panel flex h-56 flex-col items-center justify-center rounded-md border border-dashed border-border text-center">
-            <Bot className="h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="font-medium text-sm">{tr("Конфигов агентов пока нет", "No agent configs yet")}</p>
-            <p className="text-xs text-muted-foreground mt-1 mb-4">{tr("Создайте переиспользуемую конфигурацию агента", "Create a reusable agent configuration")}</p>
-            <Button size="sm" onClick={() => setEditAgent({})} className="h-9 gap-1.5 rounded-md px-4">
-              <Plus className="h-3.5 w-3.5" />
-              {tr("Новый конфиг агента", "New Agent Config")}
-            </Button>
-          </div>
+          <EmptyState
+            icon={<Bot className="h-5 w-5" />}
+            title={tr("No reusable agent profiles yet", "No reusable agent profiles yet")}
+            description={tr(
+              "Создайте config, чтобы упаковать prompts, tools, MCP-services и skills в переиспользуемый bot profile для pipelines.",
+              "Create a config to package prompts, tools, MCP services, and skills into a reusable bot profile for pipelines.",
+            )}
+            actions={
+              <>
+                <Button size="sm" onClick={() => setEditAgent({})} className="h-9 gap-1.5 rounded-xl px-4">
+                  <Plus className="h-3.5 w-3.5" />
+                  {tr("Новый конфиг агента", "New Agent Config")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => navigate("/studio/skills")} className="h-9 gap-1.5 rounded-xl px-4">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  {tr("Открыть Skill Catalog", "Open Skill Catalog")}
+                </Button>
+              </>
+            }
+            hint={tr(
+              "Частая последовательность: MCP service -> Skill -> Agent Config -> Pipeline node -> Run inspection.",
+              "Common build order: MCP service -> Skill -> Agent Config -> Pipeline node -> Run inspection.",
+            )}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {agents.map((agent) => (
@@ -691,7 +728,7 @@ export default function AgentConfigPage() {
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* Edit/Create Dialog */}
       <Dialog open={!!editAgent} onOpenChange={(o) => !o && setEditAgent(null)}>
@@ -727,7 +764,6 @@ export default function AgentConfigPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
-

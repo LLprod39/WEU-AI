@@ -22,6 +22,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EmptyState,
+  FilterBar,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
 import ReactMarkdown from "react-markdown";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter,
@@ -120,79 +130,98 @@ export default function AgentsPage() {
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
-      <section className="enterprise-panel rounded-2xl px-6 py-6 sm:px-7 sm:py-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="space-y-3">
-            <div className="enterprise-kicker">Agent Operations</div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-foreground">Server Agents</h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                Configure lightweight command agents, autonomous ReAct workers, and multi-agent pipelines
-                from one workspace. Templates stay simple for admins, while runtime controls stay visible.
-              </p>
+    <PageShell>
+      <PageHero
+        kicker="Runtime Fleet"
+        title="Server Agents"
+        description={
+          <>
+            This page is the live execution layer: the runtime fleet operators can run, stop, inspect, and schedule.
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge label="runtime fleet" tone="info" />
+              <span>Studio owns configs, skills, MCP, and pipeline composition.</span>
             </div>
-          </div>
+          </>
+        }
+        actions={
           <div className="flex flex-wrap items-center gap-3">
             <Button
               size="sm"
               variant="outline"
-              className="gap-2"
+              className="gap-2 rounded-xl"
               onClick={() => queryClient.invalidateQueries({ queryKey: ["agents"] })}
             >
               <RefreshCw className="h-4 w-4" />
               Refresh fleet
             </Button>
-            <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" variant="outline" className="gap-2 rounded-xl" onClick={() => navigate("/studio/agents")}>
+              <Settings2 className="h-4 w-4" />
+              Open Studio configs
+            </Button>
+            <Button size="sm" className="gap-2 rounded-xl" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               New agent
             </Button>
           </div>
-        </div>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label="Total fleet"
+            value={allAgents.length}
+            description="Configured agents available to operators."
+            icon={<Bot className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label="Running now"
+            value={runningAgents}
+            description="Agents currently holding a live execution slot."
+            icon={<Activity className="h-5 w-5 text-blue-400" />}
+            tone={runningAgents > 0 ? "info" : "default"}
+          />
+          <MetricCard
+            label="Scheduled"
+            value={scheduledAgents}
+            description="Bots with recurring execution windows."
+            icon={<RefreshCw className="h-5 w-5 text-emerald-400" />}
+            tone="success"
+          />
+          <MetricCard
+            label="Autonomous"
+            value={autonomousAgents}
+            description="Full and pipeline agents with reasoning loops."
+            icon={<Brain className="h-5 w-5 text-violet-400" />}
+            tone="warning"
+          />
+        </MetricGrid>
+      </PageHero>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="enterprise-stat rounded-2xl px-4 py-4">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Total fleet</p>
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <span className="text-3xl font-semibold text-foreground">{allAgents.length}</span>
-              <Bot className="h-5 w-5 text-primary" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Configured agents available to operators.</p>
+      <SectionCard
+        title="Runtime vs builder"
+        description="Agents here are executable runtime units. Reusable bot profiles, skills, and MCP connectivity live in Studio."
+        icon={<Layers className="h-4 w-4 text-primary" />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => navigate("/studio/skills")}>
+              <Brain className="h-4 w-4" />
+              Skill Catalog
+            </Button>
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => navigate("/studio/mcp")}>
+              <Terminal className="h-4 w-4" />
+              MCP Registry
+            </Button>
           </div>
-          <div className="enterprise-stat rounded-2xl px-4 py-4">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Active runs</p>
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <span className="text-3xl font-semibold text-foreground">{runningAgents}</span>
-              <Activity className="h-5 w-5 text-blue-400" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Agents that currently hold a live execution slot.</p>
-          </div>
-          <div className="enterprise-stat rounded-2xl px-4 py-4">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Scheduled</p>
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <span className="text-3xl font-semibold text-foreground">{scheduledAgents}</span>
-              <RefreshCw className="h-5 w-5 text-emerald-400" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Bots with recurring execution windows.</p>
-          </div>
-          <div className="enterprise-stat rounded-2xl px-4 py-4">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Autonomous</p>
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <span className="text-3xl font-semibold text-foreground">{autonomousAgents}</span>
-              <Brain className="h-5 w-5 text-violet-400" />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Full and pipeline agents with reasoning loops.</p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-background/35 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+        }
+      >
+        <FilterBar>
           <div>
-            <p className="text-sm font-semibold text-foreground">Catalog filters</p>
+            <p className="text-sm font-semibold text-foreground">Fleet filters</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Narrow the list by execution model. Counts reflect the whole fleet, not just the current filter.
+              Narrow the runtime list by execution model. Counts reflect the whole fleet, not just the current filter.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="enterprise-segmented">
             {([
               { key: "all", label: "All" },
               { key: "mini", label: "Mini" },
@@ -203,10 +232,10 @@ export default function AgentsPage() {
                 key={entry.key}
                 type="button"
                 onClick={() => setModeFilter(entry.key)}
-                className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
+                className={`rounded-xl border px-3 py-2 text-left transition-colors ${
                   modeFilter === entry.key
                     ? "border-primary/60 bg-primary/12 text-primary"
-                    : "border-border bg-secondary/20 text-muted-foreground hover:border-primary/25 hover:text-foreground"
+                    : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-secondary/40 hover:text-foreground"
                 }`}
               >
                 <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{entry.label}</div>
@@ -214,8 +243,8 @@ export default function AgentsPage() {
               </button>
             ))}
           </div>
-        </div>
-      </section>
+        </FilterBar>
+      </SectionCard>
 
       {/* Last run result toast */}
       {result && !reportModalOpen && (
@@ -243,14 +272,22 @@ export default function AgentsPage() {
 
       {/* Agent list */}
       {agents.length === 0 ? (
-        <div className="enterprise-panel rounded-2xl p-10 text-center">
-          <Bot className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-base font-medium text-foreground">No agents match this filter</p>
-          <p className="mt-2 text-sm text-muted-foreground">Create a new agent or switch the fleet filter to review other execution models.</p>
-          <Button size="sm" onClick={() => setCreateOpen(true)} className="mt-4 gap-2">
-            <Plus className="h-4 w-4" /> Create agent
-          </Button>
-        </div>
+        <EmptyState
+          icon={<Bot className="h-5 w-5" />}
+          title="No runtime agents match this filter"
+          description="The runtime fleet is empty for the current execution model. Create an agent here, or prepare reusable profiles in Studio before attaching them to operations."
+          actions={
+            <>
+              <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2 rounded-xl">
+                <Plus className="h-4 w-4" /> Create agent
+              </Button>
+              <Button size="sm" variant="outline" className="gap-2 rounded-xl" onClick={() => navigate("/studio/agents")}>
+                <Settings2 className="h-4 w-4" /> Open Agent Configs
+              </Button>
+            </>
+          }
+          hint="Runtime fleet = live execution layer. Studio Agent Configs = reusable builder profiles with prompts, tools, MCP services, and skills."
+        />
       ) : (
         <section className="enterprise-panel overflow-hidden rounded-2xl">
           <div className="flex flex-col gap-3 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -351,7 +388,7 @@ export default function AgentsPage() {
           setDeleteTarget(null);
         }}
       />
-    </div>
+    </PageShell>
   );
 }
 
@@ -722,4 +759,3 @@ function ReportModal({ result, open, onClose }: { result: AgentRunResult; open: 
     </Dialog>
   );
 }
-

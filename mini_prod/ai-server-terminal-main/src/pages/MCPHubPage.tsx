@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EmptyState,
+  MetricCard,
+  MetricGrid,
+  PageHero,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+} from "@/components/ui/page-shell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -236,67 +245,76 @@ export default function MCPHubPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-6">
-        <div className="enterprise-panel rounded-md px-6 py-6 md:px-7">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md" onClick={() => navigate("/studio")}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <span className="enterprise-kicker">{tr("Model Context Protocol", "Model Context Protocol")}</span>
-              </div>
-              <div className="space-y-2">
-                <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/20 bg-primary/10">
-                    <Server className="h-5 w-5 text-primary" />
-                  </div>
-                  {tr("MCP Реестр", "MCP Registry")}
-                </h1>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                  {tr(
-                    "Управляйте реестром MCP-серверов: подключение, проверка состояния и централизованное использование в агентах и пайплайнах.",
-                    "Manage an MCP server registry: connection setup, health checks, and centralized use in agents and pipelines.",
-                  )}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Серверы", "Servers")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{mcpList.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Настроенные MCP-эндпоинты в текущем рабочем пространстве.", "Configured MCP endpoints in the current workspace.")}</p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Состояние", "Health")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{healthyCount}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {failedCount > 0
-                      ? tr(`Успешных тестов · ${failedCount} требуют внимания`, `Passing tests · ${failedCount} need attention`)
-                      : tr("Успешных тестов · ошибок не зафиксировано", "Passing tests · no failed checks recorded")}
-                    .
-                  </p>
-                </div>
-                <div className="enterprise-stat rounded-md px-4 py-3">
-                  <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Шаблоны", "Templates")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{templates.length}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{tr("Стартовые шаблоны для популярных MCP-интеграций.", "Starter definitions for common MCP integrations.")}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-md px-4">
-                <Plus className="h-3.5 w-3.5" />
-                {tr("Добавить MCP-сервер", "Add MCP Server")}
+    <PageShell className="space-y-6">
+      <PageHero
+        kicker={tr("Capability Layer", "Capability Layer")}
+        title={tr("MCP Реестр", "MCP Registry")}
+        description={
+          <>
+            {tr(
+              "Управляйте реестром MCP-серверов: подключение, проверка состояния и централизованное использование в agents и pipelines.",
+              "Manage the MCP registry: connection setup, health checks, and centralized use in agents and pipelines.",
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={() => navigate("/studio")}>
+                <ArrowLeft className="h-4 w-4" />
               </Button>
+              <StatusBadge label={tr("capability source layer", "capability source layer")} tone="info" />
+              <span>{tr("Сначала MCP, потом skills/configs, затем pipelines и runs.", "MCP first, then skills/configs, then pipelines and runs.")}</span>
             </div>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-xl px-4">
+            <Plus className="h-3.5 w-3.5" />
+            {tr("Добавить MCP-сервер", "Add MCP Server")}
+          </Button>
+        }
+      >
+        <MetricGrid>
+          <MetricCard
+            label={tr("Servers", "Servers")}
+            value={mcpList.length}
+            description={tr("Настроенные MCP endpoints в текущем workspace.", "Configured MCP endpoints in the current workspace.")}
+            icon={<Server className="h-5 w-5 text-primary" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("Healthy", "Healthy")}
+            value={healthyCount}
+            description={
+              failedCount > 0
+                ? tr(`${failedCount} требуют внимания.`, `${failedCount} currently need attention.`)
+                : tr("Ошибок последней проверки не зафиксировано.", "No failed checks are currently recorded.")
+            }
+            icon={<CheckCircle2 className="h-5 w-5 text-emerald-300" />}
+            tone={failedCount > 0 ? "warning" : "success"}
+          />
+          <MetricCard
+            label={tr("Templates", "Templates")}
+            value={templates.length}
+            description={tr("Стартовые шаблоны для популярных MCP-интеграций.", "Starter definitions for common MCP integrations.")}
+            icon={<Zap className="h-5 w-5 text-violet-300" />}
+            tone="info"
+          />
+          <MetricCard
+            label={tr("Attention", "Attention")}
+            value={failedCount}
+            description={tr("Серверы, у которых последняя проверка завершилась ошибкой.", "Servers whose last connectivity test failed.")}
+            icon={<XCircle className="h-5 w-5 text-red-300" />}
+            tone={failedCount > 0 ? "danger" : "success"}
+          />
+        </MetricGrid>
+      </PageHero>
 
-      <div className="flex-1 overflow-auto px-6 pb-8">
+      <SectionCard
+        title={tr("Registry workspace", "Registry workspace")}
+        description={tr(
+          "Use this page to register capability sources before you wire them into Agent Configs or Pipelines.",
+          "Use this page to register capability sources before you wire them into Agent Configs or Pipelines.",
+        )}
+        icon={<Server className="h-4 w-4 text-primary" />}
+      >
         <Tabs defaultValue="mine">
           <TabsList className="mb-4 rounded-md border border-border bg-card/70 p-1">
             <TabsTrigger value="mine">{tr("Мои серверы", "My Servers")} ({mcpList.length})</TabsTrigger>
@@ -310,15 +328,26 @@ export default function MCPHubPage() {
                 {tr("Загрузка...", "Loading...")}
               </div>
             ) : mcpList.length === 0 ? (
-              <div className="enterprise-panel flex h-56 flex-col items-center justify-center rounded-md border border-dashed border-border text-center">
-                <Server className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                <p className="font-medium text-sm">{tr("MCP-серверов пока нет", "No MCP servers yet")}</p>
-                <p className="text-xs text-muted-foreground mt-1 mb-4">{tr("Добавьте MCP-сервер или начните с шаблона", "Add an MCP server or start from a template")}</p>
-                <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-md px-4">
-                  <Plus className="h-3.5 w-3.5" />
-                  {tr("Добавить MCP-сервер", "Add MCP Server")}
-                </Button>
-              </div>
+              <EmptyState
+                icon={<Server className="h-5 w-5" />}
+                title={tr("No MCP servers yet", "No MCP servers yet")}
+                description={tr(
+                  "Добавьте capability source вручную или начните с шаблона. После этого его можно подключать в Agent Configs и pipeline nodes.",
+                  "Add a capability source manually or start from a template. After that, it can be attached to Agent Configs and pipeline nodes.",
+                )}
+                actions={
+                  <>
+                    <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-xl px-4">
+                      <Plus className="h-3.5 w-3.5" />
+                      {tr("Добавить MCP-сервер", "Add MCP Server")}
+                    </Button>
+                  </>
+                }
+                hint={tr(
+                  "Типичная цепочка: MCP Registry -> Agent Config -> Pipeline node -> Run.",
+                  "Typical chain: MCP Registry -> Agent Config -> Pipeline node -> Run.",
+                )}
+              />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {mcpList.map((mcp) => (
@@ -382,42 +411,53 @@ export default function MCPHubPage() {
           </TabsContent>
 
           <TabsContent value="templates">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(templates as MCPTemplate[]).map((tpl) => (
-                <Card
-                  key={tpl.slug}
-                  className="cursor-pointer overflow-hidden rounded-md border-border bg-card transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-none"
-                  onClick={() => handleUseTemplate(tpl)}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-xl">
-                        <span>{tpl.icon}</span>
+            {(templates as MCPTemplate[]).length === 0 ? (
+              <EmptyState
+                icon={<Zap className="h-5 w-5" />}
+                title={tr("Шаблонов MCP пока нет", "No MCP templates yet")}
+                description={tr(
+                  "Когда шаблоны доступны, они ускоряют подключение типовых capability sources без ручного набора команд и env.",
+                  "When templates are available, they speed up connecting common capability sources without manual command/env entry.",
+                )}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(templates as MCPTemplate[]).map((tpl) => (
+                  <Card
+                    key={tpl.slug}
+                    className="cursor-pointer overflow-hidden rounded-md border-border bg-card transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-none"
+                    onClick={() => handleUseTemplate(tpl)}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-xl">
+                          <span>{tpl.icon}</span>
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm">{tpl.name}</CardTitle>
+                          <CardDescription className="text-xs">{tpl.description}</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-sm">{tpl.name}</CardTitle>
-                        <CardDescription className="text-xs">{tpl.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="rounded-md bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
+                        {tpl.transport === "stdio" ? `${tpl.command} ${(tpl.args || []).join(" ").slice(0, 35)}` : tpl.slug}
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="rounded-md bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                      {tpl.transport === "stdio" ? `${tpl.command} ${(tpl.args || []).join(" ").slice(0, 35)}` : tpl.slug}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
-                      <Badge variant="outline" className="text-[9px]">{tpl.transport}</Badge>
-                      <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-md text-xs" onClick={() => handleUseTemplate(tpl)}>
-                        <Zap className="h-3 w-3" />
-                        {tr("Использовать", "Use")}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                      <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
+                        <Badge variant="outline" className="text-[9px]">{tpl.transport}</Badge>
+                        <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-md text-xs" onClick={() => handleUseTemplate(tpl)}>
+                          <Zap className="h-3 w-3" />
+                          {tr("Использовать", "Use")}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
-      </div>
+      </SectionCard>
 
       {/* Edit/Create Dialog */}
       <Dialog open={!!editMcp} onOpenChange={(o) => !o && setEditMcp(null)}>
@@ -453,7 +493,6 @@ export default function MCPHubPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
-

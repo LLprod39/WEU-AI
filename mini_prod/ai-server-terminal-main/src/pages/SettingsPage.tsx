@@ -433,38 +433,16 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-      <div className="enterprise-panel rounded-2xl px-6 py-6 md:px-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl space-y-4">
-            <div className="enterprise-kicker">{tr("Конфигурация платформы", "Platform Configuration")}</div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("settings.title")}</h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">{t("set.subtitle")}</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Провайдеры", "Providers")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{configuredProviders}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {tr("Количество LLM-провайдеров, включенных в конфигурации платформы.", "Number of enabled LLM providers in platform config.")}
-                </p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Активность", "Activity")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{activityData?.summary?.total_events || 0}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {tr("Недавние административные события в видимом окне аудита.", "Recent administrative events in visible audit range.")}
-                </p>
-              </div>
-              <div className="enterprise-stat rounded-2xl px-4 py-3">
-                <p className="enterprise-kicker text-[9px] text-primary/70">{tr("Мониторинг", "Monitoring")}</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {tr("Серверы, входящие в активный контур мониторинга.", "Servers included in active monitoring scope.")}
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="max-w-3xl space-y-4 px-1 py-1">
+        <div className="enterprise-kicker">{tr("Конфигурация платформы", "Platform Configuration")}</div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("settings.title")}</h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">{t("set.subtitle")}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+          <span>{tr(`${configuredProviders} провайдеров`, `${configuredProviders} providers`)}</span>
+          <span>{tr(`${activityData?.summary?.total_events || 0} событий аудита`, `${activityData?.summary?.total_events || 0} audit events`)}</span>
+          <span>{tr(`${isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0} серверов в мониторинге`, `${isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0} monitored servers`)}</span>
         </div>
       </div>
 
@@ -681,9 +659,9 @@ export default function SettingsPage() {
               <Link
                 key={page.url}
                 to={page.url}
-                className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-[border-color,background-color,box-shadow] hover:border-primary/40 hover:bg-card/90"
+                className="group flex items-center gap-4 rounded-xl bg-card/70 p-5 transition-colors hover:bg-card/90"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10">
                   <page.icon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -699,39 +677,12 @@ export default function SettingsPage() {
         {/* ==================== MONITORING TAB ==================== */}
         {isAdmin && (
           <TabsContent value="monitoring" className="space-y-4">
-            {/* Stats overview */}
             {monConfig && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="enterprise-stat rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_servers")}</span>
-                    <Server className="h-3.5 w-3.5 text-blue-400" />
-                  </div>
-                  <p className="text-xl font-semibold text-foreground">{monConfig.stats.monitored_servers}</p>
-                </div>
-                <div className="enterprise-stat rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_checks")}</span>
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-                  </div>
-                  <p className="text-xl font-semibold text-foreground">{monConfig.stats.total_checks}</p>
-                </div>
-                <div className="enterprise-stat rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_alerts")}</span>
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
-                  </div>
-                  <p className="text-xl font-semibold text-foreground">{monConfig.stats.active_alerts}</p>
-                </div>
-                <div className="enterprise-stat rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("set.mon_last")}</span>
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground mt-1">
-                    {monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}
-                  </p>
-                </div>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-sm text-muted-foreground">
+                <span>{tr(`${monConfig.stats.monitored_servers} серверов`, `${monConfig.stats.monitored_servers} servers`)}</span>
+                <span>{tr(`${monConfig.stats.total_checks} проверок`, `${monConfig.stats.total_checks} checks`)}</span>
+                <span>{tr(`${monConfig.stats.active_alerts} активных алертов`, `${monConfig.stats.active_alerts} active alerts`)}</span>
+                <span>{tr(`последняя проверка ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`, `last check ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`)}</span>
               </div>
             )}
 
@@ -866,4 +817,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
