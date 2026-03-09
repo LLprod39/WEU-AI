@@ -1,0 +1,3 @@
+## 2024-05-24 - Responsive Button Text & Accessibility
+**Learning:** When using responsive design to hide button text labels on smaller screens (e.g., leaving only an icon visible using `display: none` on the text `span`), the button loses its accessible name for screen readers if it only relied on the visual text content. The `title` attribute is often insufficient or inconsistently read by screen readers on mobile devices where hover isn't possible.
+**Action:** Always provide an explicit `aria-label` on buttons where the visible text label might be hidden via CSS at certain breakpoints, ensuring the button remains accessible across all device sizes. For purely icon-based buttons, an `aria-label` is always strictly necessary.
