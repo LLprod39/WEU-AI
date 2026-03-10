@@ -23,8 +23,8 @@ from loguru import logger
 from app.tools.safety import is_dangerous_command
 from core_ui.activity import log_user_activity_async
 from core_ui.context_processors import user_can_feature
-from passwords.encryption import PasswordEncryption
 from servers.models import Server, ServerShare
+from servers.secret_utils import get_server_auth_secret, has_saved_server_secret
 
 
 @dataclass(frozen=True)
@@ -242,7 +242,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
                 "server_id": self.server.id,
                 "server_name": self.server.name,
                 "auth_method": self.server.auth_method,
-                "has_encrypted_secret": bool(self.server.encrypted_password),
+                "has_encrypted_secret": has_saved_server_secret(self.server),
             }
         )
 
@@ -2399,32 +2399,11 @@ EXIT_CODE: {exit_code}
         server = Server.objects.only("id", "encrypted_password", "salt", "auth_method").get(id=server_id)
         if server.auth_method not in ("password", "key_password"):
             return ""
-
-        if server.encrypted_password:
-            resolved_master_password = (master_password or "").strip() or (os.environ.get("MASTER_PASSWORD") or "").strip()
-            if not resolved_master_password:
-                # Allow user-provided plaintext secret as fallback
-                return plain_password or ""
-            if not server.salt:
-                raise ValueError("У сервера есть encrypted_password, но отсутствует salt — расшифровка невозможна")
-            try:
-                return PasswordEncryption.decrypt_password(
-                    server.encrypted_password,
-                    resolved_master_password,
-                    bytes(server.salt),
-                )
-            except Exception as e:
-                # If user also provided a plaintext secret, fall back to it
-                if plain_password:
-                    logger.warning(
-                        f"Secret decryption failed for server_id={server_id}, falling back to plaintext secret: {type(e).__name__}"
-                    )
-                    return plain_password
-                # Surface a user-friendly message
-                msg = (str(e) or "").strip() or "Неверный MASTER_PASSWORD или повреждённый секрет"
-                raise ValueError(msg) from e
-
-        return plain_password or ""
+        return get_server_auth_secret(
+            server,
+            master_password=(master_password or "").strip(),
+            fallback_plain=plain_password or "",
+        )
 
     @database_sync_to_async
     def _get_ai_rules_and_forbidden(

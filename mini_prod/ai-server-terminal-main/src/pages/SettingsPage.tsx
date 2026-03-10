@@ -9,10 +9,7 @@ import {
   RefreshCw,
   Save,
   Gauge,
-  Server,
   AlertTriangle,
-  CheckCircle2,
-  Clock,
   Search,
   ChevronRight,
   Cpu,
@@ -25,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SectionCard } from "@/components/ui/page-shell";
+import { PageHero, PageShell, SectionCard, StatusBadge } from "@/components/ui/page-shell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchModels,
@@ -53,9 +50,9 @@ function relativeTime(value: string, lang: "ru" | "en"): string {
 }
 
 function statusBadge(status: string) {
-  if (status === "success") return "bg-green-500/15 text-green-400";
-  if (status === "error") return "bg-red-500/15 text-red-400";
-  return "bg-blue-500/15 text-blue-400";
+  if (status === "success") return "bg-green-500/10 text-green-300";
+  if (status === "error") return "bg-red-500/10 text-red-300";
+  return "bg-background/35 text-muted-foreground";
 }
 
 function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange, onCritChange, unit = "%", lang }: {
@@ -70,7 +67,7 @@ function ThresholdSlider({ label, icon: Icon, warnValue, critValue, onWarnChange
 }) {
   const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   return (
-    <div className="space-y-3 rounded-[22px] border border-border bg-secondary/20 p-4">
+    <div className="workspace-subtle space-y-3 rounded-2xl p-4">
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">{label}</span>
@@ -145,7 +142,7 @@ function PurposeModelSelector({
 }) {
   const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   return (
-    <div className="space-y-3 rounded-[22px] border border-border bg-secondary/20 p-4">
+    <div className="workspace-subtle space-y-3 rounded-2xl p-4">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
@@ -181,12 +178,7 @@ function PurposeModelSelector({
             </select>
           ) : (
             <div className="flex gap-2">
-              <Input
-                value={model}
-                onChange={(e) => onModelChange(e.target.value)}
-                placeholder={tr("Введите модель или нажмите «Обновить»", "Enter model or click Refresh")}
-                className="bg-secondary h-[38px] text-sm"
-              />
+              <Input value={model} onChange={(e) => onModelChange(e.target.value)} placeholder={tr("Введите модель или обновите список", "Enter model or refresh the list")} className="h-10 text-sm" />
               <Button size="sm" variant="outline" className="h-[38px] shrink-0 rounded-xl px-2.5" onClick={onRefresh} disabled={refreshing}>
                 <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
               </Button>
@@ -202,6 +194,31 @@ function PurposeModelSelector({
         </div>
       )}
     </div>
+  );
+}
+
+function AccessCard({
+  icon: Icon,
+  title,
+  description,
+  to,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  to: string;
+}) {
+  return (
+    <Link to={to} className="workspace-subtle group flex items-center gap-3 rounded-2xl p-4 hover:border-border/80 hover:bg-background/40">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent bg-background/24 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="mt-1 text-xs leading-5 text-muted-foreground">{description}</div>
+      </div>
+      <ChevronRight className="h-4 w-4 text-muted-foreground/70" />
+    </Link>
   );
 }
 
@@ -431,42 +448,65 @@ export default function SettingsPage() {
     config.claude_enabled,
   ].filter(Boolean).length;
 
+  const monitoredServers = isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0;
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-      <div className="max-w-3xl space-y-4 px-1 py-1">
-        <div className="enterprise-kicker">{tr("Конфигурация платформы", "Platform Configuration")}</div>
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[2rem]">{t("settings.title")}</h1>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">{t("set.subtitle")}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-          <span>{tr(`${configuredProviders} провайдеров`, `${configuredProviders} providers`)}</span>
-          <span>{tr(`${activityData?.summary?.total_events || 0} событий аудита`, `${activityData?.summary?.total_events || 0} audit events`)}</span>
-          <span>{tr(`${isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0} серверов в мониторинге`, `${isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0} monitored servers`)}</span>
-        </div>
+    <PageShell className="space-y-6">
+      <PageHero
+        kicker={tr("Workspace Settings", "Workspace Settings")}
+        title={t("settings.title")}
+        description={tr(
+          "Тихий рабочий экран для AI, доступа, мониторинга и аудита. Только то, что реально помогает управлять системой.",
+          "A quieter workspace for AI, access, monitoring and audit. Only the controls that actually help operate the system.",
+        )}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge label={isAdmin ? tr("admin access", "admin access") : tr("operator access", "operator access")} tone="info" />
+            <Button size="sm" variant="outline" className="gap-2 rounded-xl" onClick={() => queryClient.invalidateQueries({ queryKey: ["settings"] })}>
+              <RefreshCw className="h-4 w-4" />
+              {tr("Обновить", "Refresh")}
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge label={tr(`${configuredProviders} providers`, `${configuredProviders} providers`)} tone="neutral" />
+        <StatusBadge label={tr(`${activityData?.summary?.total_events || 0} events`, `${activityData?.summary?.total_events || 0} events`)} tone="neutral" />
+        {isAdmin && (
+          <StatusBadge
+            label={tr(`${monitoredServers} monitored`, `${monitoredServers} monitored`)}
+            tone={monitoredServers > 0 ? "info" : "neutral"}
+          />
+        )}
+        <StatusBadge label={isAdmin ? tr("admin access", "admin access") : tr("operator access", "operator access")} tone="neutral" />
       </div>
 
-      <Tabs defaultValue="ai" className="space-y-4">
-        <TabsList className="w-full justify-start gap-1 overflow-x-auto bg-secondary/30 p-1">
-          <TabsTrigger value="ai" className="gap-2 data-[state=active]:bg-card">
+      <Tabs defaultValue="ai" className="space-y-5">
+        <TabsList className="workspace-subtle h-auto w-full justify-start gap-2 overflow-x-auto rounded-2xl p-2">
+          <TabsTrigger value="ai" className="gap-2 rounded-xl data-[state=active]:bg-card">
             <Bot className="h-4 w-4" /> {t("set.tab_ai")}
           </TabsTrigger>
-          <TabsTrigger value="access" className="gap-2 data-[state=active]:bg-card">
+          <TabsTrigger value="access" className="gap-2 rounded-xl data-[state=active]:bg-card">
             <Shield className="h-4 w-4" /> {t("set.tab_access")}
           </TabsTrigger>
           {isAdmin && (
-            <TabsTrigger value="monitoring" className="gap-2 data-[state=active]:bg-card">
+            <TabsTrigger value="monitoring" className="gap-2 rounded-xl data-[state=active]:bg-card">
               <Gauge className="h-4 w-4" /> {t("set.tab_monitoring")}
             </TabsTrigger>
           )}
-          <TabsTrigger value="activity" className="gap-2 data-[state=active]:bg-card">
+          <TabsTrigger value="activity" className="gap-2 rounded-xl data-[state=active]:bg-card">
             <Activity className="h-4 w-4" /> {t("set.tab_activity")}
           </TabsTrigger>
         </TabsList>
 
         {/* ==================== AI TAB ==================== */}
-        <TabsContent value="ai" className="space-y-4">
-          <SectionCard title={t("set.ai_models")} icon={<Bot className="h-4 w-4 text-primary" />} description={t("set.ai_models_desc")}>
+        <TabsContent value="ai" className="space-y-5">
+          <SectionCard
+            title={tr("Базовая AI-конфигурация", "Base AI configuration")}
+            icon={<Bot className="h-4 w-4 text-primary" />}
+            description={tr("Один источник правды для дефолтного провайдера и модели.", "A single place for the default provider and model.")}
+          >
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -504,11 +544,7 @@ export default function SettingsPage() {
                           provider === "gemini" ? "models/gemini-2.5-flash" :
                           provider === "openai" ? "gpt-4o" : "grok-3"
                         }
-                        className="bg-secondary h-[42px]"
                       />
-                      <p className="text-[10px] text-muted-foreground">
-                        {tr("Нажмите «Обновить модели», чтобы загрузить список из API", "Click “Refresh models” to load list from API")}
-                      </p>
                     </div>
                   )}
                 </div>
@@ -529,12 +565,12 @@ export default function SettingsPage() {
           <SectionCard
             title={tr("Модели по назначению", "Models by purpose")}
             icon={<Cpu className="h-4 w-4 text-primary" />}
-            description={tr("Отдельные модели для чата, агентов и оркестратора", "Separate models for chat, agents and orchestrator")}
+            description={tr("Отдельные профили для чата, агентов и оркестратора.", "Separate profiles for chat, agents, and orchestrator.")}
           >
             <div className="space-y-4">
               <PurposeModelSelector
                 label={tr("Чат / Терминальный AI", "Chat / Terminal AI")}
-                description={tr("Используется при общении в терминале сервера и AI-помощнике", "Used in terminal chat and AI helper")}
+                description={tr("Используется в терминальном AI и пользовательском чате.", "Used by terminal AI and user-facing chat.")}
                 provider={chatProvider}
                 model={chatModel}
                 availableModels={getModelsForProvider(chatProvider)}
@@ -546,7 +582,7 @@ export default function SettingsPage() {
               />
               <PurposeModelSelector
                 label={tr("Агенты (ReAct / Full)", "Agents (ReAct / Full)")}
-                description={tr("Используется при выполнении задач агентом — итерации, инструменты", "Used while agents execute tasks, iterations and tools")}
+                description={tr("Используется во время выполнения задач и работы с инструментами.", "Used while agents execute tasks and tools.")}
                 provider={agentProvider}
                 model={agentModel}
                 availableModels={getModelsForProvider(agentProvider)}
@@ -558,7 +594,7 @@ export default function SettingsPage() {
               />
               <PurposeModelSelector
                 label={tr("Оркестратор (Pipeline)", "Orchestrator (Pipeline)")}
-                description={tr("Используется для планирования и синтеза в многоагентном пайплайне", "Used for planning and synthesis in multi-agent pipelines")}
+                description={tr("Используется для планирования и синтеза в многоагентных сценариях.", "Used for planning and synthesis in multi-agent flows.")}
                 provider={orchProvider}
                 model={orchModel}
                 availableModels={getModelsForProvider(orchProvider)}
@@ -568,16 +604,18 @@ export default function SettingsPage() {
                 refreshing={refreshingPurpose === orchProvider}
                 lang={lang}
               />
-              {/* OpenAI Reasoning effort */}
-              <div className="border-t border-border pt-4 mt-2">
+              <div className="workspace-subtle rounded-2xl p-4">
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-foreground">{tr("Уровень рассуждения OpenAI", "OpenAI reasoning effort")}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr("Настройка reasoning для Responses API: none, low, medium или high.", "Reasoning setting for the Responses API: none, low, medium, or high.")}
+                  </p>
+                </div>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-medium text-foreground">{tr("Уровень рассуждения OpenAI", "OpenAI Reasoning Effort")}</p>
+                    <p className="text-xs font-medium text-foreground">{tr("Параметр модели", "Model parameter")}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {tr(
-                        "Управляет reasoning в Responses API (gpt-5.x). none — без мышления; low — быстро; medium — баланс; high — максимум.",
-                        "Controls reasoning in Responses API (gpt-5.x). none — no reasoning; low — fast; medium — balanced; high — maximum.",
-                      )}
+                      {tr("Меняйте только если хотите явно управлять глубиной рассуждения.", "Adjust only when you want explicit control over reasoning depth.")}
                     </p>
                   </div>
                   <select
@@ -594,17 +632,14 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="pt-1">
-                <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSavePurpose} disabled={saving}>
-                  <Save className="h-3.5 w-3.5" /> {saving ? t("set.saving") : tr("Сохранить настройки моделей", "Save model settings")}
-                </Button>
-              </div>
+              <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSavePurpose} disabled={saving}>
+                <Save className="h-3.5 w-3.5" /> {saving ? t("set.saving") : tr("Сохранить настройки моделей", "Save model settings")}
+              </Button>
             </div>
           </SectionCard>
 
-          {/* API Keys Status */}
           {apiKeys && isAdmin && (
-            <SectionCard title={t("set.api_keys")} icon={<Key className="h-4 w-4 text-primary" />} description={t("set.api_keys_desc")}>
+            <SectionCard title={tr("Состояние платформы", "Platform status")} icon={<Key className="h-4 w-4 text-primary" />} description={tr("Ключи провайдеров и доменная авторизация без лишнего шума.", "Provider keys and domain auth, without extra noise.")}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { name: "Gemini", key: "gemini_set", enabled: config.gemini_enabled },
@@ -612,7 +647,7 @@ export default function SettingsPage() {
                   { name: "OpenAI", key: "openai_set", enabled: config.openai_enabled },
                   { name: "Claude", key: "claude_set", enabled: config.claude_enabled },
                 ].map((p) => (
-                  <div key={p.name} className="flex items-center gap-3 bg-secondary/30 rounded-lg px-3 py-2.5">
+                  <div key={p.name} className="workspace-subtle flex items-center gap-3 rounded-2xl px-3 py-3">
                     <div className={`h-2 w-2 rounded-full ${apiKeys[p.key] ? "bg-green-400" : "bg-red-400"}`} />
                     <div>
                       <p className="text-xs font-medium text-foreground">{p.name}</p>
@@ -627,19 +662,18 @@ export default function SettingsPage() {
             </SectionCard>
           )}
 
-          {/* Domain Auth (admin only) */}
           {isAdmin && config.domain_auth_enabled !== undefined && (
             <SectionCard title={t("set.domain_auth")} icon={<Globe className="h-4 w-4 text-primary" />} description={t("set.domain_auth_desc")}>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+                <div className="workspace-subtle rounded-2xl px-3 py-3">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.status")}</p>
                   <p className="text-sm font-medium text-foreground">{config.domain_auth_enabled ? t("set.enabled") : t("set.disabled")}</p>
                 </div>
-                <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+                <div className="workspace-subtle rounded-2xl px-3 py-3">
                   <p className="text-[10px] text-muted-foreground uppercase">{tr("Заголовок", "Header")}</p>
                   <p className="text-sm font-mono text-foreground">{config.domain_auth_header || "REMOTE_USER"}</p>
                 </div>
-                <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+                <div className="workspace-subtle rounded-2xl px-3 py-3">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.auto_create")}</p>
                   <p className="text-sm font-medium text-foreground">{config.domain_auth_auto_create ? tr("Да", "Yes") : tr("Нет", "No")}</p>
                 </div>
@@ -649,44 +683,28 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ==================== ACCESS TAB ==================== */}
-        <TabsContent value="access">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { title: t("settings.users"), desc: t("set.users_desc"), icon: Users, url: "/settings/users", count: "" },
-              { title: t("settings.groups"), desc: t("set.groups_desc"), icon: FolderOpen, url: "/settings/groups", count: "" },
-              { title: t("settings.permissions"), desc: t("set.perms_desc"), icon: Shield, url: "/settings/permissions", count: "" },
-            ].map((page) => (
-              <Link
-                key={page.url}
-                to={page.url}
-                className="group flex items-center gap-4 rounded-xl bg-card/70 p-5 transition-colors hover:bg-card/90"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10">
-                  <page.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{page.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{page.desc}</p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-              </Link>
-            ))}
-          </div>
+        <TabsContent value="access" className="space-y-5">
+          <SectionCard title={tr("Доступ и структура", "Access and structure")} icon={<Shield className="h-4 w-4 text-primary" />} description={tr("Три прямых входа в управление пользователями, группами и разрешениями.", "Three direct entry points for users, groups, and permissions.")}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <AccessCard icon={Users} title={t("settings.users")} description={t("set.users_desc")} to="/settings/users" />
+              <AccessCard icon={FolderOpen} title={t("settings.groups")} description={t("set.groups_desc")} to="/settings/groups" />
+              <AccessCard icon={Shield} title={t("settings.permissions")} description={t("set.perms_desc")} to="/settings/permissions" />
+            </div>
+          </SectionCard>
         </TabsContent>
 
         {/* ==================== MONITORING TAB ==================== */}
         {isAdmin && (
-          <TabsContent value="monitoring" className="space-y-4">
+          <TabsContent value="monitoring" className="space-y-5">
             {monConfig && (
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-sm text-muted-foreground">
-                <span>{tr(`${monConfig.stats.monitored_servers} серверов`, `${monConfig.stats.monitored_servers} servers`)}</span>
-                <span>{tr(`${monConfig.stats.total_checks} проверок`, `${monConfig.stats.total_checks} checks`)}</span>
-                <span>{tr(`${monConfig.stats.active_alerts} активных алертов`, `${monConfig.stats.active_alerts} active alerts`)}</span>
-                <span>{tr(`последняя проверка ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`, `last check ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`)}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge label={tr(`${monConfig.stats.monitored_servers} серверов`, `${monConfig.stats.monitored_servers} servers`)} tone="info" />
+                <StatusBadge label={tr(`${monConfig.stats.total_checks} проверок`, `${monConfig.stats.total_checks} checks`)} tone="neutral" />
+                <StatusBadge label={tr(`${monConfig.stats.active_alerts} активных алертов`, `${monConfig.stats.active_alerts} active alerts`)} tone={monConfig.stats.active_alerts > 0 ? "danger" : "success"} />
+                <StatusBadge label={tr(`последняя проверка ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`, `last check ${monConfig.stats.last_check_at ? relativeTime(monConfig.stats.last_check_at, lang) : "—"}`)} tone="neutral" />
               </div>
             )}
 
-            {/* Thresholds */}
             <SectionCard title={t("set.mon_thresholds")} icon={<Gauge className="h-4 w-4 text-primary" />} description={t("set.mon_thresholds_desc")}>
               <div className="space-y-4">
                 <ThresholdSlider
@@ -718,18 +736,17 @@ export default function SettingsPage() {
                 />
 
                 <div className="flex items-center gap-3 pt-2">
-                  <Button size="sm" className="gap-1.5 px-4" onClick={onSaveMonitoring} disabled={monSaving}>
+                  <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSaveMonitoring} disabled={monSaving}>
                     <Save className="h-3.5 w-3.5" /> {monSaving ? t("set.saving") : t("set.save_thresholds")}
                   </Button>
                 </div>
               </div>
             </SectionCard>
 
-            {/* How monitoring works */}
             <SectionCard title={t("set.mon_how")} icon={<Eye className="h-4 w-4 text-primary" />} description={t("set.mon_how_desc")}>
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-secondary/20 rounded-lg p-4 space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-background/24 p-4 space-y-2">
                     <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t("set.mon_quick")}</p>
                     <p className="text-xs">{t("set.mon_quick_desc")}</p>
                     <div className="space-y-1 font-mono text-[11px] text-foreground/70">
@@ -740,7 +757,7 @@ export default function SettingsPage() {
                       <p>ps aux --no-headers | wc -l</p>
                     </div>
                   </div>
-                  <div className="bg-secondary/20 rounded-lg p-4 space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-background/24 p-4 space-y-2">
                     <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t("set.mon_deep")}</p>
                     <p className="text-xs">{t("set.mon_deep_desc")}</p>
                     <div className="space-y-1 font-mono text-[11px] text-foreground/70">
@@ -759,45 +776,42 @@ export default function SettingsPage() {
         )}
 
         {/* ==================== ACTIVITY TAB ==================== */}
-        <TabsContent value="activity">
+        <TabsContent value="activity" className="space-y-5">
           <SectionCard title={t("set.activity_log")} icon={<Activity className="h-4 w-4 text-primary" />} description={t("set.activity_desc")}>
             <div className="space-y-4">
-              {/* Search */}
-              <div className="relative">
+              <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={t("set.activity_search")}
                   value={activitySearch}
                   onChange={(e) => setActivitySearch(e.target.value)}
-                  className="pl-9 bg-secondary/50"
+                  className="pl-9"
                 />
               </div>
 
-              {/* Summary */}
               {activityData?.summary && (
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span>{activityData.summary.total_events} {t("set.events")}</span>
-                  <span>{activityData.summary.total_users} {t("set.unique_users")}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge label={`${activityData.summary.total_events} ${t("set.events")}`} tone="info" />
+                  <StatusBadge label={`${activityData.summary.total_users} ${t("set.unique_users")}`} tone="neutral" />
                 </div>
               )}
 
-              {/* Events */}
-              <div className="divide-y divide-border rounded-lg border border-border overflow-hidden max-h-[500px] overflow-y-auto">
+              <div className="max-h-[500px] overflow-y-auto divide-y divide-border rounded-2xl border border-border overflow-hidden">
                 {filteredActivity.length === 0 && (
                   <p className="text-sm text-muted-foreground p-6 text-center">{t("set.no_activity")}</p>
                 )}
                 {filteredActivity.map((log) => (
-                  <div key={log.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
-                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-medium text-primary shrink-0">
+                  <div key={log.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/15 transition-colors">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-background/30 text-[10px] font-medium text-muted-foreground">
                       {log.username.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-foreground">{log.username}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${statusBadge(log.status)}`}>
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-medium ${statusBadge(log.status)}`}>
                           {log.status}
                         </span>
-                        <span className="text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+                        <span className="rounded-full bg-background/35 px-2 py-1 text-[10px] text-muted-foreground">
                           {log.category}
                         </span>
                       </div>
@@ -814,6 +828,6 @@ export default function SettingsPage() {
           </SectionCard>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

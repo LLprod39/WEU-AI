@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   addServerGroupMember,
@@ -49,8 +49,8 @@ import {
   Layers,
   WandSparkles,
   Clock3,
-  FolderTree,
-  Shield,
+  MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
@@ -59,14 +59,19 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   EmptyState,
   FilterBar,
-  MetricCard,
-  MetricGrid,
-  PageHero,
   PageShell,
   SectionCard,
   StatusBadge,
 } from "@/components/ui/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -116,7 +121,6 @@ interface KnowledgeItem {
   is_active: boolean;
 }
 
-type MainTab = "servers" | "groups" | "bulk";
 type AdvancedTab = "access" | "knowledge" | "context" | "security" | "execute";
 
 function initialForm(): ServerForm {
@@ -198,12 +202,14 @@ export default function Servers() {
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [mainTab, setMainTab] = useState<MainTab>("servers");
   const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("access");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "unknown">("all");
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [scopeFilter, setScopeFilter] = useState<"all" | "owned" | "shared">("all");
+  const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [groupColor, setGroupColor] = useState("#3b82f6");
@@ -268,6 +274,9 @@ export default function Servers() {
 
   const servers = data?.servers || [];
   const groups = data?.groups || [];
+  const onlineCount = servers.filter((server) => server.status === "online").length;
+  const sharedCount = servers.filter((server) => server.is_shared).length;
+  const groupCount = groups.filter((group) => group.id !== null).length;
 
   const filtered = useMemo(() => {
     return servers.filter((server) => {
@@ -284,6 +293,21 @@ export default function Servers() {
   const visibleGroups = useMemo(() => {
     return Array.from(new Set(servers.map((server) => server.group_name).filter(Boolean))).sort();
   }, [servers]);
+
+  useEffect(() => {
+    if (!filtered.length) {
+      setSelectedServerId(null);
+      return;
+    }
+    if (!selectedServerId || !filtered.some((server) => server.id === selectedServerId)) {
+      setSelectedServerId(filtered[0].id);
+    }
+  }, [filtered, selectedServerId]);
+
+  const selectedServer =
+    filtered.find((server) => server.id === selectedServerId) ||
+    servers.find((server) => server.id === selectedServerId) ||
+    null;
 
   const reload = async () => {
     await queryClient.invalidateQueries({ queryKey: ["frontend", "bootstrap"] });
@@ -622,87 +646,60 @@ export default function Servers() {
   if (error || !data) return <div className="p-6 text-sm text-destructive">{t("srv.error")}</div>;
 
   return (
-    <PageShell width="7xl">
-      <PageHero
-        kicker="Infrastructure Inventory"
-        title={t("srv.title")}
-        description={
-          <>
-            Manage server access, group structure, shared context, and operational metadata from one workspace.
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <StatusBadge label="inventory workspace" tone="info" />
-              <span>Default view is a compact server table for fast operator scanning.</span>
-            </div>
-          </>
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={reload}>
+    <PageShell width="full" className="space-y-5">
+      <section className="workspace-panel px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-2">
+            <div className="enterprise-kicker">Servers</div>
+            <h1 className="text-[1.4rem] font-semibold tracking-[-0.04em] text-foreground sm:text-[1.7rem]">
+              {t("srv.title")}
+            </h1>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              Find a server first. Open the workspace second. Use the side panel only when you need management or access controls.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/servers/hub">
+              <Button size="sm" variant="outline" className="h-9 gap-2 rounded-xl px-3">
+                <Terminal className="h-4 w-4" />
+                Open terminal hub
+              </Button>
+            </Link>
+            <Button size="sm" variant="outline" className="h-9 gap-2 rounded-xl px-3" onClick={reload}>
               <RefreshCw className="h-4 w-4" />
-              Refresh inventory
+              Refresh
             </Button>
-            <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> {t("srv.add")}
+            <Button size="sm" className="h-9 gap-2 rounded-xl px-4" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              {t("srv.add")}
             </Button>
           </div>
-        }
-      >
-        <MetricGrid>
-          <MetricCard
-            label={t("srv.servers_count")}
-            value={servers.length}
-            description={`${filtered.length} visible under the current filter.`}
-            icon={<Server className="h-5 w-5 text-primary" />}
-            tone="info"
-          />
-          <MetricCard
-            label="Reachable"
-            value={servers.filter((server) => server.status === "online").length}
-            description="Servers currently reachable from the platform."
-            icon={<Shield className="h-5 w-5 text-emerald-300" />}
-            tone="success"
-          />
-          <MetricCard
-            label="Groups"
-            value={groups.filter((group) => group.id !== null).length}
-            description="Reusable server groups available for inventory organization."
-            icon={<FolderTree className="h-5 w-5 text-sky-300" />}
-            tone="info"
-          />
-          <MetricCard
-            label="Shared"
-            value={servers.filter((server) => server.is_shared).length}
-            description="Servers currently inherited or shared into your workspace."
-            icon={<Layers className="h-5 w-5 text-amber-300" />}
-            tone="warning"
-          />
-        </MetricGrid>
-      </PageHero>
+        </div>
 
-      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)} className="space-y-3">
-        <TabsList className="w-full justify-start gap-1 overflow-x-auto">
-          <TabsTrigger value="servers" className="gap-2">
-            <Server className="h-4 w-4" /> {t("srv.list")}
-          </TabsTrigger>
-          <TabsTrigger value="groups" className="gap-2">
-            <Layers className="h-4 w-4" /> {t("srv.groups")}
-          </TabsTrigger>
-          <TabsTrigger value="bulk" className="gap-2">
-            <WandSparkles className="h-4 w-4" /> {t("srv.bulk")}
-          </TabsTrigger>
-        </TabsList>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusBadge label={`${servers.length} total`} tone="info" />
+          <StatusBadge label={`${filtered.length} visible`} tone="neutral" />
+          <StatusBadge label={`${onlineCount} online`} tone="success" />
+          <StatusBadge label={`${groupCount} groups`} tone="neutral" />
+          <StatusBadge label={`${sharedCount} shared`} tone="warning" />
+        </div>
+      </section>
 
-        <TabsContent value="servers" className="space-y-3">
-          <SectionCard
-            title="Server table"
-            description="Operational inventory view with compact controls, reachability, access scope, and quick actions."
-            icon={<Server className="h-4 w-4 text-primary" />}
-          >
-            <div className="space-y-4">
-              <FilterBar>
-                <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
-                  <div className="relative min-w-[240px] flex-1 xl:max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <SectionCard
+          title="Inventory"
+          description="The list stays simple. Select a row to get actions and deeper controls on the right."
+          icon={<Server className="h-4 w-4 text-primary" />}
+        >
+          <div className="space-y-4">
+            <FilterBar>
+              <div className="flex flex-col gap-3">
+                <div className="text-xs text-muted-foreground">
+                  Showing {filtered.length} of {servers.length} servers
+                </div>
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                  <div className="relative min-w-[240px] flex-1 xl:max-w-md">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder={t("srv.search")}
                       value={search}
@@ -718,207 +715,324 @@ export default function Servers() {
                       </option>
                     ))}
                   </select>
-                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="enterprise-select min-w-[160px]">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                    className="enterprise-select min-w-[160px]"
+                  >
                     <option value="all">All statuses</option>
-                    <option value="online">Healthy</option>
-                    <option value="offline">Failed</option>
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
                     <option value="unknown">Unknown</option>
                   </select>
-                  <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)} className="enterprise-select min-w-[160px]">
+                  <select
+                    value={scopeFilter}
+                    onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)}
+                    className="enterprise-select min-w-[160px]"
+                  >
                     <option value="all">All scope</option>
                     <option value="owned">Owned</option>
                     <option value="shared">Shared</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setMainTab("bulk")}>
-                    <WandSparkles className="h-4 w-4" />
-                    Bulk actions
-                  </Button>
-                </div>
-              </FilterBar>
-
-              {filtered.length === 0 ? (
-                <EmptyState
-                  icon={<Server className="h-5 w-5" />}
-                  title="No servers match this inventory view"
-                  description="Adjust the group, status, or scope filters, or create a new server entry to start building the inventory."
-                  actions={
-                    <>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setSearch(""); setGroupFilter("all"); setStatusFilter("all"); setScopeFilter("all"); }}>
-                        Clear filters
-                      </Button>
-                      <Button size="sm" className="rounded-xl" onClick={openCreate}>
-                        <Plus className="h-4 w-4" />
-                        {t("srv.add")}
-                      </Button>
-                    </>
-                  }
-                />
-              ) : (
-                <div className="overflow-hidden rounded-xl border border-border bg-background/35">
-                  <table className="enterprise-table">
-                    <thead>
-                      <tr>
-                        <th>Server</th>
-                        <th>Group</th>
-                        <th>Access</th>
-                        <th>Status</th>
-                        <th>Last activity</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((server) => (
-                        <tr key={server.id}>
-                          <td>
-                            <div className="min-w-[200px]">
-                              <div className="font-medium text-foreground">{server.name}</div>
-                              <div className="mt-1 text-xs font-mono text-muted-foreground">
-                                {server.host}:{server.port} · {server.server_type.toUpperCase()}
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="text-sm text-foreground">{server.group_name || "Ungrouped"}</div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <StatusBadge label={server.is_shared ? "shared" : "owned"} tone={server.is_shared ? "warning" : "info"} />
-                              {server.share_context_enabled ? <StatusBadge label="context" tone="success" /> : null}
-                            </div>
-                          </td>
-                          <td>
-                            <StatusIndicator status={server.status} />
-                          </td>
-                          <td>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Clock3 className="h-4 w-4" />
-                              {relativeTime(server.last_connected)}
-                            </div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <Link to={`/servers/${server.id}/terminal`}>
-                                <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
-                                  <Terminal className="h-3 w-3" /> SSH
-                                </Button>
-                              </Link>
-                              {server.rdp && (
-                                <Link to={`/servers/${server.id}/rdp`}>
-                                  <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
-                                    <Monitor className="h-3 w-3" /> RDP
-                                  </Button>
-                                </Link>
-                              )}
-                              <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openAdvanced(server)}>
-                                <Sparkles className="h-3.5 w-3.5" />
-                              </Button>
-                              {server.can_edit && (
-                                <>
-                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => onTest(server)}>
-                                    <Plug className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openEdit(server)}>
-                                    <Settings className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button size="sm" variant="destructive" className="h-8 rounded-xl px-2.5" onClick={() => setServerDeleteTarget(server)}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </SectionCard>
-        </TabsContent>
-
-        <TabsContent value="groups" className="space-y-3">
-          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
-            <h2 className="text-sm font-medium">{t("srv.groups")}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <Input placeholder={t("srv.group_name")} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-              <Input
-                placeholder={t("srv.description")}
-                value={groupDescription}
-                onChange={(e) => setGroupDescription(e.target.value)}
-              />
-              <Input type="color" value={groupColor} onChange={(e) => setGroupColor(e.target.value)} />
-              <Button className="rounded-xl" onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
-                {groupSaving ? "..." : t("srv.create_group")}
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {groups
-                .filter((g) => g.id !== null)
-                .map((g) => (
-                  <div key={g.id!} className="flex items-center gap-2 rounded-2xl border border-border px-4 py-3">
-                    <div className="text-sm">
-                      {g.name}
-                      <span className="text-xs text-muted-foreground ml-2">{g.server_count} servers</span>
-                    </div>
-                    <div className="ml-auto flex gap-2">
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "follow")}>
-                        Follow
-                      </Button>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
-                        Favorite
-                      </Button>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setGroupRenameTarget({ id: g.id!, name: g.name }); setGroupRenameValue(g.name); }}>
-                        Rename
-                      </Button>
-                      <Button size="sm" variant="destructive" className="rounded-xl" onClick={() => setGroupDeleteTarget({ id: g.id!, name: g.name })}>
-                        Delete
-                      </Button>
-                    </div>
+                {(search || groupFilter !== "all" || statusFilter !== "all" || scopeFilter !== "all") && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
+                    <span>Filters are active for this view.</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 rounded-lg px-2 text-xs"
+                      onClick={() => {
+                        setSearch("");
+                        setGroupFilter("all");
+                        setStatusFilter("all");
+                        setScopeFilter("all");
+                      }}
+                    >
+                      Clear
+                    </Button>
                   </div>
-                ))}
-            </div>
-          </section>
-        </TabsContent>
+                )}
+              </div>
+            </FilterBar>
 
-        <TabsContent value="bulk" className="space-y-3">
-          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
-            <h2 className="text-sm font-medium">Bulk Update Filtered Servers ({filtered.length})</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <select
-                value={bulkGroupId}
-                onChange={(e) => setBulkGroupId(e.target.value)}
-                className="enterprise-select"
-              >
-                <option value="__keep__">Keep group</option>
-                <option value="__none__">Remove group</option>
-                {groups
-                  .filter((g) => g.id !== null)
-                  .map((g) => (
-                    <option key={g.id!} value={g.id!}>
-                      {g.name}
-                    </option>
-                  ))}
-              </select>
-              <Input placeholder="Tags (comma separated)" value={bulkTags} onChange={(e) => setBulkTags(e.target.value)} />
-              <select
-                value={bulkActive}
-                onChange={(e) => setBulkActive(e.target.value)}
-                className="enterprise-select"
-              >
-                <option value="__keep__">Keep active state</option>
-                <option value="active">Set active</option>
-                <option value="inactive">Set inactive</option>
-              </select>
-              <Button className="rounded-xl" onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
-                {bulkSaving ? "Applying..." : "Apply Bulk Update"}
-              </Button>
-            </div>
-          </section>
-        </TabsContent>
-      </Tabs>
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon={<Server className="h-5 w-5" />}
+                title="No servers in this view"
+                description="Change the filters or add a new server."
+                actions={
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={() => {
+                        setSearch("");
+                        setGroupFilter("all");
+                        setStatusFilter("all");
+                        setScopeFilter("all");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                    <Button size="sm" className="rounded-xl" onClick={openCreate}>
+                      <Plus className="h-4 w-4" />
+                      {t("srv.add")}
+                    </Button>
+                  </>
+                }
+              />
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-border/75 bg-background/30">
+                <div className="hidden grid-cols-[minmax(0,2fr)_140px_120px_140px] gap-3 border-b border-border/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
+                  <div>Server</div>
+                  <div>Group</div>
+                  <div>Status</div>
+                  <div>Last activity</div>
+                </div>
+                <div className="divide-y divide-border/70">
+                  {filtered.map((server) => {
+                    const selected = server.id === selectedServerId;
+                    return (
+                      <button
+                        key={server.id}
+                        type="button"
+                        onClick={() => setSelectedServerId(server.id)}
+                        className={`w-full text-left transition-colors ${selected ? "bg-primary/8" : "hover:bg-background/45"}`}
+                      >
+                        <div className="grid gap-3 px-4 py-3.5 md:grid-cols-[minmax(0,2fr)_140px_120px_140px] md:items-center">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="truncate text-sm font-semibold text-foreground">{server.name}</div>
+                              {server.is_shared ? <StatusBadge label="shared" tone="warning" /> : null}
+                            </div>
+                            <div className="mt-1 truncate text-xs font-mono text-muted-foreground">
+                              {server.host}:{server.port}
+                            </div>
+                            <div className="mt-1 text-[11px] text-muted-foreground">
+                              {server.username} · {server.server_type.toUpperCase()}
+                            </div>
+                          </div>
+                          <div className="text-sm text-foreground">{server.group_name || "Ungrouped"}</div>
+                          <div className="flex items-center gap-2">
+                            <StatusIndicator status={server.status} />
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Clock3 className="h-4 w-4" />
+                            {relativeTime(server.last_connected)}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        <div className="space-y-4">
+          <SectionCard
+            title={selectedServer ? selectedServer.name : "Selected server"}
+            description={
+              selectedServer
+                ? `${selectedServer.username}@${selectedServer.host}:${selectedServer.port}`
+                : "Choose a server from the inventory to open or manage it."
+            }
+            icon={<Sparkles className="h-4 w-4 text-primary" />}
+          >
+            {selectedServer ? (
+              <div className="space-y-4">
+                <div className="workspace-subtle space-y-3 rounded-2xl px-3 py-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <StatusIndicator status={selectedServer.status} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Group</span>
+                    <span className="font-medium text-foreground">{selectedServer.group_name || "Ungrouped"}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Access</span>
+                    <span className="font-medium text-foreground">
+                      {selectedServer.is_shared ? "Shared" : "Owned"}
+                      {selectedServer.share_context_enabled ? " + context" : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Last activity</span>
+                    <span className="font-medium text-foreground">{relativeTime(selectedServer.last_connected)}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Link to={`/servers/${selectedServer.id}/terminal`}>
+                    <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4">
+                      <Terminal className="h-4 w-4" />
+                      Open terminal
+                    </Button>
+                  </Link>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl px-4" onClick={() => openAdvanced(selectedServer)}>
+                    <Sparkles className="h-4 w-4" />
+                    Details
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl px-3">
+                        <MoreHorizontal className="h-4 w-4" />
+                        More
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      {selectedServer.rdp ? (
+                        <DropdownMenuItem asChild>
+                          <Link to={`/servers/${selectedServer.id}/rdp`} className="flex w-full items-center gap-2">
+                            <Monitor className="h-4 w-4" />
+                            Open RDP
+                          </Link>
+                        </DropdownMenuItem>
+                      ) : null}
+                      {selectedServer.can_edit ? (
+                        <>
+                          <DropdownMenuItem onClick={() => onTest(selectedServer)}>
+                            <Plug className="mr-2 h-4 w-4" />
+                            Test
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEdit(selectedServer)}>
+                            <Settings className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setServerDeleteTarget(selectedServer)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Server className="h-5 w-5" />}
+                title="No server selected"
+                description="Select an item in the inventory to open a terminal, test connectivity, or manage sharing."
+              />
+            )}
+          </SectionCard>
+
+          <Collapsible open={groupsOpen} onOpenChange={setGroupsOpen}>
+            <SectionCard
+              title={t("srv.groups")}
+              description="Groups stay available, but they no longer interrupt the main inventory flow."
+              icon={<Layers className="h-4 w-4 text-primary" />}
+              actions={
+                <CollapsibleTrigger asChild>
+                  <Button size="sm" variant="ghost" className="h-8 gap-1.5 rounded-xl px-2 text-xs">
+                    {groupsOpen ? "Hide" : "Show"}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${groupsOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+              }
+            >
+              <CollapsibleContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-2">
+                  <Input placeholder={t("srv.group_name")} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                  <Input
+                    placeholder={t("srv.description")}
+                    value={groupDescription}
+                    onChange={(e) => setGroupDescription(e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Input type="color" value={groupColor} onChange={(e) => setGroupColor(e.target.value)} className="h-10 w-16 rounded-xl p-1" />
+                    <Button className="h-10 flex-1 rounded-xl" onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
+                      {groupSaving ? "..." : t("srv.create_group")}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {groups
+                    .filter((g) => g.id !== null)
+                    .map((g) => (
+                      <div key={g.id!} className="workspace-subtle space-y-3 rounded-2xl px-4 py-3">
+                        <div className="text-sm">
+                          <div className="font-medium text-foreground">{g.name}</div>
+                          <span className="text-xs text-muted-foreground">{g.server_count} servers</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "follow")}>
+                            Follow
+                          </Button>
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
+                            Favorite
+                          </Button>
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setGroupRenameTarget({ id: g.id!, name: g.name }); setGroupRenameValue(g.name); }}>
+                            Rename
+                          </Button>
+                          <Button size="sm" variant="destructive" className="rounded-xl" onClick={() => setGroupDeleteTarget({ id: g.id!, name: g.name })}>
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CollapsibleContent>
+            </SectionCard>
+          </Collapsible>
+
+          <Collapsible open={bulkOpen} onOpenChange={setBulkOpen}>
+            <SectionCard
+              title={`Bulk update (${filtered.length})`}
+              description="This works only on the current filtered view, so you always know exactly what will be changed."
+              icon={<WandSparkles className="h-4 w-4 text-primary" />}
+              actions={
+                <CollapsibleTrigger asChild>
+                  <Button size="sm" variant="ghost" className="h-8 gap-1.5 rounded-xl px-2 text-xs">
+                    {bulkOpen ? "Hide" : "Show"}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${bulkOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+              }
+            >
+              <CollapsibleContent className="space-y-3">
+                <select
+                  value={bulkGroupId}
+                  onChange={(e) => setBulkGroupId(e.target.value)}
+                  className="enterprise-select"
+                >
+                  <option value="__keep__">Keep group</option>
+                  <option value="__none__">Remove group</option>
+                  {groups
+                    .filter((g) => g.id !== null)
+                    .map((g) => (
+                      <option key={g.id!} value={g.id!}>
+                        {g.name}
+                      </option>
+                    ))}
+                </select>
+                <Input placeholder="Tags (comma separated)" value={bulkTags} onChange={(e) => setBulkTags(e.target.value)} />
+                <select
+                  value={bulkActive}
+                  onChange={(e) => setBulkActive(e.target.value)}
+                  className="enterprise-select"
+                >
+                  <option value="__keep__">Keep active state</option>
+                  <option value="active">Set active</option>
+                  <option value="inactive">Set inactive</option>
+                </select>
+                <Button className="rounded-xl" onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
+                  {bulkSaving ? "Applying..." : "Apply Bulk Update"}
+                </Button>
+              </CollapsibleContent>
+            </SectionCard>
+          </Collapsible>
+        </div>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">

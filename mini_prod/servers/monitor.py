@@ -9,7 +9,6 @@ Deep checks additionally scan for failed services and log errors.
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import time
 from datetime import timedelta
@@ -25,8 +24,8 @@ def sync_to_async(func, thread_sensitive=False):
 from django.utils import timezone
 from loguru import logger
 
-from passwords.encryption import PasswordEncryption
 from servers.models import Server, ServerAlert, ServerHealthCheck
+from servers.secret_utils import get_server_auth_secret
 
 QUICK_COMMANDS = (
     "cat /proc/loadavg;"
@@ -65,24 +64,8 @@ def _parse_host_port(server: Server) -> tuple[str, int]:
     return host, port
 
 
-def _get_master_password() -> str:
-    return os.environ.get("MASTER_PASSWORD", "")
-
-
 def _decrypt_server_secret(server: Server) -> str:
-    if not server.encrypted_password:
-        return ""
-    master = _get_master_password()
-    if not master:
-        return ""
-    if not server.salt:
-        return ""
-    try:
-        return PasswordEncryption.decrypt_password(
-            server.encrypted_password, master, bytes(server.salt)
-        )
-    except Exception:
-        return ""
+    return get_server_auth_secret(server)
 
 
 def _build_connect_kwargs(server: Server) -> dict[str, Any]:

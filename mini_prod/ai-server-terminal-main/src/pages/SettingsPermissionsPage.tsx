@@ -9,10 +9,19 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
-import { MetricCard, MetricGrid, PageHero, PageShell, SectionCard } from "@/components/ui/page-shell";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
-import { Ban, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { PageGrid, PageShell, SectionCard, StatusBadge } from "@/components/ui/page-shell";
+import { MoreHorizontal, RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+
+function SummaryPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-full border border-transparent bg-background/30 px-3 py-1 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{value}</span> {label}
+    </div>
+  );
+}
 
 export default function SettingsPermissionsPage() {
   const { lang } = useI18n();
@@ -36,6 +45,7 @@ export default function SettingsPermissionsPage() {
   const users = usersData?.users || [];
   const allowedCount = permissions.filter((permission) => permission.allowed).length;
   const deniedCount = permissions.filter((permission) => !permission.allowed).length;
+  const hasFilters = filterUserId !== 0 || !!filterFeature;
   const filteredPermissions = permissions.filter((permission) => {
     if (filterUserId && permission.user_id !== filterUserId) return false;
     if (filterFeature && permission.feature !== filterFeature) return false;
@@ -45,7 +55,6 @@ export default function SettingsPermissionsPage() {
   useEffect(() => {
     if (!newUserId && users.length) setNewUserId(users[0].id);
     if (!newFeature && features.length) setNewFeature(features[0].value);
-    if (!filterFeature && features.length) setFilterFeature("");
   }, [newUserId, newFeature, users, features]);
 
   const reload = async () => {
@@ -72,38 +81,132 @@ export default function SettingsPermissionsPage() {
   if (error) return <div className="p-6 text-sm text-destructive">{tr("Не удалось загрузить права доступа.", "Failed to load permissions.")}</div>;
 
   return (
-    <PageShell width="6xl">
-      <PageHero
-        kicker={tr("Управление доступом", "Access Control")}
-        title={tr("Права доступа", "Permissions")}
-        description={tr("Явные правила allow/deny для пользователей, когда групповых профилей недостаточно.", "Pin explicit allow and deny rules for users when group profiles are not enough.")}
-        actions={(
+    <PageShell width="6xl" className="space-y-5">
+      <section className="space-y-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-1.5">
+            <div className="enterprise-kicker">{tr("Управление доступом", "Access control")}</div>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{tr("Права доступа", "Permissions")}</h1>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              {tr(
+                "Используйте явные allow/deny только как точечные исключения, когда профиля или группы уже недостаточно.",
+                "Use explicit allow and deny rules only as targeted exceptions when profile or group access is not enough.",
+              )}
+            </p>
+          </div>
           <Button size="sm" variant="outline" className="gap-2" onClick={reload}>
             <RefreshCw className="h-4 w-4" />
-            {tr("Обновить права", "Refresh permissions")}
+            {tr("Обновить", "Refresh")}
           </Button>
-        )}
-      >
-        <MetricGrid className="xl:grid-cols-3">
-          <MetricCard label={tr("Правил", "Permission rules")} value={permissions.length} description={tr("Явные переопределения, сохраненные в слое доступа.", "Explicit overrides currently stored in the access layer.")} icon={<SlidersHorizontal className="h-5 w-5 text-primary" />} />
-          <MetricCard label={tr("Разрешено", "Allowed")} value={allowedCount} description={tr("Правила, которые явно разрешают функцию.", "Rules that explicitly grant access to a feature.")} icon={<ShieldCheck className="h-5 w-5 text-emerald-300" />} />
-          <MetricCard label={tr("Запрещено", "Denied")} value={deniedCount} description={tr("Правила, которые явно запрещают функцию.", "Rules that explicitly block access to a feature.")} icon={<Ban className="h-5 w-5 text-amber-300" />} />
-        </MetricGrid>
-      </PageHero>
+        </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="flex flex-wrap gap-2">
+          <SummaryPill label={tr("правил", "rules")} value={permissions.length} />
+          <SummaryPill label={tr("разрешено", "allowed")} value={allowedCount} />
+          <SummaryPill label={tr("запрещено", "denied")} value={deniedCount} />
+        </div>
+      </section>
+
+      <PageGrid sidebar className="items-start">
         <SectionCard
-          title={tr("Добавить или обновить правило", "Add or update permission")}
-          description={tr("Создайте прямое правило, если стандартного профиля или группы недостаточно.", "Create a direct override when profile or group assignment is not enough.")}
+          title={tr("Список правил", "Rule list")}
+          description={tr(
+            "Сначала отфильтруйте пользователя или функцию, затем меняйте только нужное исключение.",
+            "Filter by user or feature first, then change only the override you actually need.",
+          )}
+          actions={(
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={filterUserId} onChange={(event) => setFilterUserId(Number(event.target.value))} className="enterprise-select min-w-[180px]">
+                <option value={0}>{tr("Все пользователи", "All users")}</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+              <select value={filterFeature} onChange={(event) => setFilterFeature(event.target.value)} className="enterprise-select min-w-[220px]">
+                <option value="">{tr("Все функции", "All features")}</option>
+                {features.map((feature) => (
+                  <option key={feature.value} value={feature.value}>
+                    {feature.label}
+                  </option>
+                ))}
+              </select>
+              {hasFilters ? (
+                <Button size="sm" variant="outline" onClick={() => { setFilterUserId(0); setFilterFeature(""); }}>
+                  {tr("Сбросить", "Clear")}
+                </Button>
+              ) : null}
+            </div>
+          )}
+        >
+          <div className="overflow-hidden rounded-2xl border border-border/70 bg-background/20">
+            {filteredPermissions.map((permission, index) => (
+              <div
+                key={permission.id}
+                className={`${index ? "border-t border-border/70" : ""} flex flex-col gap-4 px-4 py-4 sm:px-5 xl:flex-row xl:items-center xl:justify-between`}
+              >
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold text-foreground">{permission.username}</span>
+                    <StatusBadge
+                      label={permission.allowed ? tr("Разрешено", "Allowed") : tr("Запрещено", "Denied")}
+                      tone={permission.allowed ? "success" : "neutral"}
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground">{permission.feature_display || permission.feature}</div>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => toggleAllowed(permission.id, permission.allowed)}>
+                    {permission.allowed ? tr("Сделать deny", "Switch to deny") : tr("Сделать allow", "Switch to allow")}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground">
+                        <MoreHorizontal className="h-4 w-4" />
+                        {tr("Ещё", "More")}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem
+                        className="text-red-300 focus:text-red-200"
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: permission.id,
+                            username: permission.username,
+                            feature: permission.feature_display || permission.feature,
+                          })
+                        }
+                      >
+                        {tr("Удалить", "Delete")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            ))}
+
+            {!filteredPermissions.length ? (
+              <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                {tr("По выбранным фильтрам правила не найдены.", "No permissions match the selected filters.")}
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title={tr("Новое правило", "New rule")}
+          description={tr(
+            "Добавьте точечное исключение для конкретного пользователя. Если правило уже есть, запись обновится.",
+            "Add a targeted override for one user. If the rule already exists, it will be updated.",
+          )}
+          className="xl:sticky xl:top-5"
         >
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium text-foreground">{tr("Пользователь", "User")}</Label>
-              <select
-                value={newUserId}
-                onChange={(event) => setNewUserId(Number(event.target.value))}
-                className="enterprise-select"
-              >
+              <select value={newUserId} onChange={(event) => setNewUserId(Number(event.target.value))} className="enterprise-select">
                 {users.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.username}
@@ -111,13 +214,10 @@ export default function SettingsPermissionsPage() {
                 ))}
               </select>
             </div>
+
             <div className="space-y-2">
               <Label className="text-sm font-medium text-foreground">{tr("Функция", "Feature")}</Label>
-              <select
-                value={newFeature}
-                onChange={(event) => setNewFeature(event.target.value)}
-                className="enterprise-select"
-              >
+              <select value={newFeature} onChange={(event) => setNewFeature(event.target.value)} className="enterprise-select">
                 {features.map((feature) => (
                   <option key={feature.value} value={feature.value}>
                     {feature.label}
@@ -125,73 +225,41 @@ export default function SettingsPermissionsPage() {
                 ))}
               </select>
             </div>
+
             <div className="space-y-2">
               <Label className="text-sm font-medium text-foreground">{tr("Решение", "Decision")}</Label>
-              <select
-                value={newAllowed ? "1" : "0"}
-                onChange={(event) => setNewAllowed(event.target.value === "1")}
-                className="enterprise-select"
-              >
-                <option value="1">{tr("Разрешить", "Allow")}</option>
-                <option value="0">{tr("Запретить", "Deny")}</option>
-              </select>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setNewAllowed(true)}
+                  className={`rounded-xl border px-3 py-3 text-sm transition-colors ${
+                    newAllowed
+                      ? "border-border/80 bg-background/45 text-foreground"
+                      : "border-border/70 bg-background/25 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {tr("Разрешить", "Allow")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewAllowed(false)}
+                  className={`rounded-xl border px-3 py-3 text-sm transition-colors ${
+                    !newAllowed
+                      ? "border-border/80 bg-background/45 text-foreground"
+                      : "border-border/70 bg-background/25 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {tr("Запретить", "Deny")}
+                </button>
+              </div>
             </div>
-            <Button onClick={onCreate} className="w-full">{tr("Сохранить правило", "Save permission")}</Button>
-          </div>
-        </SectionCard>
 
-        <SectionCard
-          title={tr("Каталог правил", "Permission catalog")}
-          description={tr("Фильтруйте явные правила по пользователю и функции перед изменением.", "Filter explicit permission rules by user and feature before changing them.")}
-          actions={(
-            <div className="flex flex-wrap gap-2">
-              <select value={filterUserId} onChange={(event) => setFilterUserId(Number(event.target.value))} className="enterprise-select min-w-[180px]">
-                <option value={0}>{tr("Все пользователи", "All users")}</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.username}</option>
-                ))}
-              </select>
-              <select value={filterFeature} onChange={(event) => setFilterFeature(event.target.value)} className="enterprise-select min-w-[220px]">
-                <option value="">{tr("Все функции", "All features")}</option>
-                {features.map((feature) => (
-                  <option key={feature.value} value={feature.value}>{feature.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        >
-          <div className="space-y-3">
-            {filteredPermissions.map((permission) => (
-              <div key={permission.id} className="rounded-2xl border border-border/70 bg-background/30 px-4 py-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-base font-semibold text-foreground">{permission.username}</span>
-                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${permission.allowed ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
-                        {permission.allowed ? tr("Разрешено", "Allowed") : tr("Запрещено", "Denied")}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">{permission.feature_display || permission.feature}</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => toggleAllowed(permission.id, permission.allowed)}>
-                      {tr("Переключить", "Toggle")}
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleteTarget({ id: permission.id, username: permission.username, feature: permission.feature_display || permission.feature })}>
-                      {tr("Удалить", "Delete")}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {!filteredPermissions.length && (
-              <div className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-                {tr("По выбранным фильтрам правила не найдены.", "No permissions match the selected filters.")}
-              </div>
-            )}
+            <Button onClick={onCreate} className="w-full">
+              {tr("Сохранить правило", "Save rule")}
+            </Button>
           </div>
         </SectionCard>
-      </div>
+      </PageGrid>
 
       <ConfirmActionDialog
         open={!!deleteTarget}
@@ -199,7 +267,14 @@ export default function SettingsPermissionsPage() {
           if (!open) setDeleteTarget(null);
         }}
         title={tr("Удалить правило", "Delete permission")}
-        description={deleteTarget ? tr(`Удалить явное правило для "${deleteTarget.username}" по функции "${deleteTarget.feature}"?`, `Delete explicit permission for "${deleteTarget.username}" on "${deleteTarget.feature}"?`) : ""}
+        description={
+          deleteTarget
+            ? tr(
+                `Удалить явное правило для "${deleteTarget.username}" по функции "${deleteTarget.feature}"?`,
+                `Delete explicit permission for "${deleteTarget.username}" on "${deleteTarget.feature}"?`,
+              )
+            : ""
+        }
         confirmLabel={tr("Удалить правило", "Delete permission")}
         onConfirm={() => {
           if (!deleteTarget) return;

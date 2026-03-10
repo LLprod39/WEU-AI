@@ -1,54 +1,91 @@
-import { useParams } from "react-router-dom";
-import { fetchFrontendBootstrap, getRdpPath } from "@/lib/api";
-import { Monitor, ExternalLink, Power } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
+import { Monitor, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { fetchFrontendBootstrap, getRdpPath } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+import { useParams } from "react-router-dom";
 
 export default function RdpPage() {
+  const { lang } = useI18n();
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   const { id } = useParams<{ id: string }>();
   const requestedId = Number(id || 0);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["frontend", "bootstrap"],
     queryFn: fetchFrontendBootstrap,
     staleTime: 20_000,
   });
-  const server = data?.servers.find((s) => s.id === requestedId);
+
+  const server = data?.servers.find((item) => item.id === requestedId);
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading RDP...</div>;
+    return <div className="p-6 text-sm text-muted-foreground">{tr("Загрузка RDP...", "Loading RDP...")}</div>;
   }
+
   if (error || !server) {
-    return <div className="p-6 text-sm text-destructive">RDP server not found.</div>;
+    return <div className="p-6 text-sm text-destructive">{tr("RDP-сервер не найден.", "RDP server not found.")}</div>;
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      <div className="flex items-center gap-3 px-4 py-2 bg-card border-b border-border shrink-0">
-        <Monitor className="h-4 w-4 text-info" />
-        <span className="text-sm font-medium text-foreground">{server?.name || `Server ${id}`}</span>
-        <span className="text-xs text-muted-foreground font-mono">{server.host}:{server.port}</span>
-        <div className="flex-1" />
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-          aria-label="Open native RDP page"
-          onClick={() => {
-            window.location.href = getRdpPath(server.id);
-          }}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" aria-label="Disconnect">
-          <Power className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      <div className="flex-1 flex items-center justify-center bg-terminal-bg">
-        <div className="text-center space-y-3">
-          <Monitor className="h-12 w-12 text-muted-foreground mx-auto" />
-          <p className="text-sm text-muted-foreground">RDP session is handled by Django legacy page.</p>
-          <p className="text-xs text-muted-foreground">Click top-right icon to open native RDP view.</p>
+    <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-6">
+      <div className="workspace-panel w-full max-w-2xl px-6 py-6 sm:px-7">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-background/40">
+            <Monitor className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <div className="enterprise-kicker">{tr("Удалённый рабочий стол", "Remote desktop")}</div>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{server.name}</h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {tr(
+                "RDP-сессия открывается через отдельную legacy-страницу. Здесь оставлен только понятный handoff без лишних кнопок и пустого интерфейса.",
+                "The RDP session opens through a separate legacy page. This screen is only a clear handoff without extra buttons or empty chrome.",
+              )}
+            </p>
+          </div>
         </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {tr("Хост", "Host")}
+            </div>
+            <div className="mt-2 font-mono text-sm text-foreground">
+              {server.host}:{server.port}
+            </div>
+            <div className="mt-2 text-xs leading-5 text-muted-foreground">{server.username}</div>
+          </div>
+
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {tr("Что дальше", "Next step")}
+            </div>
+            <div className="mt-2 text-sm leading-6 text-muted-foreground">
+              {tr(
+                "Откройте полноценную RDP-страницу. После перехода весь дальнейший поток идёт уже там.",
+                "Open the full RDP page. After that, the rest of the flow continues there.",
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Button onClick={() => (window.location.href = getRdpPath(server.id))} className="gap-2">
+            <ExternalLink className="h-4 w-4" />
+            {tr("Открыть RDP", "Open RDP")}
+          </Button>
+          <Button variant="outline" onClick={() => window.history.back()}>
+            {tr("Назад", "Back")}
+          </Button>
+        </div>
+
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">
+          {tr(
+            "Если открывать RDP нужно сразу без этого шага, следующим проходом можно сделать автопереход после короткого подтверждения.",
+            "If you want RDP to open immediately without this step, the next pass can switch this screen to an auto-redirect after a short confirmation.",
+          )}
+        </p>
       </div>
     </div>
   );

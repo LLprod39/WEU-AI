@@ -1,25 +1,27 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Save, X, Loader2, Server, CheckCircle2, XCircle, RefreshCw, ArrowLeft, Zap, Pencil } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Server,
+  Trash2,
+  XCircle,
+  Zap,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState, PageShell, SectionCard, StatusBadge } from "@/components/ui/page-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  EmptyState,
-  MetricCard,
-  MetricGrid,
-  PageHero,
-  PageShell,
-  SectionCard,
-  StatusBadge,
-} from "@/components/ui/page-shell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { studioMCP, type MCPServer } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -35,15 +37,11 @@ interface MCPTemplate {
   icon: string;
 }
 
-function TestIndicator({ ok, error }: { ok: boolean | null; error: string }) {
-  if (ok === null) return null;
-  if (ok) return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-  return (
-    <div className="flex items-center gap-1.5">
-      <XCircle className="h-4 w-4 text-red-500" />
-      {error && <span className="text-xs text-red-500 truncate max-w-[120px]" title={error}>{error.slice(0, 30)}</span>}
-    </div>
-  );
+function previewConnection(server: Pick<MCPServer, "transport" | "command" | "args" | "url">) {
+  if (server.transport === "stdio") {
+    return [server.command, ...(server.args || [])].filter(Boolean).join(" ");
+  }
+  return server.url || "https://...";
 }
 
 function MCPForm({
@@ -72,86 +70,119 @@ function MCPForm({
   });
   const [argsText, setArgsText] = useState((initial.args || []).join("\n"));
   const [envText, setEnvText] = useState(
-    Object.entries(initial.env || {}).map(([k, v]) => `${k}=${v}`).join("\n"),
+    Object.entries(initial.env || {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n"),
   );
 
-  const set = (key: keyof MCPServer, val: unknown) => setForm((f) => ({ ...f, [key]: val }));
+  const set = (key: keyof MCPServer, value: unknown) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = () => {
-    const args = argsText.split("\n").map((s) => s.trim()).filter(Boolean);
-    const envLines = envText.split("\n").map((s) => s.trim()).filter(Boolean);
+    const args = argsText
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
     const env: Record<string, string> = {};
-    for (const line of envLines) {
+
+    for (const line of envText.split("\n").map((item) => item.trim()).filter(Boolean)) {
       const idx = line.indexOf("=");
       if (idx > 0) env[line.slice(0, idx)] = line.slice(idx + 1);
     }
+
     onSave({ ...form, args, env });
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <div className="flex-1 space-y-1.5">
-          <Label className="text-xs">{tr("Название *", "Name *")}</Label>
-          <Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} placeholder="GitHub MCP" />
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_160px]">
+        <div className="space-y-2">
+          <Label>{tr("Название", "Name")}</Label>
+          <Input
+            value={form.name || ""}
+            onChange={(event) => set("name", event.target.value)}
+            placeholder="GitHub MCP"
+          />
         </div>
-        <div className="w-32 space-y-1.5">
-          <Label className="text-xs">{tr("Транспорт", "Transport")}</Label>
-          <Select value={form.transport || "stdio"} onValueChange={(v) => set("transport", v)}>
-            <SelectTrigger className="h-9 text-sm">
+        <div className="space-y-2">
+          <Label>{tr("Транспорт", "Transport")}</Label>
+          <Select value={form.transport || "stdio"} onValueChange={(value) => set("transport", value)}>
+            <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="stdio">stdio</SelectItem>
-              <SelectItem value="sse">{tr("SSE (HTTP)", "SSE (HTTP)")}</SelectItem>
+              <SelectItem value="sse">SSE (HTTP)</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">{tr("Описание", "Description")}</Label>
-        <Input value={form.description || ""} onChange={(e) => set("description", e.target.value)} placeholder={tr("Что даёт этот MCP...", "What this MCP provides...")} />
+      <div className="space-y-2">
+        <Label>{tr("Описание", "Description")}</Label>
+        <Input
+          value={form.description || ""}
+          onChange={(event) => set("description", event.target.value)}
+          placeholder={tr("Коротко: что даёт этот MCP", "Short note about what this MCP provides")}
+        />
       </div>
 
       {form.transport === "stdio" ? (
-        <>
-          <div className="space-y-1.5">
-            <Label className="text-xs">{tr("Команда", "Command")}</Label>
-            <Input value={form.command || ""} onChange={(e) => set("command", e.target.value)} placeholder="npx" className="font-mono text-sm" />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>{tr("Команда", "Command")}</Label>
+            <Input
+              value={form.command || ""}
+              onChange={(event) => set("command", event.target.value)}
+              placeholder="npx"
+              className="font-mono"
+            />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">{tr("Аргументы (по одному на строку)", "Arguments (one per line)")}</Label>
+          <div className="space-y-2">
+            <Label>{tr("Аргументы", "Arguments")}</Label>
             <Textarea
               value={argsText}
-              onChange={(e) => setArgsText(e.target.value)}
+              onChange={(event) => setArgsText(event.target.value)}
               placeholder={`-y\n@modelcontextprotocol/server-github`}
-              className="font-mono text-xs resize-none"
-              rows={4}
+              rows={5}
+              className="font-mono text-xs"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">{tr("Переменные окружения (KEY=value, по одной на строку)", "Environment Variables (KEY=value, one per line)")}</Label>
+          <div className="space-y-2">
+            <Label>{tr("Переменные окружения", "Environment variables")}</Label>
             <Textarea
               value={envText}
-              onChange={(e) => setEnvText(e.target.value)}
-              placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=ghp_..."
-              className="font-mono text-xs resize-none"
-              rows={3}
+              onChange={(event) => setEnvText(event.target.value)}
+              placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=..."
+              rows={4}
+              className="font-mono text-xs"
             />
           </div>
-        </>
+        </div>
       ) : (
-        <div className="space-y-1.5">
-          <Label className="text-xs">{tr("SSE URL", "SSE URL")}</Label>
-          <Input value={form.url || ""} onChange={(e) => set("url", e.target.value)} placeholder="https://mcp.example.com/sse" className="font-mono text-sm" />
+        <div className="space-y-2">
+          <Label>{tr("SSE URL", "SSE URL")}</Label>
+          <Input
+            value={form.url || ""}
+            onChange={(event) => set("url", event.target.value)}
+            placeholder="https://mcp.example.com/sse"
+            className="font-mono"
+          />
         </div>
       )}
 
+      <div className="workspace-subtle rounded-2xl px-4 py-3 text-sm leading-6 text-muted-foreground">
+        {tr(
+          "Сначала можно использовать готовый шаблон, а потом поправить команду или env вручную.",
+          "A template is usually the fastest start, then you can adjust the command or env manually.",
+        )}
+      </div>
+
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline" size="sm" onClick={onCancel}>{tr("Отмена", "Cancel")}</Button>
-        <Button size="sm" onClick={handleSave} disabled={!form.name?.trim() || isPending} className="gap-1.5">
-          {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+        <Button variant="outline" onClick={onCancel}>
+          {tr("Отмена", "Cancel")}
+        </Button>
+        <Button onClick={handleSave} disabled={!form.name?.trim() || isPending} className="gap-2">
+          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {tr("Сохранить", "Save")}
         </Button>
       </div>
@@ -178,8 +209,9 @@ export default function MCPHubPage() {
     queryKey: ["studio", "mcp", "templates"],
     queryFn: studioMCP.templates,
   });
-  const healthyCount = mcpList.filter((mcp) => mcp.last_test_ok === true).length;
-  const failedCount = mcpList.filter((mcp) => mcp.last_test_ok === false).length;
+
+  const healthyCount = mcpList.filter((item) => item.last_test_ok === true).length;
+  const failedCount = mcpList.filter((item) => item.last_test_ok === false).length;
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<MCPServer>) => studioMCP.create(data),
@@ -188,7 +220,7 @@ export default function MCPHubPage() {
       setEditMcp(null);
       toast({ description: tr("MCP-сервер добавлен", "MCP server added") });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const updateMutation = useMutation({
@@ -198,7 +230,7 @@ export default function MCPHubPage() {
       setEditMcp(null);
       toast({ description: tr("MCP-сервер обновлён", "MCP server updated") });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const deleteMutation = useMutation({
@@ -208,20 +240,20 @@ export default function MCPHubPage() {
       setDeleteTarget(null);
       toast({ description: tr("MCP-сервер удалён", "MCP server removed") });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const testMutation = useMutation({
     mutationFn: (id: number) => studioMCP.test(id),
-    onSuccess: (res, id) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["studio", "mcp"] });
       setTestingId(null);
-      if (res.ok) toast({ description: tr("Подключение успешно", "Connection OK") });
-      else toast({ variant: "destructive", description: tr(`Тест завершился ошибкой: ${res.error}`, `Test failed: ${res.error}`) });
+      if (result.ok) toast({ description: tr("Подключение успешно", "Connection OK") });
+      else toast({ variant: "destructive", description: result.error || tr("Проверка завершилась ошибкой", "Test failed") });
     },
-    onError: (err: Error) => {
+    onError: (error: Error) => {
       setTestingId(null);
-      toast({ variant: "destructive", description: err.message });
+      toast({ variant: "destructive", description: error.message });
     },
   });
 
@@ -233,225 +265,247 @@ export default function MCPHubPage() {
     }
   };
 
-  const handleUseTemplate = (tpl: MCPTemplate) => {
+  const handleUseTemplate = (template: MCPTemplate) => {
     setEditMcp({
-      name: tpl.name,
-      description: tpl.description,
-      transport: tpl.transport,
-      command: tpl.command,
-      args: tpl.args,
-      env: tpl.env,
+      name: template.name,
+      description: template.description,
+      transport: template.transport,
+      command: template.command,
+      args: template.args,
+      env: template.env,
     });
   };
 
   return (
-    <PageShell className="space-y-6">
-      <PageHero
-        kicker={tr("Capability Layer", "Capability Layer")}
-        title={tr("MCP Реестр", "MCP Registry")}
-        description={
-          <>
-            {tr(
-              "Управляйте реестром MCP-серверов: подключение, проверка состояния и централизованное использование в agents и pipelines.",
-              "Manage the MCP registry: connection setup, health checks, and centralized use in agents and pipelines.",
-            )}
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={() => navigate("/studio")}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <StatusBadge label={tr("capability source layer", "capability source layer")} tone="info" />
-              <span>{tr("Сначала MCP, потом skills/configs, затем pipelines и runs.", "MCP first, then skills/configs, then pipelines and runs.")}</span>
-            </div>
-          </>
-        }
-        actions={
-          <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-xl px-4">
-            <Plus className="h-3.5 w-3.5" />
-            {tr("Добавить MCP-сервер", "Add MCP Server")}
-          </Button>
-        }
-      >
-        <MetricGrid>
-          <MetricCard
-            label={tr("Servers", "Servers")}
-            value={mcpList.length}
-            description={tr("Настроенные MCP endpoints в текущем workspace.", "Configured MCP endpoints in the current workspace.")}
-            icon={<Server className="h-5 w-5 text-primary" />}
-            tone="info"
-          />
-          <MetricCard
-            label={tr("Healthy", "Healthy")}
-            value={healthyCount}
-            description={
-              failedCount > 0
-                ? tr(`${failedCount} требуют внимания.`, `${failedCount} currently need attention.`)
-                : tr("Ошибок последней проверки не зафиксировано.", "No failed checks are currently recorded.")
-            }
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-300" />}
-            tone={failedCount > 0 ? "warning" : "success"}
-          />
-          <MetricCard
-            label={tr("Templates", "Templates")}
-            value={templates.length}
-            description={tr("Стартовые шаблоны для популярных MCP-интеграций.", "Starter definitions for common MCP integrations.")}
-            icon={<Zap className="h-5 w-5 text-violet-300" />}
-            tone="info"
-          />
-          <MetricCard
-            label={tr("Attention", "Attention")}
-            value={failedCount}
-            description={tr("Серверы, у которых последняя проверка завершилась ошибкой.", "Servers whose last connectivity test failed.")}
-            icon={<XCircle className="h-5 w-5 text-red-300" />}
-            tone={failedCount > 0 ? "danger" : "success"}
-          />
-        </MetricGrid>
-      </PageHero>
+    <PageShell className="space-y-5">
+      <section className="workspace-panel px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <div className="enterprise-kicker">{tr("MCP Registry", "MCP Registry")}</div>
+            <h1 className="text-[1.7rem] font-semibold tracking-[-0.05em] text-foreground">
+              {tr("Подключения MCP", "MCP connections")}
+            </h1>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              {tr(
+                "Это реестр capability-серверов. Сначала подключите источник здесь, потом прикрепляйте его к agent config или pipeline.",
+                "This is the registry of capability servers. Connect the source here first, then attach it to an agent config or pipeline.",
+              )}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => navigate("/studio")} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              {tr("Назад в Studio", "Back to Studio")}
+            </Button>
+            <Button onClick={() => setEditMcp({})} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {tr("Добавить MCP", "Add MCP")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <span className="workspace-chip">
+            <Server className="h-3.5 w-3.5" />
+            {tr("Подключений", "Connections")}: {mcpList.length}
+          </span>
+          <span className="workspace-chip">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+            {tr("Работают", "Healthy")}: {healthyCount}
+          </span>
+          <span className="workspace-chip">
+            <XCircle className="h-3.5 w-3.5 text-red-300" />
+            {tr("Требуют внимания", "Need attention")}: {failedCount}
+          </span>
+          <span className="workspace-chip">
+            <Zap className="h-3.5 w-3.5" />
+            {tr("Шаблонов", "Templates")}: {(templates as MCPTemplate[]).length}
+          </span>
+        </div>
+      </section>
 
       <SectionCard
-        title={tr("Registry workspace", "Registry workspace")}
+        title={tr("Реестр", "Registry")}
         description={tr(
-          "Use this page to register capability sources before you wire them into Agent Configs or Pipelines.",
-          "Use this page to register capability sources before you wire them into Agent Configs or Pipelines.",
+          "Сначала просматривайте свои подключения, затем при необходимости стартуйте с шаблона.",
+          "Review your existing connections first, then start from a template when needed.",
         )}
         icon={<Server className="h-4 w-4 text-primary" />}
       >
         <Tabs defaultValue="mine">
-          <TabsList className="mb-4 rounded-md border border-border bg-card/70 p-1">
-            <TabsTrigger value="mine">{tr("Мои серверы", "My Servers")} ({mcpList.length})</TabsTrigger>
-            <TabsTrigger value="templates">{tr("Шаблоны", "Templates")} ({templates.length})</TabsTrigger>
+          <TabsList className="mb-4 rounded-xl border border-border bg-background/50 p-1">
+            <TabsTrigger value="mine" className="rounded-lg">
+              {tr("Подключения", "Connections")} ({mcpList.length})
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="rounded-lg">
+              {tr("Шаблоны", "Templates")} ({(templates as MCPTemplate[]).length})
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="mine">
+          <TabsContent value="mine" className="mt-0">
             {isLoading ? (
-              <div className="enterprise-panel flex h-40 items-center justify-center rounded-md text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <div className="flex h-28 items-center justify-center text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {tr("Загрузка...", "Loading...")}
               </div>
             ) : mcpList.length === 0 ? (
               <EmptyState
                 icon={<Server className="h-5 w-5" />}
-                title={tr("No MCP servers yet", "No MCP servers yet")}
+                title={tr("Пока нет MCP-подключений", "No MCP connections yet")}
                 description={tr(
-                  "Добавьте capability source вручную или начните с шаблона. После этого его можно подключать в Agent Configs и pipeline nodes.",
-                  "Add a capability source manually or start from a template. After that, it can be attached to Agent Configs and pipeline nodes.",
+                  "Добавьте сервер вручную или возьмите шаблон как отправную точку.",
+                  "Add a server manually or use a template as a starting point.",
                 )}
                 actions={
-                  <>
-                    <Button size="sm" onClick={() => setEditMcp({})} className="h-9 gap-1.5 rounded-xl px-4">
-                      <Plus className="h-3.5 w-3.5" />
-                      {tr("Добавить MCP-сервер", "Add MCP Server")}
-                    </Button>
-                  </>
+                  <Button onClick={() => setEditMcp({})} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    {tr("Добавить MCP", "Add MCP")}
+                  </Button>
                 }
-                hint={tr(
-                  "Типичная цепочка: MCP Registry -> Agent Config -> Pipeline node -> Run.",
-                  "Typical chain: MCP Registry -> Agent Config -> Pipeline node -> Run.",
-                )}
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {mcpList.map((mcp) => (
-                  <Card key={mcp.id} className="group overflow-hidden rounded-md border-border bg-card transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-none">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <CardTitle className="text-sm flex items-center gap-2">
-                            {mcp.name}
-                            <Badge variant="secondary" className="text-[9px] font-mono">{mcp.transport}</Badge>
-                          </CardTitle>
-                          {mcp.description && <CardDescription className="text-xs mt-1">{mcp.description}</CardDescription>}
+              <div className="overflow-hidden rounded-[1.25rem] border border-border/70">
+                <div className="grid gap-3 border-b border-border/70 bg-background/40 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_200px_auto]">
+                  <div>{tr("Подключение", "Connection")}</div>
+                  <div>{tr("Запуск / URL", "Launch / URL")}</div>
+                  <div>{tr("Последняя проверка", "Last test")}</div>
+                  <div>{tr("Действия", "Actions")}</div>
+                </div>
+
+                {mcpList.map((mcp) => {
+                  const testTone =
+                    mcp.last_test_ok === true ? "success" : mcp.last_test_ok === false ? "danger" : "neutral";
+
+                  return (
+                    <div
+                      key={mcp.id}
+                      className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_200px_auto]"
+                    >
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-sm font-medium text-foreground">{mcp.name}</div>
+                          <StatusBadge label={mcp.transport} tone="info" dot={false} />
+                          {mcp.is_shared ? <StatusBadge label={tr("Shared", "Shared")} dot={false} /> : null}
                         </div>
-                        <div className="flex items-center gap-1 rounded-md border border-border/70 bg-background/60 p-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg"
-                            onClick={() => { setTestingId(mcp.id); testMutation.mutate(mcp.id); }}
-                            title={tr("Проверить подключение", "Test connection")}
-                            disabled={testingId === mcp.id}
-                          >
-                            {testingId === mcp.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => setEditMcp(mcp)}>
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-destructive hover:text-destructive" onClick={() => setDeleteTarget(mcp)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3 pt-0">
-                      {mcp.transport === "stdio" ? (
-                        <div className="rounded-md bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                          {mcp.command} {(mcp.args || []).join(" ").slice(0, 40)}
-                        </div>
-                      ) : (
-                        <div className="rounded-md bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                          {mcp.url}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 border-t border-border/70 pt-3">
-                        <TestIndicator ok={mcp.last_test_ok} error={mcp.last_test_error} />
-                        {mcp.last_test_at && (
-                          <span className="text-[10px] text-muted-foreground ml-auto">
-                            {tr("проверено", "tested")} {new Date(mcp.last_test_at).toLocaleDateString()}
-                          </span>
+                        {mcp.description ? (
+                          <p className="text-sm leading-6 text-muted-foreground">{mcp.description}</p>
+                        ) : (
+                          <p className="text-sm leading-6 text-muted-foreground">
+                            {tr("Описание не добавлено.", "No description provided.")}
+                          </p>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
+
+                      <div className="min-w-0">
+                        <div className="rounded-xl border border-border/70 bg-background/35 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
+                          {previewConnection(mcp)}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <StatusBadge
+                          label={
+                            mcp.last_test_ok === true
+                              ? tr("Работает", "Healthy")
+                              : mcp.last_test_ok === false
+                                ? tr("Ошибка", "Failed")
+                                : tr("Не проверялся", "Not tested")
+                          }
+                          tone={testTone}
+                        />
+                        {mcp.last_test_error ? (
+                          <p className="text-xs leading-5 text-muted-foreground">{mcp.last_test_error}</p>
+                        ) : null}
+                        {mcp.last_test_at ? (
+                          <p className="text-xs text-muted-foreground">
+                            {tr("Проверено", "Tested")}: {new Date(mcp.last_test_at).toLocaleString()}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-wrap items-start gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => {
+                            setTestingId(mcp.id);
+                            testMutation.mutate(mcp.id);
+                          }}
+                          disabled={testingId === mcp.id}
+                        >
+                          {testingId === mcp.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          {tr("Проверить", "Test")}
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-2" onClick={() => setEditMcp(mcp)}>
+                          <Pencil className="h-4 w-4" />
+                          {tr("Изменить", "Edit")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(mcp)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {tr("Удалить", "Remove")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="templates">
+          <TabsContent value="templates" className="mt-0">
             {(templates as MCPTemplate[]).length === 0 ? (
               <EmptyState
                 icon={<Zap className="h-5 w-5" />}
-                title={tr("Шаблонов MCP пока нет", "No MCP templates yet")}
+                title={tr("Шаблоны пока недоступны", "Templates are not available yet")}
                 description={tr(
-                  "Когда шаблоны доступны, они ускоряют подключение типовых capability sources без ручного набора команд и env.",
-                  "When templates are available, they speed up connecting common capability sources without manual command/env entry.",
+                  "Когда шаблоны появятся, их можно будет использовать как быстрый старт для типовых MCP-серверов.",
+                  "When templates are available, you can use them as a quick start for common MCP servers.",
                 )}
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(templates as MCPTemplate[]).map((tpl) => (
-                  <Card
-                    key={tpl.slug}
-                    className="cursor-pointer overflow-hidden rounded-md border-border bg-card transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-none"
-                    onClick={() => handleUseTemplate(tpl)}
+              <div className="overflow-hidden rounded-[1.25rem] border border-border/70">
+                {(templates as MCPTemplate[]).map((template) => (
+                  <div
+                    key={template.slug}
+                    className="grid gap-4 border-b border-border/70 px-4 py-4 last:border-b-0 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]"
                   >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-xl">
-                          <span>{tpl.icon}</span>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40 text-lg">
+                        {template.icon}
+                      </div>
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-sm font-medium text-foreground">{template.name}</div>
+                          <StatusBadge label={template.transport} tone="info" dot={false} />
                         </div>
-                        <div>
-                          <CardTitle className="text-sm">{tpl.name}</CardTitle>
-                          <CardDescription className="text-xs">{tpl.description}</CardDescription>
-                        </div>
+                        <p className="text-sm leading-6 text-muted-foreground">{template.description}</p>
                       </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="rounded-md bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                        {tpl.transport === "stdio" ? `${tpl.command} ${(tpl.args || []).join(" ").slice(0, 35)}` : tpl.slug}
-                      </div>
-                      <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
-                        <Badge variant="outline" className="text-[9px]">{tpl.transport}</Badge>
-                        <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-md text-xs" onClick={() => handleUseTemplate(tpl)}>
-                          <Zap className="h-3 w-3" />
-                          {tr("Использовать", "Use")}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <div className="rounded-xl border border-border/70 bg-background/35 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
+                      {template.transport === "stdio"
+                        ? [template.command, ...(template.args || [])].filter(Boolean).join(" ")
+                        : template.slug}
+                    </div>
+
+                    <div className="flex items-start justify-start lg:justify-end">
+                      <Button size="sm" onClick={() => handleUseTemplate(template)} className="gap-2">
+                        <Zap className="h-4 w-4" />
+                        {tr("Использовать шаблон", "Use template")}
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -459,13 +513,22 @@ export default function MCPHubPage() {
         </Tabs>
       </SectionCard>
 
-      {/* Edit/Create Dialog */}
-      <Dialog open={!!editMcp} onOpenChange={(o) => !o && setEditMcp(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto rounded-md border-border bg-background/95">
+      <Dialog open={!!editMcp} onOpenChange={(open) => !open && setEditMcp(null)}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-auto rounded-3xl border-border bg-background/95">
           <DialogHeader>
-            <DialogTitle>{(editMcp as MCPServer)?.id ? tr("Изменить MCP-сервер", "Edit MCP Server") : tr("Добавить MCP-сервер", "Add MCP Server")}</DialogTitle>
+            <DialogTitle>
+              {(editMcp as MCPServer)?.id
+                ? tr("Изменить MCP-подключение", "Edit MCP connection")
+                : tr("Добавить MCP-подключение", "Add MCP connection")}
+            </DialogTitle>
+            <DialogDescription>
+              {tr(
+                "Сохраните описание, чтобы потом быстрее находить и подключать этот capability source.",
+                "Save a short description so this capability source is easier to find later.",
+              )}
+            </DialogDescription>
           </DialogHeader>
-          {editMcp && (
+          {editMcp ? (
             <MCPForm
               initial={editMcp}
               onSave={handleSave}
@@ -473,21 +536,28 @@ export default function MCPHubPage() {
               isPending={createMutation.isPending || updateMutation.isPending}
               lang={lang}
             />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm */}
-      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm rounded-md border-border bg-background/95">
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm rounded-3xl border-border bg-background/95">
           <DialogHeader>
-            <DialogTitle>{tr("Удалить MCP-сервер", "Remove MCP Server")}</DialogTitle>
-            <DialogDescription>{tr(`Удалить "${deleteTarget?.name}"?`, `Remove "${deleteTarget?.name}"?`)}</DialogDescription>
+            <DialogTitle>{tr("Удалить MCP-подключение", "Remove MCP connection")}</DialogTitle>
+            <DialogDescription>
+              {tr(`Удалить "${deleteTarget?.name}"?`, `Remove "${deleteTarget?.name}"?`)}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>{tr("Отмена", "Cancel")}</Button>
-            <Button variant="destructive" onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              {tr("Отмена", "Cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {tr("Удалить", "Remove")}
             </Button>
           </DialogFooter>

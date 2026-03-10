@@ -3,6 +3,7 @@ SSH Agent Tool for Remote Operations
 Allows the agent to connect to SSH servers and execute commands
 """
 import asyncssh
+import secrets
 from loguru import logger
 from typing import Optional, Dict, Any
 from app.tools.base import BaseTool, ToolMetadata, ToolParameter
@@ -38,13 +39,9 @@ class SSHConnectionManager:
         Returns:
             connection ID
         """
-        conn_id = f"{username}@{host}:{port}"
+        conn_id = f"{username}@{host}:{port}:{secrets.token_hex(4)}"
         
         try:
-            if conn_id in self.connections:
-                logger.info(f"Reusing existing connection: {conn_id}")
-                return conn_id
-            
             logger.info(f"Connecting to {conn_id}...")
             
             # Prepare connection options

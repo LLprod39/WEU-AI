@@ -48,6 +48,9 @@ export interface AuthUser {
   is_staff: boolean;
   features: {
     servers: boolean;
+    dashboard: boolean;
+    agents: boolean;
+    studio: boolean;
     settings: boolean;
     orchestrator: boolean;
   };

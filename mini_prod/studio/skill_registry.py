@@ -3,14 +3,20 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from django.conf import settings
 
 _FRONTMATTER_BOUNDARY = "---"
 _TITLE_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+try:
+    import yaml
+except Exception:  # pragma: no cover - optional dependency in minimal envs
+    yaml = None
 
 
 class SkillNotFoundError(KeyError):
@@ -30,9 +36,13 @@ class SkillDefinition:
     ui_hint: str
     guardrail_summary: tuple[str, ...]
     recommended_tools: tuple[str, ...]
-    runtime_policy: dict[str, Any]
-    metadata: dict[str, Any]
+    runtime_policy: Mapping[str, Any]
+    metadata: Mapping[str, Any]
     content: str
+
+    def __post_init__(self):
+        object.__setattr__(self, "runtime_policy", _freeze_json_value(self.runtime_policy or {}))
+        object.__setattr__(self, "metadata", _freeze_json_value(self.metadata or {}))
 
     def to_summary_dict(self) -> dict[str, Any]:
         return {
@@ -52,8 +62,8 @@ class SkillDefinition:
 
     def to_detail_dict(self) -> dict[str, Any]:
         data = self.to_summary_dict()
-        data["runtime_policy"] = self.runtime_policy
-        data["metadata"] = self.metadata
+        data["runtime_policy"] = _json_compatible_value(self.runtime_policy)
+        data["metadata"] = _json_compatible_value(self.metadata)
         data["content"] = self.content
         return data
 
@@ -101,6 +111,17 @@ def _parse_frontmatter_value(key: str, value: str) -> Any:
     return _clean_scalar(raw)
 
 
+def _parse_frontmatter_lines(lines: list[str]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, raw_value = line.split(":", 1)
+        metadata[key.strip()] = _parse_frontmatter_value(key.strip(), raw_value)
+    return metadata
+
+
 def _split_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     if not content.startswith(_FRONTMATTER_BOUNDARY):
         return {}, content
@@ -118,16 +139,37 @@ def _split_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     if end_index is None:
         return {}, content
 
-    metadata: dict[str, Any] = {}
-    for raw_line in lines[1:end_index]:
-        line = raw_line.strip()
-        if not line or line.startswith("#") or ":" not in line:
-            continue
-        key, raw_value = line.split(":", 1)
-        metadata[key.strip()] = _parse_frontmatter_value(key.strip(), raw_value)
+    frontmatter_lines = lines[1:end_index]
+    metadata = _parse_frontmatter_lines(frontmatter_lines)
+    if yaml is not None:
+        try:
+            parsed_yaml = yaml.safe_load("\n".join(frontmatter_lines))
+            if isinstance(parsed_yaml, dict):
+                metadata = parsed_yaml
+        except Exception:
+            pass
 
     body = "\n".join(lines[end_index + 1 :]).lstrip()
     return metadata, body
+
+
+def _freeze_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        frozen_dict = {str(key): _freeze_json_value(item) for key, item in value.items()}
+        return MappingProxyType(frozen_dict)
+    if isinstance(value, list):
+        return tuple(_freeze_json_value(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze_json_value(item) for item in value)
+    return value
+
+
+def _json_compatible_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_json_compatible_value(item) for item in value]
+    return value
 
 
 def _extract_title(body: str, fallback: str) -> str:
@@ -238,10 +280,7 @@ def normalise_skill_slugs(raw_values: Any) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for item in raw_values:
-        if isinstance(item, dict):
-            value = item.get("slug") or item.get("name")
-        else:
-            value = item
+        value = item.get("slug") or item.get("name") if isinstance(item, dict) else item
         slug = str(value or "").strip()
         if not slug:
             continue

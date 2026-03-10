@@ -25,8 +25,6 @@ import {
   X,
   Loader2,
   Trash2,
-  Plus,
-  Zap,
   CheckCircle2,
   XCircle,
   Clock,
@@ -39,6 +37,7 @@ import {
   Sparkles,
   Bot,
   Wand2,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,8 +48,9 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import {
   studioPipelines,
@@ -442,7 +442,7 @@ function ConfigSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-md border border-border bg-card/70 px-4 py-4 shadow-sm">
+    <section className="rounded-xl border border-border/70 bg-background/24 px-4 py-4">
       <div className="mb-3 space-y-1">
         <h4 className="text-sm font-semibold text-foreground">{title}</h4>
         {description && <p className="text-[11px] leading-5 text-muted-foreground">{description}</p>}
@@ -1360,44 +1360,52 @@ function NodeConfigPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+      <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px]">
-              {typeGuide.category}
-            </Badge>
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="font-medium">{typeGuide.category}</span>
             <span className="text-[11px] text-muted-foreground">{node.id}</span>
           </div>
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <span>{typeInfo.icon}</span>
+            <span className="text-muted-foreground">{typeInfo.icon}</span>
             <span>{typeInfo.label}</span>
           </h3>
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteDialogOpen(true)}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+        <div className="flex items-center gap-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-md text-muted-foreground">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem className="text-red-300 focus:text-red-200" onClick={() => setDeleteDialogOpen(true)}>
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                {localize(lang, "Удалить ноду", "Delete node")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 bg-muted/[0.08]">
+      <ScrollArea className="min-h-0 flex-1 bg-background/10">
         <div className="space-y-4 px-4 py-4">
         <ConfigSection title={localize(lang, "Сводка настройки", "Setup Overview")} description={typeGuide.summary}>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={setupState.ready ? "default" : "secondary"} className="rounded-full px-2.5 py-0.5 text-[10px]">
+          <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3 text-[11px]">
+            <div className="font-medium text-foreground">
               {setupState.ready ? localize(lang, "Готово к запуску", "Ready to run") : localize(lang, `Требует настройки: ${setupState.issues.length}`, `Needs setup: ${setupState.issues.length}`)}
-            </Badge>
-            {setupState.highlights.slice(0, 4).map((item) => (
-              <Badge key={item} variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px]">
-                {item}
-              </Badge>
-            ))}
+            </div>
+            {setupState.highlights.length > 0 && (
+              <div className="mt-1 text-muted-foreground">
+                {setupState.highlights.slice(0, 4).join(" · ")}
+              </div>
+            )}
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-md border border-border/70 bg-background/70 px-3 py-3">
+            <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{localize(lang, "Что настроить", "What to configure")}</p>
               <div className="mt-2 space-y-1.5">
                 {typeGuide.checklist.map((item) => (
@@ -1405,7 +1413,7 @@ function NodeConfigPanel({
                 ))}
               </div>
             </div>
-            <div className="rounded-md border border-border/70 bg-background/70 px-3 py-3">
+            <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {setupState.ready ? localize(lang, "Статус настройки", "Configuration status") : localize(lang, "Что нужно до запуска ноды", "Before this node can run")}
               </p>
@@ -1424,28 +1432,24 @@ function NodeConfigPanel({
 
         <ConfigSection title={localize(lang, "Связанный контекст", "Connected Context")} description={localize(lang, "Studio автоматически подставляет частые поля из связанных нод. При необходимости вы всё ещё можете переопределить значения вручную.", "Studio now uses linked nodes to prefill the most common fields. You can still override anything manually.")}>
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-md border border-border/70 bg-background/75 px-3 py-3">
+            <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{localize(lang, "Входящие ноды", "Incoming nodes")}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {incomingNodes.length ? incomingNodes.map((item) => (
-                  <Badge key={item.id} variant="outline" className="rounded-full px-2.5 py-1 text-[11px]">
-                    {item.label}
-                  </Badge>
+                  <span key={item.id} className="rounded-full border border-border/70 bg-background/35 px-2.5 py-1 text-[11px] text-muted-foreground">{item.label}</span>
                 )) : <p className="text-xs leading-5 text-muted-foreground">{localize(lang, "Пока нет подключённой upstream-ноды.", "No upstream node connected yet.")}</p>}
               </div>
             </div>
-            <div className="rounded-md border border-border/70 bg-background/75 px-3 py-3">
+            <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{localize(lang, "Следующие ноды", "Downstream nodes")}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {outgoingNodes.length ? outgoingNodes.map((item) => (
-                  <Badge key={item.id} variant="outline" className="rounded-full px-2.5 py-1 text-[11px]">
-                    {item.label}
-                  </Badge>
+                  <span key={item.id} className="rounded-full border border-border/70 bg-background/35 px-2.5 py-1 text-[11px] text-muted-foreground">{item.label}</span>
                 )) : <p className="text-xs leading-5 text-muted-foreground">{localize(lang, "После этой ноды пока ничего не подключено.", "Nothing connected after this node yet.")}</p>}
               </div>
             </div>
           </div>
-          <div className="rounded-md border border-border/70 bg-background/75 px-3 py-3">
+          <div className="rounded-xl border border-border/70 bg-background/30 px-3 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{localize(lang, "Полезные переменные", "Useful variables")}</p>
@@ -2511,37 +2515,40 @@ function NodePalette({ onAddNode }: { onAddNode: (type: NodeType) => void }) {
     .filter((group) => group.nodes.length > 0);
 
   return (
-    <div className="flex h-full flex-col border-r border-border bg-card/95">
+    <div className="flex h-full flex-col border-r border-border/70 bg-background/18">
       <div className="space-y-3 border-b border-border px-4 py-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{localize(lang, "Библиотека нод", "Node Library")}</p>
-          <h3 className="mt-1 text-sm font-semibold text-foreground">{localize(lang, "Добавляйте и настраивайте шаги быстрее", "Add and configure steps faster")}</h3>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">{localize(lang, "Добавляйте шаги без лишнего шума", "Add steps without extra noise")}</h3>
           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            {localize(lang, "Нажмите на ноду, чтобы добавить её на canvas. Studio сразу откроет настройки, и вам не придётся искать нужные поля вручную.", "Click a node to add it to the canvas. Studio opens its settings immediately so you can continue without hunting for options.")}
+            {localize(lang, "Выберите тип шага, Studio добавит его на canvas и сразу откроет настройку справа.", "Choose a step type, Studio adds it to the canvas and opens its setup on the right.")}
           </p>
         </div>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={localize(lang, "Поиск по нодам, инструментам и триггерам...", "Search nodes, tools, triggers...")}
-            className="h-9 rounded-md pl-9 text-sm"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              type="button"
-              size="sm"
-              variant={activeCategory === category ? "default" : "outline"}
-              className="h-7 rounded-full px-3 text-[11px]"
-              onClick={() => setActiveCategory(category)}
-            >
-              {getNodeCategoryLabel(category, lang)}
-            </Button>
-          ))}
+        <div className="grid gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={localize(lang, "Поиск по нодам, инструментам и триггерам...", "Search nodes, tools, triggers...")}
+              className="h-9 rounded-md pl-9 text-sm"
+            />
+          </div>
+          <Select value={activeCategory} onValueChange={setActiveCategory}>
+            <SelectTrigger className="h-9 rounded-md text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {getNodeCategoryLabel(category, lang)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="text-[11px] text-muted-foreground">
+            {localize(lang, `${visibleGroups.reduce((sum, group) => sum + group.nodes.length, 0)} типов доступны`, `${visibleGroups.reduce((sum, group) => sum + group.nodes.length, 0)} types available`)}
+          </div>
         </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -2555,24 +2562,16 @@ function NodePalette({ onAddNode }: { onAddNode: (type: NodeType) => void }) {
                   <button
                     key={node.type}
                     onClick={() => onAddNode(node.type)}
-                    className="group mb-2 w-full rounded-md border border-border/70 bg-background/70 p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+                    className="group mb-2 w-full rounded-xl border border-border/70 bg-background/28 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-background/38"
                     title={meta.description}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card text-lg">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent bg-background/35 text-base text-muted-foreground">
                         {node.icon}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-medium text-foreground">{meta.label}</div>
-                            <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{meta.description}</div>
-                          </div>
-                          <Plus className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-                        </div>
-                        <div className="mt-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
-                          {node.type.replace("/", " / ")}
-                        </div>
+                        <div className="text-sm font-medium text-foreground">{meta.label}</div>
+                        <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{meta.description}</div>
                       </div>
                     </div>
                   </button>
@@ -2617,6 +2616,7 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [pipelineCopilotOpen, setPipelineCopilotOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(true);
   const [runTaskText, setRunTaskText] = useState("");
   const [runRequester, setRunRequester] = useState("");
   const [runTicketId, setRunTicketId] = useState("");
@@ -2909,39 +2909,53 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
     );
   }
 
+  const showMiniMap = nodes.length >= 6;
+
   return (
-    <div className="flex h-[calc(100svh-4rem)] min-h-0 flex-col overflow-hidden">
+    <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col overflow-hidden bg-background">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card z-10">
-        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-md" onClick={() => navigate("/studio")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          value={pipelineName}
-          onChange={(e) => setPipelineName(e.target.value)}
-          className="h-9 w-64 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus-visible:ring-0"
-          placeholder={localize(lang, "Название пайплайна...", "Pipeline name...")}
+      <div className="z-10 flex flex-wrap items-center gap-2 border-b border-border/70 bg-background/95 px-4 py-2.5 backdrop-blur">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-xl" onClick={() => navigate("/studio")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <ChevronRight className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
+          <span className="hidden text-[11px] font-medium text-muted-foreground sm:block">{localize(lang, "Редактор пайплайна", "Pipeline editor")}</span>
+          <Input
+            value={pipelineName}
+            onChange={(e) => setPipelineName(e.target.value)}
+            className="h-9 min-w-[220px] max-w-[520px] flex-1 border-0 bg-transparent px-0 text-sm font-medium shadow-none focus-visible:ring-0"
+            placeholder={localize(lang, "Название пайплайна...", "Pipeline name...")}
           />
-        <div className="ml-auto flex items-center gap-2">
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {lastRun && (
-            <Badge
-              variant={lastRun.status === "completed" ? "default" : lastRun.status === "failed" ? "destructive" : "secondary"}
-              className="text-xs cursor-pointer"
+            <button
+              type="button"
               onClick={() => setActiveRunId(lastRun.id)}
+              className="hidden items-center gap-2 rounded-md border border-border/70 bg-background/35 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-background/50 hover:text-foreground sm:flex"
             >
-              {lastRun.status === "running" && <Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />}
-              {localize(lang, `Запуск #${lastRun.id}: ${formatRunStatus(lastRun.status, lang)}`, `Run #${lastRun.id}: ${formatRunStatus(lastRun.status, lang)}`)}
-            </Badge>
+              {lastRun.status === "running" ? (
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              ) : lastRun.status === "completed" ? (
+                <CheckCircle2 className="h-3 w-3 text-muted-foreground" />
+              ) : lastRun.status === "failed" ? (
+                <XCircle className="h-3 w-3 text-muted-foreground" />
+              ) : (
+                <Clock className="h-3 w-3 text-muted-foreground" />
+              )}
+              <span>{localize(lang, `Последний запуск #${lastRun.id}`, `Latest run #${lastRun.id}`)}</span>
+              <span>· {formatRunStatus(lastRun.status, lang)}</span>
+            </button>
           )}
           <Button
             size="sm"
-            variant="outline"
-            onClick={() => setPipelineCopilotOpen(true)}
+            variant={paletteOpen ? "secondary" : "outline"}
+            onClick={() => setPaletteOpen((open) => !open)}
             className="h-8 gap-1.5 rounded-md px-3"
           >
-            <Bot className="h-3.5 w-3.5" />
-            {localize(lang, "AI помощник пайплайна", "Pipeline AI Assistant")}
+            <BookOpen className="h-3.5 w-3.5" />
+            {paletteOpen ? localize(lang, "Скрыть библиотеку", "Hide library") : localize(lang, "Показать библиотеку", "Show library")}
           </Button>
           <Button
             size="sm"
@@ -2962,6 +2976,26 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
             {runMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             {localize(lang, "Запустить", "Run")}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 gap-1.5 rounded-md px-3 text-muted-foreground">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+                {localize(lang, "Ещё", "More")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onClick={() => setPipelineCopilotOpen(true)}>
+                <Bot className="mr-2 h-3.5 w-3.5" />
+                {localize(lang, "AI помощник пайплайна", "Pipeline AI Assistant")}
+              </DropdownMenuItem>
+              {lastRun && (
+                <DropdownMenuItem onClick={() => setActiveRunId(lastRun.id)}>
+                  <Clock className="mr-2 h-3.5 w-3.5" />
+                  {localize(lang, `Открыть запуск #${lastRun.id}`, `Open run #${lastRun.id}`)}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -3064,8 +3098,12 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
       {/* Main area */}
       <div className="min-h-0 flex flex-1 overflow-hidden">
         {/* Left: Node palette */}
-        <div className="min-h-0 w-72 shrink-0 border-r border-border xl:w-80">
-          <NodePalette onAddNode={handleAddNode} />
+        <div
+          className={`min-h-0 shrink-0 overflow-hidden border-r border-border transition-[width,border-color] duration-200 ${
+            paletteOpen ? "w-72 xl:w-80" : "w-0 border-r-transparent"
+          }`}
+        >
+          {paletteOpen ? <NodePalette onAddNode={handleAddNode} /> : null}
         </div>
 
         {/* Center: Canvas */}
@@ -3087,25 +3125,30 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
             }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls className="!bg-card !border-border [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted" />
-            <MiniMap
-              style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
-              maskColor="hsl(var(--background) / 0.7)"
-              nodeColor={(node) => {
-                const type = node.type || "";
-                if (type.startsWith("trigger/")) return "#10b981";
-                if (type.startsWith("agent/")) return "#8b5cf6";
-                if (type.startsWith("logic/")) return "#f59e0b";
-                if (type.startsWith("output/")) return "#ef4444";
-                return "#6b7280";
-              }}
-            />
+            <Controls className="!border-border/70 !bg-background/78 !backdrop-blur [&>button]:!border-border/70 [&>button]:!bg-background/80 [&>button]:!text-foreground [&>button:hover]:!bg-background" />
+            {showMiniMap && (
+              <MiniMap
+                style={{ background: "hsl(var(--background) / 0.85)", border: "1px solid hsl(var(--border))" }}
+                maskColor="hsl(var(--background) / 0.82)"
+                nodeColor={(node) => {
+                  const type = node.type || "";
+                  if (type.startsWith("trigger/")) return "#6b7280";
+                  if (type.startsWith("agent/")) return "#4b5563";
+                  if (type.startsWith("logic/")) return "#9ca3af";
+                  if (type.startsWith("output/")) return "#374151";
+                  return "#6b7280";
+                }}
+              />
+            )}
             {/* Empty state hint inside React Flow */}
             {nodes.length === 0 && (
               <Panel position="top-center" style={{ pointerEvents: "none", marginTop: "30%" }}>
-                <div className="text-center select-none">
-                  <Zap className="h-10 w-10 text-muted-foreground/20 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground/60">{localize(lang, "Выберите ноду в левой библиотеке, чтобы добавить её и сразу открыть панель настройки.", "Choose a node from the left library to add it and open its setup panel.")}</p>
+                <div className="select-none rounded-xl border border-border/60 bg-background/70 px-4 py-3 text-center backdrop-blur">
+                  <p className="text-sm text-muted-foreground/70">
+                    {paletteOpen
+                      ? localize(lang, "Выберите ноду в левой библиотеке, чтобы добавить её и сразу открыть панель настройки.", "Choose a node from the left library to add it and open its setup panel.")
+                      : localize(lang, "Откройте библиотеку нод сверху, чтобы быстро добавить первый шаг.", "Open the node library from the toolbar to add the first step.")}
+                  </p>
                 </div>
               </Panel>
             )}
@@ -3123,6 +3166,13 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
         }}
       >
         <SheetContent side="right" className="w-[min(70rem,calc(100vw-1rem))] max-w-none gap-0 border-l border-border bg-background p-0 shadow-[0_24px_90px_-36px_rgba(2,6,23,0.9)] sm:max-w-none">
+          <SheetTitle className="sr-only">
+            {activeRunId
+              ? localize(lang, `Монитор запуска #${activeRunId}`, `Run monitor #${activeRunId}`)
+              : selectedNode
+                ? localize(lang, `Настройка ноды ${getNodeDisplayLabel(selectedNode, lang)}`, `Node setup ${getNodeDisplayLabel(selectedNode, lang)}`)
+                : localize(lang, "Инспектор пайплайна", "Pipeline inspector")}
+          </SheetTitle>
           {activeRunId ? (
             <RunMonitorPanel
               runId={activeRunId}
