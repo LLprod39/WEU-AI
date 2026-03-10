@@ -38,10 +38,12 @@ from channels.layers import get_channel_layer
 from django.utils import timezone
 
 from app.core.model_utils import resolve_provider_and_model
+from servers.mcp_tool_runtime import MCPBoundTool
 
 from .mcp_client import call_mcp_tool
 from .models import PipelineRun
 from .pipeline_validation import validate_pipeline_definition
+from .skill_policy import apply_skill_policies, compile_skill_policies
 from .skill_registry import normalise_skill_slugs, resolve_skills
 
 logger = logging.getLogger(__name__)
@@ -540,7 +542,12 @@ async def _execute_agent_llm_query(node: dict, context: dict, node_outputs: dict
         return {"status": "failed", "error": str(exc)}
 
 
-async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -> dict:
+async def _execute_agent_mcp_call(
+    node: dict,
+    context: dict,
+    run: PipelineRun,
+    executed_mcp_tools: set[str] | None = None,
+) -> dict:
     """Execute a direct MCP tools/call request against a configured MCP server."""
     from .models import MCPServerPool
 
@@ -548,6 +555,7 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
     owner = await _s2a_fn(lambda: run.pipeline.owner)()
     mcp_server_id = config.get("mcp_server_id")
     tool_name = str(config.get("tool_name") or "").strip()
+    node_skill_slugs = normalise_skill_slugs(config.get("skill_slugs"))
 
     if not mcp_server_id:
         return {"status": "failed", "error": "Select an MCP server for this node"}
@@ -566,6 +574,33 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
         return {"status": "failed", "error": f"Invalid MCP server id: {mcp_server_id}"}
 
     arguments = _render_template_value(arguments_template or {}, context)
+    skills, skill_errors = resolve_skills(node_skill_slugs)
+    skill_policies, policy_errors = compile_skill_policies(skills)
+    if skill_errors or policy_errors:
+        return {
+            "status": "failed",
+            "error": f"Skill policy validation failed: {'; '.join([*skill_errors, *policy_errors])}",
+        }
+
+    binding = MCPBoundTool(
+        action_name=f"pipeline_{node.get('id') or 'node'}_{tool_name}",
+        server=mcp_server,
+        tool_name=tool_name,
+        description=f"Pipeline MCP call for {tool_name}",
+        input_schema=None,
+    )
+    prepared_args, policy_messages, policy_error = apply_skill_policies(
+        skill_policies,
+        binding,
+        arguments,
+        executed_mcp_tools if executed_mcp_tools is not None else set(),
+    )
+    if policy_error:
+        return {
+            "status": "failed",
+            "error": policy_error,
+        }
+
     try:
         logger.info(
             "pipeline run %s node %s mcp_call start: server=%s tool=%s args=%s",
@@ -573,10 +608,12 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
             node.get("id"),
             mcp_server.name,
             tool_name,
-            json.dumps(arguments, ensure_ascii=False)[:800],
+            json.dumps(prepared_args, ensure_ascii=False)[:800],
         )
-        result = await call_mcp_tool(mcp_server, tool_name, arguments)
+        result = await call_mcp_tool(mcp_server, tool_name, prepared_args)
         output = _mcp_result_to_text(result)
+        if policy_messages:
+            output = "\n".join([*policy_messages, output]) if output else "\n".join(policy_messages)
         logger.info(
             "pipeline run %s node %s mcp_call done: server=%s tool=%s is_error=%s output_chars=%s",
             run.pk,
@@ -593,6 +630,8 @@ async def _execute_agent_mcp_call(node: dict, context: dict, run: PipelineRun) -
                 "output": output,
                 "raw_result": result,
             }
+        if executed_mcp_tools is not None:
+            executed_mcp_tools.add(tool_name)
         return {
             "status": "completed",
             "output": output,
@@ -1206,6 +1245,7 @@ class PipelineExecutor:
     def __init__(self, run: PipelineRun):
         self.run = run
         self._stop_requested = False
+        self._executed_mcp_tools: set[str] = set()
 
     def request_stop(self):
         self._stop_requested = True
@@ -1376,7 +1416,7 @@ class PipelineExecutor:
             return await _execute_agent_llm_query(node, enriched, node_outputs, self.run)
 
         if node_type == "agent/mcp_call":
-            return await _execute_agent_mcp_call(node, enriched, self.run)
+            return await _execute_agent_mcp_call(node, enriched, self.run, self._executed_mcp_tools)
 
         if node_type == "logic/condition":
             return await _execute_logic_condition(node, enriched, node_outputs, self.run)

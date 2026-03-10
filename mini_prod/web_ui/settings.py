@@ -323,6 +323,25 @@ CURSOR_CLI_EXTRA_ENV = _parse_cursor_cli_extra_env()
 SKILLS_GLOBAL_RULES = os.getenv("SKILLS_GLOBAL_RULES", "").strip()
 SKILLS_MAX_CONTEXT_CHARS = int(os.getenv("SKILLS_MAX_CONTEXT_CHARS", "24000"))
 
+
+def _parse_path_list_env(name: str, default: list[Path]) -> list[Path]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    paths: list[Path] = []
+    for item in raw.split(","):
+        value = item.strip()
+        if not value:
+            continue
+        paths.append(Path(value).expanduser())
+    return paths or default
+
+
+STUDIO_SKILLS_DIRS = _parse_path_list_env(
+    "STUDIO_SKILLS_DIRS",
+    [BASE_DIR / "studio" / "skills"],
+)
+
 # CLI runtime configuration for external agents
 def _cli_command(env_var: str, default_name: str) -> str:
     return os.getenv(env_var) or shutil.which(default_name) or default_name

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from servers.mcp_tool_runtime import MCPBoundTool
@@ -18,16 +20,30 @@ class CompiledSkillPolicy:
     blocked_tool_patterns: tuple[re.Pattern[str], ...]
     mutating_tool_patterns: tuple[re.Pattern[str], ...]
     required_preflight_tools: tuple[str, ...]
-    pinned_arguments: dict[str, Any]
+    pinned_arguments: Mapping[str, Any]
     auto_inject_pinned_arguments: bool
     guardrail_summary: tuple[str, ...]
+
+    def __post_init__(self):
+        object.__setattr__(self, "pinned_arguments", _freeze_json_value(self.pinned_arguments or {}))
+
+
+def _freeze_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        frozen_dict = {str(key): _freeze_json_value(item) for key, item in value.items()}
+        return MappingProxyType(frozen_dict)
+    if isinstance(value, list):
+        return tuple(_freeze_json_value(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze_json_value(item) for item in value)
+    return value
 
 
 def _compile_patterns(raw_patterns: Any, *, skill_slug: str, field_name: str) -> tuple[tuple[re.Pattern[str], ...], list[str]]:
     if not raw_patterns:
         return (), []
 
-    if not isinstance(raw_patterns, list):
+    if not isinstance(raw_patterns, Sequence) or isinstance(raw_patterns, (str, bytes, bytearray)):
         return (), [f"{skill_slug}: {field_name} must be a JSON array of regex strings"]
 
     compiled: list[re.Pattern[str]] = []
@@ -48,7 +64,7 @@ def compile_skill_policies(skills: list[SkillDefinition]) -> tuple[list[Compiled
     errors: list[str] = []
 
     for skill in skills:
-        policy = skill.runtime_policy if isinstance(skill.runtime_policy, dict) else {}
+        policy = skill.runtime_policy if isinstance(skill.runtime_policy, Mapping) else {}
         if not policy:
             continue
 
@@ -72,14 +88,16 @@ def compile_skill_policies(skills: list[SkillDefinition]) -> tuple[list[Compiled
         errors.extend(mutating_errors)
 
         raw_required = policy.get("required_preflight_tools") or []
-        if raw_required and not isinstance(raw_required, list):
+        if raw_required and (
+            not isinstance(raw_required, Sequence) or isinstance(raw_required, (str, bytes, bytearray))
+        ):
             errors.append(f"{skill.slug}: required_preflight_tools must be a JSON array of tool names")
             required_preflight_tools: tuple[str, ...] = ()
         else:
             required_preflight_tools = tuple(str(item).strip() for item in raw_required if str(item).strip())
 
         raw_pinned_arguments = policy.get("pinned_arguments") or {}
-        if raw_pinned_arguments and not isinstance(raw_pinned_arguments, dict):
+        if raw_pinned_arguments and not isinstance(raw_pinned_arguments, Mapping):
             errors.append(f"{skill.slug}: pinned_arguments must be a JSON object")
             pinned_arguments: dict[str, Any] = {}
         else:

@@ -46,8 +46,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   EmptyState,
-  MetricCard,
-  MetricGrid,
   PageHero,
   PageShell,
   SectionCard,
@@ -235,7 +233,7 @@ export default function UserDashboard() {
         title={t("udash.title")}
         description={
           <>
-            Track server health, active agents, and operational alerts without leaving the daily control surface.
+            A quieter operator view for health, alerts and live agent activity.
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <StatusBadge label={problemCount > 0 ? "attention required" : "healthy now"} tone={problemCount > 0 ? "danger" : "success"} />
               <span>{activeRuns.length} active runs</span>
@@ -258,38 +256,32 @@ export default function UserDashboard() {
             {t("udash.refresh")}
           </Button>
         }
-      >
-        <MetricGrid>
-          <MetricCard
-            label={t("udash.my_servers")}
-            value={summary.total_servers}
-            description={`${summary.healthy} ${t("udash.healthy_lc")}`}
-            icon={<Server className="h-5 w-5 text-primary" />}
-            tone="info"
-          />
-          <MetricCard
-            label={t("udash.problems")}
-            value={problemCount}
-            description={problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
-            icon={<AlertTriangle className="h-5 w-5 text-red-300" />}
-            tone={problemCount > 0 ? "danger" : "success"}
-          />
-          <MetricCard
-            label={t("udash.active_alerts")}
-            value={filteredAlerts.length}
-            description={`${activeRuns.length} active runs · ${recentRuns.length} recent`}
-            icon={<Shield className="h-5 w-5 text-amber-300" />}
-            tone={filteredAlerts.length > 0 ? "danger" : "success"}
-          />
-          <MetricCard
-            label={t("agent.title")}
-            value={agents.length}
-            description="Runtime agents available from the dashboard surface."
-            icon={<Bot className="h-5 w-5 text-sky-300" />}
-            tone="info"
-          />
-        </MetricGrid>
-      </PageHero>
+      />
+
+      <div className="grid gap-3 xl:grid-cols-4">
+        <div className="workspace-subtle rounded-2xl px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("udash.my_servers")}</div>
+          <div className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-foreground">{summary.total_servers}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{summary.healthy} {t("udash.healthy_lc")}</div>
+        </div>
+        <div className="workspace-subtle rounded-2xl px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("udash.problems")}</div>
+          <div className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-foreground">{problemCount}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
+          </div>
+        </div>
+        <div className="workspace-subtle rounded-2xl px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("udash.active_alerts")}</div>
+          <div className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-foreground">{filteredAlerts.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{activeRuns.length} active runs · {recentRuns.length} recent</div>
+        </div>
+        <div className="workspace-subtle rounded-2xl px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("agent.title")}</div>
+          <div className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-foreground">{agents.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Runtime agents available from the dashboard surface.</div>
+        </div>
+      </div>
 
       {/* Alerts */}
       <SectionCard
@@ -298,7 +290,7 @@ export default function UserDashboard() {
         icon={<Shield className="h-4 w-4 text-red-300" />}
       >
         {filteredAlerts.length > 0 ? (
-          <div className="max-h-72 divide-y divide-border/50 overflow-y-auto rounded-xl border border-border bg-background/35">
+          <div className="max-h-72 divide-y divide-border/50 overflow-y-auto rounded-2xl border border-border/80 bg-background/30">
             {filteredAlerts.map((a: ServerAlertItem) => (
               <div key={a.id} className="flex items-center gap-2 px-5 py-3 text-xs">
                 <span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${a.severity === "critical" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
@@ -332,13 +324,14 @@ export default function UserDashboard() {
 
       {/* AI / Agent analysis result */}
       {(analysisResult || agentResult) && (
-        <div className="overflow-hidden rounded-xl border border-primary/20 bg-card">
-          <div className="flex items-center justify-between border-b border-primary/10 bg-primary/5 px-5 py-3">
+        <SectionCard
+          title={agentResult ? `${t("agent.result")}: ${agentResult.server_name}` : `AI: ${analysisResult!.name}`}
+          description="Latest AI-assisted analysis or agent result."
+          icon={<Bot className="h-4 w-4 text-primary" />}
+        >
+          <div className="rounded-2xl border border-border/80 bg-background/30">
+            <div className="flex items-center justify-between border-b border-border/70 px-5 py-3">
             <div className="flex items-center gap-2">
-              <Bot className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium text-foreground">
-                {agentResult ? `${t("agent.result")}: ${agentResult.server_name}` : `AI: ${analysisResult!.name}`}
-              </span>
               {agentResult && (
                 <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${agentResult.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                   {agentResult.status}
@@ -356,9 +349,9 @@ export default function UserDashboard() {
                 <X className="h-3 w-3" />
               </Button>
             </div>
-          </div>
+            </div>
           {expandedRaw && agentResult && (
-            <div className="border-b border-border bg-secondary/10 max-h-60 overflow-y-auto">
+            <div className="max-h-60 overflow-y-auto border-b border-border bg-secondary/10">
               {agentResult.commands_output.map((cmd, i) => (
                 <div key={i} className="px-4 py-2 border-b border-border/30 last:border-0">
                   <div className="flex items-center gap-2 text-[10px] mb-1">
@@ -374,10 +367,11 @@ export default function UserDashboard() {
               ))}
             </div>
           )}
-          <div className="p-5 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
-            <ReactMarkdown>{agentResult?.ai_analysis || analysisResult?.text || ""}</ReactMarkdown>
+            <div className="p-5 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
+              <ReactMarkdown>{agentResult?.ai_analysis || analysisResult?.text || ""}</ReactMarkdown>
+            </div>
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* ===== ACTIVE AGENTS ===== */}
@@ -440,13 +434,11 @@ export default function UserDashboard() {
       </SectionCard>
 
       {/* Agents list */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border bg-secondary/20 px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <Zap className="h-3.5 w-3.5 text-yellow-400" />
-            <span className="text-xs font-medium text-foreground">{t("agent.title")}</span>
-            <span className="text-[10px] text-muted-foreground">{agents.length}</span>
-          </div>
+      <SectionCard
+        title={t("agent.title")}
+        description="Runtime agents available from the dashboard surface."
+        icon={<Zap className="h-4 w-4 text-yellow-400" />}
+        actions={
           <div className="flex items-center gap-1.5">
             <Link to="/agents">
               <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-xl px-3 text-[10px]">
@@ -457,7 +449,15 @@ export default function UserDashboard() {
               <Plus className="h-3 w-3" /> {t("agent.new")}
             </Button>
           </div>
-        </div>
+        }
+      >
+        <div className="overflow-hidden rounded-2xl border border-border/80 bg-background/30">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-foreground">{t("agent.title")}</span>
+            <span className="text-[10px] text-muted-foreground">{agents.length}</span>
+          </div>
+          </div>
 
         {agents.length === 0 ? (
           <div className="px-4 py-6 text-center">
@@ -518,24 +518,25 @@ export default function UserDashboard() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      </SectionCard>
 
       {/* Server status tags */}
       {data.servers.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Server className="h-3.5 w-3.5 text-primary" />
-            <span className="text-xs font-medium text-foreground">{t("udash.server_status")}</span>
-          </div>
+        <SectionCard
+          title={t("udash.server_status")}
+          description="Compact per-server status labels for quick scanning."
+          icon={<Server className="h-4 w-4 text-primary" />}
+        >
           <div className="flex flex-wrap gap-1.5">
             {data.servers.map((srv) => (
-              <div key={srv.server_id} className="flex items-center gap-1.5 bg-secondary/30 rounded px-2 py-1 text-[10px]" title={`CPU: ${srv.cpu_percent ?? "—"}% | RAM: ${srv.memory_percent ?? "—"}% | Disk: ${srv.disk_percent ?? "—"}%`}>
+              <div key={srv.server_id} className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-background/30 px-2.5 py-1.5 text-[10px]" title={`CPU: ${srv.cpu_percent ?? "—"}% | RAM: ${srv.memory_percent ?? "—"}% | Disk: ${srv.disk_percent ?? "—"}%`}>
                 <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${srv.status === "healthy" ? "bg-green-400" : srv.status === "warning" ? "bg-yellow-400" : srv.status === "critical" || srv.status === "unreachable" ? "bg-red-500 animate-pulse" : "bg-muted-foreground"}`} />
                 <span className="text-foreground">{srv.server_name}</span>
               </div>
             ))}
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* Report dialog */}
@@ -663,17 +664,14 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
   return (
     <div className={`px-5 py-4 ${STATUS_BG[run.status] || ""} transition-colors`}>
       <div className="flex items-center gap-3">
-        {/* Pulsing icon */}
-        <div className="relative shrink-0">
+        <div className="shrink-0">
           <span className="text-lg">{AGENT_ICONS[run.agent_type] || "🤖"}</span>
-          <div className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-xs font-medium text-foreground">{run.agent_name}</span>
-            <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${STATUS_TEXT[run.status] || "text-muted-foreground"} ${run.status === "running" ? "bg-blue-500/20 animate-pulse" : run.status === "waiting" ? "bg-orange-500/20" : run.status === "paused" ? "bg-yellow-500/20" : "bg-secondary"}`}>
+            <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${STATUS_TEXT[run.status] || "text-muted-foreground"} ${run.status === "running" ? "bg-blue-500/20" : run.status === "waiting" ? "bg-orange-500/20" : run.status === "paused" ? "bg-yellow-500/20" : "bg-secondary"}`}>
               {run.status}
             </span>
             {run.agent_mode === "full" && (
@@ -698,14 +696,13 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
           </div>
 
           {run.pending_question && (
-            <div className="mt-1.5 flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-1">
+            <div className="mt-1.5 flex items-center gap-1.5 rounded-xl border border-orange-500/20 bg-orange-500/10 px-2 py-1">
               <Bot className="h-3 w-3 text-orange-400 shrink-0" />
               <span className="text-[10px] text-orange-300 truncate">{run.pending_question}</span>
             </div>
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
           <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl border-blue-500/30 px-3 text-[10px] text-blue-400 hover:bg-blue-500/10" onClick={onOpen}>
             <Eye className="h-3 w-3" /> {t("agent.open")}
@@ -729,7 +726,6 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
 
   return (
     <div className="flex items-center gap-3 px-5 py-3 hover:bg-secondary/10 transition-colors">
-      {/* Status icon */}
       <div className="shrink-0">
         {run.status === "completed" ? (
           <CheckCircle2 className="h-4 w-4 text-green-400" />
@@ -740,7 +736,6 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
         )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-foreground">{run.agent_name}</span>
@@ -756,7 +751,6 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
         {hasReport && (
           <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl px-3 text-[10px]" onClick={onViewReport}>

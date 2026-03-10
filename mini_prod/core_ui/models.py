@@ -1,8 +1,9 @@
 """
-Core UI models: app-level permissions for users and chat sessions.
+Core UI models: app-level permissions, chat sessions, desktop auth, and managed secrets.
 """
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
+from django.utils import timezone
 
 
 # -----------------------------------------
@@ -48,13 +49,18 @@ class ChatMessage(models.Model):
 
 
 FEATURE_CHOICES = [
-    ('servers', 'Servers'),
-    ('settings', 'Settings'),
+    ("servers", "Servers"),
+    ("dashboard", "Dashboard"),
+    ("agents", "Agents"),
+    ("studio", "Studio"),
+    ("settings", "Settings"),
+    ("orchestrator", "Orchestrator"),
+    ("knowledge_base", "Knowledge Base"),
 ]
 
 # Features allowed by default for non-staff users.
 # By product policy, regular accounts start in server-only mode.
-DEFAULT_ALLOWED_FEATURES = {'servers'}
+DEFAULT_ALLOWED_FEATURES = {"servers"}
 
 
 class UserAppPermission(models.Model):
@@ -151,3 +157,61 @@ class LLMUsageLog(models.Model):
 
     def __str__(self):
         return f"{self.provider}/{self.model_name} ({self.status})"
+
+
+class DesktopRefreshToken(models.Model):
+    """Server-side refresh token record for WinUI/desktop clients."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="desktop_refresh_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)
+    label = models.CharField(max_length=120, blank=True, default="")
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+    expires_at = models.DateTimeField()
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    replaced_by = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="replaces",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["revoked_at"]),
+        ]
+
+    def __str__(self):
+        return f"desktop refresh token for {self.user.username}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None and self.expires_at > timezone.now()
+
+
+class ManagedSecret(models.Model):
+    """Encrypted secret envelope stored server-side and addressed by namespace/object id."""
+
+    namespace = models.CharField(max_length=50)
+    object_id = models.PositiveIntegerField()
+    key = models.CharField(max_length=50, default="default")
+    ciphertext = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["namespace", "object_id", "key"]
+        ordering = ["namespace", "object_id", "key"]
+        indexes = [
+            models.Index(fields=["namespace", "object_id"]),
+            models.Index(fields=["updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.namespace}:{self.object_id}:{self.key}"

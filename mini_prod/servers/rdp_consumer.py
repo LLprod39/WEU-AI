@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.db.models import Q
@@ -16,9 +15,9 @@ from django.utils import timezone
 from loguru import logger
 
 from core_ui.activity import log_user_activity_async
-from passwords.encryption import PasswordEncryption
 from servers.guacd_tunnel import _parse_guac_instruction, connect_guacd_rdp
 from servers.models import Server
+from servers.secret_utils import get_server_auth_secret
 
 
 class RDPTerminalConsumer(AsyncWebsocketConsumer):
@@ -100,8 +99,6 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
                     master_password = ""
                     plain_password = ""
                     domain = ""
-                if not master_password:
-                    master_password = (os.environ.get("MASTER_PASSWORD") or "").strip()
                 self._rdp_domain = domain
                 password_source = "direct" if plain_password else "stored"
                 logger.info(
@@ -150,21 +147,14 @@ class RDPTerminalConsumer(AsyncWebsocketConsumer):
             return plain
         if self.server.auth_method not in ("password", "key_password"):
             return ""
-        if self.server.encrypted_password:
-            resolved_master_password = (master_password or "").strip() or (os.environ.get("MASTER_PASSWORD") or "").strip()
-            if not resolved_master_password:
-                raise ValueError("MASTER_PASSWORD is not set")
-            if not self.server.salt:
-                raise ValueError("Encrypted password exists but salt is missing")
-            try:
-                return PasswordEncryption.decrypt_password(
-                    self.server.encrypted_password,
-                    resolved_master_password,
-                    bytes(self.server.salt),
-                )
-            except Exception:
-                raise ValueError("Invalid master password")
-        return plain
+        try:
+            return get_server_auth_secret(
+                self.server,
+                master_password=(master_password or "").strip(),
+                fallback_plain=plain,
+            )
+        except ValueError as exc:
+            raise ValueError("Invalid master password") from exc
 
     async def _start_guacd(self, password: str, domain: str = ""):
         try:

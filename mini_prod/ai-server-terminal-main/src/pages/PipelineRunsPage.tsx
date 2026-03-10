@@ -21,7 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, StatusBadge as UiStatusBadge } from "@/components/ui/page-shell";
+import { EmptyState } from "@/components/ui/page-shell";
 import { studioRuns, studioPipelines, type PipelineRun, type PipelineNode } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -60,11 +60,11 @@ function fmtDate(iso: string | null, lang: "ru" | "en"): string {
 function StatusBadge({ status, lang }: { status: string; lang: "ru" | "en" }) {
   const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
   const cfg: Record<string, { icon: React.ReactNode; cls: string; label: string }> = {
-    completed: { icon: <CheckCircle2 className="h-3 w-3" />, cls: "bg-green-500/15 text-green-400 border-green-500/30", label: tr("Выполнен", "Completed") },
-    failed:    { icon: <XCircle     className="h-3 w-3" />, cls: "bg-red-500/15 text-red-400 border-red-500/30",     label: tr("Ошибка", "Failed") },
-    running:   { icon: <Loader2     className="h-3 w-3 animate-spin" />, cls: "bg-blue-500/15 text-blue-400 border-blue-500/30", label: tr("Выполняется", "Running") },
-    pending:   { icon: <Clock       className="h-3 w-3" />, cls: "bg-muted/60 text-muted-foreground border-border",  label: tr("Ожидание", "Pending") },
-    stopped:   { icon: <Square      className="h-3 w-3" />, cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30", label: tr("Остановлен", "Stopped") },
+    completed: { icon: <CheckCircle2 className="h-3 w-3" />, cls: "border-green-500/20 bg-green-500/5 text-green-300", label: tr("Выполнен", "Completed") },
+    failed:    { icon: <XCircle     className="h-3 w-3" />, cls: "border-red-500/20 bg-red-500/5 text-red-300", label: tr("Ошибка", "Failed") },
+    running:   { icon: <Loader2     className="h-3 w-3 animate-spin" />, cls: "border-primary/20 bg-primary/5 text-primary", label: tr("Выполняется", "Running") },
+    pending:   { icon: <Clock       className="h-3 w-3" />, cls: "border-border/70 bg-background/24 text-muted-foreground",  label: tr("Ожидание", "Pending") },
+    stopped:   { icon: <Square      className="h-3 w-3" />, cls: "border-amber-500/20 bg-amber-500/5 text-amber-300", label: tr("Остановлен", "Stopped") },
   };
   const s = cfg[status] || cfg.pending;
   return (
@@ -105,7 +105,7 @@ function AgentSteps({ events, lang }: { events: AgentEvent[]; lang: "ru" | "en" 
           if (!thought) return null;
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0 mt-0.5" />
+              <Brain className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
               <span className="text-muted-foreground leading-relaxed">{thought}</span>
             </div>
           );
@@ -115,8 +115,8 @@ function AgentSteps({ events, lang }: { events: AgentEvent[]; lang: "ru" | "en" 
           const iter = ev.data.iteration ? `#${ev.data.iteration}` : "";
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Zap className="h-3.5 w-3.5 text-yellow-400 shrink-0 mt-0.5" />
-              <span className="text-yellow-300 font-mono">
+              <Zap className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <span className="font-mono text-foreground/80">
                 {iter && <span className="text-muted-foreground mr-1">{iter}</span>}
                 {tool}
                 {ev.data.args && (
@@ -133,8 +133,8 @@ function AgentSteps({ events, lang }: { events: AgentEvent[]; lang: "ru" | "en" 
           if (!obs) return null;
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Terminal className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
-              <span className="text-green-300 font-mono leading-relaxed whitespace-pre-wrap">{obs}</span>
+              <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <span className="font-mono leading-relaxed whitespace-pre-wrap text-foreground/75">{obs}</span>
             </div>
           );
         }
@@ -234,6 +234,8 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
   const nodeStateList = Object.values(nodeStates);
   const completedNodes = nodeStateList.filter((state) => state.status === "completed").length;
   const failedNodes = nodeStateList.filter((state) => state.status === "failed").length;
+  const runningNodes = nodeStateList.filter((state) => state.status === "running").length;
+  const pendingNodes = nodeStateList.filter((state) => state.status === "pending").length;
   const activeAgentActions = Object.values(nodeAgentEvents)
     .flat()
     .filter((event) => event.event_type === "agent_action").length;
@@ -244,7 +246,6 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -252,11 +253,11 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm">{tr(`Запуск #${run.id}`, `Run #${run.id}`)}</span>
+              <span className="font-semibold text-sm">{run.pipeline_name}</span>
               <StatusBadge status={run.status} lang={lang} />
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
-              {run.pipeline_name} · {fmtDate(run.started_at || run.created_at, lang)} · {fmtDuration(run.duration_seconds, lang)}
+              {tr(`Запуск #${run.id}`, `Run #${run.id}`)} · {fmtDate(run.started_at || run.created_at, lang)} · {fmtDuration(run.duration_seconds, lang)}
             </div>
           </div>
         </div>
@@ -279,15 +280,15 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
       <div className="flex-1 overflow-auto">
         <div className="p-5 space-y-5">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-            <span>{tr(`${completedNodes} нод завершено`, `${completedNodes} nodes completed`)}</span>
-            <span>{tr(`${failedNodes} с ошибкой`, `${failedNodes} failed`)}</span>
-            <span>{tr(`${activeAgentActions} agent actions`, `${activeAgentActions} agent actions`)}</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+            <span>{tr("Запущен", "Started")}: {fmtDate(run.started_at || run.created_at, lang)}</span>
+            <span>{tr("Длительность", "Duration")}: {fmtDuration(run.duration_seconds, lang)}</span>
+            <span>{tr("Ноды", "Nodes")}: {tr(`${completedNodes} ok · ${failedNodes} fail`, `${completedNodes} ok · ${failedNodes} fail`)}</span>
+            <span>{tr("Активность агента", "Agent activity")}: {tr(`${activeAgentActions} действий`, `${activeAgentActions} actions`)}</span>
           </div>
 
-          {/* Error banner */}
           {run.error && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
               <div className="font-medium mb-1 flex items-center gap-1.5">
                 <XCircle className="h-4 w-4" /> {tr("Ошибка выполнения", "Execution failed")}
               </div>
@@ -295,10 +296,9 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           )}
 
-          {/* Summary / Report */}
           {run.summary && (
-            <div className="enterprise-panel rounded-md">
-              <div className="flex items-center justify-between border-b border-white/[0.04] px-4 py-2">
+            <div className="rounded-xl border border-border/70 bg-background/24">
+              <div className="flex items-center justify-between border-b border-border px-4 py-2">
                 <span className="text-sm font-medium">{tr("Отчёт", "Report")}</span>
                 <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => copyOutput(run.summary)}>
                   <Copy className="h-3 w-3" /> {tr("Копировать", "Copy")}
@@ -310,9 +310,14 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           )}
 
-          {/* Node states */}
           <div>
-            <div className="text-sm font-medium mb-2 text-muted-foreground">{tr(`Узлы (${nodes.length})`, `Nodes (${nodes.length})`)}</div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-medium text-foreground">{tr(`Узлы (${nodes.length})`, `Nodes (${nodes.length})`)}</div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                {runningNodes > 0 && <span>{tr(`${runningNodes} выполняются`, `${runningNodes} running`)}</span>}
+                {pendingNodes > 0 && <span>{tr(`${pendingNodes} ждут`, `${pendingNodes} pending`)}</span>}
+              </div>
+            </div>
             <div className="space-y-2">
               {nodes.map((node) => {
                 const st = nodeStates[node.id] || {};
@@ -337,11 +342,11 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
                 return (
                   <div key={node.id} className={`rounded-lg border transition-colors ${
-                    status === "failed"    ? "border-red-500/30 bg-red-500/5"
-                    : status === "completed" ? "border-green-500/20 bg-green-500/5"
-                    : status === "running"   ? "border-blue-500/30 bg-blue-500/5"
-                    : status === "skipped"   ? "border-yellow-500/20 bg-yellow-500/5"
-                    : "border-border bg-card/50"
+                    status === "failed"    ? "border-red-500/20 bg-background/24"
+                    : status === "completed" ? "border-green-500/16 bg-background/24"
+                    : status === "running"   ? "border-primary/20 bg-background/24"
+                    : status === "skipped"   ? "border-amber-500/18 bg-background/24"
+                    : "border-border/70 bg-background/24"
                   }`}>
                     <button
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left"
@@ -369,16 +374,16 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
                       <div className="border-t border-border px-4 py-3 space-y-2">
                         {/* Live agent steps */}
                         {isAgentNode && agentEvents.length > 0 && (
-                          <div className="rounded bg-muted/10 border border-border/50 px-3 py-2">
+                          <div className="rounded-lg border border-border/60 bg-background/18 px-3 py-2">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
-                              <Activity className="h-3 w-3 text-blue-400" />
+                              <Activity className="h-3 w-3" />
                               <span>{tr("Шаги агента", "Agent steps")} · {iterCount} {tr("действий", "actions")}</span>
                             </div>
                             <AgentSteps events={agentEvents} lang={lang} />
                           </div>
                         )}
                         {error && (
-                          <div className="text-xs text-red-300 bg-red-900/20 rounded px-3 py-2 font-mono">
+                          <div className="rounded-lg bg-red-500/5 px-3 py-2 font-mono text-xs text-red-300">
                             {error}
                           </div>
                         )}
@@ -391,7 +396,7 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
                             >
                               <Copy className="h-3 w-3" />
                             </Button>
-                            <pre className="text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all leading-relaxed bg-muted/20 rounded px-3 py-2 max-h-96 overflow-auto pr-16">
+                            <pre className="max-h-96 overflow-auto rounded-lg bg-background/35 px-3 py-2 pr-16 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
                               {output.length > 5000 ? output.slice(0, 5000) + tr("\n\n… [обрезано, полный вывод > 5000 символов]", "\n\n… [truncated, full output > 5000 chars]") : output}
                             </pre>
                           </div>
@@ -410,14 +415,13 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Raw JSON for debugging */}
           <div>
             <button
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
               onClick={() => setShowRaw(!showRaw)}
             >
               {showRaw ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {tr("Raw JSON (для отладки)", "Raw JSON (for debugging)")}
+              {tr("Диагностика JSON", "JSON diagnostics")}
             </button>
             {showRaw && (
               <pre className="mt-2 text-xs font-mono text-muted-foreground bg-muted/20 rounded px-4 py-3 max-h-96 overflow-auto">
@@ -492,14 +496,24 @@ export default function PipelineRunsPage() {
     stopped: tr("Остановлены", "Stopped"),
   };
 
+  useEffect(() => {
+    if (!filtered.length) {
+      setSelectedRunId(null);
+      return;
+    }
+
+    if (!selectedRunId || !filtered.some((run) => run.id === selectedRunId)) {
+      setSelectedRunId(filtered[0].id);
+    }
+  }, [filtered, selectedRunId]);
+
   return (
-    <div className="h-full px-4 py-6 sm:px-6">
-      <div className="grid h-full min-h-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="enterprise-panel flex min-h-0 flex-col overflow-hidden rounded-md">
-          <div className="border-b border-border/70 px-5 py-5 shrink-0">
-            <div className="enterprise-kicker">{tr("Телеметрия Studio", "Studio Telemetry")}</div>
-            <div className="mt-3 flex items-start justify-between gap-3">
-              <div>
+    <div className="h-full px-4 py-5 sm:px-6">
+      <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-card">
+          <div className="border-b border-border px-5 py-5 shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <button onClick={() => navigate("/studio")} className="text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-4 w-4" />
@@ -507,19 +521,20 @@ export default function PipelineRunsPage() {
                   <h1 className="text-xl font-semibold tracking-tight text-foreground">{tr("Запуски пайплайнов", "Pipeline Runs")}</h1>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {tr("Просматривайте последние исполнения, фильтруйте по пайплайну и статусу, анализируйте live-активность агентов.", "Review recent executions, narrow the list by pipeline or status, and inspect live agent activity.")}
+                  {tr("Выберите запуск слева, чтобы быстро увидеть статус, отчёт, ошибки и ход выполнения по нодам.", "Pick a run on the left to quickly inspect status, report, errors, and node-by-node execution.")}
                 </p>
               </div>
-              <Button size="sm" variant="outline" className="gap-2" onClick={() => refetch()}>
+              <Button size="sm" variant="outline" className="gap-2 rounded-md" onClick={() => refetch()}>
                 <RotateCcw className="h-4 w-4" />
                 {tr("Обновить", "Refresh")}
               </Button>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-              <span>{tr(`${statusCount("completed")} выполнено`, `${statusCount("completed")} completed`)}</span>
-              <span>{tr(`${statusCount("running")} выполняются`, `${statusCount("running")} running`)}</span>
-              <span>{tr(`${statusCount("failed")} требуют внимания`, `${statusCount("failed")} need attention`)}</span>
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <span>{tr(`${runs.length} запусков`, `${runs.length} runs`)}</span>
+              <span>{tr(`${statusCount("running")} активны`, `${statusCount("running")} active`)}</span>
+              <span>{tr(`${statusCount("failed")} с ошибкой`, `${statusCount("failed")} failed`)}</span>
+              <span>{tr(`${statusCount("completed")} завершены`, `${statusCount("completed")} completed`)}</span>
             </div>
 
             <div className="mt-5 space-y-3">
@@ -528,16 +543,13 @@ export default function PipelineRunsPage() {
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
-                    className={`rounded-md px-3 py-2 text-left transition-colors ${
+                    className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                       statusFilter === status
-                        ? "bg-primary/12 text-primary"
-                        : "bg-secondary/20 text-muted-foreground hover:bg-secondary/35 hover:text-foreground"
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border bg-background/50 text-muted-foreground hover:bg-muted/20 hover:text-foreground"
                     }`}
                   >
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{statusLabels[status]}</div>
-                    <div className="mt-1 text-sm font-semibold text-foreground">
-                      {status === "all" ? runs.length : statusCount(status)}
-                    </div>
+                    {statusLabels[status]} · {status === "all" ? runs.length : statusCount(status)}
                   </button>
                 ))}
               </div>
@@ -571,16 +583,13 @@ export default function PipelineRunsPage() {
                 <EmptyState
                   icon={<Workflow className="h-5 w-5" />}
                   title={tr("По текущим фильтрам запусков не найдено", "No runs match the current filters")}
-                  description={tr(
-                    "Runs — это операторский слой инспекции. Измените статус или pipeline filter, либо вернитесь в Studio и запустите automation вручную.",
-                    "Runs are the operator-side inspection layer. Change the status or pipeline filter, or go back to Studio and start an automation manually.",
-                  )}
+                  description={tr("Сбросьте фильтры или вернитесь в Studio и запустите нужный pipeline.", "Clear the filters or go back to Studio and run the pipeline you need.")}
                   actions={
                     <>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setStatusFilter("all"); setPipelineFilter(null); }}>
+                      <Button size="sm" variant="outline" className="rounded-md" onClick={() => { setStatusFilter("all"); setPipelineFilter(null); }}>
                         {tr("Сбросить фильтры", "Clear filters")}
                       </Button>
-                      <Button size="sm" className="rounded-xl" onClick={() => navigate("/studio")}>
+                      <Button size="sm" className="rounded-md" onClick={() => navigate("/studio")}>
                         {tr("Перейти к пайплайнам", "Go to pipelines")}
                       </Button>
                     </>
@@ -589,71 +598,67 @@ export default function PipelineRunsPage() {
               </div>
             )}
 
-            {filtered.map((run) => (
-              <button
-                key={run.id}
-                onClick={() => setSelectedRunId(run.id === selectedRunId ? null : run.id)}
-                className={`w-full border-b border-border/60 px-5 py-4 text-left transition-colors hover:bg-secondary/15 ${
-                  selectedRunId === run.id ? "bg-primary/10" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="font-medium text-sm truncate">{run.pipeline_name}</span>
-                  <StatusBadge status={run.status} lang={lang} />
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{tr(`Запуск #${run.id}`, `Run #${run.id}`)}</span>
-                  <span>•</span>
-                  <span>{fmtDate(run.started_at || run.created_at, lang)}</span>
-                  {run.duration_seconds && (
-                    <>
+            {filtered.map((run) => {
+              const rowNodeStates = Object.values(run.node_states || {});
+              const rowFailed = rowNodeStates.filter((state) => state.status === "failed").length;
+              const rowRunning = rowNodeStates.filter((state) => state.status === "running").length;
+              const rowCompleted = rowNodeStates.filter((state) => state.status === "completed").length;
+
+              return (
+                <button
+                  key={run.id}
+                  onClick={() => setSelectedRunId(run.id === selectedRunId ? null : run.id)}
+                  className={`w-full border-b border-border/60 px-5 py-4 text-left transition-colors hover:bg-muted/15 ${
+                    selectedRunId === run.id ? "bg-background/40" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">{run.pipeline_name}</span>
+                      <StatusBadge status={run.status} lang={lang} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{tr(`Запуск #${run.id}`, `Run #${run.id}`)}</span>
                       <span>•</span>
-                      <span>{fmtDuration(run.duration_seconds, lang)}</span>
-                    </>
-                  )}
-                </div>
-                {run.error && (
-                  <div className="mt-2 text-xs text-red-400 truncate">{run.error}</div>
-                )}
-              </button>
-            ))}
+                      <span>{fmtDate(run.started_at || run.created_at, lang)}</span>
+                      {run.duration_seconds && (
+                        <>
+                          <span>•</span>
+                          <span>{fmtDuration(run.duration_seconds, lang)}</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="mt-3 text-[11px] text-muted-foreground">
+                      {[
+                        rowCompleted > 0 ? tr(`${rowCompleted} ok`, `${rowCompleted} ok`) : null,
+                        rowRunning > 0 ? tr(`${rowRunning} active`, `${rowRunning} active`) : null,
+                        rowFailed > 0 ? tr(`${rowFailed} fail`, `${rowFailed} fail`) : null,
+                      ].filter(Boolean).join(" · ") || tr("Нет статусов узлов", "No node states")}
+                    </div>
+                    {run.error && <div className="mt-2 text-xs text-red-400 truncate">{run.error}</div>}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
-        <section className="hidden min-h-0 overflow-hidden rounded-md xl:flex enterprise-panel">
+        <section className="hidden min-h-0 overflow-hidden rounded-md border border-border bg-card xl:flex">
           {selectedRunId ? (
             <RunDetail runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
           ) : (
-            <div className="flex h-full w-full items-center justify-center px-8 text-center">
-              <div className="max-w-xl space-y-4 text-left">
-                <div className="enterprise-kicker">{tr("Инспекция запуска", "Run Inspection")}</div>
+            <div className="flex h-full w-full items-center justify-center px-8">
+              <div className="max-w-xl space-y-4">
                 <h2 className="text-2xl font-semibold text-foreground">{tr("Выберите запуск пайплайна", "Select a pipeline run")}</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  {tr("Справа появится операторский inspector: summary, timeline нод, live agent steps, logs, errors и итоговый отчёт.", "The operator inspector appears here: summary, node timeline, live agent steps, logs, errors, and the final report.")}
+                  {tr("Справа откроется рабочий inspector: статус, отчёт, ошибки, шаги агента и детали по каждой ноде.", "The workspace inspector opens here with status, report, errors, agent steps, and details for each node.")}
                 </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl bg-background/30 p-4">
-                    <div className="text-sm font-semibold text-foreground">{tr("Что доступно после выбора", "What becomes visible after selection")}</div>
-                    <div className="mt-2 space-y-2 text-xs leading-5 text-muted-foreground">
-                      <div>{tr("1. Краткая сводка run-status и длительности.", "1. A summary of run status and duration.")}</div>
-                      <div>{tr("2. Timeline нод с outputs и errors по каждой из них.", "2. A node timeline with outputs and errors per step.")}</div>
-                      <div>{tr("3. Live agent reasoning и финальный report.", "3. Live agent reasoning and the final report.")}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-background/30 p-4">
-                    <div className="text-sm font-semibold text-foreground">{tr("Последние категории сбоев", "Recent failure categories")}</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {failureHighlights.length > 0 ? (
-                        failureHighlights.map(([label, count]) => (
-                          <UiStatusBadge key={label} label={`${label} · ${count}`} tone="danger" />
-                        ))
-                      ) : (
-                        <div className="text-xs leading-5 text-muted-foreground">
-                          {tr("Недавних failure buckets нет. Когда появятся неуспешные запуски, здесь будет краткая классификация причин.", "No recent failure buckets yet. When failed runs appear, this block will show a lightweight classification of causes.")}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                <div className="text-xs text-muted-foreground">
+                  {failureHighlights.length > 0 ? (
+                    failureHighlights.map(([label, count]) => `${label} · ${count}`).join(" · ")
+                  ) : (
+                    tr("Нет недавних failure buckets", "No recent failure buckets")
+                  )}
                 </div>
               </div>
             </div>
@@ -661,11 +666,15 @@ export default function PipelineRunsPage() {
         </section>
       </div>
 
-      {selectedRunId && (
-        <section className="enterprise-panel mt-5 overflow-hidden rounded-md xl:hidden">
+      <section className="mt-4 overflow-hidden rounded-md border border-border bg-card xl:hidden">
+        {selectedRunId ? (
           <RunDetail runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
-        </section>
-      )}
+        ) : (
+          <div className="px-5 py-8 text-sm text-muted-foreground">
+            {tr("Выберите запуск из списка, чтобы увидеть детали.", "Select a run from the list to see details.")}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
