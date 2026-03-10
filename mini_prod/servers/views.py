@@ -32,10 +32,13 @@ from .models import (
     AgentRun,
 )
 from app.tools.ssh_tools import ssh_manager
-from passwords.encryption import PasswordEncryption
 from core_ui.activity import log_user_activity
 from core_ui.models import UserActivityLog
 from core_ui.decorators import require_feature
+from passwords.encryption import PasswordEncryption
+from .secret_utils import clear_server_auth_secret, get_server_auth_secret, has_saved_server_secret, store_server_auth_secret
+
+PASSWORD_ENCRYPTION_COMPAT = PasswordEncryption
 
 
 def _frontend_app_url(path: str) -> str:
@@ -296,22 +299,16 @@ def _resolve_server_secret(server: Server, request, data: dict) -> str | None:
         return None
 
     direct_secret = str(data.get("password") or "").strip()
-    if server.encrypted_password:
-        master_password = _effective_master_password(request, data)
-        if not master_password:
-            return direct_secret or None
-        try:
-            return PasswordEncryption.decrypt_password(
-                server.encrypted_password,
-                master_password,
-                bytes(server.salt or b""),
-            )
-        except Exception:
-            if direct_secret:
-                return direct_secret
-            raise ValueError("Не удалось расшифровать пароль сервера. Проверь MASTER_PASSWORD в .env.")
-
-    return direct_secret or None
+    master_password = _effective_master_password(request, data)
+    try:
+        secret = get_server_auth_secret(
+            server,
+            master_password=master_password,
+            fallback_plain=direct_secret,
+        )
+    except ValueError as exc:
+        raise ValueError("Не удалось расшифровать пароль сервера. Проверь MASTER_PASSWORD в .env.") from exc
+    return secret or None
 
 
 def _parse_expires_at(raw_value):
@@ -577,19 +574,12 @@ def server_create(request):
             group=group,
         )
         
-        # Encrypt password if provided (master password comes from payload/session/env)
+        # Store password/passphrase in managed secrets; legacy encryption remains optional.
         password = str(data.get('password', '') or '').strip()
         master_password = _effective_master_password(request, data)
-        if password and master_password:
-            server.salt = PasswordEncryption.generate_salt()
-            server.encrypted_password = PasswordEncryption.encrypt_password(
-                password,
-                master_password,
-                bytes(server.salt)
-            )
+        if password:
+            store_server_auth_secret(server, secret_value=password, master_password=master_password)
             server.save()
-        elif password and not master_password:
-            return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
         
         log_user_activity(
             user=request.user,
@@ -702,19 +692,12 @@ def server_update(request, server_id):
                 # Обновляем helper flags
                 server.update_network_flags()
         
-        # Update password if provided (master password comes from payload/session/env)
+        # Update password/passphrase in managed secrets; legacy encryption remains optional.
         if 'password' in data:
             password = str(data.get('password') or '').strip()
             master_password = _effective_master_password(request, data)
-            if password and master_password:
-                server.salt = PasswordEncryption.generate_salt()
-                server.encrypted_password = PasswordEncryption.encrypt_password(
-                    password,
-                    master_password,
-                    bytes(server.salt)
-                )
-            elif password and not master_password:
-                return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
+            if password:
+                store_server_auth_secret(server, secret_value=password, master_password=master_password)
         
         changed_fields = sorted(list(data.keys()))
         server.save()
@@ -1273,8 +1256,8 @@ def server_get(request, server_id):
         'group_id': server.group_id,
         'is_active': server.is_active,
         'network_config': server.network_config,
-        'has_saved_password': bool(server.encrypted_password),
-        'can_view_password': server.auth_method in ["password", "key_password"] and bool(server.encrypted_password),
+        'has_saved_password': has_saved_server_secret(server),
+        'can_view_password': server.auth_method in ["password", "key_password"] and has_saved_server_secret(server),
         'can_edit': bool(is_owner),
         'is_shared_server': bool(share),
         'share_context_enabled': bool(share.share_context) if share else True,
@@ -1292,21 +1275,17 @@ def server_reveal_password(request, server_id):
         server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         if server.auth_method not in ["password", "key_password"]:
             return JsonResponse({'success': False, 'error': 'Password is not used for this auth method'}, status=400)
-        if not server.encrypted_password:
+        if not has_saved_server_secret(server):
             return JsonResponse({'success': False, 'error': 'Saved password is not available'}, status=400)
 
         data = json.loads(request.body or "{}")
         master_password = _effective_master_password(request, data)
-        if not master_password:
-            return JsonResponse({'success': False, 'error': 'MASTER_PASSWORD is required to decrypt server password'}, status=400)
-
         try:
-            password = PasswordEncryption.decrypt_password(
-                server.encrypted_password,
-                master_password,
-                bytes(server.salt or b""),
+            password = get_server_auth_secret(
+                server,
+                master_password=master_password,
             )
-        except Exception:
+        except ValueError:
             return JsonResponse({'success': False, 'error': 'Failed to decrypt password. Check MASTER_PASSWORD'}, status=400)
 
         share = _active_server_share(server, request.user)
