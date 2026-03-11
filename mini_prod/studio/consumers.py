@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.serializers.json import DjangoJSONEncoder
@@ -22,6 +23,9 @@ class PipelineRunConsumer(AsyncWebsocketConsumer):
         user = self.scope.get("user")
         if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
             await self.close(code=4001)
+            return
+        if not await self._user_can_studio(user.id):
+            await self.close(code=4003)
             return
 
         run_id = self.scope["url_route"]["kwargs"]["run_id"]
@@ -72,3 +76,11 @@ class PipelineRunConsumer(AsyncWebsocketConsumer):
     async def pipeline_control(self, event):
         # Forwarded to all consumers in the group (including executor task)
         pass
+
+    @database_sync_to_async
+    def _user_can_studio(self, user_id: int) -> bool:
+        from django.contrib.auth.models import User
+        from core_ui.context_processors import user_can_feature
+
+        user = User.objects.filter(id=user_id).first()
+        return bool(user and user_can_feature(user, "agents"))

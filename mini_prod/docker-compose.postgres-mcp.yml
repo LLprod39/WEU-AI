@@ -55,10 +55,27 @@ services:
     build:
       context: .
       dockerfile: docker/keycloak-mcp.Dockerfile
+      args:
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        ftp_proxy: ${ftp_proxy:-}
+        no_proxy: ${no_proxy:-localhost,127.0.0.1,::1}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        FTP_PROXY: ${FTP_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
     container_name: mini-prod-mcp-keycloak
     working_dir: /workspace
     command: ["python", "key_mcp.py", "--http", "--host", "0.0.0.0", "--port", "8766"]
     environment:
+      http_proxy: ${http_proxy:-}
+      https_proxy: ${https_proxy:-}
+      ftp_proxy: ${ftp_proxy:-}
+      no_proxy: ${no_proxy:-localhost,127.0.0.1,::1}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      FTP_PROXY: ${FTP_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
       KEYCLOAK_URL: ${KEYCLOAK_URL:-}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
       KEYCLOAK_TOKEN_REALM: ${KEYCLOAK_TOKEN_REALM:-}

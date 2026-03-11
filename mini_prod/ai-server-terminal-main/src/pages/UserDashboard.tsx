@@ -44,15 +44,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  EmptyState,
-  MetricCard,
-  MetricGrid,
-  PageHero,
-  PageShell,
-  SectionCard,
-  StatusBadge,
-} from "@/components/ui/page-shell";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, useNavigate } from "react-router-dom";
@@ -64,7 +55,6 @@ import {
   DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -134,7 +124,6 @@ export default function UserDashboard() {
   const [agentResult, setAgentResult] = useState<AgentRunResult | null>(null);
   const [expandedRaw, setExpandedRaw] = useState(false);
   const [reportOpen, setReportOpen] = useState<DashboardRunItem | null>(null);
-  const [deleteAgentTarget, setDeleteAgentTarget] = useState<AgentItem | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["monitoring", "dashboard"],
@@ -215,6 +204,7 @@ export default function UserDashboard() {
   };
 
   const onDeleteAgent = async (agentId: number) => {
+    if (!confirm(t("agent.delete_confirm"))) return;
     await deleteAgent(agentId);
     await queryClient.invalidateQueries({ queryKey: ["agents"] });
   };
@@ -229,78 +219,66 @@ export default function UserDashboard() {
   const recentRuns = runsData?.recent || [];
 
   return (
-    <PageShell>
-      <PageHero
-        kicker="Operations Workspace"
-        title={t("udash.title")}
-        description={
-          <>
-            Track server health, active agents, and operational alerts without leaving the daily control surface.
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <StatusBadge label={problemCount > 0 ? "attention required" : "healthy now"} tone={problemCount > 0 ? "danger" : "success"} />
-              <span>{activeRuns.length} active runs</span>
-              <span>·</span>
-              <span>{filteredAlerts.length} alerts</span>
-            </div>
-          </>
-        }
-        actions={
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 gap-1.5 rounded-xl px-4"
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ["monitoring"] });
-              queryClient.invalidateQueries({ queryKey: ["agents", "dashboard-runs"] });
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t("udash.refresh")}
-          </Button>
-        }
-      >
-        <MetricGrid>
-          <MetricCard
-            label={t("udash.my_servers")}
-            value={summary.total_servers}
-            description={`${summary.healthy} ${t("udash.healthy_lc")}`}
-            icon={<Server className="h-5 w-5 text-primary" />}
-            tone="info"
-          />
-          <MetricCard
-            label={t("udash.problems")}
-            value={problemCount}
-            description={problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
-            icon={<AlertTriangle className="h-5 w-5 text-red-300" />}
-            tone={problemCount > 0 ? "danger" : "success"}
-          />
-          <MetricCard
-            label={t("udash.active_alerts")}
-            value={filteredAlerts.length}
-            description={`${activeRuns.length} active runs · ${recentRuns.length} recent`}
-            icon={<Shield className="h-5 w-5 text-amber-300" />}
-            tone={filteredAlerts.length > 0 ? "danger" : "success"}
-          />
-          <MetricCard
-            label={t("agent.title")}
-            value={agents.length}
-            description="Runtime agents available from the dashboard surface."
-            icon={<Bot className="h-5 w-5 text-sky-300" />}
-            tone="info"
-          />
-        </MetricGrid>
-      </PageHero>
+    <div className="p-6 max-w-5xl mx-auto space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-foreground">{t("udash.title")}</h1>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-xs h-7"
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ["monitoring"] });
+            queryClient.invalidateQueries({ queryKey: ["agents", "dashboard-runs"] });
+          }}
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {/* 3 Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-card border border-border rounded-lg px-4 py-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("udash.my_servers")}</span>
+            <Server className="h-4 w-4 text-primary" />
+          </div>
+          <p className="text-2xl font-semibold text-foreground">{summary.total_servers}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{summary.healthy} {t("udash.healthy_lc")}</p>
+        </div>
+
+        <div className={`bg-card border rounded-lg px-4 py-3 ${problemCount > 0 ? "border-red-500/30" : "border-border"}`}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("udash.problems")}</span>
+            {problemCount > 0 ? <AlertTriangle className="h-4 w-4 text-red-400" /> : <CheckCircle2 className="h-4 w-4 text-green-400" />}
+          </div>
+          <p className={`text-2xl font-semibold ${problemCount > 0 ? "text-red-400" : "text-green-400"}`}>{problemCount}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {problemCount > 0 ? `${summary.critical} crit · ${summary.warning} warn · ${summary.unreachable} down` : t("udash.all_good")}
+          </p>
+        </div>
+
+        <div className={`bg-card border rounded-lg px-4 py-3 ${filteredAlerts.length > 0 ? "border-yellow-500/30" : "border-border"}`}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("udash.active_alerts")}</span>
+            <Bell className={`h-4 w-4 ${filteredAlerts.length > 0 ? "text-yellow-400" : "text-muted-foreground"}`} />
+          </div>
+          <p className="text-2xl font-semibold text-foreground">{filteredAlerts.length}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{t("udash.alerts")}</p>
+        </div>
+      </div>
 
       {/* Alerts */}
-      <SectionCard
-        title={t("udash.alerts")}
-        description="Current infrastructure issues that likely need a human decision or AI-assisted triage."
-        icon={<Shield className="h-4 w-4 text-red-300" />}
-      >
-        {filteredAlerts.length > 0 ? (
-          <div className="max-h-72 divide-y divide-border/50 overflow-y-auto rounded-xl border border-border bg-background/35">
+      {filteredAlerts.length > 0 && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-secondary/20">
+            <Shield className="h-3.5 w-3.5 text-red-400" />
+            <span className="text-xs font-medium text-foreground">{t("udash.alerts")}</span>
+            <span className="text-[10px] text-red-400 font-semibold">{filteredAlerts.length}</span>
+          </div>
+          <div className="divide-y divide-border/50 max-h-52 overflow-y-auto">
             {filteredAlerts.map((a: ServerAlertItem) => (
-              <div key={a.id} className="flex items-center gap-2 px-5 py-3 text-xs">
+              <div key={a.id} className="flex items-center gap-2 px-4 py-2 text-xs">
                 <span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${a.severity === "critical" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}>
                   {a.severity === "critical" ? "CRIT" : "WARN"}
                 </span>
@@ -309,31 +287,25 @@ export default function UserDashboard() {
                   <span className="text-muted-foreground ml-1.5">{a.server_name}</span>
                 </div>
                 <span className="text-muted-foreground shrink-0">{relativeTime(a.created_at)}</span>
-                <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-xl px-2 text-[10px]" disabled={analyzing === a.server_id} onClick={() => onAnalyze(a.server_id)}>
+                <Button size="sm" variant="ghost" className="h-5 px-1.5 gap-1 text-[10px]" disabled={analyzing === a.server_id} onClick={() => onAnalyze(a.server_id)}>
                   <Bot className={`h-3 w-3 ${analyzing === a.server_id ? "animate-spin text-primary" : ""}`} /> AI
                 </Button>
                 <Link to={`/servers/${a.server_id}/terminal`}>
-                  <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2"><Terminal className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" className="h-5 px-1.5"><Terminal className="h-3 w-3" /></Button>
                 </Link>
-                <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2 text-muted-foreground" onClick={() => onResolve(a.id)}>
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-muted-foreground" onClick={() => onResolve(a.id)}>
                   <X className="h-3 w-3" />
                 </Button>
               </div>
             ))}
           </div>
-        ) : (
-          <EmptyState
-            icon={<Shield className="h-5 w-5" />}
-            title="No active alerts"
-            description="The operator surface is quiet right now. Use the sections below to inspect active runs, recent automation, and runtime agents."
-          />
-        )}
-      </SectionCard>
+        </div>
+      )}
 
       {/* AI / Agent analysis result */}
       {(analysisResult || agentResult) && (
-        <div className="overflow-hidden rounded-xl border border-primary/20 bg-card">
-          <div className="flex items-center justify-between border-b border-primary/10 bg-primary/5 px-5 py-3">
+        <div className="bg-card border border-primary/20 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-primary/5 border-b border-primary/10">
             <div className="flex items-center gap-2">
               <Bot className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-medium text-foreground">
@@ -348,11 +320,11 @@ export default function UserDashboard() {
             </div>
             <div className="flex items-center gap-1">
               {agentResult && agentResult.commands_output.length > 0 && (
-              <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2 text-[10px]" onClick={() => setExpandedRaw(!expandedRaw)}>
+                <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[10px]" onClick={() => setExpandedRaw(!expandedRaw)}>
                   {expandedRaw ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />} Raw
                 </Button>
               )}
-              <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2" onClick={() => { setAnalysisResult(null); setAgentResult(null); setExpandedRaw(false); }}>
+              <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => { setAnalysisResult(null); setAgentResult(null); setExpandedRaw(false); }}>
                 <X className="h-3 w-3" />
               </Button>
             </div>
@@ -374,74 +346,62 @@ export default function UserDashboard() {
               ))}
             </div>
           )}
-          <div className="p-5 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
+          <div className="p-4 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
             <ReactMarkdown>{agentResult?.ai_analysis || analysisResult?.text || ""}</ReactMarkdown>
           </div>
         </div>
       )}
 
       {/* ===== ACTIVE AGENTS ===== */}
-      <SectionCard
-        title={t("agent.active_runs")}
-        description="Live runtime executions that are currently occupying an agent slot."
-        icon={<Activity className="h-4 w-4 text-blue-400" />}
-      >
-        {activeRuns.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-blue-500/20 bg-background/35">
-            <div className="divide-y divide-border/30">
-              {activeRuns.map((run) => (
-                <ActiveRunCard
-                  key={run.id}
-                  run={run}
-                  onOpen={() => navigate(`/agents/run/${run.id}`)}
-                  onStop={() => onStopAgent(run.agent_id)}
-                  stopping={stoppingAgentId === run.agent_id}
-                  t={t}
-                />
-              ))}
-            </div>
+      {activeRuns.length > 0 && (
+        <div className="bg-card border border-blue-500/20 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-blue-500/10 bg-blue-500/5">
+            <Activity className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
+            <span className="text-xs font-medium text-foreground">{t("agent.active_runs")}</span>
+            <span className="text-[10px] text-blue-400 font-semibold">{activeRuns.length}</span>
           </div>
-        ) : (
-          <EmptyState
-            icon={<Activity className="h-5 w-5" />}
-            title="No active agent runs"
-            description="When an agent is running right now, this area becomes the live runtime board with duration, iteration count, and quick stop/open actions."
-          />
-        )}
-      </SectionCard>
+
+          <div className="divide-y divide-border/30">
+            {activeRuns.map((run) => (
+              <ActiveRunCard
+                key={run.id}
+                run={run}
+                onOpen={() => navigate(`/agents/run/${run.id}`)}
+                onStop={() => onStopAgent(run.agent_id)}
+                stopping={stoppingAgentId === run.agent_id}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ===== RECENT RUNS ===== */}
-      <SectionCard
-        title={t("agent.recent_runs")}
-        description="Recently completed automation results. Use this list for quick post-run inspection before opening the full runtime report."
-        icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-      >
-        {recentRuns.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-border bg-background/35">
-            <div className="divide-y divide-border/30">
-              {recentRuns.map((run) => (
-                <RecentRunCard
-                  key={run.id}
-                  run={run}
-                  onViewReport={() => setReportOpen(run)}
-                  onOpen={() => navigate(`/agents/run/${run.id}`)}
-                  t={t}
-                />
-              ))}
-            </div>
+      {recentRuns.length > 0 && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-secondary/20">
+            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-foreground">{t("agent.recent_runs")}</span>
+            <span className="text-[10px] text-muted-foreground">{recentRuns.length}</span>
           </div>
-        ) : (
-          <EmptyState
-            icon={<Clock className="h-5 w-5" />}
-            title="No recent automation results"
-            description="Completed runs and reports will appear here. Until then, use the agent catalog below to trigger the first execution."
-          />
-        )}
-      </SectionCard>
+
+          <div className="divide-y divide-border/30">
+            {recentRuns.map((run) => (
+              <RecentRunCard
+                key={run.id}
+                run={run}
+                onViewReport={() => setReportOpen(run)}
+                onOpen={() => navigate(`/agents/run/${run.id}`)}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Agents list */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border bg-secondary/20 px-5 py-3.5">
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/20">
           <div className="flex items-center gap-2">
             <Zap className="h-3.5 w-3.5 text-yellow-400" />
             <span className="text-xs font-medium text-foreground">{t("agent.title")}</span>
@@ -449,11 +409,11 @@ export default function UserDashboard() {
           </div>
           <div className="flex items-center gap-1.5">
             <Link to="/agents">
-              <Button size="sm" variant="ghost" className="h-8 gap-1 rounded-xl px-3 text-[10px]">
+              <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2 gap-1">
                 {t("agent.view_all")} →
               </Button>
             </Link>
-            <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl px-3 text-[10px]" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => setCreateOpen(true)}>
               <Plus className="h-3 w-3" /> {t("agent.new")}
             </Button>
           </div>
@@ -463,7 +423,7 @@ export default function UserDashboard() {
           <div className="px-4 py-6 text-center">
             <p className="text-xs text-muted-foreground">{t("agent.empty")}</p>
             <Link to="/agents">
-              <Button size="sm" variant="outline" className="mt-2 h-8 gap-1 rounded-xl px-3 text-xs">
+              <Button size="sm" variant="outline" className="mt-2 h-7 text-xs gap-1">
                 <Plus className="h-3 w-3" /> {t("agent.create_first")}
               </Button>
             </Link>
@@ -471,7 +431,7 @@ export default function UserDashboard() {
         ) : (
           <div className="divide-y divide-border/50">
             {agents.slice(0, 5).map((ag: AgentItem) => (
-              <div key={ag.id} className="flex items-center gap-3 px-5 py-3">
+              <div key={ag.id} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="text-base shrink-0">{AGENT_ICONS[ag.agent_type] || "🔧"}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -489,14 +449,14 @@ export default function UserDashboard() {
                 </div>
                 {ag.active_run_id ? (
                   <Link to={`/agents/run/${ag.active_run_id}`}>
-                    <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl border-blue-500/30 px-3 text-[10px] text-blue-400">
+                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1 border-blue-500/30 text-blue-400">
                       <Eye className="h-3 w-3" /> {t("agent.open")}
                     </Button>
                   </Link>
                 ) : (
                   <Button
                     size="sm" variant="outline"
-                    className="h-8 gap-1 rounded-xl px-3 text-[10px]"
+                    className="h-6 text-[10px] px-2 gap-1"
                     disabled={runningAgentId === ag.id}
                     onClick={() => onRunAgent(ag)}
                   >
@@ -504,7 +464,7 @@ export default function UserDashboard() {
                     {t("agent.run")}
                   </Button>
                 )}
-                <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2 text-muted-foreground hover:text-red-400" onClick={() => setDeleteAgentTarget(ag)}>
+                <Button size="sm" variant="ghost" className="h-6 px-1 text-muted-foreground hover:text-red-400" onClick={() => onDeleteAgent(ag.id)}>
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
@@ -522,8 +482,8 @@ export default function UserDashboard() {
 
       {/* Server status tags */}
       {data.servers.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="mb-3 flex items-center gap-2">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
             <Server className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-medium text-foreground">{t("udash.server_status")}</span>
           </div>
@@ -541,7 +501,7 @@ export default function UserDashboard() {
       {/* Report dialog */}
       {reportOpen && (
         <Dialog open={!!reportOpen} onOpenChange={() => setReportOpen(null)}>
-          <DialogContent className="w-[95vw] max-w-3xl rounded-2xl border-border bg-background/95">
+          <DialogContent className="max-w-3xl w-[95vw]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-primary" />
@@ -632,22 +592,7 @@ export default function UserDashboard() {
         onClose={() => setCreateOpen(false)}
         onCreated={() => { setCreateOpen(false); queryClient.invalidateQueries({ queryKey: ["agents"] }); }}
       />
-
-      <ConfirmActionDialog
-        open={!!deleteAgentTarget}
-        onOpenChange={(open) => {
-          if (!open) setDeleteAgentTarget(null);
-        }}
-        title="Delete agent"
-        description={deleteAgentTarget ? `Delete agent "${deleteAgentTarget.name}" from your dashboard catalog?` : ""}
-        confirmLabel="Delete agent"
-        onConfirm={() => {
-          if (!deleteAgentTarget) return;
-          void onDeleteAgent(deleteAgentTarget.id);
-          setDeleteAgentTarget(null);
-        }}
-      />
-    </PageShell>
+    </div>
   );
 }
 
@@ -661,7 +606,7 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
   const elapsed = Date.now() - new Date(run.started_at).getTime();
 
   return (
-    <div className={`px-5 py-4 ${STATUS_BG[run.status] || ""} transition-colors`}>
+    <div className={`px-4 py-3 ${STATUS_BG[run.status] || ""} transition-colors`}>
       <div className="flex items-center gap-3">
         {/* Pulsing icon */}
         <div className="relative shrink-0">
@@ -707,10 +652,10 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl border-blue-500/30 px-3 text-[10px] text-blue-400 hover:bg-blue-500/10" onClick={onOpen}>
+          <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1 border-blue-500/30 text-blue-400 hover:bg-blue-500/10" onClick={onOpen}>
             <Eye className="h-3 w-3" /> {t("agent.open")}
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2 text-red-400 hover:bg-red-500/10" onClick={onStop} disabled={stopping}>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-red-400 hover:bg-red-500/10" onClick={onStop} disabled={stopping}>
             {stopping ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
           </Button>
         </div>
@@ -728,7 +673,7 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
   const hasReport = !!(run.final_report || run.ai_analysis);
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-secondary/10 transition-colors">
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/10 transition-colors">
       {/* Status icon */}
       <div className="shrink-0">
         {run.status === "completed" ? (
@@ -759,12 +704,12 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
         {hasReport && (
-          <Button size="sm" variant="outline" className="h-8 gap-1 rounded-xl px-3 text-[10px]" onClick={onViewReport}>
+          <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={onViewReport}>
             <FileText className="h-3 w-3" /> {t("agent.report")}
           </Button>
         )}
         {run.agent_mode === "full" && (
-          <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2 text-muted-foreground" onClick={onOpen}>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-muted-foreground" onClick={onOpen}>
             <ExternalLink className="h-3 w-3" />
           </Button>
         )}
@@ -850,7 +795,7 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{step === "template" ? t("agent.choose_template") : t("agent.configure")}</DialogTitle>
         </DialogHeader>
@@ -861,7 +806,7 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
                 <button
                   key={tpl.type}
                   onClick={() => onSelectTemplate(tpl.type)}
-                  className="rounded-[22px] border border-border bg-secondary/30 p-3 text-left transition-[border-color,background-color] hover:border-primary/40 hover:bg-secondary/40"
+                  className="text-left bg-secondary/30 border border-border rounded-lg p-3 hover:border-primary/50 transition-colors"
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-lg">{AGENT_ICONS[tpl.type] || "🔧"}</span>
@@ -872,7 +817,7 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
               ))}
               <button
                 onClick={() => onSelectTemplate("custom")}
-                className="rounded-[22px] border border-border bg-secondary/30 p-3 text-left transition-[border-color,background-color] hover:border-primary/40 hover:bg-secondary/40"
+                className="text-left bg-secondary/30 border border-border rounded-lg p-3 hover:border-primary/50 transition-colors"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-lg">🔧</span>

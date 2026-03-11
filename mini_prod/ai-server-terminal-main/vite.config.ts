@@ -3,6 +3,28 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+const DOMAIN_AUTH_HEADERS = [
+  "x-forwarded-user",
+  "x-remote-user",
+  "remote-user",
+  "x-auth-request-user",
+  "x-forwarded-preferred-username",
+];
+
+function copyHeader(proxyReq: { setHeader: (name: string, value: string) => void }, req: { headers: Record<string, string | string[] | undefined> }, headerName: string) {
+  const raw = req.headers[headerName];
+  if (!raw) return;
+  const value = Array.isArray(raw) ? raw.join(",") : raw;
+  proxyReq.setHeader(headerName, value);
+}
+
+function copyProxyHeaders(proxyReq: { setHeader: (name: string, value: string) => void }, req: { headers: Record<string, string | string[] | undefined> }) {
+  copyHeader(proxyReq, req, "cookie");
+  for (const headerName of DOMAIN_AUTH_HEADERS) {
+    copyHeader(proxyReq, req, headerName);
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   build: {
@@ -88,19 +110,30 @@ export default defineConfig(({ mode }) => ({
     },
   },
   server: {
-    host: "::",
+    host: "0.0.0.0",
     port: 8080,
+    allowedHosts: true,
     hmr: {
       overlay: false,
     },
     proxy: {
       "/api": {
         target: process.env.VITE_DJANGO_URL || "http://127.0.0.1:9000",
-        changeOrigin: true,
+        changeOrigin: false,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            copyProxyHeaders(proxyReq, req as { headers: Record<string, string | string[] | undefined> });
+          });
+        },
       },
       "/servers/api": {
         target: process.env.VITE_DJANGO_URL || "http://127.0.0.1:9000",
-        changeOrigin: true,
+        changeOrigin: false,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            copyProxyHeaders(proxyReq, req as { headers: Record<string, string | string[] | undefined> });
+          });
+        },
       },
       "/ws": {
         target: process.env.VITE_DJANGO_URL || "http://127.0.0.1:9000",
@@ -109,9 +142,7 @@ export default defineConfig(({ mode }) => ({
         configure: (proxy) => {
           // http-proxy does not always forward Cookie on WS upgrade — do it explicitly
           proxy.on("proxyReqWs", (proxyReq, req) => {
-            if (req.headers.cookie) {
-              proxyReq.setHeader("cookie", req.headers.cookie);
-            }
+            copyProxyHeaders(proxyReq, req as { headers: Record<string, string | string[] | undefined> });
           });
         },
       },

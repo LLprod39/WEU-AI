@@ -7,12 +7,15 @@ from django.shortcuts import redirect
 from django.urls import path
 
 from . import views
+from .context_processors import user_can_feature
 
 
 @login_required
 def index_redirect(request):
     frontend = str(getattr(settings, "FRONTEND_APP_URL", "") or "").rstrip("/")
-    return redirect(f"{frontend}/dashboard")
+    if request.user.is_staff and user_can_feature(request.user, "agents"):
+        return redirect(f"{frontend}/dashboard")
+    return redirect(f"{frontend}/servers")
 
 
 urlpatterns = [

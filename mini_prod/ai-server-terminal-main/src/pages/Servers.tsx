@@ -38,8 +38,9 @@ import { useI18n } from "@/lib/i18n";
 import {
   Terminal,
   Monitor,
+  ChevronDown,
+  ChevronRight,
   Plus,
-  RefreshCw,
   Search,
   Server,
   Settings,
@@ -48,27 +49,13 @@ import {
   Sparkles,
   Layers,
   WandSparkles,
-  Clock3,
-  FolderTree,
-  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  EmptyState,
-  FilterBar,
-  MetricCard,
-  MetricGrid,
-  PageHero,
-  PageShell,
-  SectionCard,
-  StatusBadge,
-} from "@/components/ui/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -183,27 +170,13 @@ function formatCommandOutput(output: unknown): string {
   }
 }
 
-function relativeTime(value: string | null): string {
-  if (!value) return "—";
-  const diffMs = Date.now() - new Date(value).getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
 export default function Servers() {
   const { t } = useI18n();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<MainTab>("servers");
   const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("access");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "unknown">("all");
-  const [groupFilter, setGroupFilter] = useState<string>("all");
-  const [scopeFilter, setScopeFilter] = useState<"all" | "owned" | "shared">("all");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [groupColor, setGroupColor] = useState("#3b82f6");
@@ -217,10 +190,6 @@ export default function Servers() {
   const [editingServer, setEditingServer] = useState<FrontendServer | null>(null);
   const [form, setForm] = useState<ServerForm>(initialForm());
   const [saving, setSaving] = useState(false);
-  const [serverDeleteTarget, setServerDeleteTarget] = useState<FrontendServer | null>(null);
-  const [groupDeleteTarget, setGroupDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [groupRenameTarget, setGroupRenameTarget] = useState<{ id: number; name: string } | null>(null);
-  const [groupRenameValue, setGroupRenameValue] = useState("");
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedServer, setAdvancedServer] = useState<FrontendServer | null>(null);
@@ -236,10 +205,6 @@ export default function Servers() {
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [knowledgeCategory, setKnowledgeCategory] = useState("other");
   const [knowledgeEditingId, setKnowledgeEditingId] = useState<number | null>(null);
-  const [knowledgeDeleteTarget, setKnowledgeDeleteTarget] = useState<KnowledgeItem | null>(null);
-  const [knowledgeEditTarget, setKnowledgeEditTarget] = useState<KnowledgeItem | null>(null);
-  const [knowledgeEditTitle, setKnowledgeEditTitle] = useState("");
-  const [knowledgeEditContent, setKnowledgeEditContent] = useState("");
 
   const [globalRules, setGlobalRules] = useState("");
   const [globalForbidden, setGlobalForbidden] = useState("");
@@ -270,20 +235,20 @@ export default function Servers() {
   const groups = data?.groups || [];
 
   const filtered = useMemo(() => {
-    return servers.filter((server) => {
-      const q = search.trim().toLowerCase();
-      if (q && !server.name.toLowerCase().includes(q) && !server.host.toLowerCase().includes(q)) return false;
-      if (statusFilter !== "all" && server.status !== statusFilter) return false;
-      if (groupFilter !== "all" && server.group_name !== groupFilter) return false;
-      if (scopeFilter === "owned" && server.is_shared) return false;
-      if (scopeFilter === "shared" && !server.is_shared) return false;
-      return true;
-    });
-  }, [groupFilter, scopeFilter, search, servers, statusFilter]);
+    if (!search) return servers;
+    const q = search.toLowerCase();
+    return servers.filter((s) => s.name.toLowerCase().includes(q) || s.host.includes(q));
+  }, [servers, search]);
 
-  const visibleGroups = useMemo(() => {
-    return Array.from(new Set(servers.map((server) => server.group_name).filter(Boolean))).sort();
-  }, [servers]);
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof filtered> = {};
+    filtered.forEach((s) => {
+      (map[s.group_name] ??= []).push(s);
+    });
+    return map;
+  }, [filtered]);
+
+  const toggleGroup = (g: string) => setCollapsed((c) => ({ ...c, [g]: !c[g] }));
 
   const reload = async () => {
     await queryClient.invalidateQueries({ queryKey: ["frontend", "bootstrap"] });
@@ -329,20 +294,15 @@ export default function Servers() {
   };
 
   const onDelete = async (server: FrontendServer) => {
+    if (!confirm(`Delete server ${server.name}?`)) return;
     await deleteServer(server.id);
     await reload();
   };
 
   const onTest = async (server: FrontendServer) => {
     const result = await testServer(server.id, {});
-    if (result.success) {
-      toast({ description: `Connection successful for ${server.name}` });
-    } else {
-      toast({
-        variant: "destructive",
-        description: `Connection failed: ${result.error || "unknown error"}`,
-      });
-    }
+    if (result.success) alert(`Connection successful for ${server.name}`);
+    else alert(`Connection failed: ${result.error || "unknown error"}`);
     await reload();
   };
 
@@ -365,12 +325,14 @@ export default function Servers() {
   };
 
   const onRenameGroup = async (groupId: number, name: string) => {
-    if (!name.trim()) return;
-    await updateServerGroup(groupId, { name: name.trim() });
+    const next = prompt("New group name", name);
+    if (!next || next.trim() === name) return;
+    await updateServerGroup(groupId, { name: next.trim() });
     await reload();
   };
 
   const onDeleteGroup = async (groupId: number, name: string) => {
+    if (!confirm(`Delete group ${name}?`)) return;
     await deleteServerGroup(groupId);
     await reload();
   };
@@ -395,10 +357,7 @@ export default function Servers() {
     }
 
     if (Object.keys(payload).length === 1) {
-      toast({
-        variant: "destructive",
-        description: "Set at least one field for bulk update",
-      });
+      alert("Set at least one field for bulk update");
       return;
     }
 
@@ -506,8 +465,18 @@ export default function Servers() {
     await refreshKnowledge();
   };
 
-  const onKnowledgeEdit = async (item: KnowledgeItem, title: string, content: string) => {
+  const onKnowledgeEdit = async (item: KnowledgeItem) => {
     if (!advancedServer) return;
+    const title = prompt("Knowledge title", item.title);
+    if (!title) {
+      setKnowledgeEditingId(null);
+      return;
+    }
+    const content = prompt("Knowledge content", item.content);
+    if (!content) {
+      setKnowledgeEditingId(null);
+      return;
+    }
     await updateServerKnowledge(advancedServer.id, item.id, {
       title: title.trim(),
       content: content.trim(),
@@ -529,10 +498,7 @@ export default function Servers() {
     try {
       env = toJson(globalEnvJson);
     } catch {
-      toast({
-        variant: "destructive",
-        description: "Invalid global context JSON",
-      });
+      alert("Invalid Global context JSON");
       return;
     }
     await saveGlobalServerContext({
@@ -541,7 +507,7 @@ export default function Servers() {
       required_checks: globalRequired,
       environment_vars: env,
     });
-    toast({ description: "Global context saved" });
+    alert("Global context saved");
   };
 
   const onSaveGroupContext = async () => {
@@ -550,10 +516,7 @@ export default function Servers() {
     try {
       env = toJson(groupEnvJson);
     } catch {
-      toast({
-        variant: "destructive",
-        description: "Invalid group context JSON",
-      });
+      alert("Invalid Group context JSON");
       return;
     }
     await saveGroupServerContext(advancedServer.group_id, {
@@ -561,54 +524,46 @@ export default function Servers() {
       forbidden_commands: groupForbidden,
       environment_vars: env,
     });
-    toast({ description: "Group context saved" });
+    alert("Group context saved");
   };
 
   const onAddGroupMember = async () => {
     if (!advancedServer?.group_id || !groupMemberUser.trim()) return;
     await addServerGroupMember(advancedServer.group_id, { user: groupMemberUser.trim(), role: groupMemberRole });
     setGroupMemberUser("");
-    toast({ description: "Group member updated" });
+    alert("Group member updated");
   };
 
   const onRemoveGroupMember = async () => {
     if (!advancedServer?.group_id || !groupRemoveUserId.trim()) return;
     const userId = Number(groupRemoveUserId);
     if (!Number.isFinite(userId) || userId <= 0) {
-      toast({
-        variant: "destructive",
-        description: "Invalid user id",
-      });
+      alert("Invalid user id");
       return;
     }
     await removeServerGroupMember(advancedServer.group_id, userId);
     setGroupRemoveUserId("");
-    toast({ description: "Group member removed" });
+    alert("Group member removed");
   };
 
   const onSetMasterPassword = async () => {
     if (!masterPassword.trim()) return;
     await setMasterPassword(masterPassword.trim());
     setHasMasterPassword(true);
-    toast({ description: "Master password stored in session" });
+    alert("Master password stored in session");
   };
 
   const onClearMasterPassword = async () => {
     await clearMasterPassword();
     setHasMasterPassword(false);
-    toast({ description: "Master password cleared from session" });
+    alert("Master password cleared from session");
   };
 
   const onRevealPassword = async () => {
     if (!advancedServer) return;
     const resp = await revealServerPassword(advancedServer.id, masterPassword.trim());
     if (resp.success) setRevealedPassword(resp.password || "");
-    else {
-      toast({
-        variant: "destructive",
-        description: resp.error || "Failed to reveal password",
-      });
-    }
+    else alert(resp.error || "Failed to reveal password");
   };
 
   const onExecuteCommand = async () => {
@@ -622,65 +577,32 @@ export default function Servers() {
   if (error || !data) return <div className="p-6 text-sm text-destructive">{t("srv.error")}</div>;
 
   return (
-    <PageShell width="7xl">
-      <PageHero
-        kicker="Infrastructure Inventory"
-        title={t("srv.title")}
-        description={
-          <>
-            Manage server access, group structure, shared context, and operational metadata from one workspace.
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <StatusBadge label="inventory workspace" tone="info" />
-              <span>Default view is a compact server table for fast operator scanning.</span>
-            </div>
-          </>
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="outline" className="rounded-xl gap-2" onClick={reload}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh inventory
-            </Button>
-            <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> {t("srv.add")}
-            </Button>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">{t("srv.title")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {servers.length} {t("srv.servers_count")} — {Object.keys(grouped).length} {t("srv.groups").toLowerCase()}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t("srv.search")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 w-56 bg-secondary border-border"
+            />
           </div>
-        }
-      >
-        <MetricGrid>
-          <MetricCard
-            label={t("srv.servers_count")}
-            value={servers.length}
-            description={`${filtered.length} visible under the current filter.`}
-            icon={<Server className="h-5 w-5 text-primary" />}
-            tone="info"
-          />
-          <MetricCard
-            label="Reachable"
-            value={servers.filter((server) => server.status === "online").length}
-            description="Servers currently reachable from the platform."
-            icon={<Shield className="h-5 w-5 text-emerald-300" />}
-            tone="success"
-          />
-          <MetricCard
-            label="Groups"
-            value={groups.filter((group) => group.id !== null).length}
-            description="Reusable server groups available for inventory organization."
-            icon={<FolderTree className="h-5 w-5 text-sky-300" />}
-            tone="info"
-          />
-          <MetricCard
-            label="Shared"
-            value={servers.filter((server) => server.is_shared).length}
-            description="Servers currently inherited or shared into your workspace."
-            icon={<Layers className="h-5 w-5 text-amber-300" />}
-            tone="warning"
-          />
-        </MetricGrid>
-      </PageHero>
+          <Button size="sm" className="gap-1.5" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> {t("srv.add")}
+          </Button>
+        </div>
+      </div>
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTab)} className="space-y-3">
-        <TabsList className="w-full justify-start gap-1 overflow-x-auto">
+        <TabsList className="w-full justify-start">
           <TabsTrigger value="servers" className="gap-2">
             <Server className="h-4 w-4" /> {t("srv.list")}
           </TabsTrigger>
@@ -693,154 +615,89 @@ export default function Servers() {
         </TabsList>
 
         <TabsContent value="servers" className="space-y-3">
-          <SectionCard
-            title="Server table"
-            description="Operational inventory view with compact controls, reachability, access scope, and quick actions."
-            icon={<Server className="h-4 w-4 text-primary" />}
-          >
-            <div className="space-y-4">
-              <FilterBar>
-                <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
-                  <div className="relative min-w-[240px] flex-1 xl:max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder={t("srv.search")}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="w-full rounded-xl pl-9"
-                    />
-                  </div>
-                  <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="enterprise-select min-w-[180px]">
-                    <option value="all">All groups</option>
-                    {visibleGroups.map((groupName) => (
-                      <option key={groupName} value={groupName}>
-                        {groupName}
-                      </option>
-                    ))}
-                  </select>
-                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="enterprise-select min-w-[160px]">
-                    <option value="all">All statuses</option>
-                    <option value="online">Healthy</option>
-                    <option value="offline">Failed</option>
-                    <option value="unknown">Unknown</option>
-                  </select>
-                  <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)} className="enterprise-select min-w-[160px]">
-                    <option value="all">All scope</option>
-                    <option value="owned">Owned</option>
-                    <option value="shared">Shared</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setMainTab("bulk")}>
-                    <WandSparkles className="h-4 w-4" />
-                    Bulk actions
-                  </Button>
-                </div>
-              </FilterBar>
+          {Object.entries(grouped).map(([group, inGroup]) => {
+            const isCollapsed = collapsed[group];
+            return (
+              <div key={group} className="bg-card border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleGroup(group)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+                  aria-label={`Toggle ${group} group`}
+                >
+                  {isCollapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  <Server className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-foreground">{group}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{inGroup.length} {t("srv.servers_count")}</span>
+                </button>
 
-              {filtered.length === 0 ? (
-                <EmptyState
-                  icon={<Server className="h-5 w-5" />}
-                  title="No servers match this inventory view"
-                  description="Adjust the group, status, or scope filters, or create a new server entry to start building the inventory."
-                  actions={
-                    <>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setSearch(""); setGroupFilter("all"); setStatusFilter("all"); setScopeFilter("all"); }}>
-                        Clear filters
-                      </Button>
-                      <Button size="sm" className="rounded-xl" onClick={openCreate}>
-                        <Plus className="h-4 w-4" />
-                        {t("srv.add")}
-                      </Button>
-                    </>
-                  }
-                />
-              ) : (
-                <div className="overflow-hidden rounded-xl border border-border bg-background/35">
-                  <table className="enterprise-table">
-                    <thead>
-                      <tr>
-                        <th>Server</th>
-                        <th>Group</th>
-                        <th>Access</th>
-                        <th>Status</th>
-                        <th>Last activity</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((server) => (
-                        <tr key={server.id}>
-                          <td>
-                            <div className="min-w-[200px]">
-                              <div className="font-medium text-foreground">{server.name}</div>
-                              <div className="mt-1 text-xs font-mono text-muted-foreground">
-                                {server.host}:{server.port} · {server.server_type.toUpperCase()}
-                              </div>
+                <AnimatePresence initial={false}>
+                  {!isCollapsed && (
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: "auto" }}
+                      exit={{ height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-t border-border">
+                        {inGroup.map((server, i) => (
+                          <div
+                            key={server.id}
+                            className={`flex items-center gap-4 px-4 py-3 hover:bg-secondary/30 transition-colors ${
+                              i < inGroup.length - 1 ? "border-b border-border/50" : ""
+                            }`}
+                          >
+                            <StatusIndicator status={server.status} showLabel={false} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{server.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {server.host}:{server.port}
+                              </p>
                             </div>
-                          </td>
-                          <td>
-                            <div className="text-sm text-foreground">{server.group_name || "Ungrouped"}</div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <StatusBadge label={server.is_shared ? "shared" : "owned"} tone={server.is_shared ? "warning" : "info"} />
-                              {server.share_context_enabled ? <StatusBadge label="context" tone="success" /> : null}
-                            </div>
-                          </td>
-                          <td>
                             <StatusIndicator status={server.status} />
-                          </td>
-                          <td>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Clock3 className="h-4 w-4" />
-                              {relativeTime(server.last_connected)}
-                            </div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="flex gap-1.5 shrink-0">
                               <Link to={`/servers/${server.id}/terminal`}>
-                                <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
+                                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-border hover:border-primary hover:text-primary">
                                   <Terminal className="h-3 w-3" /> SSH
                                 </Button>
                               </Link>
                               {server.rdp && (
                                 <Link to={`/servers/${server.id}/rdp`}>
-                                  <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl px-3 text-xs">
+                                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-border hover:border-info hover:text-info">
                                     <Monitor className="h-3 w-3" /> RDP
                                   </Button>
                                 </Link>
                               )}
-                              <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openAdvanced(server)}>
+                              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openAdvanced(server)}>
                                 <Sparkles className="h-3.5 w-3.5" />
                               </Button>
                               {server.can_edit && (
                                 <>
-                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => onTest(server)}>
+                                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => onTest(server)}>
                                     <Plug className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5" onClick={() => openEdit(server)}>
+                                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openEdit(server)}>
                                     <Settings className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" variant="destructive" className="h-8 rounded-xl px-2.5" onClick={() => setServerDeleteTarget(server)}>
+                                  <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => onDelete(server)}>
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </>
                               )}
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </SectionCard>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-3">
-          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <section className="bg-card border border-border rounded-lg p-4 space-y-3">
             <h2 className="text-sm font-medium">{t("srv.groups")}</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <Input placeholder={t("srv.group_name")} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
@@ -850,7 +707,7 @@ export default function Servers() {
                 onChange={(e) => setGroupDescription(e.target.value)}
               />
               <Input type="color" value={groupColor} onChange={(e) => setGroupColor(e.target.value)} />
-              <Button className="rounded-xl" onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
+              <Button onClick={onCreateGroup} disabled={!groupName.trim() || groupSaving}>
                 {groupSaving ? "..." : t("srv.create_group")}
               </Button>
             </div>
@@ -858,22 +715,22 @@ export default function Servers() {
               {groups
                 .filter((g) => g.id !== null)
                 .map((g) => (
-                  <div key={g.id!} className="flex items-center gap-2 rounded-2xl border border-border px-4 py-3">
+                  <div key={g.id!} className="flex items-center gap-2 border border-border rounded px-3 py-2">
                     <div className="text-sm">
                       {g.name}
                       <span className="text-xs text-muted-foreground ml-2">{g.server_count} servers</span>
                     </div>
                     <div className="ml-auto flex gap-2">
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "follow")}>
+                      <Button size="sm" variant="outline" onClick={() => subscribeServerGroup(g.id!, "follow")}>
                         Follow
                       </Button>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
+                      <Button size="sm" variant="outline" onClick={() => subscribeServerGroup(g.id!, "favorite")}>
                         Favorite
                       </Button>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setGroupRenameTarget({ id: g.id!, name: g.name }); setGroupRenameValue(g.name); }}>
+                      <Button size="sm" variant="outline" onClick={() => onRenameGroup(g.id!, g.name)}>
                         Rename
                       </Button>
-                      <Button size="sm" variant="destructive" className="rounded-xl" onClick={() => setGroupDeleteTarget({ id: g.id!, name: g.name })}>
+                      <Button size="sm" variant="destructive" onClick={() => onDeleteGroup(g.id!, g.name)}>
                         Delete
                       </Button>
                     </div>
@@ -884,13 +741,13 @@ export default function Servers() {
         </TabsContent>
 
         <TabsContent value="bulk" className="space-y-3">
-          <section className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <section className="bg-card border border-border rounded-lg p-4 space-y-3">
             <h2 className="text-sm font-medium">Bulk Update Filtered Servers ({filtered.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <select
                 value={bulkGroupId}
                 onChange={(e) => setBulkGroupId(e.target.value)}
-                className="enterprise-select"
+                className="bg-secondary border border-border rounded-md px-3 py-2 text-sm"
               >
                 <option value="__keep__">Keep group</option>
                 <option value="__none__">Remove group</option>
@@ -906,13 +763,13 @@ export default function Servers() {
               <select
                 value={bulkActive}
                 onChange={(e) => setBulkActive(e.target.value)}
-                className="enterprise-select"
+                className="bg-secondary border border-border rounded-md px-3 py-2 text-sm"
               >
                 <option value="__keep__">Keep active state</option>
                 <option value="active">Set active</option>
                 <option value="inactive">Set inactive</option>
               </select>
-              <Button className="rounded-xl" onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
+              <Button onClick={onBulkUpdateFiltered} disabled={bulkSaving || !filtered.length}>
                 {bulkSaving ? "Applying..." : "Apply Bulk Update"}
               </Button>
             </div>
@@ -921,7 +778,7 @@ export default function Servers() {
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingServer ? t("srv.edit_server") : t("srv.create_server")}</DialogTitle>
             <DialogDescription>{t("srv.server_settings")}</DialogDescription>
@@ -950,7 +807,7 @@ export default function Servers() {
                 <select
                   value={form.server_type}
                   onChange={(e) => setForm((s) => ({ ...s, server_type: e.target.value as "ssh" | "rdp" }))}
-                  className="enterprise-select"
+                  className="flex h-10 w-full rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="ssh">SSH</option>
                   <option value="rdp">RDP</option>
@@ -1001,7 +858,7 @@ export default function Servers() {
                 <select
                   value={form.group_id ?? ""}
                   onChange={(e) => setForm((s) => ({ ...s, group_id: e.target.value ? Number(e.target.value) : null }))}
-                  className="enterprise-select"
+                  className="flex h-10 w-full rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="">{t("srv.no_group")}</option>
                   {groups
@@ -1034,7 +891,7 @@ export default function Servers() {
       </Dialog>
 
       <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <DialogContent className="max-w-5xl rounded-2xl border-border bg-background/95">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{t("srv.advanced")}: {advancedServer?.name || "Server"}</DialogTitle>
             <DialogDescription>{t("srv.sharing")}</DialogDescription>
@@ -1143,10 +1000,10 @@ export default function Servers() {
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => onKnowledgeToggle(k)}>
                               {k.is_active ? t("srv.disable") : t("srv.enable")}
                             </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setKnowledgeEditingId(k.id); setKnowledgeEditTarget(k); setKnowledgeEditTitle(k.title); setKnowledgeEditContent(k.content); }}>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setKnowledgeEditingId(k.id); void onKnowledgeEdit(k); }}>
                               {t("srv.edit")}
                             </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setKnowledgeDeleteTarget(k)}>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => onKnowledgeDelete(k.id)}>
                               {t("srv.delete")}
                             </Button>
                           </div>
@@ -1246,144 +1103,6 @@ export default function Servers() {
           </DialogBody>
         </DialogContent>
       </Dialog>
-
-      <Dialog
-        open={!!groupRenameTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setGroupRenameTarget(null);
-            setGroupRenameValue("");
-          }
-        }}
-      >
-        <DialogContent className="max-w-md rounded-2xl border-border bg-background/95">
-          <DialogHeader>
-            <DialogTitle>Rename group</DialogTitle>
-            <DialogDescription>Update the display name for this server group.</DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Group name</Label>
-              <Input value={groupRenameValue} onChange={(e) => setGroupRenameValue(e.target.value)} />
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setGroupRenameTarget(null); setGroupRenameValue(""); }}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!groupRenameTarget) return;
-                void onRenameGroup(groupRenameTarget.id, groupRenameValue);
-                setGroupRenameTarget(null);
-                setGroupRenameValue("");
-              }}
-              disabled={!groupRenameValue.trim()}
-            >
-              Save name
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!knowledgeEditTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setKnowledgeEditTarget(null);
-            setKnowledgeEditTitle("");
-            setKnowledgeEditContent("");
-            setKnowledgeEditingId(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-2xl rounded-2xl border-border bg-background/95">
-          <DialogHeader>
-            <DialogTitle>Edit knowledge entry</DialogTitle>
-            <DialogDescription>Adjust the title and content stored for this server knowledge item.</DialogDescription>
-          </DialogHeader>
-          <DialogBody className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Title</Label>
-              <Input value={knowledgeEditTitle} onChange={(e) => setKnowledgeEditTitle(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Content</Label>
-              <Textarea value={knowledgeEditContent} onChange={(e) => setKnowledgeEditContent(e.target.value)} className="min-h-36" />
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setKnowledgeEditTarget(null);
-                setKnowledgeEditTitle("");
-                setKnowledgeEditContent("");
-                setKnowledgeEditingId(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!knowledgeEditTarget) return;
-                void onKnowledgeEdit(knowledgeEditTarget, knowledgeEditTitle, knowledgeEditContent);
-                setKnowledgeEditTarget(null);
-                setKnowledgeEditTitle("");
-                setKnowledgeEditContent("");
-              }}
-              disabled={!knowledgeEditTitle.trim() || !knowledgeEditContent.trim()}
-            >
-              Save entry
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmActionDialog
-        open={!!serverDeleteTarget}
-        onOpenChange={(open) => {
-          if (!open) setServerDeleteTarget(null);
-        }}
-        title="Delete server"
-        description={serverDeleteTarget ? `Delete server "${serverDeleteTarget.name}" from the infrastructure inventory?` : ""}
-        confirmLabel="Delete server"
-        onConfirm={() => {
-          if (!serverDeleteTarget) return;
-          void onDelete(serverDeleteTarget);
-          setServerDeleteTarget(null);
-        }}
-      />
-
-      <ConfirmActionDialog
-        open={!!groupDeleteTarget}
-        onOpenChange={(open) => {
-          if (!open) setGroupDeleteTarget(null);
-        }}
-        title="Delete group"
-        description={groupDeleteTarget ? `Delete group "${groupDeleteTarget.name}" and remove it from the server catalog?` : ""}
-        confirmLabel="Delete group"
-        onConfirm={() => {
-          if (!groupDeleteTarget) return;
-          void onDeleteGroup(groupDeleteTarget.id, groupDeleteTarget.name);
-          setGroupDeleteTarget(null);
-        }}
-      />
-
-      <ConfirmActionDialog
-        open={!!knowledgeDeleteTarget}
-        onOpenChange={(open) => {
-          if (!open) setKnowledgeDeleteTarget(null);
-        }}
-        title="Delete knowledge entry"
-        description={knowledgeDeleteTarget ? `Delete knowledge entry "${knowledgeDeleteTarget.title}" from this server?` : ""}
-        confirmLabel="Delete entry"
-        onConfirm={() => {
-          if (!knowledgeDeleteTarget) return;
-          void onKnowledgeDelete(knowledgeDeleteTarget.id);
-          setKnowledgeDeleteTarget(null);
-        }}
-      />
-    </PageShell>
+    </div>
   );
 }

@@ -1943,7 +1943,7 @@ def ai_analyze_server(request, server_id):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_list(request):
     """List agents for the current user."""
@@ -1983,7 +1983,7 @@ def agent_list(request):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_templates(request):
     """Return available agent templates."""
@@ -1993,7 +1993,7 @@ def agent_templates(request):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_create(request):
     """Create a new agent (mini or full) from template or custom."""
@@ -2076,7 +2076,7 @@ def agent_create(request):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_update(request, agent_id):
     """Update agent configuration."""
@@ -2119,7 +2119,7 @@ def agent_update(request, agent_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_delete(request, agent_id):
     """Delete an agent."""
@@ -2132,7 +2132,7 @@ def agent_delete(request, agent_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_run(request, agent_id):
     """Run agent on its configured servers (or a specific one)."""
@@ -2223,7 +2223,7 @@ def _start_full_agent(request, agent: ServerAgent, data: dict):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_runs(request, agent_id):
     """History of runs for an agent."""
@@ -2253,7 +2253,7 @@ def agent_runs(request, agent_id):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_run_detail(request, run_id):
     """Single run detail (supports both mini and full agents)."""
@@ -2291,7 +2291,7 @@ def agent_run_detail(request, run_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_stop(request, agent_id):
     """Stop a running full agent."""
@@ -2310,7 +2310,7 @@ def agent_stop(request, agent_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_run_reply(request, run_id):
     """Reply to a question asked by a running agent."""
@@ -2337,7 +2337,7 @@ def agent_run_reply(request, run_id):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_run_log(request, run_id):
     """Get the iterations log for a run."""
@@ -2360,7 +2360,7 @@ def agent_run_log(request, run_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_run_approve_plan(request, run_id):
     """Approve the plan and start executing the multi-agent pipeline.
@@ -2408,7 +2408,7 @@ def agent_run_approve_plan(request, run_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_run_task_update(request, run_id, task_id):
     """Edit or delete a specific task in a pipeline run's plan_tasks.
@@ -2456,7 +2456,7 @@ def agent_run_task_update(request, run_id, task_id):
 
 @csrf_exempt
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["POST"])
 def agent_run_task_ai_refine(request, run_id, task_id):
     """Use LLM to rewrite a task based on user instruction.
@@ -2543,7 +2543,7 @@ def agent_run_task_ai_refine(request, run_id, task_id):
 
 
 @login_required
-@require_feature('servers')
+@require_feature('agents')
 @require_http_methods(["GET"])
 def agent_dashboard_runs(request):
     """Active + recent runs for the dashboard widget."""

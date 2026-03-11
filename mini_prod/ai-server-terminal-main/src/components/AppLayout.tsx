@@ -52,15 +52,12 @@ function Breadcrumbs() {
 export default function AppLayout() {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border/80 bg-background/90 px-4 backdrop-blur-sm md:px-6">
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-14 flex items-center gap-4 border-b border-border px-4 bg-card/50">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
-            <div className="min-w-0">
-              <div className="enterprise-kicker text-[9px]">Control Plane</div>
-              <Breadcrumbs />
-            </div>
+            <Breadcrumbs />
           </header>
           <main className="flex-1 overflow-auto">
             <Outlet />

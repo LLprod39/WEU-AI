@@ -67,6 +67,35 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function FeatureGate({
+  feature,
+  children,
+}: {
+  feature: "dashboard" | "agents" | "studio" | "settings";
+  children: ReactNode;
+}) {
+  const location = useLocation();
+  const { data, isLoading } = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: fetchAuthSession,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  if (isLoading) return <RouteLoader />;
+
+  if (!data?.authenticated) {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+
+  if (!data.user?.features?.[feature]) {
+    return <Navigate to="/servers" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <I18nProvider>
@@ -85,25 +114,130 @@ const App = () => (
                 }
               >
                 <Route path="/" element={<Index />} />
-                <Route path="/dashboard" element={<DashboardRouter />} />
+                <Route
+                  path="/dashboard"
+                  element={(
+                    <FeatureGate feature="dashboard">
+                      <DashboardRouter />
+                    </FeatureGate>
+                  )}
+                />
                 <Route path="/servers" element={<Servers />} />
                 <Route path="/servers/hub" element={<TerminalPage />} />
                 <Route path="/servers/:id/terminal" element={<TerminalPage />} />
                 <Route path="/servers/:id/rdp" element={<RdpPage />} />
-                <Route path="/agents" element={<AgentsPage />} />
-                <Route path="/agents/run/:runId" element={<AgentRunPage />} />
-                <Route path="/studio" element={<StudioPage />} />
-                <Route path="/studio/pipeline/:id" element={<PipelineEditorPage />} />
-                <Route path="/studio/pipeline/new" element={<PipelineEditorPage />} />
-                <Route path="/studio/runs" element={<PipelineRunsPage />} />
-                <Route path="/studio/agents" element={<AgentConfigPage />} />
-                <Route path="/studio/skills" element={<StudioSkillsPage />} />
-                <Route path="/studio/mcp" element={<MCPHubPage />} />
-                <Route path="/studio/notifications" element={<NotificationsSettingsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/settings/users" element={<SettingsUsersPage />} />
-                <Route path="/settings/groups" element={<SettingsGroupsPage />} />
-                <Route path="/settings/permissions" element={<SettingsPermissionsPage />} />
+                <Route
+                  path="/agents"
+                  element={(
+                    <FeatureGate feature="agents">
+                      <AgentsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/agents/run/:runId"
+                  element={(
+                    <FeatureGate feature="agents">
+                      <AgentRunPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <StudioPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/pipeline/:id"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <PipelineEditorPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/pipeline/new"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <PipelineEditorPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/runs"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <PipelineRunsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/agents"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <AgentConfigPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/skills"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <StudioSkillsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/mcp"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <MCPHubPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/studio/notifications"
+                  element={(
+                    <FeatureGate feature="studio">
+                      <NotificationsSettingsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/settings"
+                  element={(
+                    <FeatureGate feature="settings">
+                      <SettingsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/settings/users"
+                  element={(
+                    <FeatureGate feature="settings">
+                      <SettingsUsersPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/settings/groups"
+                  element={(
+                    <FeatureGate feature="settings">
+                      <SettingsGroupsPage />
+                    </FeatureGate>
+                  )}
+                />
+                <Route
+                  path="/settings/permissions"
+                  element={(
+                    <FeatureGate feature="settings">
+                      <SettingsPermissionsPage />
+                    </FeatureGate>
+                  )}
+                />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

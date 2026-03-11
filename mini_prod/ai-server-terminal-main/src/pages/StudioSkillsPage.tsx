@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
-import { AlertTriangle, ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Search, Server, Shield, Sparkles, WandSparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpen, Bot, CheckCircle2, Code2, FileCode2, FileText, FolderOpen, Loader2, Plus, Save, Search, Server, Shield, Sparkles, Trash2, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import {
   type StudioSkillScaffoldPayload,
   type StudioSkillTemplate,
   type StudioSkillValidationResponse,
+  type StudioSkillWorkspaceFile,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -41,6 +42,8 @@ type SkillWizardState = {
   with_assets: boolean;
   force: boolean;
 };
+
+type WorkspaceDraftKind = "reference" | "script" | "asset";
 
 function listToCsv(items?: string[]) {
   return (items || []).join(", ");
@@ -94,6 +97,61 @@ function parseRuntimePolicy(text: string) {
     throw new Error("Runtime policy must be a JSON object.");
   }
   return parsed as Record<string, unknown>;
+}
+
+function defaultWorkspaceFilename(kind: WorkspaceDraftKind) {
+  if (kind === "reference") return "example.md";
+  if (kind === "script") return "helper.sh";
+  return "notes.txt";
+}
+
+function buildWorkspacePath(kind: WorkspaceDraftKind, filename: string) {
+  const trimmed = filename.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!trimmed) return "";
+  if (kind === "reference") {
+    return `references/${trimmed.includes(".") ? trimmed : `${trimmed}.md`}`;
+  }
+  if (kind === "script") {
+    return `scripts/${trimmed.includes(".") ? trimmed : `${trimmed}.sh`}`;
+  }
+  return `assets/${trimmed.includes(".") ? trimmed : `${trimmed}.txt`}`;
+}
+
+function buildWorkspaceTemplate(kind: WorkspaceDraftKind, filename: string, skillName: string) {
+  const stem = filename.replace(/\.[^.]+$/, "") || "new-file";
+  if (kind === "reference") {
+    return `# ${stem}\n\nContext for ${skillName}.\n\n## Examples\n\n- Example request\n- Example expected result\n`;
+  }
+  if (kind === "script") {
+    return `#!/usr/bin/env bash\nset -euo pipefail\n\n# ${skillName}: ${stem}\n# Add deterministic helper logic here.\n`;
+  }
+  return `# ${skillName}: ${stem}\n\nAdd supporting text, snippets, or templates here.\n`;
+}
+
+const WORKSPACE_UPLOAD_ACCEPT = [
+  ".md",
+  ".txt",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".csv",
+  ".sql",
+  ".sh",
+  ".bash",
+  ".zsh",
+  ".py",
+  ".js",
+  ".ts",
+].join(",");
+
+function workspaceFileIcon(kind: StudioSkillWorkspaceFile["kind"]) {
+  if (kind === "skill" || kind === "reference") return FileText;
+  if (kind === "script") return FileCode2;
+  return Code2;
 }
 
 function SkillMarkdown({ content }: { content: string }) {
@@ -259,6 +317,19 @@ export default function StudioSkillsPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [validationReport, setValidationReport] = useState<StudioSkillValidationResponse | null>(null);
   const [strictValidation, setStrictValidation] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspaceCreateOpen, setWorkspaceCreateOpen] = useState(false);
+  const [workspacePath, setWorkspacePath] = useState("SKILL.md");
+  const [workspaceDraft, setWorkspaceDraft] = useState("");
+  const [workspaceDirty, setWorkspaceDirty] = useState(false);
+  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null);
+  const [workspaceCreateKind, setWorkspaceCreateKind] = useState<WorkspaceDraftKind>("reference");
+  const [workspaceCreateName, setWorkspaceCreateName] = useState(defaultWorkspaceFilename("reference"));
+  const [workspaceUploadOpen, setWorkspaceUploadOpen] = useState(false);
+  const [workspaceUploadKind, setWorkspaceUploadKind] = useState<WorkspaceDraftKind>("reference");
+  const [workspaceUploadName, setWorkspaceUploadName] = useState("");
+  const [workspaceUploadFile, setWorkspaceUploadFile] = useState<File | null>(null);
+  const workspaceUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: skills = [], isLoading } = useQuery({
     queryKey: ["studio", "skills"],
@@ -341,11 +412,210 @@ export default function StudioSkillsPage() {
     enabled: !!selectedSlug,
   });
 
+  const { data: workspace, isFetching: isFetchingWorkspace } = useQuery({
+    queryKey: ["studio", "skills", selectedSlug, "workspace"],
+    queryFn: () => studioSkills.workspace(selectedSlug),
+    enabled: workspaceOpen && !!selectedSlug,
+  });
+
+  const { data: activeWorkspaceFile, isFetching: isFetchingWorkspaceFile } = useQuery({
+    queryKey: ["studio", "skills", selectedSlug, "workspace-file", workspacePath],
+    queryFn: () => studioSkills.readFile(selectedSlug, workspacePath),
+    enabled: workspaceOpen && !!selectedSlug && !!workspacePath,
+  });
+
   const openCreateDialog = (template?: StudioSkillTemplate | null) => {
     setSelectedTemplateSlug(template?.slug || "__none__");
     setWizard(createWizardState(template || null));
     setSlugTouched(false);
     setCreateOpen(true);
+  };
+
+  useEffect(() => {
+    if (!workspaceOpen) return;
+    setWorkspaceStatus(null);
+  }, [workspaceOpen, workspacePath]);
+
+  useEffect(() => {
+    if (!workspaceOpen || !workspace?.files?.length) return;
+    const hasCurrent = workspace.files.some((file) => file.path === workspacePath);
+    if (hasCurrent) return;
+    const nextPath = workspace.files.some((file) => file.path === "SKILL.md") ? "SKILL.md" : workspace.files[0].path;
+    setWorkspacePath(nextPath);
+  }, [workspace, workspaceOpen, workspacePath]);
+
+  useEffect(() => {
+    if (!activeWorkspaceFile) return;
+    setWorkspaceDraft(activeWorkspaceFile.content);
+    setWorkspaceDirty(false);
+  }, [activeWorkspaceFile?.path, activeWorkspaceFile?.content]);
+
+  const workspaceFilesByKind = useMemo(() => {
+    const groups: Record<string, StudioSkillWorkspaceFile[]> = {
+      skill: [],
+      reference: [],
+      script: [],
+      asset: [],
+      file: [],
+    };
+    for (const file of workspace?.files || []) {
+      groups[file.kind] = [...(groups[file.kind] || []), file];
+    }
+    return groups;
+  }, [workspace?.files]);
+
+  const selectedWorkspaceMeta = useMemo(
+    () => workspace?.files.find((file) => file.path === workspacePath) || null,
+    [workspace?.files, workspacePath],
+  );
+
+  const workspaceExistingPaths = useMemo(() => new Set((workspace?.files || []).map((file) => file.path)), [workspace?.files]);
+
+  const refreshWorkspace = () => {
+    queryClient.invalidateQueries({ queryKey: ["studio", "skills", selectedSlug, "workspace"] });
+    queryClient.invalidateQueries({ queryKey: ["studio", "skills", selectedSlug] });
+    queryClient.invalidateQueries({ queryKey: ["studio", "skills"] });
+  };
+
+  const selectWorkspaceFile = (nextPath: string) => {
+    if (nextPath === workspacePath) return;
+    if (workspaceDirty && !window.confirm(tr("Есть несохранённые изменения. Переключить файл и потерять draft?", "You have unsaved changes. Switch files and discard the draft?"))) {
+      return;
+    }
+    setWorkspacePath(nextPath);
+    setWorkspaceStatus(null);
+  };
+
+  const resetWorkspaceUpload = (kind: WorkspaceDraftKind = "reference") => {
+    setWorkspaceUploadKind(kind);
+    setWorkspaceUploadName("");
+    setWorkspaceUploadFile(null);
+    if (workspaceUploadInputRef.current) {
+      workspaceUploadInputRef.current.value = "";
+    }
+  };
+
+  const saveWorkspaceFileMutation = useMutation({
+    mutationFn: (payload: { path: string; content: string }) => studioSkills.updateFile(selectedSlug, payload),
+    onSuccess: (response) => {
+      refreshWorkspace();
+      queryClient.invalidateQueries({ queryKey: ["studio", "skills", selectedSlug, "workspace-file", workspacePath] });
+      setWorkspaceDirty(false);
+      setWorkspaceStatus(
+        response.validation.errors.length
+          ? tr("Файл сохранён, но skill не проходит валидацию.", "File saved, but the skill currently fails validation.")
+          : response.validation.warnings.length
+            ? tr("Файл сохранён с предупреждениями валидации.", "File saved with validation warnings.")
+            : tr("Файл сохранён.", "File saved."),
+      );
+      toast({
+        description:
+          response.validation.errors.length
+            ? tr("Сохранено, но в skill есть ошибки валидации.", "Saved, but the skill has validation errors.")
+            : tr("Изменения сохранены", "Changes saved"),
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  const createWorkspaceFileMutation = useMutation({
+    mutationFn: (payload: { path: string; content: string }) => studioSkills.createFile(selectedSlug, payload),
+    onSuccess: (response) => {
+      refreshWorkspace();
+      setWorkspaceCreateOpen(false);
+      setWorkspacePath(response.file?.path || workspacePath);
+      setWorkspaceStatus(tr("Файл создан.", "File created."));
+      if (response.file?.path) {
+        queryClient.invalidateQueries({ queryKey: ["studio", "skills", selectedSlug, "workspace-file", response.file.path] });
+      }
+      toast({ description: tr("Файл skill pack создан", "Skill pack file created") });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  const deleteWorkspaceFileMutation = useMutation({
+    mutationFn: (path: string) => studioSkills.deleteFile(selectedSlug, path),
+    onSuccess: () => {
+      const nextPath = workspace?.files.find((file) => file.path !== workspacePath)?.path || "SKILL.md";
+      refreshWorkspace();
+      queryClient.removeQueries({ queryKey: ["studio", "skills", selectedSlug, "workspace-file", workspacePath] });
+      setWorkspacePath(nextPath);
+      setWorkspaceStatus(tr("Файл удалён.", "File deleted."));
+      toast({ description: tr("Файл удалён", "File deleted") });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  const uploadWorkspaceFileMutation = useMutation({
+    mutationFn: async (payload: { kind: WorkspaceDraftKind; name: string; file: File }) => {
+      const path = buildWorkspacePath(payload.kind, payload.name || payload.file.name);
+      if (!path) {
+        throw new Error(tr("Укажите имя файла.", "Enter a file name."));
+      }
+      const content = await payload.file.text();
+      if (workspaceExistingPaths.has(path)) {
+        return {
+          path,
+          response: await studioSkills.updateFile(selectedSlug, { path, content }),
+          replaced: true,
+        };
+      }
+      return {
+        path,
+        response: await studioSkills.createFile(selectedSlug, { path, content }),
+        replaced: false,
+      };
+    },
+    onSuccess: ({ path, response, replaced }) => {
+      refreshWorkspace();
+      setWorkspaceUploadOpen(false);
+      resetWorkspaceUpload(workspaceUploadKind);
+      setWorkspaceOpen(true);
+      selectWorkspaceFile(path);
+      queryClient.invalidateQueries({ queryKey: ["studio", "skills", selectedSlug, "workspace-file", path] });
+      setWorkspaceStatus(
+        response.validation.errors.length
+          ? tr("Файл загружен, но skill не проходит валидацию.", "File uploaded, but the skill currently fails validation.")
+          : response.validation.warnings.length
+            ? tr("Файл загружен с предупреждениями валидации.", "File uploaded with validation warnings.")
+            : replaced
+              ? tr("Файл обновлён.", "File updated.")
+              : tr("Файл загружен.", "File uploaded."),
+      );
+      toast({
+        description: replaced
+          ? tr("Файл в skill pack обновлён", "Skill pack file updated")
+          : tr("Файл добавлен в skill pack", "File added to the skill pack"),
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  const openWorkspace = (path?: string) => {
+    setWorkspaceOpen(true);
+    setWorkspaceStatus(null);
+    setWorkspacePath(path || "SKILL.md");
+  };
+
+  const openWorkspaceCreate = (kind: WorkspaceDraftKind = "reference") => {
+    setWorkspaceOpen(true);
+    setWorkspaceCreateKind(kind);
+    setWorkspaceCreateName(defaultWorkspaceFilename(kind));
+    setWorkspaceCreateOpen(true);
+  };
+
+  const openWorkspaceUpload = (kind: WorkspaceDraftKind = "reference") => {
+    setWorkspaceOpen(true);
+    resetWorkspaceUpload(kind);
+    setWorkspaceUploadOpen(true);
   };
 
   const submitWizard = () => {
@@ -562,6 +832,20 @@ export default function StudioSkillsPage() {
                     </div>
                     {selectedSkill.description && <p className="text-sm text-muted-foreground">{selectedSkill.description}</p>}
                     {selectedSkill.ui_hint && <p className="text-xs text-muted-foreground">{selectedSkill.ui_hint}</p>}
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md px-3 text-[11px]" onClick={() => openWorkspace("SKILL.md")}>
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        {tr("Открыть workspace", "Open workspace")}
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md px-3 text-[11px]" onClick={() => openWorkspaceCreate()}>
+                        <Plus className="h-3.5 w-3.5" />
+                        {tr("Новый файл", "New file")}
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md px-3 text-[11px]" onClick={() => openWorkspaceUpload()}>
+                        <ArrowLeft className="h-3.5 w-3.5 rotate-90" />
+                        {tr("Загрузить файл", "Upload file")}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {selectedSkill.guardrail_summary?.length > 0 && (
@@ -617,8 +901,375 @@ export default function StudioSkillsPage() {
             )}
           </div>
           </div>
-        </div>
       </div>
+      </div>
+
+      <Dialog
+        open={workspaceOpen}
+        onOpenChange={(open) => {
+          if (!open && workspaceDirty && !window.confirm(tr("Есть несохранённые изменения. Закрыть editor и потерять draft?", "You have unsaved changes. Close the editor and discard the draft?"))) {
+            return;
+          }
+          setWorkspaceOpen(open);
+        }}
+      >
+        <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden rounded-md border-border bg-background p-0">
+          <div className="flex h-[82vh] min-h-[620px] flex-col">
+            <DialogHeader className="border-b border-border px-6 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <DialogTitle>{tr("Skill Workspace", "Skill Workspace")}</DialogTitle>
+                  <DialogDescription>
+                    {tr(
+                      "Редактируйте SKILL.md, примеры в references/, детерминированные helper scripts и текстовые assets прямо из веба.",
+                      "Edit SKILL.md, examples in references/, deterministic helper scripts, and text assets directly from the web.",
+                    )}
+                  </DialogDescription>
+                </div>
+                {workspace?.validation ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {workspace.validation.errors.length > 0 ? (
+                      <Badge variant="destructive" className="text-[10px]">{workspace.validation.errors.length} {tr("ошибок", "errors")}</Badge>
+                    ) : null}
+                    {workspace.validation.warnings.length > 0 ? (
+                      <Badge variant="outline" className="text-[10px]">{workspace.validation.warnings.length} {tr("предупреждений", "warnings")}</Badge>
+                    ) : null}
+                    {workspace.validation.errors.length === 0 && workspace.validation.warnings.length === 0 ? (
+                      <Badge variant="secondary" className="text-[10px]">{tr("валидно", "valid")}</Badge>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </DialogHeader>
+
+            <div className="grid min-h-0 flex-1 lg:grid-cols-[290px_minmax(0,1fr)]">
+              <div className="min-h-0 overflow-auto border-b border-border p-4 lg:border-b-0 lg:border-r">
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md px-3 text-[11px]" onClick={() => openWorkspaceCreate()}>
+                    <Plus className="h-3 w-3" />
+                    {tr("Новый", "New")}
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-md px-3 text-[11px]" onClick={() => openWorkspaceUpload()}>
+                    <ArrowLeft className="h-3 w-3 rotate-90" />
+                    {tr("Загрузить", "Upload")}
+                  </Button>
+                </div>
+
+                {isFetchingWorkspace && !workspace ? (
+                  <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {tr("Загрузка workspace...", "Loading workspace...")}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {([
+                      ["skill", tr("Основной skill", "Main skill")],
+                      ["reference", tr("References", "References")],
+                      ["script", tr("Scripts", "Scripts")],
+                      ["asset", tr("Assets", "Assets")],
+                    ] as Array<[StudioSkillWorkspaceFile["kind"], string]>).map(([kind, label]) => {
+                      const files = workspaceFilesByKind[kind] || [];
+                      if (!files.length) return null;
+                      return (
+                        <div key={kind} className="space-y-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                          {files.map((file) => {
+                            const Icon = workspaceFileIcon(file.kind);
+                            return (
+                              <button
+                                key={file.path}
+                                type="button"
+                                onClick={() => selectWorkspaceFile(file.path)}
+                                className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors ${
+                                  file.path === workspacePath ? "bg-primary/10 text-foreground" : "hover:bg-muted/30 text-muted-foreground"
+                                }`}
+                              >
+                                <Icon className="h-3.5 w-3.5 shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate font-medium text-foreground">{file.name}</div>
+                                  <div className="truncate text-[10px] text-muted-foreground">{file.path}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                    {workspace?.files?.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                        {tr("Workspace пока пустой.", "The workspace is empty.")}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              <div className="min-h-0 flex flex-col">
+                <div className="border-b border-border px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{selectedWorkspaceMeta?.path || "SKILL.md"}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                        {selectedWorkspaceMeta ? (
+                          <>
+                            <span>{selectedWorkspaceMeta.kind}</span>
+                            <span>·</span>
+                            <span>{selectedWorkspaceMeta.language}</span>
+                            <span>·</span>
+                            <span>{selectedWorkspaceMeta.size}b</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 rounded-md px-3 text-[11px]"
+                        onClick={() => saveWorkspaceFileMutation.mutate({ path: workspacePath, content: workspaceDraft })}
+                        disabled={!selectedWorkspaceMeta || !workspaceDirty || saveWorkspaceFileMutation.isPending}
+                      >
+                        {saveWorkspaceFileMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                        {tr("Сохранить", "Save")}
+                      </Button>
+                      {selectedWorkspaceMeta && selectedWorkspaceMeta.path !== "SKILL.md" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 rounded-md px-3 text-[11px] text-destructive hover:text-destructive"
+                          onClick={() => {
+                            if (!window.confirm(tr("Удалить этот файл из skill pack?", "Delete this file from the skill pack?"))) return;
+                            deleteWorkspaceFileMutation.mutate(selectedWorkspaceMeta.path);
+                          }}
+                          disabled={deleteWorkspaceFileMutation.isPending}
+                        >
+                          {deleteWorkspaceFileMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          {tr("Удалить", "Delete")}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1">
+                  {isFetchingWorkspaceFile && !activeWorkspaceFile ? (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {tr("Загрузка файла...", "Loading file...")}
+                    </div>
+                  ) : selectedWorkspaceMeta ? (
+                    <div className="flex h-full flex-col">
+                      <div className="border-b border-border px-4 py-2 text-[11px] text-muted-foreground">
+                        {selectedWorkspaceMeta.path === "SKILL.md"
+                          ? tr("Главный playbook skill pack. Здесь держи основную инструкцию, workflow и guardrails.", "Main skill pack playbook. Keep the core instruction set, workflow, and guardrails here.")
+                          : selectedWorkspaceMeta.kind === "reference"
+                            ? tr("Reference-файлы подходят для длинной документации, runbooks и примеров.", "Reference files are good for longer docs, runbooks, and examples.")
+                            : selectedWorkspaceMeta.kind === "script"
+                              ? tr("Scripts — для детерминированных helper-ов, которые агент может вызывать как часть skill pack workflow.", "Scripts are for deterministic helpers that can support the skill pack workflow.")
+                              : tr("Текстовый asset внутри skill pack.", "Text asset inside the skill pack.")}
+                      </div>
+                      <div className="min-h-0 flex-1 p-4">
+                        <Textarea
+                          value={workspaceDraft}
+                          onChange={(event) => {
+                            setWorkspaceDraft(event.target.value);
+                            setWorkspaceDirty(true);
+                            setWorkspaceStatus(null);
+                          }}
+                          className="h-full min-h-[420px] resize-none rounded-md border-border bg-background font-mono text-[12px] leading-6"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      {tr("Выберите файл слева.", "Select a file from the left.")}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
+                  {workspaceStatus || (workspaceDirty ? tr("Есть несохранённые изменения.", "You have unsaved changes.") : tr("Изменений нет.", "No unsaved changes."))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={workspaceCreateOpen} onOpenChange={setWorkspaceCreateOpen}>
+        <DialogContent className="max-w-lg rounded-md border-border bg-background/95">
+          <DialogHeader>
+            <DialogTitle>{tr("Новый файл skill pack", "New skill pack file")}</DialogTitle>
+            <DialogDescription>
+              {tr("Создайте reference, script или text asset прямо в веб-интерфейсе.", "Create a reference, script, or text asset directly from the web UI.")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{tr("Тип файла", "File type")}</Label>
+              <Select
+                value={workspaceCreateKind}
+                onValueChange={(value: WorkspaceDraftKind) => {
+                  setWorkspaceCreateKind(value);
+                  setWorkspaceCreateName(defaultWorkspaceFilename(value));
+                }}
+              >
+                <SelectTrigger className="text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reference">{tr("Reference document", "Reference document")}</SelectItem>
+                  <SelectItem value="script">{tr("Helper script", "Helper script")}</SelectItem>
+                  <SelectItem value="asset">{tr("Text asset", "Text asset")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{tr("Имя файла", "File name")}</Label>
+              <Input
+                value={workspaceCreateName}
+                onChange={(event) => setWorkspaceCreateName(event.target.value)}
+                placeholder={defaultWorkspaceFilename(workspaceCreateKind)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {buildWorkspacePath(workspaceCreateKind, workspaceCreateName || defaultWorkspaceFilename(workspaceCreateKind))}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setWorkspaceCreateOpen(false)}>
+              {tr("Отмена", "Cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                const path = buildWorkspacePath(workspaceCreateKind, workspaceCreateName);
+                if (!path) {
+                  toast({ variant: "destructive", description: tr("Укажите имя файла.", "Enter a file name.") });
+                  return;
+                }
+                createWorkspaceFileMutation.mutate({
+                  path,
+                  content: buildWorkspaceTemplate(workspaceCreateKind, workspaceCreateName, selectedSkill?.name || selectedSlug || "Skill"),
+                });
+              }}
+              disabled={createWorkspaceFileMutation.isPending}
+              className="gap-1.5"
+            >
+              {createWorkspaceFileMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              {tr("Создать файл", "Create file")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={workspaceUploadOpen}
+        onOpenChange={(open) => {
+          setWorkspaceUploadOpen(open);
+          if (!open) resetWorkspaceUpload(workspaceUploadKind);
+        }}
+      >
+        <DialogContent className="max-w-lg rounded-md border-border bg-background/95">
+          <DialogHeader>
+            <DialogTitle>{tr("Загрузить файл в skill pack", "Upload file into the skill pack")}</DialogTitle>
+            <DialogDescription>
+              {tr(
+                "Загрузите локальный markdown, JSON, shell/python script или текстовый asset. Файл попадёт прямо в references/, scripts/ или assets/.",
+                "Upload local markdown, JSON, shell/python scripts, or text assets. The file will go straight into references/, scripts/, or assets/.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{tr("Тип файла", "File type")}</Label>
+              <Select value={workspaceUploadKind} onValueChange={(value: WorkspaceDraftKind) => setWorkspaceUploadKind(value)}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reference">{tr("Reference document", "Reference document")}</SelectItem>
+                  <SelectItem value="script">{tr("Helper script", "Helper script")}</SelectItem>
+                  <SelectItem value="asset">{tr("Text asset", "Text asset")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{tr("Локальный файл", "Local file")}</Label>
+              <input
+                ref={workspaceUploadInputRef}
+                type="file"
+                accept={WORKSPACE_UPLOAD_ACCEPT}
+                className="hidden"
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0] || null;
+                  setWorkspaceUploadFile(nextFile);
+                  setWorkspaceUploadName(nextFile?.name || "");
+                }}
+              />
+              <Button type="button" variant="outline" className="w-full justify-between text-xs" onClick={() => workspaceUploadInputRef.current?.click()}>
+                <span className="truncate">
+                  {workspaceUploadFile?.name || tr("Выбрать файл", "Choose file")}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {workspaceUploadFile ? `${Math.max(1, Math.round(workspaceUploadFile.size / 1024))} KB` : tr("UTF-8 text only", "UTF-8 text only")}
+                </span>
+              </Button>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{tr("Имя внутри skill pack", "Name inside the skill pack")}</Label>
+              <Input
+                value={workspaceUploadName}
+                onChange={(event) => setWorkspaceUploadName(event.target.value)}
+                placeholder={workspaceUploadFile?.name || defaultWorkspaceFilename(workspaceUploadKind)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {buildWorkspacePath(workspaceUploadKind, workspaceUploadName || workspaceUploadFile?.name || defaultWorkspaceFilename(workspaceUploadKind))}
+              </p>
+            </div>
+
+            {workspaceUploadFile && workspaceExistingPaths.has(buildWorkspacePath(workspaceUploadKind, workspaceUploadName || workspaceUploadFile.name)) ? (
+              <div className="rounded-md bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+                {tr("Файл с таким путём уже существует и будет заменён.", "A file at this path already exists and will be replaced.")}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setWorkspaceUploadOpen(false)}>
+              {tr("Отмена", "Cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                if (!workspaceUploadFile) {
+                  toast({ variant: "destructive", description: tr("Сначала выберите локальный файл.", "Choose a local file first.") });
+                  return;
+                }
+                const nextPath = buildWorkspacePath(workspaceUploadKind, workspaceUploadName || workspaceUploadFile.name);
+                if (!nextPath) {
+                  toast({ variant: "destructive", description: tr("Укажите имя файла.", "Enter a file name.") });
+                  return;
+                }
+                uploadWorkspaceFileMutation.mutate({
+                  kind: workspaceUploadKind,
+                  name: workspaceUploadName || workspaceUploadFile.name,
+                  file: workspaceUploadFile,
+                });
+              }}
+              disabled={uploadWorkspaceFileMutation.isPending}
+              className="gap-1.5"
+            >
+              {uploadWorkspaceFileMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeft className="h-3.5 w-3.5 rotate-90" />}
+              {tr("Загрузить", "Upload")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-auto rounded-md border-border bg-background/95">

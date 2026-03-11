@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Загрузка .env до чтения os.getenv (для POSTGRES_*, CELERY_* и т.д.)
 try:
@@ -210,6 +211,7 @@ USE_TZ = True
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'servers:server_list'
 LOGOUT_REDIRECT_URL = 'login'
+AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
 
 # External SPA frontend (React/Vite)
 FRONTEND_APP_URL = (os.getenv("FRONTEND_APP_URL", "http://127.0.0.1:8080") or "").rstrip("/")
@@ -222,15 +224,98 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _ldap_server_uri() -> str:
+    raw = (os.getenv("LDAP_SERVER", "") or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"ldap://{raw}"
+
+    parsed = urlparse(raw)
+    configured_port = (os.getenv("LDAP_PORT", "") or "").strip()
+    if not configured_port:
+        return raw
+    if parsed.port:
+        return raw
+
+    host = parsed.hostname or parsed.netloc or parsed.path
+    if not host:
+        return raw
+    return f"{parsed.scheme or 'ldap'}://{host}:{configured_port}"
+
+
 # Domain SSO / integrated auth
 # DOMAIN_AUTH_HEADER examples: REMOTE_USER, X-Forwarded-User
 DOMAIN_AUTH_ENABLED = _env_bool("DOMAIN_AUTH_ENABLED", False)
 DOMAIN_AUTH_HEADER = (os.getenv("DOMAIN_AUTH_HEADER", "REMOTE_USER") or "REMOTE_USER").strip() or "REMOTE_USER"
+DOMAIN_AUTH_HEADER_ALIASES = [
+    header.strip()
+    for header in (
+        os.getenv(
+            "DOMAIN_AUTH_HEADER_ALIASES",
+            "X-Remote-User,Remote-User,X-Auth-Request-User,X-Forwarded-Preferred-Username",
+        )
+        or ""
+    ).split(",")
+    if header.strip()
+]
 DOMAIN_AUTH_AUTO_CREATE = _env_bool("DOMAIN_AUTH_AUTO_CREATE", True)
 DOMAIN_AUTH_LOWERCASE_USERNAMES = _env_bool("DOMAIN_AUTH_LOWERCASE_USERNAMES", True)
 DOMAIN_AUTH_DEFAULT_PROFILE = (
     os.getenv("DOMAIN_AUTH_DEFAULT_PROFILE", "server_only") or "server_only"
 ).strip().lower() or "server_only"
+
+# LDAP / AD auth (form-based login against corporate directory)
+LDAP_ENABLED = _env_bool("LDAP_ENABLED", False)
+LDAP_SERVER = _ldap_server_uri()
+LDAP_BIND_DN = (os.getenv("LDAP_BIND_DN", "") or "").strip()
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
+LDAP_SEARCH_BASE = (os.getenv("LDAP_SEARCH_BASE", "") or "").strip()
+LDAP_FILTER = (os.getenv("LDAP_FILTER", "(objectClass=user)") or "(objectClass=user)").strip()
+LDAP_USERNAME_ATTRIBUTE = (os.getenv("LDAP_USERNAME_ATTRIBUTE", "sAMAccountName") or "sAMAccountName").strip()
+LDAP_EMAIL_ATTRIBUTE = (os.getenv("LDAP_EMAIL_ATTRIBUTE", "mail") or "mail").strip()
+LDAP_FULL_NAME_ATTRIBUTE = (os.getenv("LDAP_FULL_NAME_ATTRIBUTE", "cn") or "cn").strip()
+LDAP_START_TLS = _env_bool("LDAP_START_TLS", False)
+LDAP_IGNORE_CERT = _env_bool("LDAP_IGNORE_CERT", False)
+LDAP_NETWORK_TIMEOUT_SECONDS = int((os.getenv("LDAP_NETWORK_TIMEOUT_SECONDS", "3") or "3").strip() or "3")
+
+if LDAP_ENABLED:
+    try:
+        import ldap
+        from django_auth_ldap.config import LDAPSearch
+    except Exception:
+        # LDAP package not available -> keep local DB auth only.
+        pass
+    else:
+        AUTHENTICATION_BACKENDS = [
+            "django.contrib.auth.backends.ModelBackend",
+            "django_auth_ldap.backend.LDAPBackend",
+        ]
+
+        AUTH_LDAP_SERVER_URI = LDAP_SERVER
+        AUTH_LDAP_BIND_DN = LDAP_BIND_DN
+        AUTH_LDAP_BIND_PASSWORD = LDAP_BIND_PASSWORD
+        AUTH_LDAP_START_TLS = LDAP_START_TLS
+        AUTH_LDAP_ALWAYS_UPDATE_USER = True
+        AUTH_LDAP_CACHE_TIMEOUT = 300
+
+        _ldap_username_filter = f"(&{LDAP_FILTER}({LDAP_USERNAME_ATTRIBUTE}=%(user)s))"
+        AUTH_LDAP_USER_SEARCH = LDAPSearch(LDAP_SEARCH_BASE, ldap.SCOPE_SUBTREE, _ldap_username_filter)
+        AUTH_LDAP_USER_ATTR_MAP = {
+            "email": LDAP_EMAIL_ATTRIBUTE,
+            "first_name": LDAP_FULL_NAME_ATTRIBUTE,
+        }
+
+        AUTH_LDAP_CONNECTION_OPTIONS = {
+            ldap.OPT_REFERRALS: 0,
+            ldap.OPT_NETWORK_TIMEOUT: LDAP_NETWORK_TIMEOUT_SECONDS,
+            ldap.OPT_TIMEOUT: LDAP_NETWORK_TIMEOUT_SECONDS,
+        }
+        AUTH_LDAP_GLOBAL_OPTIONS = {
+            ldap.OPT_REFERRALS: 0,
+        }
+        if LDAP_IGNORE_CERT:
+            AUTH_LDAP_GLOBAL_OPTIONS[ldap.OPT_X_TLS_REQUIRE_CERT] = ldap.OPT_X_TLS_NEVER
 
 # =============================================================================
 # Email Configuration

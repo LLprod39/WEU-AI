@@ -150,7 +150,14 @@ class AgentLiveConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _check_access(self) -> bool:
+        from django.contrib.auth.models import User
+        from core_ui.context_processors import user_can_feature
         from servers.models import AgentRun
+
+        user = User.objects.filter(id=self._user_id).first()
+        if not user or not user_can_feature(user, "agents"):
+            return False
+
         return AgentRun.objects.filter(
             id=self.run_id, agent__user_id=self._user_id,
         ).exists()

@@ -50,6 +50,9 @@ export interface AuthUser {
     servers: boolean;
     settings: boolean;
     orchestrator: boolean;
+    agents: boolean;
+    studio: boolean;
+    dashboard: boolean;
   };
 }
 
@@ -271,10 +274,10 @@ export async function fetchAuthSession() {
   return apiFetch<AuthSessionResponse>("/api/auth/session/");
 }
 
-export async function authLogin(username: string, password: string) {
+export async function authLogin(username: string, password: string, authMode: "auto" | "local" = "auto") {
   return apiFetch<AuthLoginResponse>("/api/auth/login/", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, auth_mode: authMode }),
   });
 }
 
@@ -1288,6 +1291,31 @@ export interface StudioSkillScaffoldResponse {
   validation: StudioSkillValidationResult;
 }
 
+export interface StudioSkillWorkspaceFile {
+  path: string;
+  name: string;
+  kind: "skill" | "reference" | "script" | "asset" | "file";
+  language: string;
+  size: number;
+  editable: boolean;
+}
+
+export interface StudioSkillWorkspaceFileDetail extends StudioSkillWorkspaceFile {
+  content: string;
+}
+
+export interface StudioSkillWorkspace {
+  skill: StudioSkillDetail;
+  files: StudioSkillWorkspaceFile[];
+  validation: StudioSkillValidationResult;
+}
+
+export interface StudioSkillWorkspaceMutationResponse {
+  ok: boolean;
+  file?: StudioSkillWorkspaceFileDetail;
+  validation: StudioSkillValidationResult;
+}
+
 export interface MCPServer {
   id: number;
   name: string;
@@ -1417,6 +1445,24 @@ export const studioSkills = {
     apiFetch<StudioSkillValidationResponse>("/api/studio/skills/validate/", {
       method: "POST",
       body: JSON.stringify({ slugs: slugs || [], strict }),
+    }),
+  workspace: (slug: string) => apiFetch<StudioSkillWorkspace>(`/api/studio/skills/${encodeURIComponent(slug)}/workspace/`),
+  readFile: (slug: string, path: string) =>
+    apiFetch<StudioSkillWorkspaceFileDetail>(`/api/studio/skills/${encodeURIComponent(slug)}/workspace/file/?path=${encodeURIComponent(path)}`),
+  createFile: (slug: string, data: { path: string; content: string }) =>
+    apiFetch<StudioSkillWorkspaceMutationResponse>(`/api/studio/skills/${encodeURIComponent(slug)}/workspace/file/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateFile: (slug: string, data: { path: string; content: string }) =>
+    apiFetch<StudioSkillWorkspaceMutationResponse>(`/api/studio/skills/${encodeURIComponent(slug)}/workspace/file/`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteFile: (slug: string, path: string) =>
+    apiFetch<StudioSkillWorkspaceMutationResponse>(`/api/studio/skills/${encodeURIComponent(slug)}/workspace/file/`, {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
     }),
 };
 

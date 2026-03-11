@@ -19,10 +19,8 @@ import {
   RotateCcw, HelpCircle, Layers, Pencil, Trash2, Sparkles, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import ReactMarkdown from "react-markdown";
-import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 
 function formatDuration(ms: number): string {
@@ -321,12 +319,10 @@ function TaskEditModal({
   onClose: () => void;
   onSaved: (tasks: PlanTask[]) => void;
 }) {
-  const { toast } = useToast();
   const [name, setName] = useState(task.name);
   const [description, setDescription] = useState(task.description);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [aiMsg, setAiMsg] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -337,30 +333,23 @@ function TaskEditModal({
     try {
       const res = await updatePipelineTask(runId, task.id, { action: "update", name, description });
       onSaved(res.plan_tasks);
-      toast({ description: "Задача обновлена" });
       onClose();
     } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        description: e instanceof Error ? e.message : "Ошибка сохранения",
-      });
+      alert(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (!confirm(`Удалить задачу "${task.name}"?`)) return;
     setDeleting(true);
     try {
       const res = await updatePipelineTask(runId, task.id, { action: "delete" });
       onSaved(res.plan_tasks);
-      toast({ description: "Задача удалена" });
       onClose();
     } catch (e: unknown) {
-      toast({
-        variant: "destructive",
-        description: e instanceof Error ? e.message : "Ошибка удаления",
-      });
+      alert(e instanceof Error ? e.message : "Ошибка удаления");
     } finally {
       setDeleting(false);
     }
@@ -462,7 +451,7 @@ function TaskEditModal({
             size="sm"
             variant="destructive"
             className="h-8 px-3 gap-1.5 text-xs"
-            onClick={() => setDeleteConfirmOpen(true)}
+            onClick={handleDelete}
             disabled={deleting || saving}
           >
             {deleting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
@@ -484,18 +473,6 @@ function TaskEditModal({
           </div>
         </div>
       </div>
-
-      <ConfirmActionDialog
-        open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-        title="Удалить задачу"
-        description={`Удалить задачу "${task.name}" из плана выполнения?`}
-        confirmLabel="Удалить задачу"
-        onConfirm={() => {
-          setDeleteConfirmOpen(false);
-          void handleDelete();
-        }}
-      />
     </div>
   );
 }
@@ -860,7 +837,7 @@ function FlowNode({
         {onEdit && (
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(); }}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-violet-500/20 hover:text-violet-400 shrink-0"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-violet-500/20 text-muted-foreground hover:text-violet-400 shrink-0"
             title="Редактировать задачу"
           >
             <Pencil className="h-3 w-3" />

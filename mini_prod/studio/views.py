@@ -56,10 +56,10 @@ import json
 import os
 import shutil
 import threading
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from django.conf import settings as django_settings
-from django.contrib.auth.decorators import login_required
+from core_ui.decorators import require_feature
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -300,7 +300,7 @@ def _sanitize_graph_patch(raw_graph_patch: object, *, fallback_anchor: str | Non
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_pipelines(request):
     if request.method == "GET":
         qs = Pipeline.objects.filter(owner=request.user).order_by("-updated_at")
@@ -334,7 +334,7 @@ def api_pipelines(request):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 def api_pipeline_detail(request, pipeline_id: int):
     pipeline = _get_pipeline(request, pipeline_id)
     if pipeline is None:
@@ -364,7 +364,7 @@ def api_pipeline_detail(request, pipeline_id: int):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_pipeline_run(request, pipeline_id: int):
     """Trigger a manual pipeline run."""
@@ -392,7 +392,7 @@ def api_pipeline_run(request, pipeline_id: int):
     return _ok(run.to_dict(), status=202)
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_pipeline_clone(request, pipeline_id: int):
     pipeline = _get_pipeline(request, pipeline_id)
@@ -412,7 +412,7 @@ def api_pipeline_clone(request, pipeline_id: int):
     return _ok(clone.to_detail_dict(), status=201)
 
 
-@login_required
+@require_feature('agents')
 def api_pipeline_runs(request, pipeline_id: int):
     pipeline = _get_pipeline(request, pipeline_id)
     if pipeline is None:
@@ -421,7 +421,7 @@ def api_pipeline_runs(request, pipeline_id: int):
     return _ok([r.to_dict() for r in runs])
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_pipeline_assistant(request):
     data = _json_body(request)
@@ -674,13 +674,13 @@ def _get_pipeline(request, pipeline_id: int) -> Pipeline | None:
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_runs(request):
     qs = PipelineRun.objects.filter(pipeline__owner=request.user).order_by("-created_at")[:100]
     return _ok([r.to_dict() for r in qs])
 
 
-@login_required
+@require_feature('agents')
 def api_run_detail(request, run_id: int):
     try:
         run = PipelineRun.objects.get(pk=run_id, pipeline__owner=request.user)
@@ -689,7 +689,7 @@ def api_run_detail(request, run_id: int):
     return _ok(run.to_dict())
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_run_stop(request, run_id: int):
     try:
@@ -777,7 +777,7 @@ def api_run_approve(request, run_id: int, node_id: str):
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_agents(request):
     if request.method == "GET":
         qs = AgentConfig.objects.filter(owner=request.user).order_by("-updated_at")
@@ -822,7 +822,7 @@ def api_agents(request):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 def api_agent_detail(request, agent_id: int):
     try:
         agent = AgentConfig.objects.get(pk=agent_id, owner=request.user)
@@ -905,18 +905,167 @@ def _normalise_string_list(raw_values) -> list[str]:
     return parse_csv_items(raw_values)
 
 
+_SKILL_WORKSPACE_TEXT_EXTENSIONS = {
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".csv",
+    ".sql",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".py",
+    ".js",
+    ".ts",
+}
+_SKILL_WORKSPACE_DIRS = {"references", "scripts", "assets"}
+_SKILL_WORKSPACE_MAX_BYTES = 500_000
+
+
+def _skill_dir_from_slug(slug: str) -> Path:
+    skill = get_skill(slug)
+    return Path(skill.path).resolve().parent
+
+
+def _skill_workspace_kind(path: str) -> str:
+    if path == "SKILL.md":
+        return "skill"
+    if path.startswith("references/"):
+        return "reference"
+    if path.startswith("scripts/"):
+        return "script"
+    if path.startswith("assets/"):
+        return "asset"
+    return "file"
+
+
+def _skill_workspace_language(path: str) -> str:
+    lowered = path.lower()
+    if lowered.endswith(".md"):
+        return "markdown"
+    if lowered.endswith((".yml", ".yaml")):
+        return "yaml"
+    if lowered.endswith(".json"):
+        return "json"
+    if lowered.endswith(".py"):
+        return "python"
+    if lowered.endswith((".sh", ".bash", ".zsh")):
+        return "shell"
+    if lowered.endswith(".ts"):
+        return "typescript"
+    if lowered.endswith(".js"):
+        return "javascript"
+    if lowered.endswith(".sql"):
+        return "sql"
+    if lowered.endswith(".csv"):
+        return "csv"
+    return "text"
+
+
+def _normalise_skill_workspace_path(raw_path: str) -> tuple[str | None, str | None]:
+    candidate = str(raw_path or "").strip().replace("\\", "/")
+    if not candidate:
+        return None, "path is required"
+    pure = PurePosixPath(candidate)
+    if pure.is_absolute():
+        return None, "absolute paths are not allowed"
+    parts = [part for part in pure.parts if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        return None, "invalid path"
+    if any(part.startswith(".") for part in parts):
+        return None, "hidden paths are not allowed"
+    if parts == ["SKILL.md"]:
+        return "SKILL.md", None
+    if parts[0] not in _SKILL_WORKSPACE_DIRS:
+        return None, "path must live under references/, scripts/, or assets/"
+    if len(parts) < 2:
+        return None, "file name is required"
+    filename = parts[-1]
+    suffix = Path(filename).suffix.lower()
+    if suffix and suffix not in _SKILL_WORKSPACE_TEXT_EXTENSIONS:
+        return None, f"unsupported file type: {suffix}"
+    return "/".join(parts), None
+
+
+def _resolve_skill_workspace_file(skill_dir: Path, raw_path: str) -> tuple[Path | None, str | None, str | None]:
+    normalized, error = _normalise_skill_workspace_path(raw_path)
+    if error:
+        return None, None, error
+    file_path = (skill_dir / normalized).resolve()
+    try:
+        file_path.relative_to(skill_dir)
+    except ValueError:
+        return None, None, "path escapes the skill directory"
+    return file_path, normalized, None
+
+
+def _skill_workspace_file_payload(skill_dir: Path, relative_path: str, *, include_content: bool = False) -> dict:
+    file_path = (skill_dir / relative_path).resolve()
+    payload = {
+        "path": relative_path,
+        "name": file_path.name,
+        "kind": _skill_workspace_kind(relative_path),
+        "language": _skill_workspace_language(relative_path),
+        "size": file_path.stat().st_size if file_path.exists() else 0,
+        "editable": True,
+    }
+    if include_content:
+        try:
+            payload["content"] = file_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Only UTF-8 text files can be edited in the web workspace: {relative_path}") from exc
+    return payload
+
+
+def _list_skill_workspace_files(skill_dir: Path) -> list[dict]:
+    files: list[dict] = []
+    skill_file = skill_dir / "SKILL.md"
+    if skill_file.exists():
+        files.append(_skill_workspace_file_payload(skill_dir, "SKILL.md"))
+    for folder in ("references", "scripts", "assets"):
+        folder_path = skill_dir / folder
+        if not folder_path.exists() or not folder_path.is_dir():
+            continue
+        for file_path in sorted(folder_path.rglob("*"), key=lambda item: str(item).lower()):
+            if not file_path.is_file():
+                continue
+            relative_path = file_path.relative_to(skill_dir).as_posix()
+            try:
+                files.append(_skill_workspace_file_payload(skill_dir, relative_path))
+            except ValueError:
+                continue
+    return files
+
+
+def _skill_workspace_response(slug: str) -> dict:
+    skill = get_skill(slug)
+    skill_dir = Path(skill.path).resolve().parent
+    validation = validate_skill_dir(skill_dir)
+    return {
+        "skill": skill.to_detail_dict(),
+        "files": _list_skill_workspace_files(skill_dir),
+        "validation": validation.to_dict(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_skills(_request):
     return _ok([skill.to_summary_dict() for skill in list_skills()])
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_skill_detail(_request, slug: str):
     try:
@@ -926,13 +1075,13 @@ def api_skill_detail(_request, slug: str):
     return _ok(skill.to_detail_dict())
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_skill_templates(_request):
     return _ok([item.to_dict() for item in list_skill_templates()])
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_skill_scaffold(request):
     data = _json_body(request)
@@ -1003,7 +1152,7 @@ def api_skill_scaffold(request):
     )
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_skill_validate(request):
     data = _json_body(request)
@@ -1031,6 +1180,90 @@ def api_skill_validate(request):
             },
         }
     )
+
+
+@require_feature('agents')
+@require_http_methods(["GET"])
+def api_skill_workspace(_request, slug: str):
+    try:
+        return _ok(_skill_workspace_response(slug))
+    except SkillNotFoundError:
+        return _err("Skill not found", 404)
+
+
+@require_feature('agents')
+def api_skill_workspace_file(request, slug: str):
+    try:
+        skill_dir = _skill_dir_from_slug(slug)
+    except SkillNotFoundError:
+        return _err("Skill not found", 404)
+
+    if request.method == "GET":
+        raw_path = request.GET.get("path", "")
+        file_path, relative_path, error = _resolve_skill_workspace_file(skill_dir, raw_path)
+        if error:
+            return _err(error)
+        if file_path is None or relative_path is None or not file_path.exists():
+            return _err("File not found", 404)
+        try:
+            return _ok(_skill_workspace_file_payload(skill_dir, relative_path, include_content=True))
+        except ValueError as exc:
+            return _err(str(exc), 400)
+
+    data = _json_body(request)
+    raw_path = data.get("path", "")
+    file_path, relative_path, error = _resolve_skill_workspace_file(skill_dir, raw_path)
+    if error:
+        return _err(error)
+    if file_path is None or relative_path is None:
+        return _err("invalid path")
+
+    if request.method == "POST":
+        if file_path.exists():
+            return _err("File already exists", 409)
+        content = str(data.get("content", ""))
+        if len(content.encode("utf-8")) > _SKILL_WORKSPACE_MAX_BYTES:
+            return _err("File is too large", 400)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return _ok(
+            {
+                "ok": True,
+                "file": _skill_workspace_file_payload(skill_dir, relative_path, include_content=True),
+                "validation": validate_skill_dir(skill_dir).to_dict(),
+            },
+            status=201,
+        )
+
+    if request.method == "PUT":
+        if not file_path.exists():
+            return _err("File not found", 404)
+        content = str(data.get("content", ""))
+        if len(content.encode("utf-8")) > _SKILL_WORKSPACE_MAX_BYTES:
+            return _err("File is too large", 400)
+        file_path.write_text(content, encoding="utf-8")
+        return _ok(
+            {
+                "ok": True,
+                "file": _skill_workspace_file_payload(skill_dir, relative_path, include_content=True),
+                "validation": validate_skill_dir(skill_dir).to_dict(),
+            }
+        )
+
+    if request.method == "DELETE":
+        if relative_path == "SKILL.md":
+            return _err("SKILL.md cannot be deleted", 400)
+        if not file_path.exists():
+            return _err("File not found", 404)
+        file_path.unlink()
+        with contextlib.suppress(OSError):
+            parent = file_path.parent
+            while parent != skill_dir and parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+        return _ok({"ok": True, "validation": validate_skill_dir(skill_dir).to_dict()})
+
+    return _err("Method not allowed", 405)
 
 
 # ---------------------------------------------------------------------------
@@ -1125,7 +1358,7 @@ MCP_TEMPLATES = [
 ]
 
 
-@login_required
+@require_feature('agents')
 def api_mcp_list(request):
     if request.method == "GET":
         qs = MCPServerPool.objects.filter(owner=request.user).order_by("name")
@@ -1155,7 +1388,7 @@ def api_mcp_list(request):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 def api_mcp_detail(request, mcp_id: int):
     try:
         mcp = MCPServerPool.objects.get(pk=mcp_id, owner=request.user)
@@ -1183,7 +1416,7 @@ def api_mcp_detail(request, mcp_id: int):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_mcp_test(request, mcp_id: int):
     try:
@@ -1249,12 +1482,12 @@ def _test_mcp_connection(mcp: MCPServerPool) -> tuple[bool, str | None]:
         return False, str(exc)
 
 
-@login_required
+@require_feature('agents')
 def api_mcp_templates(request):
     return _ok(MCP_TEMPLATES)
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["GET"])
 def api_mcp_tools(request, mcp_id: int):
     try:
@@ -1292,7 +1525,7 @@ def _mcp_to_dict(mcp: MCPServerPool) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_triggers(request):
     if request.method == "GET":
         pipeline_id = request.GET.get("pipeline_id")
@@ -1334,7 +1567,7 @@ def api_triggers(request):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 def api_trigger_detail(request, trigger_id: int):
     try:
         trigger = PipelineTrigger.objects.get(pk=trigger_id, pipeline__owner=request.user)
@@ -1436,13 +1669,13 @@ def _map_payload(payload: dict, mapping: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_templates(request):
     templates = PipelineTemplate.objects.all().order_by("category", "name")
     return _ok([t.to_dict() for t in templates])
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_template_use(request, slug: str):
     try:
@@ -1459,7 +1692,7 @@ def api_template_use(request, slug: str):
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_studio_servers(request):
     from servers.models import Server
 
@@ -1472,7 +1705,7 @@ def api_studio_servers(request):
 # ---------------------------------------------------------------------------
 
 
-@login_required
+@require_feature('agents')
 def api_notification_settings(request):
     """
     GET  /api/studio/notifications/  — return current notification settings
@@ -1506,7 +1739,7 @@ def api_notification_settings(request):
     return _err("Method not allowed", 405)
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_notification_test_telegram(request):
     """POST /api/studio/notifications/test-telegram/ — send a test Telegram message."""
@@ -1542,7 +1775,7 @@ def api_notification_test_telegram(request):
         return _err(f"Send failed: {exc}")
 
 
-@login_required
+@require_feature('agents')
 @require_http_methods(["POST"])
 def api_notification_test_email(request):
     """POST /api/studio/notifications/test-email/ — send a test email."""

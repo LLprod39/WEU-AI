@@ -69,16 +69,45 @@ def _header_name() -> str:
     return raw.strip() or "REMOTE_USER"
 
 
+def _header_aliases() -> list[str]:
+    aliases = getattr(settings, "DOMAIN_AUTH_HEADER_ALIASES", []) or []
+    normalized: list[str] = []
+    for item in aliases:
+        value = str(item or "").strip()
+        if value:
+            normalized.append(value)
+    return normalized
+
+
+def _candidate_meta_keys() -> list[tuple[str, str]]:
+    seen: set[str] = set()
+    ordered_headers = [_header_name(), *_header_aliases()]
+    candidates: list[tuple[str, str]] = []
+    for header in ordered_headers:
+        normalized = header.upper().replace("-", "_")
+        if normalized == "REMOTE_USER":
+            meta_key = "REMOTE_USER"
+        else:
+            meta_key = normalized if normalized.startswith("HTTP_") else f"HTTP_{normalized}"
+        if meta_key in seen:
+            continue
+        seen.add(meta_key)
+        candidates.append((header, meta_key))
+    return candidates
+
+
 def _extract_principal(request) -> str:
-    """Read identity from REMOTE_USER or configured HTTP header."""
-    configured = _header_name()
-    normalized = configured.upper().replace("-", "_")
-    if normalized == "REMOTE_USER":
-        value = request.META.get("REMOTE_USER", "")
-    else:
-        meta_key = normalized if normalized.startswith("HTTP_") else f"HTTP_{normalized}"
-        value = request.META.get(meta_key, "")
-    return str(value or "").strip()
+    """Read identity from configured domain header with support for aliases."""
+    for _header, meta_key in _candidate_meta_keys():
+        value = str(request.META.get(meta_key, "") or "").strip()
+        if not value:
+            continue
+        # Some upstreams may combine values with commas; use the first identity.
+        if "," in value:
+            value = value.split(",", 1)[0].strip()
+        if value:
+            return value
+    return ""
 
 
 def _normalize_principal(principal: str) -> tuple[str, str]:

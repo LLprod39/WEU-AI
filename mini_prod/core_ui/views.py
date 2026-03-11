@@ -221,6 +221,7 @@ def frontend_settings_permissions_redirect(request):
 def _auth_user_payload(user):
     if not user or not getattr(user, "is_authenticated", False):
         return None
+    can_agents = bool(user_can_feature(user, "agents"))
     return {
         "id": user.id,
         "username": user.username,
@@ -230,6 +231,9 @@ def _auth_user_payload(user):
             "servers": bool(user_can_feature(user, "servers")),
             "settings": bool(user_can_feature(user, "settings")),
             "orchestrator": bool(user_can_feature(user, "orchestrator")),
+            "agents": can_agents,
+            "studio": can_agents,
+            "dashboard": bool(user.is_staff and can_agents),
         },
     }
 
@@ -267,24 +271,44 @@ def api_auth_login(request):
             data = json.loads(request.body or "{}")
             username = str(data.get("username") or "").strip()
             password = str(data.get("password") or "")
+            auth_mode = str(data.get("auth_mode") or "auto").strip().lower()
         else:
             username = str(request.POST.get("username") or "").strip()
             password = str(request.POST.get("password") or "")
+            auth_mode = str(request.POST.get("auth_mode") or "auto").strip().lower()
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
 
     if not username or not password:
         return JsonResponse({"success": False, "error": "Username and password are required"}, status=400)
 
-    user = authenticate(request, username=username, password=password)
+    if auth_mode not in {"auto", "local"}:
+        auth_mode = "auto"
+
+    user = None
+    auth_backend = None
+    if auth_mode == "local":
+        from django.contrib.auth.backends import ModelBackend
+
+        local_backend = ModelBackend()
+        user = local_backend.authenticate(request, username=username, password=password)
+        if user is not None:
+            auth_backend = "django.contrib.auth.backends.ModelBackend"
+    else:
+        user = authenticate(request, username=username, password=password)
+        auth_backend = getattr(user, "backend", None) if user is not None else None
+
     if user is None:
         return JsonResponse({"success": False, "error": "Invalid username or password"}, status=401)
     if not user.is_active:
         return JsonResponse({"success": False, "error": "User is inactive"}, status=403)
 
-    auth_login(request, user)
+    if auth_backend:
+        auth_login(request, user, backend=auth_backend)
+    else:
+        auth_login(request, user)
     next_url = reverse("servers:server_list")
-    if user.is_staff and not is_server_only_user(user):
+    if user.is_staff and user_can_feature(user, "agents"):
         next_url = reverse("dashboard")
 
     return JsonResponse(
@@ -407,7 +431,7 @@ def monitor_view(request):
 @login_required
 def dashboard_view(request):
     """Dashboard entry for mini build: staff monitoring page."""
-    if is_server_only_user(request.user) or not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return redirect('servers:server_list')
 
     return _admin_dashboard_view(request)
@@ -416,7 +440,7 @@ def dashboard_view(request):
 @login_required
 def api_dashboard_stats(request):
     """Backward-compat alias to admin dashboard API in mini build."""
-    if is_server_only_user(request.user) or not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     return api_admin_dashboard(request)
@@ -955,7 +979,7 @@ def _collect_admin_dashboard_data(include_version: bool = False) -> dict:
 
 def _admin_dashboard_view(request):
     """Render admin monitoring dashboard."""
-    if not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return redirect('servers:server_list')
 
     context = _collect_admin_dashboard_data(include_version=True)
@@ -967,7 +991,7 @@ def _admin_dashboard_view(request):
 @require_http_methods(["GET"])
 def api_admin_dashboard(request):
     """JSON API for admin dashboard auto-refresh."""
-    if not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     data = _collect_admin_dashboard_data(include_version=True)
@@ -978,7 +1002,7 @@ def api_admin_dashboard(request):
 @require_http_methods(["GET"])
 def api_admin_users_activity(request):
     """Detailed user activity logs for admin dashboard with filtering."""
-    if not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     from django.db.models import Count, Q as QQ
@@ -1037,7 +1061,7 @@ def api_admin_users_activity(request):
 @require_http_methods(["GET"])
 def api_admin_users_sessions(request):
     """Active user sessions - who's online now and what they're doing."""
-    if not request.user.is_staff:
+    if (not request.user.is_staff) or (not user_can_feature(request.user, "agents")):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     from django.contrib.auth.models import User as AuthUser
@@ -3045,10 +3069,10 @@ def api_access_users(request):
                 groups = Group.objects.filter(id__in=group_ids)
                 user.groups.set(groups)
 
-            # New regular users should default to server-only profile.
+            # New users should default to server-only profile unless an explicit profile was requested.
             if access_profile:
                 _apply_access_profile(user, access_profile)
-            elif not user.is_staff:
+            else:
                 _apply_access_profile(user, 'server_only')
 
             explicit = {
