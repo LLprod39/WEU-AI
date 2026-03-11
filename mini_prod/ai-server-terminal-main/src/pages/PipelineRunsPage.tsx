@@ -100,7 +100,7 @@ function AgentSteps({ events }: { events: AgentEvent[] }) {
           if (!thought) return null;
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0 mt-0.5" />
+              <Brain className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
               <span className="text-muted-foreground leading-relaxed">{thought}</span>
             </div>
           );
@@ -110,8 +110,8 @@ function AgentSteps({ events }: { events: AgentEvent[] }) {
           const iter = ev.data.iteration ? `#${ev.data.iteration}` : "";
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Zap className="h-3.5 w-3.5 text-yellow-400 shrink-0 mt-0.5" />
-              <span className="text-yellow-300 font-mono">
+              <Zap className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <span className="font-mono text-foreground/80">
                 {iter && <span className="text-muted-foreground mr-1">{iter}</span>}
                 {tool}
                 {ev.data.args && (
@@ -128,8 +128,8 @@ function AgentSteps({ events }: { events: AgentEvent[] }) {
           if (!obs) return null;
           return (
             <div key={i} className="flex gap-2 items-start text-xs">
-              <Terminal className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
-              <span className="text-green-300 font-mono leading-relaxed whitespace-pre-wrap">{obs}</span>
+              <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <span className="font-mono leading-relaxed whitespace-pre-wrap text-foreground/75">{obs}</span>
             </div>
           );
         }
@@ -231,7 +231,6 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -276,7 +275,6 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           )}
 
-          {/* Summary / Report */}
           {run.summary && (
             <div className="rounded-lg border border-border bg-card/60">
               <div className="flex items-center justify-between px-4 py-2 border-b border-border">
@@ -291,7 +289,6 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           )}
 
-          {/* Node states */}
           <div>
             <div className="text-sm font-medium mb-2 text-muted-foreground">Узлы ({nodes.length})</div>
             <div className="space-y-2">
@@ -318,11 +315,11 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
 
                 return (
                   <div key={node.id} className={`rounded-lg border transition-colors ${
-                    status === "failed"    ? "border-red-500/30 bg-red-500/5"
-                    : status === "completed" ? "border-green-500/20 bg-green-500/5"
-                    : status === "running"   ? "border-blue-500/30 bg-blue-500/5"
-                    : status === "skipped"   ? "border-yellow-500/20 bg-yellow-500/5"
-                    : "border-border bg-card/50"
+                    status === "failed"    ? "border-red-500/20 bg-background/24"
+                    : status === "completed" ? "border-green-500/16 bg-background/24"
+                    : status === "running"   ? "border-primary/20 bg-background/24"
+                    : status === "skipped"   ? "border-amber-500/18 bg-background/24"
+                    : "border-border/70 bg-background/24"
                   }`}>
                     <button
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left"
@@ -350,7 +347,7 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
                       <div className="border-t border-border px-4 py-3 space-y-2">
                         {/* Live agent steps */}
                         {isAgentNode && agentEvents.length > 0 && (
-                          <div className="rounded bg-muted/10 border border-border/50 px-3 py-2">
+                          <div className="rounded-lg border border-border/60 bg-background/18 px-3 py-2">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
                               <Activity className="h-3 w-3 text-blue-400" />
                               <span>Шаги агента · {iterCount} действий</span>
@@ -359,7 +356,7 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
                           </div>
                         )}
                         {error && (
-                          <div className="text-xs text-red-300 bg-red-900/20 rounded px-3 py-2 font-mono">
+                          <div className="rounded-lg bg-red-500/5 px-3 py-2 font-mono text-xs text-red-300">
                             {error}
                           </div>
                         )}
@@ -391,7 +388,6 @@ function RunDetail({ runId, onClose }: { runId: number; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Raw JSON for debugging */}
           <div>
             <button
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
@@ -444,6 +440,17 @@ export default function PipelineRunsPage() {
   const selectedRun = selectedRunId ? runs.find((r) => r.id === selectedRunId) : null;
 
   const statusCount = (s: string) => runs.filter((r) => r.status === s).length;
+
+  useEffect(() => {
+    if (!filtered.length) {
+      setSelectedRunId(null);
+      return;
+    }
+
+    if (!selectedRunId || !filtered.some((run) => run.id === selectedRunId)) {
+      setSelectedRunId(filtered[0].id);
+    }
+  }, [filtered, selectedRunId]);
 
   return (
     <div className="flex h-full">

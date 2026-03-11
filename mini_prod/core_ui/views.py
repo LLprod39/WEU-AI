@@ -229,6 +229,9 @@ def _auth_user_payload(user):
         "is_staff": bool(user.is_staff),
         "features": {
             "servers": bool(user_can_feature(user, "servers")),
+            "dashboard": dashboard_allowed,
+            "agents": agents_allowed,
+            "studio": bool(user_can_feature(user, "studio")),
             "settings": bool(user_can_feature(user, "settings")),
             "orchestrator": bool(user_can_feature(user, "orchestrator")),
             "agents": can_agents,
@@ -1339,7 +1342,7 @@ def _get_servers_context_for_prompt(user_id: int) -> str:
         return ""
     try:
         from servers.models import Server
-        from passwords.encryption import PasswordEncryption
+        from servers.secret_utils import get_server_auth_secret
         master_pwd = os.environ.get("MASTER_PASSWORD", "").strip()
         servers = list(Server.objects.filter(user_id=user_id).only(
             "id", "name", "host", "port", "username", "auth_method", "key_path", "encrypted_password", "salt"
@@ -1356,9 +1359,9 @@ def _get_servers_context_for_prompt(user_id: int) -> str:
             auth = s.auth_method or "password"
             key_path = s.key_path or ""
             pwd_decrypted = ""
-            if auth in ("password", "key_password") and s.encrypted_password and master_pwd and s.salt:
+            if auth in ("password", "key_password"):
                 try:
-                    pwd_decrypted = PasswordEncryption.decrypt_password(s.encrypted_password, master_pwd, bytes(s.salt))
+                    pwd_decrypted = get_server_auth_secret(s, master_password=master_pwd)
                 except Exception as e:
                     logger.debug(f"Password decryption failed for server {s.name}: {e}")
                     pwd_decrypted = ""

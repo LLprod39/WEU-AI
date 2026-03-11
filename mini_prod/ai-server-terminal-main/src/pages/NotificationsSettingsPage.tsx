@@ -1,22 +1,22 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   Bell,
   Bot,
-  Mail,
-  Save,
-  Send,
   CheckCircle2,
-  AlertCircle,
+  ExternalLink,
   Eye,
   EyeOff,
   Loader2,
-  ExternalLink,
-  Info,
+  Mail,
+  Save,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageShell, SectionCard, StatusBadge } from "@/components/ui/page-shell";
 import { useToast } from "@/hooks/use-toast";
 import { studioNotifications, type NotificationConfig } from "@/lib/api";
 
@@ -60,17 +60,18 @@ function PasswordField({
   className,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
 }) {
   const [show, setShow] = useState(false);
+
   return (
     <div className="relative">
       <Input
         type={show ? "text" : "password"}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className={`pr-9 ${className || "h-8 text-xs"}`}
       />
@@ -86,9 +87,6 @@ function PasswordField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Test button with result display
-// ---------------------------------------------------------------------------
 function TestButton({
   label,
   onTest,
@@ -105,10 +103,10 @@ function TestButton({
     setLoading(true);
     setState(null);
     try {
-      const res = await onTest();
-      setState(res);
-    } catch (e: unknown) {
-      setState({ ok: false, message: e instanceof Error ? e.message : String(e) });
+      const result = await onTest();
+      setState(result);
+    } catch (error: unknown) {
+      setState({ ok: false, message: error instanceof Error ? error.message : String(error) });
     } finally {
       setLoading(false);
     }
@@ -127,25 +125,71 @@ function TestButton({
         {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
         {label}
       </Button>
-      {state && (
+      {state ? (
         <div
           className={`flex items-center gap-1.5 text-xs rounded px-2 py-1 ${
             state.ok
-              ? "bg-green-900/20 border border-green-600/30 text-green-300"
-              : "bg-red-900/20 border border-red-600/30 text-red-300"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              : "border-red-500/30 bg-red-500/10 text-red-200"
           }`}
         >
           {state.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
           {state.message}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
+function DeliveryStatusRow({
+  icon: Icon,
+  title,
+  description,
+  ready,
+  lang,
+}: {
+  icon: ElementType;
+  title: string;
+  description: string;
+  ready: boolean;
+  lang: "ru" | "en";
+}) {
+  const tr = (ru: string, en: string) => (lang === "ru" ? ru : en);
+
+  return (
+    <div className="workspace-subtle flex items-start justify-between gap-3 rounded-2xl px-4 py-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40">
+          <Icon className="h-4 w-4 text-primary" />
+        </div>
+        <div className="min-w-0 space-y-1">
+          <div className="text-sm font-medium text-foreground">{title}</div>
+          <div className="text-xs leading-5 text-muted-foreground">{description}</div>
+        </div>
+      </div>
+      <StatusBadge
+        label={ready ? tr("Готово", "Ready") : tr("Не настроено", "Not ready")}
+        tone={ready ? "success" : "warning"}
+        className="shrink-0"
+      />
+    </div>
+  );
+}
+
+function HelpLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-primary hover:underline"
+    >
+      {children}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+}
+
 export default function NotificationsSettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -159,41 +203,48 @@ export default function NotificationsSettingsPage() {
 
   useEffect(() => {
     if (!cfg) return;
+
     const fixed = { ...cfg };
     const host = (cfg.smtp_host || "").toLowerCase();
     const login = (cfg.smtp_user || "").trim();
 
-    // Подставить полный email получателя, если указан только логин
     if (cfg.notify_email && !cfg.notify_email.includes("@")) {
       if (host.includes("yandex")) fixed.notify_email = `${cfg.notify_email.trim()}@yandex.ru`;
       else if (host.includes("gmail")) fixed.notify_email = `${cfg.notify_email.trim()}@gmail.com`;
     }
 
-    // Подставить корректный From для Яндекса/ Gmail, если поле пустое или некорректное
     const from = (cfg.from_email || "").trim();
     const fromBroken = !from || from.toLowerCase().includes("noreply@") || from.includes("weuai.site");
     if (fromBroken && login) {
-      if (host.includes("yandex") && !login.includes("@"))
-        fixed.from_email = `WEU Platform <${login}@yandex.ru>`;
+      if (host.includes("yandex") && !login.includes("@")) fixed.from_email = `WEU Platform <${login}@yandex.ru>`;
       else if (host.includes("gmail") && !login.includes("@"))
         fixed.from_email = `WEU Platform <${login}@gmail.com>`;
-      else if (login.includes("@"))
-        fixed.from_email = `WEU Platform <${login}>`;
+      else if (login.includes("@")) fixed.from_email = `WEU Platform <${login}>`;
     }
 
     setForm(fixed);
   }, [cfg]);
 
   const set = (key: keyof NotificationConfig, value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+
+  const persistSettings = async () => {
+    await studioNotifications.save(form);
+    await queryClient.invalidateQueries({ queryKey: ["studio", "notifications"] });
+  };
 
   const saveMutation = useMutation({
-    mutationFn: () => studioNotifications.save(form),
+    mutationFn: persistSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["studio", "notifications"] });
       toast({ description: "Notification settings saved" });
     },
-    onError: (e: Error) => toast({ variant: "destructive", description: e.message }),
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
   });
 
   if (isLoading) {
@@ -337,7 +388,6 @@ export default function NotificationsSettingsPage() {
                 className="h-8 text-xs"
               />
             </div>
-          </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs">Login</Label>
@@ -427,6 +477,97 @@ export default function NotificationsSettingsPage() {
           Save Settings
         </Button>
       </div>
-    </div>
+
+      <SectionCard
+        title={tr("Публичный URL", "Public URL")}
+        description={tr(
+          "Это адрес, который будут получать люди в email и Telegram при переходе по ссылкам подтверждения.",
+          "This is the address people receive in email and Telegram when they follow approval links.",
+        )}
+        icon={<ExternalLink className="h-4 w-4 text-primary" />}
+      >
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-2">
+            <Label>{tr("Адрес приложения", "Application URL")}</Label>
+            <Input
+              value={form.site_url || ""}
+              onChange={(event) => set("site_url", event.target.value)}
+              placeholder="https://your-server.example.com"
+            />
+            <p className="text-xs leading-5 text-muted-foreground">
+              {tr(
+                "Используйте реальный внешний адрес, который могут открыть согласующие и операторы из своей сети.",
+                "Use the real external address that approvers and operators can open from their network.",
+              )}
+            </p>
+          </div>
+
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {tr("Как это работает", "How it works")}
+            </div>
+            <div className="mt-3 space-y-3 text-sm leading-6 text-muted-foreground">
+              <p>
+                {tr(
+                  "1. Сначала задайте публичный URL, иначе ссылки подтверждения будут вести не туда.",
+                  "1. Set the public URL first, otherwise approval links will point to the wrong place.",
+                )}
+              </p>
+              <p>
+                {tr(
+                  "2. Telegram удобен для быстрых подтверждений, email лучше оставить для отчётов и формальных уведомлений.",
+                  "2. Telegram is best for quick approvals, while email is better for reports and formal notifications.",
+                )}
+              </p>
+              <p>
+                {tr(
+                  "3. Эти значения работают как общие дефолты Studio и могут быть переопределены в конкретном workflow.",
+                  "3. These values act as Studio-wide defaults and can still be overridden inside a specific workflow.",
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title={tr("Поведение по умолчанию", "Default behavior")}
+        description={tr(
+          "Коротко о том, когда эти настройки используются Studio.",
+          "A quick summary of when Studio uses these settings.",
+        )}
+        icon={<Bell className="h-4 w-4 text-primary" />}
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-sm font-medium text-foreground">{tr("Telegram", "Telegram")}</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {tr(
+                "Быстрые подтверждения, согласования планов и короткие алерты во время активного запуска.",
+                "Quick approvals, plan confirmations and short alerts during an active run.",
+              )}
+            </p>
+          </div>
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-sm font-medium text-foreground">{tr("Email", "Email")}</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {tr(
+                "Отчёты, эскалации, длинные сообщения и ссылки для людей, которым нужен audit trail.",
+                "Reports, escalation, longer messages and links for people who need an audit trail.",
+              )}
+            </p>
+          </div>
+          <div className="workspace-subtle rounded-2xl px-4 py-4">
+            <div className="text-sm font-medium text-foreground">{tr("Переопределения", "Overrides")}</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {tr(
+                "Если отдельный pipeline требует другой канал, он может переопределить эти значения локально.",
+                "If a specific pipeline needs a different channel, it can override these values locally.",
+              )}
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+    </PageShell>
   );
 }

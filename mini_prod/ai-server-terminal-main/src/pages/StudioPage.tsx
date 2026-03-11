@@ -19,6 +19,8 @@ import {
   Zap,
   Bell,
   AlertCircle,
+  ArrowRight,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { studioPipelines, studioTemplates, studioNotifications, type PipelineListItem } from "@/lib/api";
 
@@ -52,15 +61,89 @@ function RunStatusBadge({ status }: { status: string }) {
   );
 }
 
+function QuickActionCard({
+  icon,
+  title,
+  description,
+  actionLabel,
+  onClick,
+  badge,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onClick: () => void;
+  badge?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="workspace-subtle flex h-full flex-col items-start gap-4 rounded-[1.15rem] p-4 text-left transition-colors hover:border-primary/35 hover:bg-background/45"
+    >
+      <div className="flex w-full items-start justify-between gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-background/35">
+          {icon}
+        </div>
+        {badge ? <Badge variant="secondary" className="rounded-full px-2 py-0 text-[10px]">{badge}</Badge> : null}
+      </div>
+      <div className="space-y-1">
+        <div className="text-sm font-semibold text-foreground">{title}</div>
+        <div className="text-xs leading-5 text-muted-foreground">{description}</div>
+      </div>
+      <div className="mt-auto inline-flex items-center gap-2 text-xs font-medium text-primary">
+        {actionLabel}
+        <ArrowRight className="h-3.5 w-3.5" />
+      </div>
+    </button>
+  );
+}
+
+function BuilderLinkCard({
+  icon,
+  title,
+  meta,
+  onClick,
+  warning,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  meta: string;
+  onClick: () => void;
+  warning?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+        warning
+          ? "border-amber-500/30 bg-amber-500/8 hover:bg-amber-500/12"
+          : "border-border/80 bg-background/30 hover:bg-background/45"
+      }`}
+    >
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/35">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="text-xs text-muted-foreground">{meta}</div>
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+    </button>
+  );
+}
+
 function PipelineCard({
   pipeline,
-  onEdit,
+  onOpen,
   onRun,
   onClone,
   onDelete,
 }: {
   pipeline: PipelineListItem;
-  onEdit: () => void;
+  onOpen: () => void;
   onRun: () => void;
   onClone: () => void;
   onDelete: () => void;
@@ -131,6 +214,12 @@ function PipelineCard({
           <Button size="sm" className="h-7 text-xs gap-1" onClick={onRun}>
             <Play className="h-3 w-3" />
             Run
+          </Button>
+          <Button size="icon" variant="ghost" className="ml-auto h-8 w-8 rounded-xl" onClick={onClone} title={tr("Клонировать", "Clone")}>
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-xl text-destructive hover:text-destructive" onClick={onDelete} title={tr("Удалить", "Delete")}>
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </CardContent>
@@ -231,6 +320,7 @@ export default function StudioPage() {
     queryKey: ["studio", "notifications"],
     queryFn: studioNotifications.get,
   });
+
   const notifUnconfigured =
     !notifCfg?.telegram_bot_token?.trim() && !notifCfg?.smtp_user?.trim();
 
@@ -319,6 +409,10 @@ export default function StudioPage() {
               <Plus className="h-3.5 w-3.5" />
               New Pipeline
             </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/studio/runs")} className="h-9 gap-1.5 rounded-xl px-3">
+              <Clock className="h-3.5 w-3.5" />
+              {tr("Запуски", "Runs")}
+            </Button>
           </div>
         </div>
 
@@ -367,6 +461,16 @@ export default function StudioPage() {
             </h2>
           )}
 
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <SectionCard
+          title={search ? tr("Search results", "Search results") : tr("Pipelines", "Pipelines")}
+          description={
+            search
+              ? tr(`Результаты по запросу "${search}".`, `Results for "${search}".`)
+              : tr("Главный рабочий список. Откройте пайплайн, запустите его или быстро клонируйте.", "The main working list. Open a pipeline, run it, or clone it quickly.")
+          }
+          icon={<Workflow className="h-4 w-4 text-primary" />}
+        >
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -400,13 +504,85 @@ export default function StudioPage() {
               ))}
             </div>
           )}
-        </section>
+        </SectionCard>
+
+        <div className="space-y-4">
+          <SectionCard
+            title={tr("Start", "Start")}
+            description={tr("Ежедневные действия без перегрузки.", "Daily actions without extra screen noise.")}
+            icon={<Workflow className="h-4 w-4 text-primary" />}
+          >
+            <div className="space-y-2">
+              <BuilderLinkCard
+                icon={<Plus className="h-4 w-4 text-primary" />}
+                title={tr("Создать новый пайплайн", "Create a new pipeline")}
+                meta={tr("Пустой workflow для ручной сборки", "Blank workflow for manual assembly")}
+                onClick={() => setShowCreate(true)}
+              />
+              <BuilderLinkCard
+                icon={<Clock className="h-4 w-4 text-primary" />}
+                title={tr("Проверить запуски", "Check runs")}
+                meta={
+                  runningPipelines > 0 || failingPipelines > 0
+                    ? tr(`${runningPipelines} выполняются, ${failingPipelines} требуют внимания`, `${runningPipelines} running, ${failingPipelines} need attention`)
+                    : tr("Открыть историю запусков", "Open run history")
+                }
+                onClick={() => navigate("/studio/runs")}
+              />
+              {featuredTemplates[0] ? (
+                <BuilderLinkCard
+                  icon={<Zap className="h-4 w-4 text-primary" />}
+                  title={tr("Стартовать с шаблона", "Start from a template")}
+                  meta={featuredTemplates[0].name}
+                  onClick={() => useTemplateMutation.mutate(featuredTemplates[0].slug)}
+                />
+              ) : null}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title={tr("Builder layer", "Builder layer")}
+            description={tr("Открывайте только когда готовите инструменты для пайплайнов.", "Open only when preparing tools for pipelines.")}
+            icon={<BookOpen className="h-4 w-4 text-primary" />}
+          >
+            <div className="space-y-2">
+              <BuilderLinkCard
+                icon={<Bot className="h-4 w-4 text-primary" />}
+                title={tr("Agent Configs", "Agent Configs")}
+                meta={tr(`${agentConfigs.length} конфигов`, `${agentConfigs.length} configs`)}
+                onClick={() => navigate("/studio/agents")}
+              />
+              <BuilderLinkCard
+                icon={<BookOpen className="h-4 w-4 text-primary" />}
+                title={tr("Skills", "Skills")}
+                meta={tr(`${skills.length} skill entries`, `${skills.length} skill entries`)}
+                onClick={() => navigate("/studio/skills")}
+              />
+              <BuilderLinkCard
+                icon={<Server className="h-4 w-4 text-primary" />}
+                title={tr("MCP Registry", "MCP Registry")}
+                meta={tr(`${mcpServers.length} capability sources`, `${mcpServers.length} capability sources`)}
+                onClick={() => navigate("/studio/mcp")}
+              />
+              <BuilderLinkCard
+                icon={notifUnconfigured ? <AlertCircle className="h-4 w-4 text-amber-300" /> : <Bell className="h-4 w-4 text-primary" />}
+                title={tr("Notifications", "Notifications")}
+                meta={
+                  notifUnconfigured
+                    ? tr("Уведомления ещё не настроены", "Notifications are not configured yet")
+                    : tr("Каналы уведомлений доступны", "Notification channels are configured")
+                }
+                onClick={() => navigate("/studio/notifications")}
+                warning={notifUnconfigured}
+              />
+            </div>
+          </SectionCard>
+        </div>
       </div>
 
       {/* Create dialog */}
       <CreatePipelineDialog open={showCreate} onClose={() => setShowCreate(false)} />
 
-      {/* Delete confirm */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

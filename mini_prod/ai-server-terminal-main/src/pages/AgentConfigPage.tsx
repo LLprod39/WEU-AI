@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { studioAgents, studioMCP, studioServers, studioSkills, type AgentConfig } from "@/lib/api";
@@ -59,6 +59,7 @@ function AgentForm({
     server_scope: [],
     ...initial,
   });
+  const [editorSection, setEditorSection] = useState<"basics" | "behavior" | "access">("basics");
 
   const { data: mcpList = [] } = useQuery({ queryKey: ["studio", "mcp"], queryFn: studioMCP.list });
   const { data: servers = [] } = useQuery({ queryKey: ["studio", "servers"], queryFn: studioServers.list });
@@ -276,6 +277,85 @@ function AgentForm({
               </label>
             ))}
           </div>
+          )}
+
+          {editorSection === "access" && mcpList.length > 0 && (
+          <div className="rounded-xl border border-border/70 bg-background/24 p-4">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border border-transparent bg-background/30 text-muted-foreground">
+                <Server className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="enterprise-kicker">{tr("MCP-серверы", "MCP Servers")}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{tr("Подключайте только те сервисные поверхности, с которыми бот действительно должен работать.", "Attach only the service surfaces this bot should actually work with.")}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {mcpList.map((mcp) => (
+                <label key={mcp.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/70 bg-background/30 px-3 py-3 transition-colors hover:bg-background/40">
+                  <Checkbox
+                    checked={mcpIds.includes(mcp.id)}
+                    onCheckedChange={() => toggleMcp(mcp.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium">{mcp.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{mcp.transport}</span>
+                      {mcp.last_test_ok === true && <span className="text-[10px] text-muted-foreground">OK</span>}
+                      {mcp.last_test_ok === false && <span className="text-[10px] text-red-300">ERR</span>}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          )}
+
+          {editorSection === "access" && skillList.length > 0 && (
+          <div className="rounded-xl border border-border/70 bg-background/24 p-4">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="max-w-lg">
+                <p className="enterprise-kicker">{tr("Скиллы", "Skills")}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {tr("Подключайте скиллы только там, где нужен повторяемый процесс, pinned context или строгие guardrails.", "Attach skills only when the agent needs a repeatable process, pinned context, or strict guardrails.")}
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-md px-3 text-[11px]" onClick={onOpenSkillCatalog}>
+                <BookOpen className="h-3 w-3" />
+                {tr("Открыть каталог", "Browse Catalog")}
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {skillList.map((skill) => (
+                <label key={skill.slug} className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-background/30 px-3 py-3 transition-colors hover:bg-background/40">
+                  <Checkbox
+                    checked={skillSlugs.includes(skill.slug)}
+                    onCheckedChange={() => toggleSkill(skill.slug)}
+                    className="mt-0.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-medium">{skill.name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{skill.slug}</span>
+                      {skill.runtime_enforced && <span className="text-[10px] text-muted-foreground">{tr("runtime enforced", "runtime enforced")}</span>}
+                      {skill.safety_level && <span className="text-[10px] text-muted-foreground">· {skill.safety_level}</span>}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {skill.service && <span className="text-[10px] text-muted-foreground">{skill.service}</span>}
+                      {skill.category && <span className="text-[10px] text-muted-foreground">· {skill.category}</span>}
+                    </div>
+                    {skill.description && <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{skill.description}</p>}
+                    {skill.guardrail_summary?.length > 0 && (
+                      <p className="mt-1 text-[10px] leading-5 text-muted-foreground">{skill.guardrail_summary[0]}</p>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          )}
         </div>
       )}
 
@@ -380,7 +460,7 @@ export default function AgentConfigPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="divide-y divide-border">
             {agents.map((agent) => (
               <Card key={agent.id} className="group hover:border-primary/50 transition-colors">
                 <CardHeader className="pb-2">

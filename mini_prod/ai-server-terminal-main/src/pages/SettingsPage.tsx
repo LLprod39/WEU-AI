@@ -9,10 +9,7 @@ import {
   RefreshCw,
   Save,
   Gauge,
-  Server,
   AlertTriangle,
-  CheckCircle2,
-  Clock,
   Search,
   ChevronRight,
   Cpu,
@@ -47,9 +44,9 @@ function relativeTime(value: string): string {
 }
 
 function statusBadge(status: string) {
-  if (status === "success") return "bg-green-500/15 text-green-400";
-  if (status === "error") return "bg-red-500/15 text-red-400";
-  return "bg-blue-500/15 text-blue-400";
+  if (status === "success") return "bg-green-500/10 text-green-300";
+  if (status === "error") return "bg-red-500/10 text-red-300";
+  return "bg-background/35 text-muted-foreground";
 }
 
 function SectionCard({ title, icon: Icon, children, description }: {
@@ -207,6 +204,31 @@ function PurposeModelSelector({
         </div>
       )}
     </div>
+  );
+}
+
+function AccessCard({
+  icon: Icon,
+  title,
+  description,
+  to,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  to: string;
+}) {
+  return (
+    <Link to={to} className="workspace-subtle group flex items-center gap-3 rounded-2xl p-4 hover:border-border/80 hover:bg-background/40">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent bg-background/24 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="mt-1 text-xs leading-5 text-muted-foreground">{description}</div>
+      </div>
+      <ChevronRight className="h-4 w-4 text-muted-foreground/70" />
+    </Link>
   );
 }
 
@@ -429,6 +451,8 @@ export default function SettingsPage() {
   const config = settingsData.config;
   const apiKeys = settingsData.api_keys as Record<string, boolean> | undefined;
 
+  const monitoredServers = isAdmin ? monConfig?.stats?.monitored_servers || 0 : 0;
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div>
@@ -441,15 +465,15 @@ export default function SettingsPage() {
           <TabsTrigger value="ai" className="gap-2 data-[state=active]:bg-card">
             <Bot className="h-4 w-4" /> {t("set.tab_ai")}
           </TabsTrigger>
-          <TabsTrigger value="access" className="gap-2 data-[state=active]:bg-card">
+          <TabsTrigger value="access" className="gap-2 rounded-xl data-[state=active]:bg-card">
             <Shield className="h-4 w-4" /> {t("set.tab_access")}
           </TabsTrigger>
           {isAdmin && (
-            <TabsTrigger value="monitoring" className="gap-2 data-[state=active]:bg-card">
+            <TabsTrigger value="monitoring" className="gap-2 rounded-xl data-[state=active]:bg-card">
               <Gauge className="h-4 w-4" /> {t("set.tab_monitoring")}
             </TabsTrigger>
           )}
-          <TabsTrigger value="activity" className="gap-2 data-[state=active]:bg-card">
+          <TabsTrigger value="activity" className="gap-2 rounded-xl data-[state=active]:bg-card">
             <Activity className="h-4 w-4" /> {t("set.tab_activity")}
           </TabsTrigger>
         </TabsList>
@@ -494,7 +518,6 @@ export default function SettingsPage() {
                           provider === "gemini" ? "models/gemini-2.5-flash" :
                           provider === "openai" ? "gpt-4o" : "grok-3"
                         }
-                        className="bg-secondary h-[42px]"
                       />
                       <p className="text-[10px] text-muted-foreground">
                         Нажмите «Refresh Models» чтобы загрузить список из API
@@ -555,8 +578,13 @@ export default function SettingsPage() {
                 onRefresh={() => onRefreshPurpose(orchProvider)}
                 refreshing={refreshingPurpose === orchProvider}
               />
-              {/* OpenAI Reasoning effort */}
-              <div className="border-t border-border pt-4 mt-2">
+              <div className="workspace-subtle rounded-2xl p-4">
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-foreground">{tr("Уровень рассуждения OpenAI", "OpenAI reasoning effort")}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {tr("Настройка reasoning для Responses API: none, low, medium или high.", "Reasoning setting for the Responses API: none, low, medium, or high.")}
+                  </p>
+                </div>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-medium text-foreground">OpenAI Reasoning Effort</p>
@@ -590,7 +618,6 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          {/* API Keys Status */}
           {apiKeys && isAdmin && (
             <SectionCard title={t("set.api_keys")} icon={Key} description={t("set.api_keys_desc")}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -600,7 +627,7 @@ export default function SettingsPage() {
                   { name: "OpenAI", key: "openai_set", enabled: config.openai_enabled },
                   { name: "Claude", key: "claude_set", enabled: config.claude_enabled },
                 ].map((p) => (
-                  <div key={p.name} className="flex items-center gap-3 bg-secondary/30 rounded-lg px-3 py-2.5">
+                  <div key={p.name} className="workspace-subtle flex items-center gap-3 rounded-2xl px-3 py-3">
                     <div className={`h-2 w-2 rounded-full ${apiKeys[p.key] ? "bg-green-400" : "bg-red-400"}`} />
                     <div>
                       <p className="text-xs font-medium text-foreground">{p.name}</p>
@@ -615,11 +642,10 @@ export default function SettingsPage() {
             </SectionCard>
           )}
 
-          {/* Domain Auth (admin only) */}
           {isAdmin && config.domain_auth_enabled !== undefined && (
             <SectionCard title={t("set.domain_auth")} icon={Globe} description={t("set.domain_auth_desc")}>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+                <div className="workspace-subtle rounded-2xl px-3 py-3">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.status")}</p>
                   <p className="text-sm font-medium text-foreground">{config.domain_auth_enabled ? t("set.enabled") : t("set.disabled")}</p>
                 </div>
@@ -627,7 +653,7 @@ export default function SettingsPage() {
                   <p className="text-[10px] text-muted-foreground uppercase">Header</p>
                   <p className="text-sm font-mono text-foreground">{config.domain_auth_header || "REMOTE_USER"}</p>
                 </div>
-                <div className="bg-secondary/30 rounded-lg px-3 py-2.5">
+                <div className="workspace-subtle rounded-2xl px-3 py-3">
                   <p className="text-[10px] text-muted-foreground uppercase">{t("set.auto_create")}</p>
                   <p className="text-sm font-medium text-foreground">{config.domain_auth_auto_create ? "Yes" : "No"}</p>
                 </div>
@@ -730,7 +756,7 @@ export default function SettingsPage() {
                 />
 
                 <div className="flex items-center gap-3 pt-2">
-                  <Button size="sm" className="gap-1.5 px-4" onClick={onSaveMonitoring} disabled={monSaving}>
+                  <Button size="sm" className="gap-1.5 rounded-xl px-4" onClick={onSaveMonitoring} disabled={monSaving}>
                     <Save className="h-3.5 w-3.5" /> {monSaving ? t("set.saving") : t("set.save_thresholds")}
                   </Button>
                 </div>
@@ -741,7 +767,7 @@ export default function SettingsPage() {
             <SectionCard title={t("set.mon_how")} icon={Eye} description={t("set.mon_how_desc")}>
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-secondary/20 rounded-lg p-4 space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-background/24 p-4 space-y-2">
                     <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t("set.mon_quick")}</p>
                     <p className="text-xs">{t("set.mon_quick_desc")}</p>
                     <div className="space-y-1 font-mono text-[11px] text-foreground/70">
@@ -752,7 +778,7 @@ export default function SettingsPage() {
                       <p>ps aux --no-headers | wc -l</p>
                     </div>
                   </div>
-                  <div className="bg-secondary/20 rounded-lg p-4 space-y-2">
+                  <div className="rounded-xl border border-border/60 bg-background/24 p-4 space-y-2">
                     <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{t("set.mon_deep")}</p>
                     <p className="text-xs">{t("set.mon_deep_desc")}</p>
                     <div className="space-y-1 font-mono text-[11px] text-foreground/70">
@@ -774,42 +800,39 @@ export default function SettingsPage() {
         <TabsContent value="activity">
           <SectionCard title={t("set.activity_log")} icon={Activity} description={t("set.activity_desc")}>
             <div className="space-y-4">
-              {/* Search */}
-              <div className="relative">
+              <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder={t("set.activity_search")}
                   value={activitySearch}
                   onChange={(e) => setActivitySearch(e.target.value)}
-                  className="pl-9 bg-secondary/50"
+                  className="pl-9"
                 />
               </div>
 
-              {/* Summary */}
               {activityData?.summary && (
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span>{activityData.summary.total_events} {t("set.events")}</span>
-                  <span>{activityData.summary.total_users} {t("set.unique_users")}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge label={`${activityData.summary.total_events} ${t("set.events")}`} tone="info" />
+                  <StatusBadge label={`${activityData.summary.total_users} ${t("set.unique_users")}`} tone="neutral" />
                 </div>
               )}
 
-              {/* Events */}
-              <div className="divide-y divide-border rounded-lg border border-border overflow-hidden max-h-[500px] overflow-y-auto">
+              <div className="max-h-[500px] overflow-y-auto divide-y divide-border rounded-2xl border border-border overflow-hidden">
                 {filteredActivity.length === 0 && (
                   <p className="text-sm text-muted-foreground p-6 text-center">{t("set.no_activity")}</p>
                 )}
                 {filteredActivity.map((log) => (
-                  <div key={log.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
-                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-medium text-primary shrink-0">
+                  <div key={log.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/15 transition-colors">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-background/30 text-[10px] font-medium text-muted-foreground">
                       {log.username.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-foreground">{log.username}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${statusBadge(log.status)}`}>
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-medium ${statusBadge(log.status)}`}>
                           {log.status}
                         </span>
-                        <span className="text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded">
+                        <span className="rounded-full bg-background/35 px-2 py-1 text-[10px] text-muted-foreground">
                           {log.category}
                         </span>
                       </div>
@@ -826,6 +849,6 @@ export default function SettingsPage() {
           </SectionCard>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

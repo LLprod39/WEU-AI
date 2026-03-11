@@ -34,6 +34,63 @@ function formatDuration(ms: number): string {
   return `${hrs}h ${mins % 60}m`;
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleString();
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "plan_review":
+      return "review";
+    default:
+      return status;
+  }
+}
+
+function statusClasses(status: string): string {
+  switch (status) {
+    case "running":
+      return "border-sky-500/30 bg-sky-500/12 text-sky-300";
+    case "paused":
+      return "border-amber-500/30 bg-amber-500/12 text-amber-300";
+    case "waiting":
+      return "border-orange-500/30 bg-orange-500/12 text-orange-300";
+    case "plan_review":
+      return "border-violet-500/30 bg-violet-500/12 text-violet-300";
+    case "completed":
+      return "border-emerald-500/30 bg-emerald-500/12 text-emerald-300";
+    case "failed":
+      return "border-red-500/30 bg-red-500/12 text-red-300";
+    case "stopped":
+      return "border-border/70 bg-secondary/45 text-muted-foreground";
+    default:
+      return "border-border/70 bg-secondary/45 text-muted-foreground";
+  }
+}
+
+function MetricPill({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="inline-flex min-w-[120px] items-center gap-2 rounded-2xl border border-border/70 bg-card/60 px-3 py-2">
+      <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-border/70 bg-background/70 text-muted-foreground">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+        <div className="truncate text-sm font-medium text-foreground">{value}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentRunPage() {
   const { runId } = useParams<{ runId: string }>();
   const { t } = useI18n();
@@ -127,151 +184,207 @@ export default function AgentRunPage() {
 
   if (isLoading || !run) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
-        <div className="flex items-center gap-3 text-muted-foreground">
+      <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center bg-background px-4">
+        <div className="flex min-w-[260px] items-center gap-3 rounded-2xl border border-border/70 bg-card/70 px-4 py-3 text-sm text-muted-foreground shadow-[0_18px_48px_rgba(0,0,0,0.18)]">
           <RefreshCw className="h-4 w-4 animate-spin" />
-          <span className="text-sm">{t("loading")}</span>
+          <span>{t("loading")}</span>
         </div>
       </div>
     );
   }
 
   const elapsed = run.duration_ms || (Date.now() - new Date(run.started_at).getTime());
+  const doneTasks = planTasks.filter((task) => task.status === "done").length;
+  const failedTasks = planTasks.filter((task) => task.status === "failed").length;
+  const runningTasks = planTasks.filter((task) => task.status === "running").length;
+  const connectedServerNames =
+    run.connected_servers.length > 0 ? run.connected_servers.map((server) => server.server_name) : run.server_name ? [run.server_name] : [];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
-        <div className="flex items-center gap-3">
-          <Link to="/agents">
-            <Button size="sm" variant="ghost" className="h-7 px-2">
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
-          <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">{run.agent_name}</span>
-          <StatusBadge status={run.status} />
-          {isMulti && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 font-bold uppercase">
-              <Layers className="inline h-2.5 w-2.5 mr-0.5" />Pipeline
-            </span>
-          )}
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground ml-2">
-            <span><Clock className="inline h-2.5 w-2.5 mr-0.5" />{formatDuration(elapsed)}</span>
-            {isMulti ? (
-              <span><Cpu className="inline h-2.5 w-2.5 mr-0.5" />{planTasks.length} tasks</span>
-            ) : (
-              <span><Activity className="inline h-2.5 w-2.5 mr-0.5" />{run.total_iterations} iter</span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {run.connected_servers.length > 0 && (
-            <div className="flex items-center gap-1">
-              {run.connected_servers.map((s) => (
-                <Link key={s.server_id} to={`/servers/${s.server_id}/terminal`}>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer">
-                    <Terminal className="inline h-2.5 w-2.5 mr-0.5" />{s.server_name}
-                  </span>
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-background">
+      <div className="border-b border-border/70 bg-background/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to="/agents">
+                  <Button size="sm" variant="ghost" className="h-8 rounded-xl px-2.5 text-muted-foreground">
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                  </Button>
                 </Link>
-              ))}
-            </div>
-          )}
-          {isActive && (
-            <Button
-              size="sm"
-              variant="destructive"
-              className="h-7 text-xs px-3 gap-1.5"
-              onClick={onStop}
-              disabled={stopping}
-            >
-              {stopping ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
-              {t("agent.stop")}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex items-center gap-0 border-b border-border bg-card/50 shrink-0 px-4">
-        {isMulti && (
-          <button
-            onClick={() => setActiveTab("pipeline")}
-            className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${activeTab === "pipeline" ? "border-violet-400 text-violet-400" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            <Layers className="inline h-3 w-3 mr-1" />
-            Pipeline
-            {(isActive || isPlanReview) && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />}
-          </button>
-        )}
-        <button
-          onClick={() => setActiveTab("report")}
-          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${activeTab === "report" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-        >
-          <FileText className="inline h-3 w-3 mr-1" />
-          {t("agent.report")}
-          {hasReport && !isActive && <CheckCircle2 className="inline h-3 w-3 ml-1 text-green-400" />}
-        </button>
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === "pipeline" && isMulti ? (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 py-1.5 border-b border-border/50 bg-secondary/10 shrink-0">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                <span>{planTasks.filter(t => t.status === "done").length}/{planTasks.length} tasks done</span>
-                {planTasks.some(t => t.status === "failed") && (
-                  <span className="text-red-400">{planTasks.filter(t => t.status === "failed").length} failed</span>
-                )}
+                <span className="rounded-full border border-border/70 bg-card/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Agent Run
+                </span>
+                <StatusBadge status={run.status} />
+                {isMulti ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-300">
+                    <Layers className="h-3 w-3" />
+                    Pipeline
+                  </span>
+                ) : null}
               </div>
-              <label className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none">
-                <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} className="rounded h-3 w-3" />
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-card/70">
+                    <Bot className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="truncate text-2xl font-semibold tracking-[-0.03em] text-foreground">{run.agent_name}</h1>
+                    <p className="text-sm text-muted-foreground">
+                      {isMulti
+                        ? "Structured execution view for planning, task progress, and final synthesis."
+                        : "Minimal run transcript with status, console output, and final report."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <MetricPill icon={<Clock className="h-3.5 w-3.5" />} label="Duration" value={formatDuration(elapsed)} />
+                  <MetricPill
+                    icon={isMulti ? <Cpu className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}
+                    label={isMulti ? "Tasks" : "Iterations"}
+                    value={isMulti ? String(planTasks.length) : String(run.total_iterations)}
+                  />
+                  <MetricPill
+                    icon={<Terminal className="h-3.5 w-3.5" />}
+                    label="Servers"
+                    value={connectedServerNames.length > 0 ? String(connectedServerNames.length) : "0"}
+                  />
+                  <MetricPill icon={<Clock className="h-3.5 w-3.5" />} label="Started" value={formatDateTime(run.started_at)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 xl:max-w-[360px] xl:items-end">
+              {connectedServerNames.length > 0 ? (
+                <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+                  {run.connected_servers.map((server) => (
+                    <Link key={server.server_id} to={`/servers/${server.server_id}/terminal`}>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary">
+                        <Terminal className="h-3 w-3" />
+                        {server.server_name}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <div className="rounded-2xl border border-border/70 bg-card/70 p-1">
+                  {isMulti ? (
+                    <button
+                      onClick={() => setActiveTab("pipeline")}
+                      className={`rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                        activeTab === "pipeline" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="h-3.5 w-3.5" />
+                        Pipeline
+                        {(isActive || isPlanReview) ? <span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> : null}
+                      </span>
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => setActiveTab("report")}
+                    className={`rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                      activeTab === "report" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5" />
+                      {t("agent.report")}
+                      {hasReport && !isActive ? <CheckCircle2 className="h-3 w-3 text-emerald-300" /> : null}
+                    </span>
+                  </button>
+                </div>
+                {isActive ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-10 rounded-xl px-4 text-xs"
+                    onClick={onStop}
+                    disabled={stopping}
+                  >
+                    {stopping ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+                    {t("agent.stop")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {isMulti ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1.5">
+                {doneTasks}/{planTasks.length} tasks done
+              </span>
+              {runningTasks > 0 ? (
+                <span className="rounded-full border border-sky-500/25 bg-sky-500/10 px-3 py-1.5 text-sky-300">
+                  {runningTasks} running
+                </span>
+              ) : null}
+              {failedTasks > 0 ? (
+                <span className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-red-300">
+                  {failedTasks} failed
+                </span>
+              ) : null}
+              <label className="ml-auto inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={autoScroll}
+                  onChange={(e) => setAutoScroll(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded"
+                />
                 Auto-scroll
               </label>
             </div>
-            <div className="flex-1 overflow-y-auto">
+          ) : null}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.03),transparent_48%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]">
+        {activeTab === "pipeline" && isMulti ? (
+          <div className="h-full overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-6">
               {isPlanReview && (
-                <div className="mx-4 mt-3 mb-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-amber-300 mb-1">
-                        Ожидание подтверждения плана
-                      </p>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Оркестратор составил план из {planTasks.length} задач. Проверьте задачи, при необходимости отредактируйте или удалите лишние — затем нажмите «Запустить выполнение».
-                      </p>
-                      {approveError && (
-                        <p className="text-xs text-red-400 mb-2">{approveError}</p>
-                      )}
-                      <div className="flex gap-2">
+                <div className="rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-background/40">
+                        <AlertTriangle className="h-5 w-5 text-amber-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-amber-200">Ожидание подтверждения плана</p>
+                        <p className="mt-1 text-sm leading-6 text-amber-50/75">
+                          Оркестратор составил план из {planTasks.length} задач. Проверьте состав, при необходимости
+                          отредактируйте шаги и запустите выполнение.
+                        </p>
+                        {approveError ? <p className="mt-2 text-sm text-red-300">{approveError}</p> : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
-                          className="h-8 gap-1.5 bg-green-600 hover:bg-green-500 text-white"
+                          className="h-10 rounded-xl bg-emerald-600 px-4 text-white hover:bg-emerald-500"
                           onClick={onApprovePlan}
                           disabled={approving}
                         >
-                          {approving ? (
-                            <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Запускаю…</>
-                          ) : (
-                            <><CheckCircle2 className="h-3.5 w-3.5" />Запустить выполнение</>
-                          )}
+                          {approving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          {approving ? "Запускаю…" : "Запустить выполнение"}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 gap-1.5 border-red-500/40 text-red-400 hover:bg-red-500/10"
+                          className="h-10 rounded-xl border-red-500/30 px-4 text-red-300 hover:bg-red-500/10 hover:text-red-200"
                           onClick={onStop}
                           disabled={stopping}
                         >
-                          <Square className="h-3 w-3" />
+                          <Square className="h-3.5 w-3.5" />
                           Отменить
                         </Button>
                       </div>
                     </div>
-                  </div>
                 </div>
               )}
               <PipelineFlowView
@@ -377,76 +490,81 @@ function TaskEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg flex flex-col gap-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/30">
-          <Pencil className="h-4 w-4 text-violet-400 shrink-0" />
-          <span className="text-sm font-semibold text-foreground flex-1">Редактировать задачу</span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-secondary/50 transition-colors">
-            <X className="h-4 w-4 text-muted-foreground" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-border/70 bg-card/95 shadow-[0_28px_80px_rgba(0,0,0,0.38)]">
+        <div className="flex items-start justify-between gap-4 border-b border-border/70 px-5 py-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Task editor</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">Редактировать задачу</div>
+            <p className="mt-1 text-sm text-muted-foreground">Измените формулировку шага или уточните его через AI-подсказку.</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border/70 p-2 text-muted-foreground transition-colors hover:border-border hover:bg-background/80 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Fields */}
-        <div className="p-4 space-y-3">
-          <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Название</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-8 text-sm bg-secondary/30 border-border"
-              placeholder="Название задачи"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Описание</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full h-28 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 transition-colors"
-              placeholder="Опишите что нужно сделать..."
-            />
-          </div>
-        </div>
-
-        {/* AI Chat */}
-        <div className="px-4 pb-4 space-y-2">
-          <div className="border border-violet-500/20 rounded-xl bg-violet-500/5 p-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-violet-400 font-medium">
-              <Sparkles className="h-3 w-3" /> ИИ-ассистент
+        <div className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Название</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-11 rounded-2xl border-border/70 bg-background/70"
+                placeholder="Название задачи"
+              />
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Напиши что изменить, и ИИ автоматически обновит название и описание задачи
+            <div className="space-y-2">
+              <label className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Описание</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="h-48 w-full resize-none rounded-[22px] border border-border/70 bg-background/70 px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-violet-500/40 focus:ring-2 focus:ring-violet-500/20"
+                placeholder="Опишите что нужно сделать..."
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-violet-500/20 bg-violet-500/8 p-4">
+            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-violet-300">
+              <Sparkles className="h-3.5 w-3.5" />
+              AI assistant
+            </div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Опишите изменение простым текстом. AI обновит название и описание задачи, не ломая текущий план.
             </p>
-            {aiError && (
-              <div className="text-[11px] text-red-400 bg-red-500/10 rounded px-2 py-1">{aiError}</div>
-            )}
-            <div className="flex gap-2">
+            {aiError ? (
+              <div className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {aiError}
+              </div>
+            ) : null}
+            <div className="mt-4 space-y-3">
               <Input
                 ref={aiInputRef}
                 value={aiMsg}
                 onChange={(e) => setAiMsg(e.target.value)}
                 placeholder="Напр: добавь проверку дискового пространства"
-                className="h-8 text-xs bg-background/50 border-violet-500/20 flex-1"
+                className="h-11 rounded-2xl border-violet-500/20 bg-background/70 text-sm"
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAiRefine()}
                 disabled={aiLoading}
               />
               <Button
                 size="sm"
-                className="h-8 px-3 gap-1.5 bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+                className="h-10 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-500"
                 onClick={handleAiRefine}
                 disabled={aiLoading || !aiMsg.trim()}
               >
-                {aiLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                {aiLoading ? "Думает…" : "Изменить"}
+                {aiLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {aiLoading ? "Думает…" : "Применить AI-правку"}
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Footer buttons */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/10">
+        <div className="flex flex-col gap-3 border-t border-border/70 bg-background/35 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <Button
             size="sm"
             variant="destructive"
@@ -454,20 +572,20 @@ function TaskEditModal({
             onClick={handleDelete}
             disabled={deleting || saving}
           >
-            {deleting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            {deleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             Удалить задачу
           </Button>
-          <div className="flex gap-2">
-            <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={onClose} disabled={saving}>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" className="h-10 rounded-xl px-4" onClick={onClose} disabled={saving}>
               Отмена
             </Button>
             <Button
               size="sm"
-              className="h-8 px-3 gap-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+              className="h-10 rounded-xl bg-primary px-4 text-primary-foreground"
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+              {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
               Сохранить
             </Button>
           </div>
@@ -510,10 +628,8 @@ function PipelineFlowView({
   const canEdit = planTasks.some(t => t.status === "pending");
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-
-      {/* Task edit modal */}
-      {editingTask && (
+    <div className="rounded-[28px] border border-border/70 bg-card/55 shadow-[0_22px_64px_rgba(0,0,0,0.18)]">
+      {editingTask ? (
         <TaskEditModal
           task={editingTask}
           runId={run.id}
@@ -523,108 +639,171 @@ function PipelineFlowView({
             onTasksUpdated?.(tasks);
           }}
         />
-      )}
+      ) : null}
 
-      {/* Goal node */}
-      <FlowNode
-        icon={<Target className="h-4 w-4 text-blue-400" />}
-        label="Цель"
-        title={run.agent_name}
-        color="blue"
-        status="done"
-      >
-        <p className="text-xs text-muted-foreground mt-1">
-          {(run as { goal?: string }).goal || goal}
-        </p>
-      </FlowNode>
-
-      <FlowConnector />
-
-      {/* Planning node */}
-      <FlowNode
-        icon={<Brain className="h-4 w-4 text-violet-400" />}
-        label="Оркестратор"
-        title="Планирование"
-        color="violet"
-        status={planTasks.length > 0 ? "done" : isActive ? "running" : "pending"}
-      >
-        {planTasks.length > 0 ? (
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-xs text-muted-foreground">
-              Создан план из {planTasks.length} задач
-            </p>
-            {canEdit && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/20 font-medium">
-                <Pencil className="inline h-2 w-2 mr-0.5" />кликни задачу для редактирования
-              </span>
-            )}
+      <div className="border-b border-border/70 px-5 py-5">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-[22px] border border-border/70 bg-background/55 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Goal</div>
+            <div className="mt-2 flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-sky-500/20 bg-sky-500/10">
+                <Target className="h-4 w-4 text-sky-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">{run.agent_name}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{(run as { goal?: string }).goal || goal}</p>
+              </div>
+            </div>
           </div>
-        ) : isActive ? (
-          <p className="text-xs text-violet-400/70 animate-pulse mt-1">Разбиваю цель на задачи…</p>
-        ) : null}
-      </FlowNode>
-
-      {/* Task nodes */}
-      {planTasks.map((task, idx) => (
-        <div key={task.id}>
-          <FlowConnector active={task.status === "running"} />
-          <TaskNode
-            task={task}
-            index={idx}
-            onEdit={task.status === "pending" || task.status === "failed" || task.status === "skipped"
-              ? () => setEditingTask(task)
-              : undefined}
-          />
-          {task.orchestrator_decision && task.status !== "done" && (
-            <>
-              <FlowConnector thin />
-              <OrchestratorDecisionNode decision={task.orchestrator_decision} taskName={task.name} />
-            </>
-          )}
+          <div className="rounded-[22px] border border-border/70 bg-background/55 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Plan state</div>
+            <div className="mt-2 flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10">
+                <Brain className="h-4 w-4 text-violet-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {planTasks.length > 0 ? `Создано ${planTasks.length} задач` : "Оркестратор готовит план"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {canEdit
+                    ? "Пока шаги не начали выполняться, их можно уточнять и перестраивать."
+                    : "Сейчас отображается живая последовательность исполнения и решений оркестратора."}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-[22px] border border-border/70 bg-background/55 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Run signal</div>
+            <div className="mt-2 flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-card/70">
+                {isFailed ? (
+                  <AlertTriangle className="h-4 w-4 text-red-300" />
+                ) : isCompleted ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                ) : (
+                  <Activity className="h-4 w-4 text-primary" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {isFailed ? "Требует внимания" : isCompleted ? "Завершено" : "В работе"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {isFailed
+                    ? "На одной из стадий возникла ошибка. Проверьте шаги и финальный отчёт."
+                    : isCompleted
+                      ? "План отработан. Можно перейти к итоговому отчёту и результатам."
+                      : "Лента ниже показывает текущее состояние задач и наблюдения оркестратора."}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      ))}
+      </div>
 
-      {/* Final report node */}
-      {(isCompleted || isFailed || run.final_report) && (
-        <>
-          <FlowConnector />
-          <FlowNode
-            icon={<FileText className="h-4 w-4 text-green-400" />}
-            label="Синтез"
-            title="Финальный отчёт"
-            color="green"
-            status={run.final_report ? "done" : isActive ? "running" : "pending"}
-          >
-            {run.final_report && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{run.final_report.slice(0, 150)}…</p>
-            )}
+      <div className="px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-3xl">
+          <FlowNode icon={<Target className="h-4 w-4 text-sky-300" />} label="Goal" title={run.agent_name} color="blue" status="done">
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{(run as { goal?: string }).goal || goal}</p>
           </FlowNode>
-        </>
-      )}
 
-      {/* Thinking indicator */}
-      {isActive && planTasks.length > 0 && !planTasks.some(t => t.status === "running") && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse py-4 pl-6">
-          <Brain className="h-3.5 w-3.5 text-violet-400" />
-          <span>Оркестратор анализирует результаты…</span>
+          <FlowConnector />
+
+          <FlowNode
+            icon={<Brain className="h-4 w-4 text-violet-300" />}
+            label="Orchestrator"
+            title="Планирование"
+            color="violet"
+            status={planTasks.length > 0 ? "done" : isActive ? "running" : "pending"}
+          >
+            {planTasks.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="text-sm text-muted-foreground">Создан план из {planTasks.length} задач</p>
+                {canEdit ? (
+                  <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-violet-300">
+                    pending tasks can be edited
+                  </span>
+                ) : null}
+              </div>
+            ) : isActive ? (
+              <p className="mt-2 text-sm text-violet-300/80">Разбиваю цель на задачи…</p>
+            ) : null}
+          </FlowNode>
+
+          {planTasks.map((task, idx) => (
+            <div key={task.id}>
+              <FlowConnector active={task.status === "running"} />
+              <TaskNode
+                task={task}
+                index={idx}
+                onEdit={
+                  task.status === "pending" || task.status === "failed" || task.status === "skipped"
+                    ? () => setEditingTask(task)
+                    : undefined
+                }
+              />
+              {task.orchestrator_decision && task.status !== "done" ? (
+                <>
+                  <FlowConnector thin />
+                  <OrchestratorDecisionNode decision={task.orchestrator_decision} />
+                </>
+              ) : null}
+            </div>
+          ))}
+
+          {(isCompleted || isFailed || run.final_report) ? (
+            <>
+              <FlowConnector />
+              <FlowNode
+                icon={<FileText className="h-4 w-4 text-emerald-300" />}
+                label="Synthesis"
+                title="Финальный отчёт"
+                color="green"
+                status={run.final_report ? "done" : isActive ? "running" : "pending"}
+              >
+                {run.final_report ? (
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{run.final_report.slice(0, 180)}…</p>
+                ) : null}
+              </FlowNode>
+            </>
+          ) : null}
+
+          {isActive && planTasks.length > 0 && !planTasks.some((task) => task.status === "running") ? (
+            <div className="flex items-center gap-2 py-5 pl-7 text-sm text-muted-foreground">
+              <Brain className="h-4 w-4 text-violet-300" />
+              <span>Оркестратор анализирует результаты…</span>
+            </div>
+          ) : null}
+
+          {pendingQuestion ? (
+            <div className="mt-5 rounded-[24px] border border-orange-500/25 bg-orange-500/8 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-orange-500/20 bg-background/45">
+                  <MessageSquare className="h-4 w-4 text-orange-300" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-orange-300">Needs input</div>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{pendingQuestion}</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Ваш ответ…"
+                      className="h-11 rounded-2xl bg-background/80"
+                      onKeyDown={(e) => e.key === "Enter" && onReply()}
+                    />
+                    <Button size="sm" className="h-11 rounded-2xl px-4" onClick={onReply} disabled={sending}>
+                      {sending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      Ответить
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
-      )}
-
-      {/* Pending question */}
-      {pendingQuestion && (
-        <div className="mt-4 border border-orange-500/20 bg-orange-500/5 rounded-lg px-4 py-3">
-          <div className="flex items-start gap-2 mb-2">
-            <MessageSquare className="h-4 w-4 text-orange-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-foreground">{pendingQuestion}</p>
-          </div>
-          <div className="flex gap-2">
-            <Input value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Ваш ответ…" className="h-8 text-xs bg-background" onKeyDown={(e) => e.key === "Enter" && onReply()} />
-            <Button size="sm" className="h-8 px-3 gap-1" onClick={onReply} disabled={sending}><Send className="h-3 w-3" /></Button>
-          </div>
-        </div>
-      )}
-
-      <div className="h-8" />
+      </div>
     </div>
   );
 }
@@ -664,41 +843,38 @@ function TaskNode({ task, index, onEdit }: { task: PlanTask; index: number; onEd
       onEdit={onEdit}
     >
       {expanded && (
-        <div className="mt-2 space-y-2">
-          <p className="text-[11px] text-muted-foreground">{task.description}</p>
+        <div className="mt-3 space-y-3">
+          <p className="text-sm leading-6 text-muted-foreground">{task.description}</p>
 
-          {/* Live thought */}
           {task.thought && task.status === "running" && (
-            <div className="bg-purple-500/5 border border-purple-500/20 rounded px-2.5 py-2">
-              <div className="text-[9px] text-purple-400 mb-1 flex items-center gap-1">
-                <Brain className="h-2.5 w-2.5" /> МЫШЛЕНИЕ
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/8 px-3 py-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-violet-300">
+                <Brain className="h-3 w-3" />
+                Thinking
               </div>
-              <p className="text-xs text-foreground/80 leading-relaxed">{task.thought}</p>
+              <p className="text-sm leading-6 text-foreground/85">{task.thought}</p>
             </div>
           )}
 
-          {/* Iterations */}
-          {task.iterations && task.iterations.length > 0 && (
-            <TaskIterations iterations={task.iterations} />
-          )}
+          {task.iterations && task.iterations.length > 0 && <TaskIterations iterations={task.iterations} />}
 
-          {/* Result */}
           {task.result && (
-            <div className="bg-green-500/5 border border-green-500/20 rounded px-2.5 py-2">
-              <div className="text-[9px] text-green-400 mb-1 flex items-center gap-1">
-                <CheckCircle2 className="h-2.5 w-2.5" /> РЕЗУЛЬТАТ
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 px-3 py-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+                <CheckCircle2 className="h-3 w-3" />
+                Result
               </div>
-              <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">{task.result}</p>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/85">{task.result}</p>
             </div>
           )}
 
-          {/* Error */}
           {task.error && (
-            <div className="bg-red-500/5 border border-red-500/20 rounded px-2.5 py-2">
-              <div className="text-[9px] text-red-400 mb-1 flex items-center gap-1">
-                <XCircle className="h-2.5 w-2.5" /> ОШИБКА
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/8 px-3 py-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-red-300">
+                <XCircle className="h-3 w-3" />
+                Error
               </div>
-              <p className="text-xs text-red-400/80 font-mono">{task.error}</p>
+              <p className="font-mono text-xs leading-6 text-red-200/85">{task.error}</p>
             </div>
           )}
         </div>
@@ -714,25 +890,29 @@ function TaskNode({ task, index, onEdit }: { task: PlanTask; index: number; onEd
 function TaskIterations({ iterations }: { iterations: PlanTask["iterations"] }) {
   const [show, setShow] = useState(false);
   return (
-    <div>
+    <div className="rounded-2xl border border-border/70 bg-background/45 px-3 py-3">
       <button
         onClick={() => setShow(!show)}
-        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        {show ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        {show ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         {iterations.length} шаг{iterations.length > 1 && iterations.length < 5 ? "а" : "ов"} выполнения
       </button>
       {show && (
-        <div className="mt-2 space-y-1.5 pl-2 border-l border-border/40">
+        <div className="mt-3 space-y-2 border-l border-border/60 pl-3">
           {iterations.map((it, i) => (
             <div key={i} className="text-[11px]">
-              <div className="flex items-center gap-1.5 text-muted-foreground/70">
-                <span className="font-mono text-[9px]">#{it.iteration}</span>
-                {it.action && <span className="px-1 rounded bg-blue-500/10 text-blue-400 font-mono">{it.action}</span>}
+              <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                <span className="font-mono text-[10px]">#{it.iteration}</span>
+                {it.action && (
+                  <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 font-mono text-[10px] text-sky-300">
+                    {it.action}
+                  </span>
+                )}
               </div>
-              {it.thought && <p className="text-foreground/70 mt-0.5 pl-4">{it.thought.slice(0, 200)}</p>}
+              {it.thought && <p className="mt-1 pl-1 text-foreground/75">{it.thought.slice(0, 200)}</p>}
               {it.observation && (
-                <pre className="text-[10px] text-muted-foreground pl-4 mt-0.5 font-mono whitespace-pre-wrap bg-secondary/10 rounded px-2 py-1 max-h-24 overflow-y-auto">
+                <pre className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-card/70 px-3 py-2 font-mono text-[10px] whitespace-pre-wrap text-muted-foreground">
                   {it.observation.slice(0, 500)}
                 </pre>
               )}
@@ -748,26 +928,26 @@ function TaskIterations({ iterations }: { iterations: PlanTask["iterations"] }) 
 // Orchestrator Decision Node
 // ---------------------------------------------------------------------------
 
-function OrchestratorDecisionNode({ decision, taskName }: { decision: { action: string; reason?: string; message?: string }; taskName: string }) {
+function OrchestratorDecisionNode({ decision }: { decision: { action: string; reason?: string; message?: string } }) {
   const decisionConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-    retry: { icon: <RotateCcw className="h-3 w-3 text-yellow-400" />, label: "Повтор", color: "text-yellow-400" },
-    skip: { icon: <SkipForward className="h-3 w-3 text-gray-400" />, label: "Пропустить", color: "text-gray-400" },
-    ask_user: { icon: <HelpCircle className="h-3 w-3 text-orange-400" />, label: "Спросить пользователя", color: "text-orange-400" },
-    abort: { icon: <XCircle className="h-3 w-3 text-red-400" />, label: "Прервать пайплайн", color: "text-red-400" },
+    retry: { icon: <RotateCcw className="h-3.5 w-3.5 text-amber-300" />, label: "Повтор", color: "text-amber-300" },
+    skip: { icon: <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />, label: "Пропустить", color: "text-muted-foreground" },
+    ask_user: { icon: <HelpCircle className="h-3.5 w-3.5 text-orange-300" />, label: "Спросить пользователя", color: "text-orange-300" },
+    abort: { icon: <XCircle className="h-3.5 w-3.5 text-red-300" />, label: "Прервать пайплайн", color: "text-red-300" },
   };
   const cfg = decisionConfig[decision.action] || decisionConfig.skip;
 
   return (
-    <div className="ml-6 px-3 py-2 rounded-lg border border-dashed border-orange-500/30 bg-orange-500/5 text-xs">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Brain className="h-3 w-3 text-violet-400" />
-        <span className="text-[9px] uppercase text-violet-400">Решение оркестратора</span>
+    <div className="ml-7 rounded-2xl border border-dashed border-orange-500/25 bg-orange-500/8 px-4 py-3 text-sm">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-violet-300">
+        <Brain className="h-3.5 w-3.5" />
+        Orchestrator decision
       </div>
-      <div className={`flex items-center gap-1 mt-1 font-medium ${cfg.color}`}>
+      <div className={`mt-2 flex items-center gap-2 font-medium ${cfg.color}`}>
         {cfg.icon} {cfg.label}
       </div>
       {(decision.reason || decision.message) && (
-        <p className="text-muted-foreground mt-1 text-[11px]">{decision.reason || decision.message}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{decision.reason || decision.message}</p>
       )}
     </div>
   );
@@ -780,12 +960,12 @@ function OrchestratorDecisionNode({ decision, taskName }: { decision: { action: 
 type FlowColor = "blue" | "green" | "violet" | "red" | "yellow" | "gray";
 
 const colorMap: Record<FlowColor, { border: string; bg: string; label: string; ring: string }> = {
-  blue: { border: "border-blue-500/40", bg: "bg-blue-500/5", label: "text-blue-400", ring: "ring-blue-500/30" },
-  green: { border: "border-green-500/40", bg: "bg-green-500/5", label: "text-green-400", ring: "ring-green-500/30" },
-  violet: { border: "border-violet-500/40", bg: "bg-violet-500/5", label: "text-violet-400", ring: "ring-violet-500/30" },
-  red: { border: "border-red-500/40", bg: "bg-red-500/5", label: "text-red-400", ring: "ring-red-500/30" },
-  yellow: { border: "border-yellow-500/40", bg: "bg-yellow-500/5", label: "text-yellow-400", ring: "ring-yellow-500/30" },
-  gray: { border: "border-border/40", bg: "bg-secondary/10", label: "text-muted-foreground", ring: "ring-border/30" },
+  blue: { border: "border-sky-500/25", bg: "bg-sky-500/8", label: "text-sky-300", ring: "ring-sky-500/20" },
+  green: { border: "border-emerald-500/25", bg: "bg-emerald-500/8", label: "text-emerald-300", ring: "ring-emerald-500/20" },
+  violet: { border: "border-violet-500/25", bg: "bg-violet-500/8", label: "text-violet-300", ring: "ring-violet-500/20" },
+  red: { border: "border-red-500/25", bg: "bg-red-500/8", label: "text-red-300", ring: "ring-red-500/20" },
+  yellow: { border: "border-amber-500/25", bg: "bg-amber-500/8", label: "text-amber-300", ring: "ring-amber-500/20" },
+  gray: { border: "border-border/70", bg: "bg-background/45", label: "text-muted-foreground", ring: "ring-border/40" },
 };
 
 function FlowNode({
@@ -818,19 +998,21 @@ function FlowNode({
 
   return (
     <div
-      className={`rounded-xl border ${c.border} ${c.bg} px-4 py-3 transition-all ${isRunning ? `ring-2 ${c.ring} shadow-lg` : ""} ${onEdit ? "group" : ""}`}
+      className={`rounded-[24px] border ${c.border} ${c.bg} px-4 py-4 transition-all ${isRunning ? `ring-2 ${c.ring}` : ""}`}
     >
       <div
-        className={`flex items-center gap-2 ${expandable ? "cursor-pointer select-none" : ""}`}
+        className={`flex items-start gap-3 ${expandable ? "cursor-pointer select-none" : ""}`}
         onClick={expandable ? onToggle : undefined}
       >
-        <div className={`flex-shrink-0 ${isRunning ? "animate-pulse" : ""}`}>{icon}</div>
+        <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/5 bg-background/55 ${isRunning ? "animate-pulse" : ""}`}>
+          {icon}
+        </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-[9px] uppercase tracking-wider font-medium ${c.label}`}>{label}</div>
-          <div className="text-sm font-semibold text-foreground truncate">{title}</div>
+          <div className={`text-[10px] font-medium uppercase tracking-[0.18em] ${c.label}`}>{label}</div>
+          <div className="mt-1 text-base font-semibold text-foreground">{title}</div>
         </div>
         {badge && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${c.bg} ${c.label} border ${c.border}`}>
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${c.border} ${c.bg} ${c.label}`}>
             {badge}
           </span>
         )}
@@ -840,11 +1022,11 @@ function FlowNode({
             className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-violet-500/20 text-muted-foreground hover:text-violet-400 shrink-0"
             title="Редактировать задачу"
           >
-            <Pencil className="h-3 w-3" />
+            <Pencil className="h-3.5 w-3.5" />
           </button>
         )}
         {expandable && (
-          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
+          <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
         )}
       </div>
       {children}
@@ -858,9 +1040,9 @@ function FlowNode({
 
 function FlowConnector({ active, thin }: { active?: boolean; thin?: boolean }) {
   return (
-    <div className="flex justify-start pl-7 py-0.5">
+    <div className="flex justify-start py-1 pl-[1.7rem]">
       <div
-        className={`w-0.5 ${thin ? "h-4" : "h-6"} ${active ? "bg-blue-400 animate-pulse" : "bg-border/40"} rounded-full`}
+        className={`w-px rounded-full ${thin ? "h-5" : "h-7"} ${active ? "bg-sky-400" : "bg-border/60"}`}
       />
     </div>
   );
@@ -871,21 +1053,9 @@ function FlowConnector({ active, thin }: { active?: boolean; thin?: boolean }) {
 // ---------------------------------------------------------------------------
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { bg: string; text: string; pulse?: boolean }> = {
-    running: { bg: "bg-blue-500/20", text: "text-blue-400", pulse: true },
-    paused: { bg: "bg-yellow-500/20", text: "text-yellow-400" },
-    waiting: { bg: "bg-orange-500/20", text: "text-orange-400", pulse: true },
-    plan_review: { bg: "bg-amber-500/20", text: "text-amber-400", pulse: true },
-    pending: { bg: "bg-secondary", text: "text-muted-foreground" },
-    completed: { bg: "bg-green-500/20", text: "text-green-400" },
-    failed: { bg: "bg-red-500/20", text: "text-red-400" },
-    stopped: { bg: "bg-secondary", text: "text-muted-foreground" },
-  };
-  const c = config[status] || config.pending;
-  const label = status === "plan_review" ? "review" : status;
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${c.bg} ${c.text} ${c.pulse ? "animate-pulse" : ""}`}>
-      {label}
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusClasses(status)}`}>
+      {statusLabel(status)}
     </span>
   );
 }
@@ -903,52 +1073,67 @@ function ReportView({ run, t }: {
   const isFailed = run.status === "failed";
 
   return (
-    <div className="min-h-full py-10 px-8 max-w-[780px] mx-auto font-sans">
-
-      {/* Header */}
-      <div className="text-center mb-10">
-        <div className={`inline-flex items-center justify-center h-11 w-11 rounded-full mb-4 ${isComplete ? "bg-green-500/10" : isFailed ? "bg-red-500/10" : "bg-secondary/30"}`}>
-          {isComplete ? <CheckCircle2 className="h-5 w-5 text-green-400" /> : isFailed ? <AlertTriangle className="h-5 w-5 text-red-400" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
-        </div>
-        <h2 className="text-xl font-semibold text-foreground mb-2">{run.agent_name}</h2>
-        <StatusBadge status={run.status} />
-      </div>
-
-      {/* Meta strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
-        <MetaCard icon={<Clock className="h-3.5 w-3.5" />} label={t("agent.duration")} value={formatDuration(run.duration_ms)} />
-        <MetaCard
-          icon={<Activity className="h-3.5 w-3.5" />}
-          label={run.agent_mode === "multi" ? "Tasks" : t("agent.iterations")}
-          value={run.agent_mode === "multi" ? String(run.plan_tasks?.length || 0) : String(run.total_iterations)}
-        />
-        <MetaCard
-          icon={<Terminal className="h-3.5 w-3.5" />}
-          label="Servers"
-          value={run.connected_servers.length > 0 ? run.connected_servers.map(s => s.server_name).join(", ") : run.server_name}
-        />
-        <MetaCard
-          icon={<Clock className="h-3.5 w-3.5" />}
-          label={isComplete ? t("agent.completed_at") : t("agent.failed_at")}
-          value={run.completed_at ? new Date(run.completed_at).toLocaleString() : "—"}
-        />
-      </div>
-
-      {/* Console output (mini mode) */}
-      {run.agent_mode === "mini" && run.commands_output.length > 0 && (
-        <div className="mb-8">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Console Output</p>
-          <div className="space-y-2">
-            {run.commands_output.map((cmd, i) => (
-              <div key={i} className="bg-[#0d1117] rounded-lg overflow-hidden border border-border/30">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border-b border-border/20">
-                  <span className="text-green-400 font-mono text-[10px]">$</span>
-                  <span className="font-mono text-xs text-foreground flex-1">{cmd.cmd}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${cmd.exit_code === 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>exit {cmd.exit_code}</span>
-                  <span className="text-[9px] text-muted-foreground">{cmd.duration_ms}ms</span>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
+      <div className="rounded-[28px] border border-border/70 bg-card/55 shadow-[0_22px_64px_rgba(0,0,0,0.18)]">
+        <div className="border-b border-border/70 px-5 py-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                <FileText className="h-3 w-3" />
+                Final report
+              </div>
+              <div className="mt-4 flex items-start gap-3">
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${isComplete ? "border-emerald-500/25 bg-emerald-500/10" : isFailed ? "border-red-500/25 bg-red-500/10" : "border-border/70 bg-background/60"}`}>
+                  {isComplete ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : isFailed ? <AlertTriangle className="h-5 w-5 text-red-300" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
                 </div>
-                {cmd.stdout && <pre className="px-4 py-3 text-[11px] text-foreground/75 font-mono whitespace-pre-wrap overflow-x-auto max-h-52">{cmd.stdout.slice(0, 4000)}</pre>}
-                {cmd.stderr && <pre className="px-4 py-3 text-[11px] text-red-400/70 font-mono whitespace-pre-wrap border-t border-red-500/10">{cmd.stderr.slice(0, 800)}</pre>}
+                <div className="min-w-0">
+                  <h2 className="text-2xl font-semibold tracking-[-0.03em] text-foreground">{run.agent_name}</h2>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Concise execution summary, outputs, and final synthesis for this agent run.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <StatusBadge status={run.status} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 px-5 py-5 sm:grid-cols-2 xl:grid-cols-4">
+          <MetaCard icon={<Clock className="h-3.5 w-3.5" />} label={t("agent.duration")} value={formatDuration(run.duration_ms)} />
+          <MetaCard
+            icon={<Activity className="h-3.5 w-3.5" />}
+            label={run.agent_mode === "multi" ? "Tasks" : t("agent.iterations")}
+            value={run.agent_mode === "multi" ? String(run.plan_tasks?.length || 0) : String(run.total_iterations)}
+          />
+          <MetaCard
+            icon={<Terminal className="h-3.5 w-3.5" />}
+            label="Servers"
+            value={run.connected_servers.length > 0 ? run.connected_servers.map((s) => s.server_name).join(", ") : run.server_name}
+          />
+          <MetaCard
+            icon={<Clock className="h-3.5 w-3.5" />}
+            label={isComplete ? t("agent.completed_at") : t("agent.failed_at")}
+            value={formatDateTime(run.completed_at)}
+          />
+        </div>
+      </div>
+
+      {run.agent_mode === "mini" && run.commands_output.length > 0 && (
+        <div className="rounded-[28px] border border-border/70 bg-card/55 px-5 py-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
+          <div className="mb-4 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Console output</div>
+          <div className="space-y-3">
+            {run.commands_output.map((cmd, i) => (
+              <div key={i} className="overflow-hidden rounded-[22px] border border-border/70 bg-[#0f141c]">
+                <div className="flex flex-wrap items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-3">
+                  <span className="font-mono text-[10px] text-emerald-300">$</span>
+                  <span className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">{cmd.cmd}</span>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${cmd.exit_code === 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+                    exit {cmd.exit_code}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{cmd.duration_ms}ms</span>
+                </div>
+                {cmd.stdout && <pre className="max-h-56 overflow-x-auto px-4 py-3 font-mono text-[11px] whitespace-pre-wrap text-foreground/80">{cmd.stdout.slice(0, 4000)}</pre>}
+                {cmd.stderr && <pre className="border-t border-red-500/10 px-4 py-3 font-mono text-[11px] whitespace-pre-wrap text-red-300/80">{cmd.stderr.slice(0, 800)}</pre>}
               </div>
             ))}
           </div>
@@ -957,53 +1142,51 @@ function ReportView({ run, t }: {
 
       {/* Report text */}
       {report ? (
-        <div
-          className="
-            [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:text-foreground [&_h1]:leading-snug [&_h1]:mb-3 [&_h1]:mt-0
-            [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-widest [&_h2]:text-muted-foreground [&_h2]:mt-9 [&_h2]:mb-3 [&_h2]:pb-2 [&_h2]:border-b [&_h2]:border-border/30
-            [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-6 [&_h3]:mb-2
-            [&_p]:text-[15px] [&_p]:text-foreground/80 [&_p]:leading-[1.8] [&_p]:mb-4
-            [&_ul]:mb-5 [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_ul]:list-disc [&_ul]:marker:text-muted-foreground/60
-            [&_ol]:mb-5 [&_ol]:pl-5 [&_ol]:space-y-1.5 [&_ol]:list-decimal [&_ol]:marker:text-muted-foreground/60
-            [&_li]:text-[15px] [&_li]:text-foreground/80 [&_li]:leading-[1.8]
-            [&_strong]:font-semibold [&_strong]:text-foreground
-            [&_em]:italic [&_em]:text-foreground/65
-            [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:pl-5 [&_blockquote]:py-2 [&_blockquote]:my-5 [&_blockquote]:text-[15px] [&_blockquote]:text-foreground/70 [&_blockquote]:italic [&_blockquote]:bg-secondary/10 [&_blockquote]:rounded-r-lg [&_blockquote]:not-italic
-            [&_code]:text-[13px] [&_code]:font-mono [&_code]:bg-secondary/40 [&_code]:text-foreground/85 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:not-italic
-            [&_pre]:bg-secondary/20 [&_pre]:border [&_pre]:border-border/30 [&_pre]:rounded-xl [&_pre]:p-5 [&_pre]:overflow-x-auto [&_pre]:text-[12px] [&_pre]:font-mono [&_pre]:text-foreground/75 [&_pre]:my-5 [&_pre]:leading-relaxed
-            [&_hr]:border-border/25 [&_hr]:my-8
-            [&_table]:w-full [&_table]:text-sm [&_table]:my-6 [&_table]:border-collapse [&_table]:border [&_table]:border-border/40 [&_table]:rounded-lg [&_table]:overflow-hidden
-            [&_thead]:bg-secondary/40
-            [&_th]:text-left [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:border [&_th]:border-border/30
-            [&_td]:px-4 [&_td]:py-3 [&_td]:text-[13px] [&_td]:text-foreground/80 [&_td]:border [&_td]:border-border/20 [&_td]:align-top [&_td]:leading-snug
-            [&_tr:nth-child(even)_td]:bg-secondary/10
-            [&_tr:hover_td]:bg-primary/5
-          "
-        >
-          <ReactMarkdown>{report}</ReactMarkdown>
+        <div className="rounded-[28px] border border-border/70 bg-card/55 px-5 py-6 shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
+          <div
+            className="
+              [&_h1]:mt-0 [&_h1]:mb-4 [&_h1]:text-[26px] [&_h1]:font-semibold [&_h1]:tracking-[-0.04em] [&_h1]:text-foreground
+              [&_h2]:mt-10 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:text-[12px] [&_h2]:font-medium [&_h2]:uppercase [&_h2]:tracking-[0.18em] [&_h2]:text-muted-foreground
+              [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-foreground
+              [&_p]:mb-4 [&_p]:text-[15px] [&_p]:leading-8 [&_p]:text-foreground/82
+              [&_ul]:mb-5 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5
+              [&_ol]:mb-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5
+              [&_li]:text-[15px] [&_li]:leading-8 [&_li]:text-foreground/82
+              [&_strong]:font-semibold [&_strong]:text-foreground
+              [&_em]:text-foreground/72
+              [&_blockquote]:my-6 [&_blockquote]:rounded-r-2xl [&_blockquote]:border-l-2 [&_blockquote]:border-primary/50 [&_blockquote]:bg-background/50 [&_blockquote]:px-5 [&_blockquote]:py-4 [&_blockquote]:text-foreground/72
+              [&_code]:rounded-md [&_code]:bg-background/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px]
+              [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:rounded-[20px] [&_pre]:border [&_pre]:border-border/70 [&_pre]:bg-background/80 [&_pre]:p-5 [&_pre]:font-mono [&_pre]:text-[12px] [&_pre]:leading-6 [&_pre]:text-foreground/78
+              [&_hr]:my-8 [&_hr]:border-border/40
+              [&_table]:my-6 [&_table]:w-full [&_table]:overflow-hidden [&_table]:rounded-2xl [&_table]:border [&_table]:border-border/60
+              [&_thead]:bg-background/80
+              [&_th]:border-b [&_th]:border-border/60 [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.16em] [&_th]:text-muted-foreground
+              [&_td]:border-t [&_td]:border-border/40 [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-6 [&_td]:text-foreground/82
+            "
+          >
+            <ReactMarkdown>{report}</ReactMarkdown>
+          </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileText className="h-8 w-8 text-muted-foreground/20 mb-3" />
+        <div className="flex flex-col items-center justify-center rounded-[28px] border border-border/70 bg-card/55 px-6 py-20 text-center shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
+          <FileText className="mb-4 h-9 w-9 text-muted-foreground/35" />
           <p className="text-sm text-muted-foreground">
             {["running", "pending"].includes(run.status) ? "Отчёт появится после завершения агента." : "Отчёт недоступен."}
           </p>
         </div>
       )}
-
-      <div className="h-12" />
     </div>
   );
 }
 
 function MetaCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-card border border-border rounded-lg px-3 py-2">
-      <div className="flex items-center gap-1 text-muted-foreground mb-1">
+    <div className="rounded-[22px] border border-border/70 bg-background/55 px-4 py-4">
+      <div className="mb-2 flex items-center gap-2 text-muted-foreground">
         {icon}
-        <span className="text-[9px] uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] uppercase tracking-[0.18em]">{label}</span>
       </div>
-      <p className="text-xs font-medium text-foreground truncate">{value}</p>
+      <p className="text-sm font-medium leading-6 text-foreground">{value || "—"}</p>
     </div>
   );
 }

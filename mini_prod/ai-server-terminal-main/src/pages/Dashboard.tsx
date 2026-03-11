@@ -1,4 +1,4 @@
-import { Server, Activity, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Activity, AlertTriangle, Server, Wifi, WifiOff } from "lucide-react";
 import { fetchFrontendBootstrap } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
@@ -8,11 +8,11 @@ function toRelativeTime(value: string | null): string {
   const date = new Date(value);
   const diffMs = Date.now() - date.getTime();
   const mins = Math.max(1, Math.floor(diffMs / 60_000));
-  if (mins < 60) return `${mins} min ago`;
+  if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour ago`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days} day ago`;
+  return `${days}d ago`;
 }
 
 export default function Dashboard() {
@@ -31,21 +31,15 @@ export default function Dashboard() {
   }
 
   const servers = data.servers || [];
-  const stats = [
-    { labelKey: "dash.total", value: servers.length, icon: Server, color: "text-primary" },
-    { labelKey: "dash.online", value: servers.filter((s) => s.status === "online").length, icon: Wifi, color: "text-success" },
-    {
-      labelKey: "dash.offline",
-      value: servers.filter((s) => s.status === "offline").length,
-      icon: WifiOff,
-      color: "text-destructive",
-    },
-    {
-      labelKey: "dash.unknown",
-      value: servers.filter((s) => s.status === "unknown").length,
-      icon: AlertTriangle,
-      color: "text-warning",
-    },
+  const online = servers.filter((server) => server.status === "online").length;
+  const offline = servers.filter((server) => server.status === "offline").length;
+  const unknown = servers.filter((server) => server.status === "unknown").length;
+
+  const summaryRows = [
+    { label: t("dash.total"), value: servers.length, icon: Server, tone: "info" as const },
+    { label: t("dash.online"), value: online, icon: Wifi, tone: "success" as const },
+    { label: t("dash.offline"), value: offline, icon: WifiOff, tone: offline > 0 ? ("danger" as const) : ("neutral" as const) },
+    { label: t("dash.unknown"), value: unknown, icon: AlertTriangle, tone: unknown > 0 ? ("warning" as const) : ("neutral" as const) },
   ];
 
   return (
@@ -79,11 +73,41 @@ export default function Dashboard() {
                 <p className="text-sm text-foreground">{item.description || item.action}</p>
                 <p className="text-xs text-muted-foreground font-mono">{item.entity_name || "-"}</p>
               </div>
-              <span className="text-xs text-muted-foreground shrink-0">{toRelativeTime(item.created_at)}</span>
             </div>
           ))}
         </div>
-      </div>
-    </div>
+      </SectionCard>
+
+      <SectionCard
+        title={t("dash.activity")}
+        description="Recent events from the accessible workspace."
+        icon={<Activity className="h-4 w-4 text-primary" />}
+      >
+        {(data.recent_activity || []).length === 0 ? (
+          <EmptyState
+            icon={<Activity className="h-5 w-5" />}
+            title="No recent activity"
+            description="Activity items will appear here when operators interact with the workspace."
+          />
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-background/30">
+            <div className="divide-y divide-border/60">
+              {(data.recent_activity || []).map((item) => (
+                <div key={item.id} className="flex items-start gap-4 px-5 py-3.5">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/35">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground">{item.description || item.action}</p>
+                    <p className="mt-1 text-xs font-mono text-muted-foreground">{item.entity_name || "-"}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">{toRelativeTime(item.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    </PageShell>
   );
 }

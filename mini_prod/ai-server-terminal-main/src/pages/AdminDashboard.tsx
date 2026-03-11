@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ElementType } from "react";
 import {
   fetchAdminDashboard,
   fetchAdminUsersSessions,

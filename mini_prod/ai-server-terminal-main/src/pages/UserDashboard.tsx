@@ -307,10 +307,6 @@ export default function UserDashboard() {
         <div className="bg-card border border-primary/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 bg-primary/5 border-b border-primary/10">
             <div className="flex items-center gap-2">
-              <Bot className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium text-foreground">
-                {agentResult ? `${t("agent.result")}: ${agentResult.server_name}` : `AI: ${analysisResult!.name}`}
-              </span>
               {agentResult && (
                 <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${agentResult.status === "completed" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                   {agentResult.status}
@@ -328,9 +324,9 @@ export default function UserDashboard() {
                 <X className="h-3 w-3" />
               </Button>
             </div>
-          </div>
+            </div>
           {expandedRaw && agentResult && (
-            <div className="border-b border-border bg-secondary/10 max-h-60 overflow-y-auto">
+            <div className="max-h-60 overflow-y-auto border-b border-border bg-secondary/10">
               {agentResult.commands_output.map((cmd, i) => (
                 <div key={i} className="px-4 py-2 border-b border-border/30 last:border-0">
                   <div className="flex items-center gap-2 text-[10px] mb-1">
@@ -349,7 +345,7 @@ export default function UserDashboard() {
           <div className="p-4 prose prose-sm prose-invert max-w-none text-sm [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_p]:text-xs [&_li]:text-xs [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground">
             <ReactMarkdown>{agentResult?.ai_analysis || analysisResult?.text || ""}</ReactMarkdown>
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* ===== ACTIVE AGENTS ===== */}
@@ -417,7 +413,15 @@ export default function UserDashboard() {
               <Plus className="h-3 w-3" /> {t("agent.new")}
             </Button>
           </div>
-        </div>
+        }
+      >
+        <div className="overflow-hidden rounded-2xl border border-border/80 bg-background/30">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-foreground">{t("agent.title")}</span>
+            <span className="text-[10px] text-muted-foreground">{agents.length}</span>
+          </div>
+          </div>
 
         {agents.length === 0 ? (
           <div className="px-4 py-6 text-center">
@@ -478,7 +482,8 @@ export default function UserDashboard() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      </SectionCard>
 
       {/* Server status tags */}
       {data.servers.length > 0 && (
@@ -489,13 +494,13 @@ export default function UserDashboard() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {data.servers.map((srv) => (
-              <div key={srv.server_id} className="flex items-center gap-1.5 bg-secondary/30 rounded px-2 py-1 text-[10px]" title={`CPU: ${srv.cpu_percent ?? "—"}% | RAM: ${srv.memory_percent ?? "—"}% | Disk: ${srv.disk_percent ?? "—"}%`}>
+              <div key={srv.server_id} className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-background/30 px-2.5 py-1.5 text-[10px]" title={`CPU: ${srv.cpu_percent ?? "—"}% | RAM: ${srv.memory_percent ?? "—"}% | Disk: ${srv.disk_percent ?? "—"}%`}>
                 <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${srv.status === "healthy" ? "bg-green-400" : srv.status === "warning" ? "bg-yellow-400" : srv.status === "critical" || srv.status === "unreachable" ? "bg-red-500 animate-pulse" : "bg-muted-foreground"}`} />
                 <span className="text-foreground">{srv.server_name}</span>
               </div>
             ))}
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* Report dialog */}
@@ -608,17 +613,14 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
   return (
     <div className={`px-4 py-3 ${STATUS_BG[run.status] || ""} transition-colors`}>
       <div className="flex items-center gap-3">
-        {/* Pulsing icon */}
-        <div className="relative shrink-0">
+        <div className="shrink-0">
           <span className="text-lg">{AGENT_ICONS[run.agent_type] || "🤖"}</span>
-          <div className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-xs font-medium text-foreground">{run.agent_name}</span>
-            <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${STATUS_TEXT[run.status] || "text-muted-foreground"} ${run.status === "running" ? "bg-blue-500/20 animate-pulse" : run.status === "waiting" ? "bg-orange-500/20" : run.status === "paused" ? "bg-yellow-500/20" : "bg-secondary"}`}>
+            <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${STATUS_TEXT[run.status] || "text-muted-foreground"} ${run.status === "running" ? "bg-blue-500/20" : run.status === "waiting" ? "bg-orange-500/20" : run.status === "paused" ? "bg-yellow-500/20" : "bg-secondary"}`}>
               {run.status}
             </span>
             {run.agent_mode === "full" && (
@@ -643,14 +645,13 @@ function ActiveRunCard({ run, onOpen, onStop, stopping, t }: {
           </div>
 
           {run.pending_question && (
-            <div className="mt-1.5 flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-1">
+            <div className="mt-1.5 flex items-center gap-1.5 rounded-xl border border-orange-500/20 bg-orange-500/10 px-2 py-1">
               <Bot className="h-3 w-3 text-orange-400 shrink-0" />
               <span className="text-[10px] text-orange-300 truncate">{run.pending_question}</span>
             </div>
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
           <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1 border-blue-500/30 text-blue-400 hover:bg-blue-500/10" onClick={onOpen}>
             <Eye className="h-3 w-3" /> {t("agent.open")}
@@ -685,7 +686,6 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
         )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-foreground">{run.agent_name}</span>
@@ -701,7 +701,6 @@ function RecentRunCard({ run, onViewReport, onOpen, t }: {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
         {hasReport && (
           <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={onViewReport}>

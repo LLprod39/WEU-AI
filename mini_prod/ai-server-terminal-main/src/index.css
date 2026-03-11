@@ -62,6 +62,10 @@
     @apply border-border;
   }
 
+  html {
+    background: hsl(var(--background));
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
   }
@@ -88,5 +92,13 @@
 @layer utilities {
   .font-mono {
     font-family: 'JetBrains Mono', monospace;
+  }
+
+  .rounded-xl {
+    border-radius: 0.5rem;
+  }
+
+  .rounded-2xl {
+    border-radius: 0.75rem;
   }
 }

@@ -9,6 +9,14 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
+function SummaryPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-full border border-transparent bg-background/30 px-3 py-1 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{value}</span> {label}
+    </div>
+  );
+}
+
 export default function SettingsPermissionsPage() {
   const queryClient = useQueryClient();
   const [newUserId, setNewUserId] = useState<number>(0);

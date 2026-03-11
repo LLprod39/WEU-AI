@@ -116,8 +116,9 @@ class AgentEngine:
         self.skills = list(skills or [])
         self.skill_errors = list(skill_errors or [])
         self.skill_policies, policy_errors = compile_skill_policies(self.skills)
-        if policy_errors:
-            self.skill_errors.extend(policy_errors)
+        self.skill_policy_errors = list(policy_errors)
+        if self.skill_policy_errors:
+            self.skill_errors.extend(self.skill_policy_errors)
         self._executed_mcp_tools: set[str] = set()
         self.model_preference, self.specific_model = resolve_provider_and_model(
             model_preference,
@@ -188,6 +189,11 @@ class AgentEngine:
                 self.model_preference,
                 self.specific_model,
             )
+            if self.skill_policy_errors:
+                raise RuntimeError(
+                    "Invalid skill policy configuration: "
+                    + "; ".join(self.skill_policy_errors)
+                )
             await self._emit("agent_status", {"status": "connecting"})
 
             if self.servers:

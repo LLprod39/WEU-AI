@@ -4,6 +4,14 @@ import { createAccessGroup, deleteAccessGroup, fetchAccessGroups, fetchAccessUse
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+function SummaryPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-full border border-transparent bg-background/30 px-3 py-1 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{value}</span> {label}
+    </div>
+  );
+}
+
 export default function SettingsGroupsPage() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
@@ -28,6 +36,7 @@ export default function SettingsGroupsPage() {
     await createAccessGroup({ name: newName.trim(), members: newMembers });
     setNewName("");
     setNewMembers([]);
+    setMemberSearch("");
     await reload();
   };
 

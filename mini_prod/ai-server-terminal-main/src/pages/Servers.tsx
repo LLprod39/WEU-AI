@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   addServerGroupMember,
@@ -103,7 +103,6 @@ interface KnowledgeItem {
   is_active: boolean;
 }
 
-type MainTab = "servers" | "groups" | "bulk";
 type AdvancedTab = "access" | "knowledge" | "context" | "security" | "execute";
 
 function initialForm(): ServerForm {
@@ -173,7 +172,6 @@ function formatCommandOutput(output: unknown): string {
 export default function Servers() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [mainTab, setMainTab] = useState<MainTab>("servers");
   const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("access");
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -233,6 +231,9 @@ export default function Servers() {
 
   const servers = data?.servers || [];
   const groups = data?.groups || [];
+  const onlineCount = servers.filter((server) => server.status === "online").length;
+  const sharedCount = servers.filter((server) => server.is_shared).length;
+  const groupCount = groups.filter((group) => group.id !== null).length;
 
   const filtered = useMemo(() => {
     if (!search) return servers;
@@ -249,6 +250,21 @@ export default function Servers() {
   }, [filtered]);
 
   const toggleGroup = (g: string) => setCollapsed((c) => ({ ...c, [g]: !c[g] }));
+
+  useEffect(() => {
+    if (!filtered.length) {
+      setSelectedServerId(null);
+      return;
+    }
+    if (!selectedServerId || !filtered.some((server) => server.id === selectedServerId)) {
+      setSelectedServerId(filtered[0].id);
+    }
+  }, [filtered, selectedServerId]);
+
+  const selectedServer =
+    filtered.find((server) => server.id === selectedServerId) ||
+    servers.find((server) => server.id === selectedServerId) ||
+    null;
 
   const reload = async () => {
     await queryClient.invalidateQueries({ queryKey: ["frontend", "bootstrap"] });
@@ -735,10 +751,9 @@ export default function Servers() {
                       </Button>
                     </div>
                   </div>
-                ))}
-            </div>
-          </section>
-        </TabsContent>
+                )}
+              </div>
+            </FilterBar>
 
         <TabsContent value="bulk" className="space-y-3">
           <section className="bg-card border border-border rounded-lg p-4 space-y-3">

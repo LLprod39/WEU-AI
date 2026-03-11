@@ -3,14 +3,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save, X, Loader2, Server, CheckCircle2, XCircle, RefreshCw, ArrowLeft, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState, PageShell, SectionCard, StatusBadge } from "@/components/ui/page-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { studioMCP, type MCPServer } from "@/lib/api";
 
@@ -25,15 +25,11 @@ interface MCPTemplate {
   icon: string;
 }
 
-function TestIndicator({ ok, error }: { ok: boolean | null; error: string }) {
-  if (ok === null) return null;
-  if (ok) return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-  return (
-    <div className="flex items-center gap-1.5">
-      <XCircle className="h-4 w-4 text-red-500" />
-      {error && <span className="text-xs text-red-500 truncate max-w-[120px]" title={error}>{error.slice(0, 30)}</span>}
-    </div>
-  );
+function previewConnection(server: Pick<MCPServer, "transport" | "command" | "args" | "url">) {
+  if (server.transport === "stdio") {
+    return [server.command, ...(server.args || [])].filter(Boolean).join(" ");
+  }
+  return server.url || "https://...";
 }
 
 function MCPForm({
@@ -59,19 +55,25 @@ function MCPForm({
   });
   const [argsText, setArgsText] = useState((initial.args || []).join("\n"));
   const [envText, setEnvText] = useState(
-    Object.entries(initial.env || {}).map(([k, v]) => `${k}=${v}`).join("\n"),
+    Object.entries(initial.env || {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n"),
   );
 
-  const set = (key: keyof MCPServer, val: unknown) => setForm((f) => ({ ...f, [key]: val }));
+  const set = (key: keyof MCPServer, value: unknown) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = () => {
-    const args = argsText.split("\n").map((s) => s.trim()).filter(Boolean);
-    const envLines = envText.split("\n").map((s) => s.trim()).filter(Boolean);
+    const args = argsText
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
     const env: Record<string, string> = {};
-    for (const line of envLines) {
+
+    for (const line of envText.split("\n").map((item) => item.trim()).filter(Boolean)) {
       const idx = line.indexOf("=");
       if (idx > 0) env[line.slice(0, idx)] = line.slice(idx + 1);
     }
+
     onSave({ ...form, args, env });
   };
 
@@ -111,29 +113,36 @@ function MCPForm({
             <Label className="text-xs">Arguments (one per line)</Label>
             <Textarea
               value={argsText}
-              onChange={(e) => setArgsText(e.target.value)}
+              onChange={(event) => setArgsText(event.target.value)}
               placeholder={`-y\n@modelcontextprotocol/server-github`}
-              className="font-mono text-xs resize-none"
-              rows={4}
+              rows={5}
+              className="font-mono text-xs"
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Environment Variables (KEY=value, one per line)</Label>
             <Textarea
               value={envText}
-              onChange={(e) => setEnvText(e.target.value)}
-              placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=ghp_..."
-              className="font-mono text-xs resize-none"
-              rows={3}
+              onChange={(event) => setEnvText(event.target.value)}
+              placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=..."
+              rows={4}
+              className="font-mono text-xs"
             />
           </div>
-        </>
+        </div>
       ) : (
         <div className="space-y-1.5">
           <Label className="text-xs">SSE URL</Label>
           <Input value={form.url || ""} onChange={(e) => set("url", e.target.value)} placeholder="https://mcp.example.com/sse" className="font-mono text-sm" />
         </div>
       )}
+
+      <div className="workspace-subtle rounded-2xl px-4 py-3 text-sm leading-6 text-muted-foreground">
+        {tr(
+          "Сначала можно использовать готовый шаблон, а потом поправить команду или env вручную.",
+          "A template is usually the fastest start, then you can adjust the command or env manually.",
+        )}
+      </div>
 
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
@@ -171,7 +180,7 @@ export default function MCPHubPage() {
       setEditMcp(null);
       toast({ description: "MCP server added" });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const updateMutation = useMutation({
@@ -181,7 +190,7 @@ export default function MCPHubPage() {
       setEditMcp(null);
       toast({ description: "MCP server updated" });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const deleteMutation = useMutation({
@@ -191,20 +200,20 @@ export default function MCPHubPage() {
       setDeleteTarget(null);
       toast({ description: "MCP server removed" });
     },
-    onError: (err: Error) => toast({ variant: "destructive", description: err.message }),
+    onError: (error: Error) => toast({ variant: "destructive", description: error.message }),
   });
 
   const testMutation = useMutation({
     mutationFn: (id: number) => studioMCP.test(id),
-    onSuccess: (res, id) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["studio", "mcp"] });
       setTestingId(null);
       if (res.ok) toast({ description: "Connection OK" });
       else toast({ variant: "destructive", description: `Test failed: ${res.error}` });
     },
-    onError: (err: Error) => {
+    onError: (error: Error) => {
       setTestingId(null);
-      toast({ variant: "destructive", description: err.message });
+      toast({ variant: "destructive", description: error.message });
     },
   });
 
@@ -216,14 +225,14 @@ export default function MCPHubPage() {
     }
   };
 
-  const handleUseTemplate = (tpl: MCPTemplate) => {
+  const handleUseTemplate = (template: MCPTemplate) => {
     setEditMcp({
-      name: tpl.name,
-      description: tpl.description,
-      transport: tpl.transport,
-      command: tpl.command,
-      args: tpl.args,
-      env: tpl.env,
+      name: template.name,
+      description: template.description,
+      transport: template.transport,
+      command: template.command,
+      args: template.args,
+      env: template.env,
     });
   };
 
@@ -257,7 +266,7 @@ export default function MCPHubPage() {
             <TabsTrigger value="templates">Templates ({templates.length})</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="mine">
+          <TabsContent value="mine" className="mt-0">
             {isLoading ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -328,9 +337,69 @@ export default function MCPHubPage() {
                           </span>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
+
+                      <div className="min-w-0">
+                        <div className="rounded-xl border border-border/70 bg-background/35 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
+                          {previewConnection(mcp)}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <StatusBadge
+                          label={
+                            mcp.last_test_ok === true
+                              ? tr("Работает", "Healthy")
+                              : mcp.last_test_ok === false
+                                ? tr("Ошибка", "Failed")
+                                : tr("Не проверялся", "Not tested")
+                          }
+                          tone={testTone}
+                        />
+                        {mcp.last_test_error ? (
+                          <p className="text-xs leading-5 text-muted-foreground">{mcp.last_test_error}</p>
+                        ) : null}
+                        {mcp.last_test_at ? (
+                          <p className="text-xs text-muted-foreground">
+                            {tr("Проверено", "Tested")}: {new Date(mcp.last_test_at).toLocaleString()}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-wrap items-start gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => {
+                            setTestingId(mcp.id);
+                            testMutation.mutate(mcp.id);
+                          }}
+                          disabled={testingId === mcp.id}
+                        >
+                          {testingId === mcp.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          {tr("Проверить", "Test")}
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-2" onClick={() => setEditMcp(mcp)}>
+                          <Pencil className="h-4 w-4" />
+                          {tr("Изменить", "Edit")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(mcp)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {tr("Удалить", "Remove")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -377,14 +446,14 @@ export default function MCPHubPage() {
           <DialogHeader>
             <DialogTitle>{(editMcp as MCPServer)?.id ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
           </DialogHeader>
-          {editMcp && (
+          {editMcp ? (
             <MCPForm
               initial={editMcp}
               onSave={handleSave}
               onCancel={() => setEditMcp(null)}
               isPending={createMutation.isPending || updateMutation.isPending}
             />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 

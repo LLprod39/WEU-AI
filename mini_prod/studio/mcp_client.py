@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from core_ui.managed_secrets import get_mcp_secret_env
 from .models import MCPServerPool
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -93,7 +94,7 @@ class _StdioMCPClient:
         if not self.server.command:
             raise MCPClientError("MCP command is not configured")
 
-        env = {**__import__("os").environ, **(self.server.env or {})}
+        env = {**__import__("os").environ, **(self.server.env or {}), **get_mcp_secret_env(self.server.id)}
         self.proc = await asyncio.create_subprocess_exec(
             self.server.command,
             *(self.server.args or []),

@@ -19,6 +19,8 @@ import {
   FileText, Server, ChevronDown, ChevronUp, X, Square,
   Brain, Target, Settings2, Layers, Terminal, CheckCircle2,
   AlertTriangle, Activity,
+  Shield,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +40,32 @@ function formatDuration(ms: number): string {
 }
 
 const MODE_ICONS: Record<string, typeof Bot> = { mini: Zap, full: Brain, multi: Layers };
-const AGENT_ICONS: Record<string, string> = {
-  security_audit: "🔒", log_analyzer: "📋", performance: "⚡", disk_report: "💾",
-  docker_status: "🐳", service_health: "⚙️", custom: "🔧",
-  security_patrol: "🛡️", deploy_watcher: "🚀", log_investigator: "🔍",
-  infra_scout: "🗺️", multi_health: "💚",
+const AGENT_ICONS: Record<string, LucideIcon> = {
+  security_audit: Shield,
+  security_patrol: Shield,
+  log_analyzer: FileText,
+  log_investigator: FileText,
+  performance: Activity,
+  disk_report: Server,
+  docker_status: Layers,
+  service_health: Settings2,
+  deploy_watcher: Zap,
+  infra_scout: Server,
+  multi_health: Activity,
+  custom: Settings2,
 };
+const MODE_LABELS: Record<"all" | "mini" | "full" | "multi", string> = {
+  all: "All",
+  mini: "Mini",
+  full: "Full",
+  multi: "Pipeline",
+};
+
+function modeBadgeClass(mode: string) {
+  if (mode === "full") return "bg-primary/12 text-primary";
+  if (mode === "multi") return "bg-secondary text-foreground";
+  return "bg-background/65 text-muted-foreground";
+}
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -136,18 +158,17 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      {/* Last run result toast */}
       {result && !reportModalOpen && (
         <div className="bg-card border border-primary/20 rounded-lg px-4 py-2.5 flex items-center gap-3">
           <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${result.status === "completed" ? "bg-green-500/15" : "bg-red-500/15"}`}>
             {result.status === "completed" ? <CheckCircle2 className="h-3.5 w-3.5 text-green-400" /> : <AlertTriangle className="h-3.5 w-3.5 text-red-400" />}
           </div>
           <div className="flex-1 min-w-0">
-            <span className="text-xs text-foreground">{result.server_name}</span>
-            <span className="text-[10px] text-muted-foreground ml-2">{formatDuration(result.duration_ms)}</span>
+            <div className="text-sm text-foreground">{result.server_name}</div>
+            <div className="text-[11px] text-muted-foreground">{result.status} · {formatDuration(result.duration_ms)}</div>
           </div>
-          <Button size="sm" className="h-7 text-xs gap-1.5 shrink-0" onClick={() => setReportModalOpen(true)}>
-            <FileText className="h-3 w-3" /> View Report
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 shrink-0" onClick={() => setReportModalOpen(true)}>
+            <FileText className="h-3 w-3" /> Report
           </Button>
           <Button size="sm" variant="ghost" className="h-7 px-1.5 shrink-0 text-muted-foreground" onClick={() => setResult(null)}>
             <X className="h-3 w-3" />
@@ -155,12 +176,10 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Full-screen report modal */}
       {result && (
         <ReportModal result={result} open={reportModalOpen} onClose={() => setReportModalOpen(false)} />
       )}
 
-      {/* Agent list */}
       {agents.length === 0 ? (
         <div className="bg-card border border-border rounded-lg p-8 text-center">
           <Bot className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
@@ -174,6 +193,7 @@ export default function AgentsPage() {
           <div className="divide-y divide-border/50">
             {agents.map((ag) => {
               const ModeIcon = MODE_ICONS[ag.mode] || Zap;
+              const AgentIcon = AGENT_ICONS[ag.agent_type] || Settings2;
               const isRunning = runningId === ag.id || !!ag.active_run_id;
               return (
                 <div key={ag.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
@@ -320,34 +340,36 @@ function CreateAgentDialog({ open, onClose, onCreated }: { open: boolean; onClos
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => setMode("mini")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "mini" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <Zap className="h-4 w-4 text-blue-400" />
+                    <Zap className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Mini Agent</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">Run a list of commands and get AI analysis. Simple and fast.</p>
                 </button>
                 <button onClick={() => setMode("full")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "full" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <Brain className="h-4 w-4 text-purple-400" />
+                    <Brain className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Full Agent (ReAct)</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">Autonomous agent with goal, reasoning loop, and multi-server support.</p>
                 </button>
                 <button onClick={() => setMode("multi")} className={`flex-1 min-w-[140px] text-left border rounded-lg p-3 transition-colors ${mode === "multi" ? "border-violet-500 bg-violet-500/5" : "border-border hover:border-violet-500/30"}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <Layers className="h-4 w-4 text-violet-400" />
+                    <Layers className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Multi-Agent Pipeline</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground">Orchestrator breaks goal into tasks. Each task runs a separate AI agent. Best for complex goals.</p>
                 </button>
-              </div>
+                </div>
 
               <div className="grid grid-cols-2 gap-2">
                 {templates.map((tpl) => (
                   <button key={tpl.type} onClick={() => onSelectTemplate(tpl)}
                     className="text-left bg-secondary/30 border border-border rounded-lg p-3 hover:border-primary/50 transition-colors">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">{AGENT_ICONS[tpl.type] || "🔧"}</span>
-                      <span className="text-sm font-medium text-foreground">{tpl.name}</span>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent bg-background/30 text-muted-foreground">
+                        <Settings2 className="h-4 w-4" />
+                      </span>
+                      <span className="text-sm font-medium text-foreground">Custom</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       {tpl.mode === "full" ? (tpl.goal || "").slice(0, 80) + "..." : `${tpl.command_count} commands`}
@@ -462,28 +484,26 @@ function ReportModal({ result, open, onClose }: { result: AgentRunResult; open: 
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
-        {/* Header */}
-        <div className="shrink-0 flex items-center gap-3 px-5 py-3 border-b border-border bg-card">
-          <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${isCompleted ? "bg-green-500/10" : "bg-red-500/10"}`}>
+      <DialogContent className="flex h-[90vh] w-[95vw] max-w-5xl flex-col gap-0 rounded-[1.75rem] p-0">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-5 py-3">
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${isCompleted ? "bg-green-500/10" : "bg-red-500/10"}`}>
             {isCompleted ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <AlertTriangle className="h-4 w-4 text-red-400" />}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">Agent Report — {result.server_name}</p>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+            <p className="truncate text-sm font-semibold text-foreground">Agent Report — {result.server_name}</p>
+            <div className="mt-0.5 flex items-center gap-3 text-[10px] text-muted-foreground">
               <span className={`font-bold uppercase ${isCompleted ? "text-green-400" : "text-red-400"}`}>{result.status}</span>
               <span className="flex items-center gap-0.5"><Activity className="h-2.5 w-2.5" />{formatDuration(result.duration_ms)}</span>
               {hasConsole && <span className="flex items-center gap-0.5"><Terminal className="h-2.5 w-2.5" />{result.commands_output.length} commands</span>}
             </div>
           </div>
-          <button onClick={onClose} className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Tabs */}
         {hasConsole && (
-          <div className="shrink-0 flex border-b border-border px-5 bg-card/50">
+          <div className="flex shrink-0 border-b border-border bg-card/50 px-5">
             <button
               onClick={() => setActiveTab("report")}
               className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${activeTab === "report" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
@@ -499,7 +519,6 @@ function ReportModal({ result, open, onClose }: { result: AgentRunResult; open: 
           </div>
         )}
 
-        {/* Content */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === "report" ? (
             <div className="py-8 px-8 max-w-[720px] mx-auto font-sans">

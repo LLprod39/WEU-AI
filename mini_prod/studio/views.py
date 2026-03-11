@@ -65,6 +65,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from core_ui.managed_secrets import get_mcp_secret_env, get_mcp_secret_env_keys
 from .mcp_client import MCPClientError, inspect_mcp_server
 from .models import AgentConfig, MCPServerPool, Pipeline, PipelineRun, PipelineTemplate, PipelineTrigger
 from .pipeline_validation import ensure_json_object, validate_pipeline_definition
@@ -1462,7 +1463,7 @@ def _test_mcp_connection(mcp: MCPServerPool) -> tuple[bool, str | None]:
     if not mcp.command:
         return False, "No command configured"
     try:
-        env = {**__import__("os").environ, **mcp.env}
+        env = {**__import__("os").environ, **mcp.env, **get_mcp_secret_env(mcp.id)}
         proc = subprocess.Popen(
             [mcp.command] + (mcp.args or []),
             stdout=subprocess.PIPE,
@@ -1512,6 +1513,7 @@ def _mcp_to_dict(mcp: MCPServerPool) -> dict:
         "command": mcp.command,
         "args": mcp.args,
         "env": mcp.env,
+        "secret_env_keys": get_mcp_secret_env_keys(mcp.id),
         "url": mcp.url,
         "is_shared": mcp.is_shared,
         "last_test_ok": mcp.last_test_ok,

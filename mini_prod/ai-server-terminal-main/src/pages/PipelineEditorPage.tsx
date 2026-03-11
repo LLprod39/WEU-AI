@@ -25,8 +25,6 @@ import {
   X,
   Loader2,
   Trash2,
-  Plus,
-  Zap,
   CheckCircle2,
   XCircle,
   Clock,
@@ -36,6 +34,7 @@ import {
   Sparkles,
   Bot,
   Wand2,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1798,6 +1797,7 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [pipelineCopilotOpen, setPipelineCopilotOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(true);
   const [runTaskText, setRunTaskText] = useState("");
   const [runRequester, setRunRequester] = useState("");
   const [runTicketId, setRunTicketId] = useState("");
@@ -2084,6 +2084,8 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
     );
   }
 
+  const showMiniMap = nodes.length >= 6;
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
@@ -2100,10 +2102,10 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
         />
         <div className="ml-auto flex items-center gap-2">
           {lastRun && (
-            <Badge
-              variant={lastRun.status === "completed" ? "default" : lastRun.status === "failed" ? "destructive" : "secondary"}
-              className="text-xs cursor-pointer"
+            <button
+              type="button"
               onClick={() => setActiveRunId(lastRun.id)}
+              className="hidden items-center gap-2 rounded-md border border-border/70 bg-background/35 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-background/50 hover:text-foreground sm:flex"
             >
               {lastRun.status === "running" && <Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />}
               Run #{lastRun.id}: {lastRun.status}
@@ -2137,6 +2139,26 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
             {runMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             Run
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 gap-1.5 rounded-md px-3 text-muted-foreground">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+                {localize(lang, "Ещё", "More")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onClick={() => setPipelineCopilotOpen(true)}>
+                <Bot className="mr-2 h-3.5 w-3.5" />
+                {localize(lang, "AI помощник пайплайна", "Pipeline AI Assistant")}
+              </DropdownMenuItem>
+              {lastRun && (
+                <DropdownMenuItem onClick={() => setActiveRunId(lastRun.id)}>
+                  <Clock className="mr-2 h-3.5 w-3.5" />
+                  {localize(lang, `Открыть запуск #${lastRun.id}`, `Open run #${lastRun.id}`)}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -2178,19 +2200,21 @@ function PipelineEditorInner({ pipelineId }: { pipelineId: number | null }) {
             }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls className="!bg-card !border-border [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted" />
-            <MiniMap
-              style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
-              maskColor="hsl(var(--background) / 0.7)"
-              nodeColor={(node) => {
-                const type = node.type || "";
-                if (type.startsWith("trigger/")) return "#10b981";
-                if (type.startsWith("agent/")) return "#8b5cf6";
-                if (type.startsWith("logic/")) return "#f59e0b";
-                if (type.startsWith("output/")) return "#ef4444";
-                return "#6b7280";
-              }}
-            />
+            <Controls className="!border-border/70 !bg-background/78 !backdrop-blur [&>button]:!border-border/70 [&>button]:!bg-background/80 [&>button]:!text-foreground [&>button:hover]:!bg-background" />
+            {showMiniMap && (
+              <MiniMap
+                style={{ background: "hsl(var(--background) / 0.85)", border: "1px solid hsl(var(--border))" }}
+                maskColor="hsl(var(--background) / 0.82)"
+                nodeColor={(node) => {
+                  const type = node.type || "";
+                  if (type.startsWith("trigger/")) return "#6b7280";
+                  if (type.startsWith("agent/")) return "#4b5563";
+                  if (type.startsWith("logic/")) return "#9ca3af";
+                  if (type.startsWith("output/")) return "#374151";
+                  return "#6b7280";
+                }}
+              />
+            )}
             {/* Empty state hint inside React Flow */}
             {nodes.length === 0 && (
               <Panel position="top-center" style={{ pointerEvents: "none", marginTop: "30%" }}>
