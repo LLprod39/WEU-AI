@@ -4,13 +4,13 @@
 {% block header_title %}Чат{% endblock %}
 
 {% block header_left %}
-<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn">
+<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn" aria-label="История чатов">
     <span class="material-icons-round">history</span>
 </button>
 {% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn">
+<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn" aria-label="Новый чат">
     <span class="material-icons-round">add</span>
 </button>
 {% endblock %}
@@ -24,7 +24,7 @@
         <div class="mobile-drawer-content" style="left: 0; right: auto;">
             <div class="mobile-drawer-header">
                 <span class="text-lg font-semibold">История чатов</span>
-                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close">
+                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close" aria-label="Закрыть">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -78,7 +78,7 @@
     <div class="mobile-chat-input-container" id="mobile-chat-input-container">
         <!-- Options bar -->
         <div class="mobile-chat-options" id="mobile-chat-options">
-            <button type="button" class="mobile-chat-option-btn" id="mobile-rag-toggle" title="RAG">
+            <button type="button" class="mobile-chat-option-btn" id="mobile-rag-toggle" title="RAG" aria-label="Использовать RAG">
                 <span class="material-icons-round">storage</span>
             </button>
             <span class="text-xs text-gray-500" id="mobile-model-label">auto</span>
@@ -94,7 +94,7 @@
                 autocorrect="on"
                 spellcheck="true"
             ></textarea>
-            <button type="button" id="mobile-chat-send" class="mobile-chat-send-btn" disabled>
+            <button type="button" id="mobile-chat-send" class="mobile-chat-send-btn" disabled aria-label="Отправить">
                 <span class="material-icons-round">send</span>
             </button>
         </div>
