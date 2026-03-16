@@ -177,13 +177,13 @@ def handle_tools_list(req_id):
 
 async def run_tool(name: str, arguments: dict, user_id: int):
     _ensure_django()
-    from app.tools.server_tools import ServersListTool, ServerExecuteTool
+    from app.tools.server_tools import ServerExecuteTool, ServersListTool
     from app.tools.tasks_tools import (
-        TasksListTool,
-        TaskDetailTool,
         TaskCreateTool,
-        TaskUpdateTool,
         TaskDeleteTool,
+        TaskDetailTool,
+        TasksListTool,
+        TaskUpdateTool,
     )
     ctx = {"user_id": user_id}
     if name == "servers_list":

@@ -2,7 +2,8 @@
 Base Mode class for Unified Orchestrator
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, AsyncGenerator, Optional, List
+from collections.abc import AsyncGenerator
+from typing import Any
 
 
 class BaseMode(ABC):
@@ -11,14 +12,14 @@ class BaseMode(ABC):
     
     Каждый режим реализует свою логику выполнения задачи
     """
-    
+
     def __init__(self, orchestrator):
         """
         Args:
             orchestrator: UnifiedOrchestrator instance (для доступа к LLM, RAG, Tools)
         """
         self.orchestrator = orchestrator
-    
+
     @abstractmethod
     async def execute(
         self,
@@ -27,8 +28,8 @@ class BaseMode(ABC):
         use_rag: bool = True,
         specific_model: str = None,
         user_id: int = None,
-        initial_history: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        initial_history: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Выполнить задачу в данном режиме
@@ -46,12 +47,12 @@ class BaseMode(ABC):
             str: Chunks of response
         """
         raise NotImplementedError("BaseMode.execute must be implemented by subclasses")
-    
+
     @property
     def name(self) -> str:
         """Имя режима"""
         return self.__class__.__name__.replace("Mode", "").lower()
-    
+
     @property
     def description(self) -> str:
         """Описание режима"""

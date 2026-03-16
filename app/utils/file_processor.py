@@ -2,9 +2,9 @@
 File processing utilities for extracting text from various file types
 """
 import os
-import io
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
+
 from loguru import logger
 
 try:
@@ -45,7 +45,7 @@ except ImportError:
 
 class FileProcessor:
     """Process various file types and extract text content"""
-    
+
     # Supported file extensions
     SUPPORTED_EXTENSIONS = {
         '.txt': 'text',
@@ -60,23 +60,23 @@ class FileProcessor:
         '.bmp': 'image',
         '.webp': 'image',
     }
-    
+
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-    
+
     @classmethod
     def is_supported(cls, filename: str) -> bool:
         """Check if file type is supported"""
         ext = Path(filename).suffix.lower()
         return ext in cls.SUPPORTED_EXTENSIONS
-    
+
     @classmethod
-    def get_file_type(cls, filename: str) -> Optional[str]:
+    def get_file_type(cls, filename: str) -> str | None:
         """Get file type category"""
         ext = Path(filename).suffix.lower()
         return cls.SUPPORTED_EXTENSIONS.get(ext)
-    
+
     @classmethod
-    def process_file(cls, file_path: str, filename: str) -> Dict[str, Any]:
+    def process_file(cls, file_path: str, filename: str) -> dict[str, Any]:
         """
         Process file and extract text content
         
@@ -87,9 +87,9 @@ class FileProcessor:
             return {
                 'text': '',
                 'metadata': {'error': f'Unsupported file type: {filename}'},
-                'error': f'Unsupported file type'
+                'error': 'Unsupported file type'
             }
-        
+
         # Check file size
         try:
             file_size = os.path.getsize(file_path)
@@ -106,14 +106,14 @@ class FileProcessor:
                 'metadata': {'error': str(e)},
                 'error': str(e)
             }
-        
+
         file_type = cls.get_file_type(filename)
         metadata = {
             'filename': filename,
             'file_type': file_type,
             'file_size': file_size
         }
-        
+
         try:
             if file_type == 'text':
                 text = cls._process_text_file(file_path)
@@ -126,7 +126,7 @@ class FileProcessor:
             else:
                 text = ''
                 metadata['error'] = 'Unknown file type'
-            
+
             return {
                 'text': text,
                 'metadata': metadata,
@@ -139,23 +139,23 @@ class FileProcessor:
                 'metadata': {**metadata, 'error': str(e)},
                 'error': str(e)
             }
-    
+
     @classmethod
     def _process_text_file(cls, file_path: str) -> str:
         """Extract text from plain text files"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 return f.read()
         except UnicodeDecodeError:
             # Try with different encoding
-            with open(file_path, 'r', encoding='latin-1') as f:
+            with open(file_path, encoding='latin-1') as f:
                 return f.read()
-    
+
     @classmethod
     def _process_pdf(cls, file_path: str) -> str:
         """Extract text from PDF files"""
         text_parts = []
-        
+
         # Try pdfplumber first (better extraction)
         if PDFPLUMBER_AVAILABLE:
             try:
@@ -168,7 +168,7 @@ class FileProcessor:
                     return '\n\n'.join(text_parts)
             except Exception as e:
                 logger.warning(f"pdfplumber failed: {e}, trying PyPDF2")
-        
+
         # Fallback to PyPDF2
         if PDF2_AVAILABLE:
             try:
@@ -182,15 +182,15 @@ class FileProcessor:
             except Exception as e:
                 logger.error(f"PyPDF2 failed: {e}")
                 return ''
-        
+
         return ''
-    
+
     @classmethod
     def _process_docx(cls, file_path: str) -> str:
         """Extract text from DOCX files"""
         if not DOCX_AVAILABLE:
             return ''
-        
+
         try:
             doc = Document(file_path)
             paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
@@ -198,16 +198,16 @@ class FileProcessor:
         except Exception as e:
             logger.error(f"Error processing DOCX: {e}")
             return ''
-    
+
     @classmethod
     def _process_image(cls, file_path: str) -> str:
         """Extract text from images using OCR"""
         if not PILLOW_AVAILABLE:
             return ''
-        
+
         try:
             image = Image.open(file_path)
-            
+
             # Try OCR if available
             if TESSERACT_AVAILABLE:
                 try:
@@ -216,7 +216,7 @@ class FileProcessor:
                 except Exception as e:
                     logger.warning(f"OCR failed: {e}")
                     return ''
-            
+
             # If no OCR, return metadata about image
             return f"Image file: {Path(file_path).name}, Size: {image.size}, Mode: {image.mode}"
         except Exception as e:

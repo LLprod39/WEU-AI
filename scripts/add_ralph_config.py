@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-with open('web_ui/settings.py', 'r', encoding='utf-8') as f:
+with open('web_ui/settings.py', encoding='utf-8') as f:
     content = f.read()
 
 # Найти место для вставки (после claude config, перед закрывающей скобкой)

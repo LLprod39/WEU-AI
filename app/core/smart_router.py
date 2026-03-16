@@ -1,11 +1,12 @@
 """
 Smart Task Router - автоматический выбор оптимального агента и runtime
 """
-import asyncio
-import re
 import json
-from typing import Dict, Any, Optional
+import re
+from typing import Any
+
 from loguru import logger
+
 from app.core.llm import LLMProvider
 from app.core.model_config import model_manager
 from app.core.provider_registry import get_provider_registry
@@ -27,12 +28,12 @@ class SmartTaskRouter:
     - Доступность провайдеров
     - DevOps специфику
     """
-    
+
     def __init__(self):
         self.llm = LLMProvider()
         self.registry = get_provider_registry()
-    
-    async def route(self, task_title: str, task_description: str = "", context: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    async def route(self, task_title: str, task_description: str = "", context: dict[str, Any] = None) -> dict[str, Any]:
         """
         Анализ задачи и выбор оптимального routing
         
@@ -51,34 +52,34 @@ class SmartTaskRouter:
                 - confidence: float (0-1)
         """
         context = context or {}
-        
+
         try:
             # Быстрый анализ сложности
             analysis = await self._quick_analyze(task_title, task_description, context)
-            
+
             # Получаем доступные провайдеры
             available_providers = self.registry.get_available_providers()
             available_ids = [p['id'] for p in available_providers]
-            
+
             logger.info(f"Task analysis: {analysis}")
             logger.info(f"Available providers: {available_ids}")
-            
+
             # Routing logic
             routing = self._decide_routing(analysis, available_ids, context)
-            
+
             # Fallback если рекомендованный провайдер недоступен
             if routing['runtime'] not in available_ids:
                 routing = self._fallback_routing(available_ids)
                 routing['reason'] += " (fallback - preferred provider unavailable)"
-            
+
             logger.success(f"Routing decision: {routing}")
             return routing
-        
+
         except Exception as e:
             logger.error(f"Smart routing failed: {e}, using default")
             return self._default_routing()
-    
-    async def _quick_analyze(self, title: str, description: str, context: Dict) -> Dict[str, Any]:
+
+    async def _quick_analyze(self, title: str, description: str, context: dict) -> dict[str, Any]:
         """
         Быстрый анализ задачи через Grok (дёшево и быстро)
         """
@@ -105,7 +106,7 @@ Return JSON ONLY (no markdown):
     "complexity": "simple|medium|complex",
     "risk_level": "low|medium|high"
 }}"""
-            
+
             response_text = ""
             # Используем Grok для быстрого анализа (если доступен)
             if model_manager.config.grok_enabled:
@@ -114,7 +115,7 @@ Return JSON ONLY (no markdown):
             else:
                 # Fallback: упрощённая логика без LLM
                 return self._simple_heuristic_analysis(title, description)
-            
+
             # Парсинг JSON
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
@@ -123,24 +124,24 @@ Return JSON ONLY (no markdown):
             else:
                 logger.warning("Failed to parse analysis JSON, using heuristics")
                 return self._simple_heuristic_analysis(title, description)
-        
+
         except Exception as e:
             logger.warning(f"Quick analyze failed: {e}, using heuristics")
             return self._simple_heuristic_analysis(title, description)
-    
-    def _simple_heuristic_analysis(self, title: str, description: str) -> Dict[str, Any]:
+
+    def _simple_heuristic_analysis(self, title: str, description: str) -> dict[str, Any]:
         """Простой эвристический анализ без LLM"""
         text = (title + " " + description).lower()
-        
+
         # Ключевые слова для определения сложности
         complex_keywords = ['migrate', 'refactor', 'architecture', 'design', 'rebuild']
         quick_keywords = ['restart', 'check', 'status', 'test', 'verify']
         infrastructure_keywords = ['docker', 'kubernetes', 'nginx', 'postgres', 'ssl']
-        
+
         is_complex = any(kw in text for kw in complex_keywords)
         is_quick = any(kw in text for kw in quick_keywords)
         is_infrastructure = any(kw in text for kw in infrastructure_keywords)
-        
+
         return {
             "requires_multi_file_coordination": is_complex or is_infrastructure,
             "config_files_size_kb": 50 if is_complex else 10,
@@ -152,10 +153,10 @@ Return JSON ONLY (no markdown):
             "complexity": "complex" if is_complex else ("simple" if is_quick else "medium"),
             "risk_level": "high" if is_complex else ("low" if is_quick else "medium")
         }
-    
-    def _decide_routing(self, analysis: Dict, available_providers: list, context: Dict) -> Dict[str, Any]:
+
+    def _decide_routing(self, analysis: dict, available_providers: list, context: dict) -> dict[str, Any]:
         """Принятие решения о routing на основе анализа"""
-        
+
         # Claude Code для глубоких операций
         if all([
             'claude' in available_providers,
@@ -175,7 +176,7 @@ Return JSON ONLY (no markdown):
                 "reason": "Complex DevOps task with multi-file coordination, needs 200K context",
                 "confidence": 0.9
             }
-        
+
         # Ralph CLI для multi-step задач
         if all([
             'ralph' in available_providers,
@@ -190,7 +191,7 @@ Return JSON ONLY (no markdown):
                 "reason": "Multi-step task, Ralph orchestrator optimal",
                 "confidence": 0.85
             }
-        
+
         # Cursor для быстрых задач
         if all([
             'cursor' in available_providers,
@@ -205,7 +206,7 @@ Return JSON ONLY (no markdown):
                 "reason": "Quick fix, Cursor CLI fastest",
                 "confidence": 0.95
             }
-        
+
         # Default: Ralph Internal с Cursor
         if 'cursor' in available_providers:
             return {
@@ -216,7 +217,7 @@ Return JSON ONLY (no markdown):
                 "reason": "Standard task, Ralph Internal for iterative improvement",
                 "confidence": 0.7
             }
-        
+
         # Fallback to Claude if available
         if 'claude' in available_providers:
             return {
@@ -227,7 +228,7 @@ Return JSON ONLY (no markdown):
                 "reason": "Default with Claude CLI",
                 "confidence": 0.7
             }
-        
+
         # Last resort: internal with Grok API
         return {
             "orchestrator_mode": "react",
@@ -237,8 +238,8 @@ Return JSON ONLY (no markdown):
             "reason": "No CLI available, using internal with Grok API",
             "confidence": 0.5
         }
-    
-    def _fallback_routing(self, available_providers: list) -> Dict[str, Any]:
+
+    def _fallback_routing(self, available_providers: list) -> dict[str, Any]:
         """Fallback routing когда предпочтительный провайдер недоступен"""
         # Приоритет: cursor > claude > ralph > grok
         if 'cursor' in available_providers:
@@ -270,8 +271,8 @@ Return JSON ONLY (no markdown):
             }
         else:
             return self._default_routing()
-    
-    def _default_routing(self) -> Dict[str, Any]:
+
+    def _default_routing(self) -> dict[str, Any]:
         """Дефолтный routing (last resort)"""
         return {
             "orchestrator_mode": "react",
@@ -281,8 +282,8 @@ Return JSON ONLY (no markdown):
             "reason": "Default routing (no CLI available)",
             "confidence": 0.4
         }
-    
-    async def route_task(self, task) -> Dict[str, Any]:
+
+    async def route_task(self, task) -> dict[str, Any]:
         """
         Routing для Task model instance
         
@@ -297,7 +298,7 @@ Return JSON ONLY (no markdown):
             'priority': task.priority,
             'estimated_hours': task.estimated_duration_hours,
         }
-        
+
         return await self.route(task.title, task.description, context)
 
 

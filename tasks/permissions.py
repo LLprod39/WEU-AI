@@ -1,9 +1,10 @@
 """
 Система прав доступа для проектов и задач
 """
-from django.db.models import Q
 from functools import wraps
-from django.http import JsonResponse, HttpResponseForbidden
+
+from django.db.models import Q
+from django.http import HttpResponseForbidden, JsonResponse
 
 
 class ProjectPermissions:

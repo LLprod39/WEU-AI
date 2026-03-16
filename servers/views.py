@@ -3,34 +3,34 @@ Server Management Views
 """
 import json
 import os
-from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
+
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.models import User
 from django.db.models import Q
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.contrib.auth.models import User
-from django.db import transaction
-from .models import (
-    Server,
-    ServerShare,
-    ServerGroup,
-    ServerConnection,
-    ServerCommandHistory,
-    ServerKnowledge,
-    ServerGroupMember,
-    ServerGroupTag,
-    ServerGroupSubscription,
-    GlobalServerRules,
-)
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
 from app.tools.ssh_tools import ssh_manager
-from passwords.encryption import PasswordEncryption
 from core_ui.activity import log_user_activity
-from core_ui.models import UserActivityLog
 from core_ui.decorators import require_feature
-from core_ui.middleware import get_template_name
+from core_ui.models import UserActivityLog
+from passwords.encryption import PasswordEncryption
+
+from .models import (
+    GlobalServerRules,
+    Server,
+    ServerCommandHistory,
+    ServerGroup,
+    ServerGroupMember,
+    ServerGroupSubscription,
+    ServerGroupTag,
+    ServerKnowledge,
+    ServerShare,
+)
 
 
 @login_required
@@ -38,12 +38,12 @@ from core_ui.middleware import get_template_name
 def server_list(request):
     """List all servers for the user"""
     servers = Server.objects.filter(user=request.user, is_active=True).select_related("group", "user")
-    
+
     # Filter by group
     group_id = request.GET.get('group')
     if group_id:
         servers = servers.filter(group_id=group_id)
-    
+
     # Search
     search = request.GET.get('search')
     if search:
@@ -76,7 +76,7 @@ def server_list(request):
         srv.shared_by_user = link.shared_by or srv.user
         srv.share_link_id = link.id
         shared_servers.append(srv)
-    
+
     groups = ServerGroup.objects.filter(
         Q(user=request.user) | Q(memberships__user=request.user)
     ).distinct()
@@ -477,7 +477,7 @@ def server_create(request):
                     return JsonResponse({'error': 'Permission denied for group'}, status=403)
             except ServerGroup.DoesNotExist:
                 return JsonResponse({'error': 'Invalid group'}, status=400)
-        
+
         # Create server
         server = Server.objects.create(
             user=request.user,
@@ -493,7 +493,7 @@ def server_create(request):
             corporate_context=data.get('corporate_context', ''),
             group=group,
         )
-        
+
         # Encrypt password if provided (master password comes from payload/session/env)
         password = str(data.get('password', '') or '').strip()
         master_password = _effective_master_password(request, data)
@@ -507,7 +507,7 @@ def server_create(request):
             server.save()
         elif password and not master_password:
             return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
-        
+
         log_user_activity(
             user=request.user,
             request=request,
@@ -531,7 +531,7 @@ def server_create(request):
             'server_id': server.id,
             'message': 'Server created successfully'
         })
-        
+
     except Exception as e:
         log_user_activity(
             user=request.user,
@@ -554,7 +554,7 @@ def server_update(request, server_id):
     try:
         server = get_object_or_404(Server, id=server_id, user=request.user)
         data = json.loads(request.body)
-        
+
         # Update basic fields
         if 'name' in data:
             server.name = data['name']
@@ -587,7 +587,7 @@ def server_update(request, server_id):
             server.corporate_context = data['corporate_context']
         if 'is_active' in data:
             server.is_active = data['is_active']
-        
+
         # Update group
         if 'group_id' in data:
             group_id = data.get('group_id')
@@ -610,7 +610,7 @@ def server_update(request, server_id):
                     return JsonResponse({'error': 'Invalid group'}, status=400)
             else:
                 server.group = None
-        
+
         # Update network_config
         if 'network_config' in data:
             network_config = data['network_config']
@@ -618,7 +618,7 @@ def server_update(request, server_id):
                 server.network_config = network_config
                 # Обновляем helper flags
                 server.update_network_flags()
-        
+
         # Update password if provided (master password comes from payload/session/env)
         if 'password' in data:
             password = str(data.get('password') or '').strip()
@@ -632,7 +632,7 @@ def server_update(request, server_id):
                 )
             elif password and not master_password:
                 return JsonResponse({'error': 'MASTER_PASSWORD is required to encrypt server password'}, status=400)
-        
+
         changed_fields = sorted(list(data.keys()))
         server.save()
         log_user_activity(
@@ -647,7 +647,7 @@ def server_update(request, server_id):
             entity_name=server.name,
             metadata={'changed_fields': changed_fields},
         )
-        
+
         return JsonResponse({
             'success': True,
             'message': 'Server updated successfully',
@@ -659,7 +659,7 @@ def server_update(request, server_id):
                 'network_context': server.get_network_context_summary()
             }
         })
-        
+
     except Exception as e:
         log_user_activity(
             user=request.user,
@@ -687,10 +687,10 @@ def server_test_connection(request, server_id):
             password = _resolve_server_secret(server, request, data)
         except ValueError as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
-        
+
         # Test connection using SSH tools
         from asgiref.sync import async_to_sync
-        
+
         async def test_conn():
             try:
                 conn_id = await ssh_manager.connect(
@@ -705,9 +705,9 @@ def server_test_connection(request, server_id):
                 return {'success': True, 'message': 'Connection successful'}
             except Exception as e:
                 return {'success': False, 'error': str(e)}
-        
+
         result = async_to_sync(test_conn)()
-        
+
         if result['success']:
             server.last_connected = timezone.now()
             server.save(update_fields=['last_connected'])
@@ -736,9 +736,9 @@ def server_test_connection(request, server_id):
                 entity_name=server.name,
                 metadata={'host': server.host, 'port': server.port},
             )
-        
+
         return JsonResponse(result)
-        
+
     except Exception as e:
         log_user_activity(
             user=request.user,
@@ -763,19 +763,20 @@ def server_execute_command(request, server_id):
         server = get_object_or_404(_accessible_servers_queryset(request.user), id=server_id)
         data = json.loads(request.body)
         command = data.get('command', '')
-        
+
         if not command:
             return JsonResponse({'error': 'Command required'}, status=400)
-        
+
         try:
             password = _resolve_server_secret(server, request, data)
         except ValueError as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
-        
+
         # Execute command
         from asgiref.sync import async_to_sync
+
         from app.tools.ssh_tools import SSHExecuteTool
-        
+
         async def exec_cmd():
             try:
                 # Connect
@@ -786,11 +787,11 @@ def server_execute_command(request, server_id):
                     key_path=server.key_path if server.auth_method in ['key', 'key_password'] else None,
                     port=server.port
                 )
-                
+
                 # Execute
                 execute_tool = SSHExecuteTool()
                 result = await execute_tool.execute(conn_id=conn_id, command=command)
-                
+
                 # Save to history
                 out_str = result.get('stdout', '') + (result.get('stderr') or '')
                 ServerCommandHistory.objects.create(
@@ -800,14 +801,14 @@ def server_execute_command(request, server_id):
                     output=out_str or str(result),
                     exit_code=result.get('exit_code', 0)
                 )
-                
+
                 # Disconnect
                 await ssh_manager.disconnect(conn_id)
-                
+
                 return {'success': True, 'output': result}
             except Exception as e:
                 return {'success': False, 'error': str(e)}
-        
+
         result = async_to_sync(exec_cmd)()
         if result.get('success'):
             output = result.get('output') or {}

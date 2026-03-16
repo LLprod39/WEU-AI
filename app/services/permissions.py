@@ -17,9 +17,10 @@ from django.db.models import Q, QuerySet
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
-    from tasks.models import Task
+
+    from agent_hub.models import AgentProfile, Workflow
     from servers.models import Server
-    from agent_hub.models import Workflow, AgentProfile
+    from tasks.models import Task
 
 
 class PermissionService:

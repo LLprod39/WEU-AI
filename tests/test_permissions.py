@@ -5,12 +5,11 @@ These tests verify the permission checking logic for tasks, servers,
 and workflows.
 """
 import pytest
-from django.contrib.auth.models import User
 
 from app.services.permissions import (
     PermissionService,
-    _user_can_see_task,
     _user_can_edit_task,
+    _user_can_see_task,
 )
 
 

@@ -1,13 +1,12 @@
 import json
 import os
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import httpx
 from django.conf import settings
 from django.db.models import Q
 from django.utils.text import slugify
 from loguru import logger
-
 
 DEFAULT_MODEL = "gpt-5.2"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"

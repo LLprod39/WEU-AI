@@ -11,7 +11,7 @@ Note: RalphCLIMode is deprecated - Ralph Wiggum is not a CLI tool.
 """
 from app.core.modes.base import BaseMode
 from app.core.modes.chat_mode import ChatMode
-from app.core.modes.react_mode import ReActMode
 from app.core.modes.ralph_internal_mode import RalphInternalMode
+from app.core.modes.react_mode import ReActMode
 
 __all__ = ['BaseMode', 'ChatMode', 'ReActMode', 'RalphInternalMode']

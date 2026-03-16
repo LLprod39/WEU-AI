@@ -45,6 +45,7 @@ def analyze_task_async(self, task_id: int, user_id: int) -> dict:
         dict with analysis results
     """
     from django.contrib.auth import get_user_model
+
     from tasks.models import Task
     from tasks.smart_analyzer import SmartTaskAnalyzer
 

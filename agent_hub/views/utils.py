@@ -5,12 +5,11 @@ This module contains helper functions used across multiple view modules.
 These are internal utilities, not exposed as API endpoints.
 """
 import json
-import os
 import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -115,7 +114,7 @@ def prepare_workspace_for_cli(
     workflow: AgentWorkflow,
     base_workspace: str,
     is_server_task: bool,
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     """
     Подготавливает workspace для CLI-агента с учётом ограничения доступа к файлам.
 
@@ -137,7 +136,7 @@ def prepare_workspace_for_cli(
         try:
             safe_name = (workflow.name or "server_task").replace(" ", "_")[:30]
             temp_dir = tempfile.mkdtemp(prefix=f"weu_server_{safe_name}_")
-            
+
             # Создаем README с инструкциями для агента
             readme_path = Path(temp_dir) / "README.md"
             readme_content = """# DevOps Agent Workspace
@@ -165,7 +164,7 @@ def prepare_workspace_for_cli(
 Если задача требует работы с кодом - откажитесь и объясните ограничения.
 """
             readme_path.write_text(readme_content, encoding="utf-8")
-            
+
             # Создаем .cursorignore для блокировки доступа к файлам
             # Запрещаем все файлы - агент может работать только через SSH/MCP
             cursorignore_path = Path(temp_dir) / ".cursorignore"
@@ -182,7 +181,7 @@ def prepare_workspace_for_cli(
 ../../
 """
             cursorignore_path.write_text(cursorignore_content, encoding="utf-8")
-            
+
             # Создаем .cursorrules с четкими правилами
             cursorrules_path = Path(temp_dir) / ".cursorrules"
             cursorrules_content = """# DevOps Agent Rules
@@ -209,7 +208,7 @@ def prepare_workspace_for_cli(
 Если задача требует чтения кода - откажитесь.
 """
             cursorrules_path.write_text(cursorrules_content, encoding="utf-8")
-            
+
             logger.info(f"Server task isolation: empty dir for workflow {workflow.id} -> {temp_dir}")
             return (temp_dir, temp_dir)
         except Exception as e:

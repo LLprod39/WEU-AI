@@ -2,12 +2,13 @@
 API views для Jira интеграции
 """
 import json
+
+from asgiref.sync import async_to_sync
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from loguru import logger
-from asgiref.sync import async_to_sync
 
 from app.integrations.jira_connector import get_jira_connector
 
@@ -29,34 +30,34 @@ def api_jira_sync(request):
         data = json.loads(request.body) if request.body else {}
         jql_filter = data.get('jql_filter', '')
         auto_analyze = data.get('auto_analyze', True)
-        
+
         if not jql_filter:
             return JsonResponse({
                 'success': False,
                 'error': 'JQL filter required'
             }, status=400)
-        
+
         connector = get_jira_connector()
-        
+
         if not connector.available:
             return JsonResponse({
                 'success': False,
                 'error': 'Jira not configured. Set JIRA_URL, JIRA_API_TOKEN, JIRA_EMAIL'
             }, status=503)
-        
+
         # Синхронизация (async)
         result = async_to_sync(connector.sync_tasks)(
             jql_filter=jql_filter,
             user_id=request.user.id,
             auto_analyze=auto_analyze
         )
-        
+
         return JsonResponse({
             'success': True,
             'imported_count': len(result),
             'tasks': result
         })
-    
+
     except Exception as e:
         logger.error(f"Jira sync error: {e}")
         return JsonResponse({
@@ -80,27 +81,27 @@ def api_jira_update_status(request):
     try:
         data = json.loads(request.body) if request.body else {}
         task_id = data.get('task_id')
-        
+
         if not task_id:
             return JsonResponse({
                 'success': False,
                 'error': 'task_id required'
             }, status=400)
-        
+
         from tasks.models import Task
         task = Task.objects.get(id=task_id, created_by=request.user)
-        
+
         connector = get_jira_connector()
-        
+
         if not connector.available:
             return JsonResponse({
                 'success': False,
                 'error': 'Jira not configured'
             }, status=503)
-        
+
         # Синхронизация статуса
         success = async_to_sync(connector.sync_status_to_jira)(task)
-        
+
         if success:
             return JsonResponse({
                 'success': True,
@@ -111,7 +112,7 @@ def api_jira_update_status(request):
                 'success': False,
                 'error': 'Failed to sync status'
             }, status=500)
-    
+
     except Task.DoesNotExist:
         return JsonResponse({
             'success': False,
@@ -137,9 +138,9 @@ def api_jira_test(request):
     try:
         connector = get_jira_connector()
         result = connector.test_connection()
-        
+
         return JsonResponse(result)
-    
+
     except Exception as e:
         logger.error(f"Jira test error: {e}")
         return JsonResponse({
@@ -159,15 +160,15 @@ def api_jira_projects(request):
     """
     try:
         connector = get_jira_connector()
-        
+
         if not connector.available:
             return JsonResponse({
                 'success': False,
                 'error': 'Jira not configured'
             }, status=503)
-        
+
         projects = connector.jira.projects()
-        
+
         projects_data = []
         for project in projects:
             projects_data.append({
@@ -175,12 +176,12 @@ def api_jira_projects(request):
                 'name': project.name,
                 'id': project.id,
             })
-        
+
         return JsonResponse({
             'success': True,
             'projects': projects_data
         })
-    
+
     except Exception as e:
         logger.error(f"Jira projects error: {e}")
         return JsonResponse({

@@ -1,33 +1,34 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse
-from django.urls import reverse
-from django.views.decorators.http import require_http_methods, require_GET
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from django.utils import timezone
-from django.db.models import Q, Max
-from asgiref.sync import async_to_sync
 import json
+
+from asgiref.sync import async_to_sync
+from django.contrib.auth.decorators import login_required
+from django.db.models import Max, Q
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_http_methods
 from loguru import logger
 
-from .models import Task, SubTask, TaskNotification, TaskExecution, TaskShare
-from .notification_triggers import (
-    notify_task_assigned,
-    notify_task_watching,
-    notify_task_status_changed,
-    notify_mentioned_in_comment,
-)
-from .ai import improve_task_description, breakdown_task
-from .ai_assistant import analyze_task_sync, improve_description_sync, breakdown_task_sync
-from .smart_analyzer import SmartTaskAnalyzer
-from core_ui.decorators import require_feature
-from core_ui.middleware import get_template_name
 from app.services.permissions import (
     PermissionService,
     _tasks_queryset_for_user,  # backward compatibility alias
-    _user_can_see_task,        # backward compatibility alias
-    _user_can_edit_task,       # backward compatibility alias
+    _user_can_edit_task,  # backward compatibility alias
+    _user_can_see_task,  # backward compatibility alias
 )
+from core_ui.decorators import require_feature
+
+from .ai import improve_task_description
+from .ai_assistant import analyze_task_sync, breakdown_task_sync
+from .models import SubTask, Task, TaskNotification
+from .notification_triggers import (
+    notify_mentioned_in_comment,
+    notify_task_assigned,
+    notify_task_status_changed,
+    notify_task_watching,
+)
+from .smart_analyzer import SmartTaskAnalyzer
 
 
 def _delegate_redirect_url(user, task_id):
@@ -59,7 +60,8 @@ def delegate_form(request, task_id):
 @require_feature('tasks', redirect_on_forbidden=True)
 def task_list(request):
     from servers.models import Server
-    from .models import Project, ProjectMember, Sprint, ProjectMaterial
+
+    from .models import Project, ProjectMaterial, ProjectMember, Sprint
 
     # Get selected project from query params
     project_id = request.GET.get('project')
@@ -280,15 +282,15 @@ def _background_analyze_task(task_id: int, user_id: int):
     """Фоновый анализ задачи ИИ с созданием уведомления о результате."""
     from django.contrib.auth import get_user_model
     from loguru import logger
-    
+
     try:
         User = get_user_model()
         task = Task.objects.get(pk=task_id)
         user = User.objects.get(pk=user_id)
-        
+
         analyzer = SmartTaskAnalyzer()
         result = analyzer.analyze_task(task, user)
-        
+
         # Уведомления создаются внутри analyze_task:
         # - AUTO_EXECUTION_SUGGESTION если может выполнить
         # - INFO/WARNING с детальным объяснением если не может
@@ -316,11 +318,13 @@ def _background_analyze_task(task_id: int, user_id: int):
 @login_required
 @require_feature('tasks', redirect_on_forbidden=True)
 def task_create(request):
-    from servers.models import Server
+    import json
     from datetime import datetime
+
+    from servers.models import Server
+
     from .models import Project, Sprint
     from .permissions import ProjectPermissions
-    import json
 
     if request.method == 'POST':
         # Support both JSON and form-data
@@ -857,7 +861,7 @@ def notifications_list(request):
         user=request.user,
         is_read=False
     ).order_by('-created_at')[:50]
-    
+
     return JsonResponse({
         'notifications': [
             {
@@ -892,7 +896,7 @@ def notification_mark_read(request, notification_id):
         notification.is_read = True
         notification.read_at = timezone.now()
         notification.save()
-        
+
         return JsonResponse({'success': True})
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -909,10 +913,10 @@ def notification_action(request, notification_id):
             id=notification_id,
             user=request.user
         )
-        
+
         data = json.loads(request.body)
         action = data.get('action')
-        
+
         if action == 'dismiss':
             # Отметить уведомление как прочитанное
             notification.is_read = True
@@ -966,28 +970,28 @@ def notification_action(request, notification_id):
                 'success': False,
                 'error': 'Не удалось одобрить выполнение (сервер не найден)'
             }, status=400)
-        
+
         if action == 'change_server':
             # Изменить сервер и запустить выполнение
             task = notification.task
             new_server_id = data.get('server_id')
-            
+
             if not new_server_id:
                 return JsonResponse({
                     'success': False,
                     'error': 'Не указан сервер'
                 }, status=400)
-            
+
             redirect_to, url = _delegate_redirect_url(request.user, task.id)
             analyzer = SmartTaskAnalyzer()
             success = analyzer.change_server_and_approve(task, request.user, new_server_id)
-            
+
             if success:
                 notification.is_actioned = True
                 notification.actioned_at = timezone.now()
                 notification.is_read = True
                 notification.save()
-                
+
                 # Создаём workflow и запускаем его
                 try:
                     from app.services.workflow_service import create_workflow_from_task
@@ -1001,43 +1005,43 @@ def notification_action(request, notification_id):
                 except Exception as e:
                     logger.error(f"Error creating workflow after server change: {e}")
                     message = f'Сервер изменён, но ошибка создания workflow: {e}'
-                
+
                 return JsonResponse({
                     'success': True,
                     'message': message,
                     'redirect_to': redirect_to,
                     'url': url,
                 })
-            
+
             return JsonResponse({
                 'success': False,
                 'error': 'Не удалось изменить сервер'
             }, status=400)
-        
+
         if action == 'answer_questions':
             # Ответить на вопросы и повторно проанализировать задачу
             task = notification.task
             answers = data.get('answers', [])
             selected_server_id = data.get('server_id')
-            
+
             if not answers:
                 return JsonResponse({
                     'success': False,
                     'error': 'Не указаны ответы'
                 }, status=400)
-            
+
             # Отмечаем текущее уведомление как обработанное
             notification.is_actioned = True
             notification.actioned_at = timezone.now()
             notification.is_read = True
             notification.save()
-            
+
             # Повторный анализ с ответами
             analyzer = SmartTaskAnalyzer()
             result = analyzer.reanalyze_with_answers(
                 task, request.user, answers, selected_server_id
             )
-            
+
             # Если workflow был автоматически создан
             if result.get('workflow_created'):
                 return JsonResponse({
@@ -1047,7 +1051,7 @@ def notification_action(request, notification_id):
                     'workflow_id': result.get('workflow_id'),
                     'run_id': result.get('run_id'),
                 })
-            
+
             # Если workflow не создан - показываем стандартное сообщение
             return JsonResponse({
                 'success': True,
@@ -1055,18 +1059,18 @@ def notification_action(request, notification_id):
                 'can_auto_execute': result.get('can_auto_execute', False),
                 'servers_matched': len(result.get('servers_matched', [])) > 0,
             })
-        
+
         if action == 'select_server':
             # Выбрать сервер для задачи без сервера
             task = notification.task
             selected_server_id = data.get('server_id')
-            
+
             if not selected_server_id:
                 return JsonResponse({
                     'success': False,
                     'error': 'Не указан сервер'
                 }, status=400)
-            
+
             from servers.models import Server
             try:
                 server = Server.objects.get(id=selected_server_id, user=request.user, is_active=True)
@@ -1075,12 +1079,12 @@ def notification_action(request, notification_id):
                 task.assigned_to_ai = True
                 task.ai_execution_status = 'PENDING'
                 task.save()
-                
+
                 notification.is_actioned = True
                 notification.actioned_at = timezone.now()
                 notification.is_read = True
                 notification.save()
-                
+
                 # Создаём workflow и запускаем его
                 try:
                     from app.services.workflow_service import create_workflow_from_task
@@ -1109,13 +1113,13 @@ def notification_action(request, notification_id):
                         'message': f'Сервер {server.name} установлен, но ошибка создания workflow: {e}',
                         'can_auto_execute': False,
                     })
-                
+
             except Server.DoesNotExist:
                 return JsonResponse({
                     'success': False,
                     'error': 'Сервер не найден'
                 }, status=400)
-        
+
         return JsonResponse({'error': 'Unknown action'}, status=400)
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -1137,18 +1141,19 @@ def notifications_mark_all_read(request):
 @require_GET
 def execution_settings_get(request):
     """Получить настройки выполнения задач пользователя"""
-    from .models import TaskExecutionSettings
     from servers.models import Server
-    
+
+    from .models import TaskExecutionSettings
+
     settings = TaskExecutionSettings.get_for_user(request.user)
-    
+
     # Список доступных серверов для выбора сервера по умолчанию
     servers = Server.objects.filter(user=request.user, is_active=True)
     available_servers = [
         {'id': s.id, 'name': s.name, 'host': s.host}
         for s in servers
     ]
-    
+
     return JsonResponse({
         'success': True,
         'settings': {
@@ -1168,23 +1173,24 @@ def execution_settings_get(request):
 @require_http_methods(['POST'])
 def execution_settings_update(request):
     """Обновить настройки выполнения задач пользователя"""
-    from .models import TaskExecutionSettings
     from servers.models import Server
-    
+
+    from .models import TaskExecutionSettings
+
     settings = TaskExecutionSettings.get_for_user(request.user)
-    
+
     data = json.loads(request.body)
-    
+
     # Обновляем настройки
     if 'require_server_confirmation' in data:
         settings.require_server_confirmation = bool(data['require_server_confirmation'])
-    
+
     if 'auto_execute_simple_tasks' in data:
         settings.auto_execute_simple_tasks = bool(data['auto_execute_simple_tasks'])
-    
+
     if 'ask_questions_before_execution' in data:
         settings.ask_questions_before_execution = bool(data['ask_questions_before_execution'])
-    
+
     if 'default_server_id' in data:
         server_id = data['default_server_id']
         if server_id:
@@ -1198,9 +1204,9 @@ def execution_settings_update(request):
                 }, status=400)
         else:
             settings.default_server = None
-    
+
     settings.save()
-    
+
     return JsonResponse({
         'success': True,
         'message': 'Настройки сохранены',

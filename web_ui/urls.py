@@ -14,10 +14,11 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
-from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import include, path
+
 from app.integrations import jira_views
 
 admin.site.site_header = "WEU AI Admin"
@@ -32,7 +33,7 @@ urlpatterns = [
     path('servers/', include('servers.urls')),
     path('agents/', include('agent_hub.urls')),
     path('skills/', include('skills.urls')),
-    
+
     # Jira Integration API
     path('api/jira/sync/', jira_views.api_jira_sync, name='api_jira_sync'),
     path('api/jira/update-status/', jira_views.api_jira_update_status, name='api_jira_update_status'),

@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import AgentProfile, AgentPreset, AgentRun, AgentWorkflow, AgentWorkflowRun
+
+from .models import AgentPreset, AgentProfile, AgentRun, AgentWorkflow, AgentWorkflowRun
 
 
 @admin.register(AgentProfile)

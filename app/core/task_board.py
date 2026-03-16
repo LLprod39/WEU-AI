@@ -3,13 +3,12 @@ Helpers for deterministic task board payloads in chat responses.
 """
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 STATUS_ORDER = ("TODO", "IN_PROGRESS", "BLOCKED", "DONE", "CANCELLED")
 
 
-def _parse_tool_payload(tool_result: Any) -> Optional[Dict[str, Any]]:
+def _parse_tool_payload(tool_result: Any) -> dict[str, Any] | None:
     if isinstance(tool_result, dict):
         return tool_result
     if isinstance(tool_result, str):
@@ -21,7 +20,7 @@ def _parse_tool_payload(tool_result: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _normalize_task(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _normalize_task(item: dict[str, Any]) -> dict[str, Any] | None:
     try:
         task_id = int(item.get("id"))
     except (TypeError, ValueError):
@@ -57,7 +56,7 @@ def build_task_board_payload(
     tool_name: str,
     tool_result: Any,
     query: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     payload = _parse_tool_payload(tool_result)
     if not payload:
         return None
@@ -77,7 +76,7 @@ def build_task_board_payload(
     else:
         return None
 
-    tasks: List[Dict[str, Any]] = []
+    tasks: list[dict[str, Any]] = []
     for raw_task in raw_tasks:
         if not isinstance(raw_task, dict):
             continue
@@ -85,7 +84,7 @@ def build_task_board_payload(
         if normalized:
             tasks.append(normalized)
 
-    status_stats: Dict[str, int] = {status: 0 for status in STATUS_ORDER}
+    status_stats: dict[str, int] = dict.fromkeys(STATUS_ORDER, 0)
     for task in tasks:
         status = task["status"]
         status_stats[status] = status_stats.get(status, 0) + 1

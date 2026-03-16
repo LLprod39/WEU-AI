@@ -4,25 +4,27 @@
 Подключение к серверу выполняется только в бэкенде; агенту передаётся только connection_id.
 """
 import os
-from typing import Dict, Any, Optional
+from typing import Any
+
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
-from django.conf import settings
 from loguru import logger
 
-from .models import Task, TaskExecution, SubTask
-from servers.models import Server
-from passwords.encryption import PasswordEncryption
-from app.tools.ssh_tools import ssh_manager
 from app.agents.manager import get_agent_manager
+from app.tools.ssh_tools import ssh_manager
+from passwords.encryption import PasswordEncryption
+from servers.models import Server
+
+from .models import Task, TaskExecution
 
 
 class TaskExecutor:
     """Исполнитель задач на серверах"""
-    
+
     def __init__(self):
         self.agent_manager = get_agent_manager()
-    
+
     async def execute_task(self, task_id: int, user_id: int):
         """
         Выполнение задачи на сервере
@@ -34,57 +36,57 @@ class TaskExecutor:
         try:
             task = Task.objects.get(id=task_id)
             user = User.objects.get(id=user_id)
-            
+
             if not task.target_server:
                 logger.error(f"Task {task_id} has no target server")
                 return
-            
+
             # Подробное логирование для отладки
-            logger.info(f"=== TASK EXECUTOR START ===")
+            logger.info("=== TASK EXECUTOR START ===")
             logger.info(f"Task ID: {task_id}")
             logger.info(f"Task title: {task.title}")
             logger.info(f"Target server ID: {task.target_server.id}")
             logger.info(f"Target server name: {task.target_server.name}")
             logger.info(f"Target server host: {task.target_server.host}")
             logger.info(f"User ID: {user_id}")
-            
+
             # Создаем или получаем запись о выполнении
             execution = TaskExecution.objects.filter(
                 task=task,
                 status__in=['PENDING', 'ANALYZING', 'PLANNING', 'EXECUTING']
             ).first()
-            
+
             if not execution:
                 execution = TaskExecution.objects.create(
                     task=task,
                     agent_type=task.ai_agent_type or 'react',
                     status='PENDING'
                 )
-            
+
             # Обновляем статус задачи
             task.status = 'IN_PROGRESS'
             task.ai_execution_status = 'EXECUTING'
             task.started_at = timezone.now()
             task.save()
-            
+
             execution.status = 'EXECUTING'
             execution.started_at = timezone.now()
             execution.save()
-            
+
             # Подключаемся к серверу
             server = task.target_server
             logger.info(f"Connecting to server: {server.name} ({server.host}:{server.port})")
             connection_id = await self._connect_to_server(server, user)
-            
+
             if not connection_id:
                 raise Exception(f"Не удалось подключиться к серверу {server.name} ({server.host})")
-            
+
             logger.info(f"Connected! connection_id: {connection_id}")
-            
+
             try:
                 # Формируем задачу для агента
                 agent_task = self._prepare_agent_task(task, server)
-                
+
                 # Выполняем через агента
                 result = await self._execute_with_agent(
                     agent_task,
@@ -93,49 +95,49 @@ class TaskExecutor:
                     execution,
                     user,
                 )
-                
+
                 # Сохраняем результат
                 execution.status = 'COMPLETED'
                 execution.completed_at = timezone.now()
                 execution.result_summary = result.get('summary', 'Задача выполнена успешно')
                 execution.execution_log = result.get('log', '')
-                
+
                 if execution.started_at:
                     duration = (execution.completed_at - execution.started_at).total_seconds() / 60
                     execution.actual_duration_minutes = int(duration)
-                
+
                 execution.save()
-                
+
                 # Обновляем задачу
                 task.status = 'DONE'
                 task.ai_execution_status = 'COMPLETED'
                 task.completed_at = timezone.now()
-                
+
                 if task.started_at:
                     duration = (task.completed_at - task.started_at).total_seconds() / 3600
                     task.actual_duration_hours = duration
-                
+
                 task.save()
-                
+
                 logger.info(f"Task {task_id} completed successfully")
-                
+
             finally:
                 # Отключаемся от сервера
                 try:
                     await ssh_manager.disconnect(connection_id)
                 except Exception as e:
                     logger.warning(f"Error disconnecting from server: {e}")
-        
+
         except Exception as e:
             logger.error(f"Error executing task {task_id}: {e}")
-            
+
             # Обновляем статус на ошибку
             try:
                 task = Task.objects.get(id=task_id)
                 task.ai_execution_status = 'FAILED'
                 task.status = 'BLOCKED'
                 task.save()
-                
+
                 execution = TaskExecution.objects.filter(task=task).order_by('-created_at').first()
                 if execution:
                     execution.status = 'FAILED'
@@ -144,8 +146,8 @@ class TaskExecutor:
                     execution.save()
             except Exception as exc:
                 logger.error(f"Error updating task status: {exc}")
-    
-    def _get_server_password(self, server: Server) -> Optional[str]:
+
+    def _get_server_password(self, server: Server) -> str | None:
         """Расшифровка пароля сервера в бэкенде. Пароль агенту не передаётся."""
         if server.auth_method not in ('password', 'key_password') or not server.encrypted_password:
             return None
@@ -163,7 +165,7 @@ class TaskExecutor:
             logger.warning(f"Server password decryption failed: {e}")
             return None
 
-    async def _connect_to_server(self, server: Server, user: User) -> Optional[str]:
+    async def _connect_to_server(self, server: Server, user: User) -> str | None:
         """Подключение к серверу в бэкенде. Агенту отдаётся только connection_id."""
         try:
             password = None
@@ -183,7 +185,7 @@ class TaskExecutor:
         except Exception as e:
             logger.error(f"Error connecting to server {server.id}: {e}")
             return None
-    
+
     def _prepare_agent_task(self, task: Task, server: Server) -> str:
         """Подготовка задачи для агента"""
         task_description = f"""
@@ -197,7 +199,7 @@ class TaskExecutor:
 
 Выполни эту задачу на указанном сервере через SSH.
 """
-        
+
         # Добавляем информацию о подзадачах
         subtasks = task.subtasks.all().order_by('order')
         if subtasks:
@@ -205,9 +207,9 @@ class TaskExecutor:
             for idx, subtask in enumerate(subtasks, 1):
                 status = "✓" if subtask.is_completed else "○"
                 task_description += f"{idx}. {status} {subtask.title}\n"
-        
+
         return task_description
-    
+
     async def _execute_with_agent(
         self,
         task_description: str,
@@ -215,7 +217,7 @@ class TaskExecutor:
         task: Task,
         execution: TaskExecution,
         user: User,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Выполнение задачи через агента"""
         try:
             # Получаем агента
@@ -259,7 +261,7 @@ class TaskExecutor:
                         extra_context["allowed_tools"] = custom_agent.allowed_tools
                 if skill_parts:
                     extra_context["skill_context"] = "\n\n".join(skill_parts)
-            
+
             # Контекст для агента
             context = {
                 'connection_id': connection_id,
@@ -273,27 +275,27 @@ class TaskExecutor:
                 'allowed_actions': 'выполнение команд на сервере',
             }
             context.update(extra_context)
-            
+
             logger.info(f"Agent context: connection_id={connection_id}, server={context['server']}")
-            logger.info(f"=== EXECUTING AGENT ===")
-            
+            logger.info("=== EXECUTING AGENT ===")
+
             # Выполняем через агента
             result = await agent_manager.execute_agent(
                 agent_name,
                 task_description,
                 context
             )
-            
+
             # Обновляем лог выполнения
             execution.execution_log = result.get('output', '') or result.get('result', '')
             execution.save()
-            
+
             return {
                 'summary': result.get('summary', 'Задача выполнена'),
                 'log': execution.execution_log,
                 'success': result.get('success', True)
             }
-        
+
         except Exception as e:
             logger.error(f"Error executing with agent: {e}")
             raise

@@ -2,12 +2,12 @@
 Model Configuration Manager
 Manages model selection for different purposes (chat, RAG, agent)
 """
-import os
-from typing import Dict, List, Optional
-from pydantic import BaseModel
-from loguru import logger
-import httpx
 import json
+import os
+
+import httpx
+from loguru import logger
+from pydantic import BaseModel
 
 
 class ModelConfig(BaseModel):
@@ -23,27 +23,27 @@ class ModelConfig(BaseModel):
     chat_model_grok: str = "grok-3"
     chat_model_openai: str = "gpt-5-mini"
     chat_model_claude: str = "claude-sonnet-4-6"
-    
+
     # RAG/Embedding models
     rag_model: str = "models/text-embedding-004"  # Gemini embedding
-    
+
     # Agent/ReAct models
     agent_model_gemini: str = "models/gemini-3-flash-preview"
     agent_model_grok: str = "grok-3"
     agent_model_openai: str = "gpt-5-mini"
-    
+
     # Default provider (CLI agent): cursor = Cursor CLI, claude = Claude Code CLI
     # Note: "ralph" is NOT a valid provider - it's an orchestrator mode
     default_provider: str = "cursor"
-    
+
     # Провайдер для ВНУТРЕННИХ вызовов LLM (генерация workflow, анализ задач).
     # Когда default_provider - CLI agent, внутренние вызовы используют этот провайдер.
     # Варианты: "gemini", "grok", "openai", "claude"
     internal_llm_provider: str = "grok"
-    
+
     # Default orchestrator mode: react | ralph_internal | ralph_cli
     default_orchestrator_mode: str = "ralph_internal"
-    
+
     # Ralph settings
     ralph_max_iterations: int = 20
     ralph_completion_promise: str = "COMPLETE"
@@ -73,11 +73,11 @@ class ModelConfig(BaseModel):
     orchestrator_llm_model: str = ""
 
     # Domain SSO settings (None => use Django settings/.env fallback)
-    domain_auth_enabled: Optional[bool] = None
-    domain_auth_header: Optional[str] = None
-    domain_auth_auto_create: Optional[bool] = None
-    domain_auth_lowercase_usernames: Optional[bool] = None
-    domain_auth_default_profile: Optional[str] = None
+    domain_auth_enabled: bool | None = None
+    domain_auth_header: str | None = None
+    domain_auth_auto_create: bool | None = None
+    domain_auth_lowercase_usernames: bool | None = None
+    domain_auth_default_profile: str | None = None
 
 
 
@@ -86,21 +86,21 @@ class ModelManager:
 
     def __init__(self):
         self.config = ModelConfig()
-        self.available_gemini_models: List[str] = []
-        self.available_grok_models: List[str] = []
-        self.available_openai_models: List[str] = []
-        self.available_claude_models: List[str] = []
-        self.gemini_api_key: Optional[str] = None
-        self.grok_api_key: Optional[str] = None
-        self.openai_api_key: Optional[str] = None
-        self.anthropic_api_key: Optional[str] = None
-    
+        self.available_gemini_models: list[str] = []
+        self.available_grok_models: list[str] = []
+        self.available_openai_models: list[str] = []
+        self.available_claude_models: list[str] = []
+        self.gemini_api_key: str | None = None
+        self.grok_api_key: str | None = None
+        self.openai_api_key: str | None = None
+        self.anthropic_api_key: str | None = None
+
     def set_api_keys(
         self,
-        gemini_key: Optional[str] = None,
-        grok_key: Optional[str] = None,
-        anthropic_key: Optional[str] = None,
-        openai_key: Optional[str] = None,
+        gemini_key: str | None = None,
+        grok_key: str | None = None,
+        anthropic_key: str | None = None,
+        openai_key: str | None = None,
     ):
         """Set API keys"""
         if gemini_key:
@@ -113,9 +113,9 @@ class ModelManager:
             self.openai_api_key = openai_key
 
     @staticmethod
-    def _extract_model_ids(payload: dict) -> List[str]:
+    def _extract_model_ids(payload: dict) -> list[str]:
         """Extract model IDs from provider payloads with {data:[{id:...}]} shape."""
-        out: List[str] = []
+        out: list[str] = []
         for item in payload.get("data", []) or []:
             model_id = item.get("id")
             if isinstance(model_id, str) and model_id:
@@ -150,8 +150,8 @@ class ModelManager:
             or mid.startswith("o4")
             or mid.startswith("o5")
         )
-    
-    async def fetch_available_gemini_models(self) -> List[str]:
+
+    async def fetch_available_gemini_models(self) -> list[str]:
         """
         Fetch available Gemini models via REST API.
         """
@@ -161,9 +161,9 @@ class ModelManager:
         if not key:
             logger.warning("Gemini API key not set")
             return self._get_default_gemini_models()
-        
+
         try:
-            models: List[str] = []
+            models: list[str] = []
             page_token = ""
 
             async with httpx.AsyncClient(timeout=20.0) as client:
@@ -198,12 +198,12 @@ class ModelManager:
             self.available_gemini_models = models
             logger.success(f"Fetched {len(models)} Gemini models")
             return models
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch Gemini models: {e}")
             return self._get_default_gemini_models()
-    
-    async def fetch_available_grok_models(self) -> List[str]:
+
+    async def fetch_available_grok_models(self) -> list[str]:
         """
         Fetch available Grok models from xAI API
         """
@@ -213,7 +213,7 @@ class ModelManager:
         if not key:
             logger.warning("Grok API key not set")
             return self._get_default_grok_models()
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 for endpoint in ("https://api.x.ai/v1/language-models", "https://api.x.ai/v1/models"):
@@ -222,7 +222,7 @@ class ModelManager:
                         headers={"Authorization": f"Bearer {key}"},
                         timeout=10.0
                     )
-                    
+
                     if response.status_code != 200:
                         logger.warning(f"Grok API returned status {response.status_code} for {endpoint}")
                         continue
@@ -231,19 +231,19 @@ class ModelManager:
                     models = sorted(set(self._extract_model_ids(data)))
                     if not models:
                         continue
-                    
+
                     self.available_grok_models = models
                     logger.success(f"Fetched {len(models)} Grok models from {endpoint}")
                     return models
 
                 logger.error("Grok API returned no model data from supported endpoints")
                 return self._get_default_grok_models()
-                    
+
         except Exception as e:
             logger.error(f"Failed to fetch Grok models: {e}")
             return self._get_default_grok_models()
 
-    async def fetch_available_claude_models(self) -> List[str]:
+    async def fetch_available_claude_models(self) -> list[str]:
         """Fetch available Claude models from Anthropic API."""
         key = self.anthropic_api_key or (os.getenv("ANTHROPIC_API_KEY") or "").strip()
         if key:
@@ -285,7 +285,7 @@ class ModelManager:
             logger.error(f"Failed to fetch Claude models: {e}")
             return self._get_default_claude_models()
 
-    async def fetch_available_openai_models(self) -> List[str]:
+    async def fetch_available_openai_models(self) -> list[str]:
         """
         Fetch available OpenAI models from OpenAI Models API.
         """
@@ -326,36 +326,36 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Failed to fetch OpenAI models: {e}")
             return self._get_default_openai_models()
-    
-    def _get_default_gemini_models(self) -> List[str]:
+
+    def _get_default_gemini_models(self) -> list[str]:
         """Default Gemini models list (fallback)"""
         return [
             "models/gemini-3-flash-preview",
             "models/gemini-2.5-flash-preview",
         ]
-    
-    def _get_default_grok_models(self) -> List[str]:
+
+    def _get_default_grok_models(self) -> list[str]:
         """Default Grok models list (fallback)"""
         return [
             "grok-3",
             "grok-4-1-fast-non-reasoning",
         ]
 
-    def _get_default_openai_models(self) -> List[str]:
+    def _get_default_openai_models(self) -> list[str]:
         """Default OpenAI models list (fallback)"""
         return [
             "gpt-5",
             "gpt-5-mini",
             "gpt-5-nano",
         ]
-    
+
     async def refresh_models(self):
         """Refresh available models from both providers"""
         logger.info("Refreshing available models...")
-        
+
         if self.gemini_api_key or (os.getenv("GEMINI_API_KEY") or "").strip():
             await self.fetch_available_gemini_models()
-        
+
         if self.grok_api_key or (os.getenv("GROK_API_KEY") or "").strip():
             await self.fetch_available_grok_models()
 
@@ -364,7 +364,7 @@ class ModelManager:
 
         if self.anthropic_api_key or (os.getenv("ANTHROPIC_API_KEY") or "").strip():
             await self.fetch_available_claude_models()
-    
+
     def resolve_purpose(self, purpose: str) -> tuple[str, str]:
         """Return (provider, model_str) for a given purpose: 'chat', 'agent', 'orchestrator'.
 
@@ -395,7 +395,7 @@ class ModelManager:
 
         return provider, model_str
 
-    def get_chat_model(self, provider: Optional[str] = None) -> str:
+    def get_chat_model(self, provider: str | None = None) -> str:
         """Get configured chat model for provider."""
         provider = provider or self.config.default_provider
         if provider == "auto":
@@ -408,7 +408,7 @@ class ModelManager:
             return self.config.chat_model_claude
         return self.config.chat_model_grok
 
-    def get_agent_model(self, provider: Optional[str] = None) -> str:
+    def get_agent_model(self, provider: str | None = None) -> str:
         """Get configured agent model for provider."""
         provider = provider or self.config.default_provider
         if provider == "auto":
@@ -420,18 +420,18 @@ class ModelManager:
         if provider == "claude":
             return self.config.chat_model_claude
         return self.config.agent_model_grok
-    
+
     def get_rag_model(self) -> str:
         """Get configured RAG/embedding model"""
         return self.config.rag_model
-    
+
     def update_config(self, **kwargs):
         """Update configuration"""
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
                 logger.info(f"Updated {key} to {value}")
-    
+
     def save_config(self, filepath: str = ".model_config.json"):
         """Save configuration to file"""
         try:
@@ -440,22 +440,22 @@ class ModelManager:
             logger.success(f"Model configuration saved to {filepath}")
         except Exception as e:
             logger.error(f"Failed to save config: {e}")
-    
+
     def load_config(self, filepath: str = ".model_config.json"):
         """Load configuration from file"""
         try:
             if os.path.exists(filepath):
-                with open(filepath, 'r') as f:
+                with open(filepath) as f:
                     data = json.load(f)
                 self.config = ModelConfig(**data)
                 logger.success(f"Model configuration loaded from {filepath}")
                 return True
         except Exception as e:
             logger.error(f"Failed to load config: {e}")
-        
+
         return False
-    
-    def _get_default_claude_models(self) -> List[str]:
+
+    def _get_default_claude_models(self) -> list[str]:
         """Default Anthropic Claude models list"""
         return [
             "claude-opus-4-6",
@@ -463,7 +463,7 @@ class ModelManager:
             "claude-haiku-4-5-20251001",
         ]
 
-    def get_available_models(self, provider: str) -> List[str]:
+    def get_available_models(self, provider: str) -> list[str]:
         """Get list of available models for provider"""
         if provider == "gemini":
             if not self.available_gemini_models:

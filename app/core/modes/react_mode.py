@@ -1,12 +1,14 @@
 """
 ReAct Mode - текущий Orchestrator с ReAct loop
 """
-import os
 import asyncio
-import re
 import json
-from typing import AsyncGenerator, List, Dict, Any, Optional
+import os
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from loguru import logger
+
 from app.core.modes.base import BaseMode
 from app.core.task_board import build_task_board_payload
 
@@ -21,11 +23,11 @@ class ReActMode(BaseMode):
     3. OBSERVATION - результат инструмента
     4. Повтор или финальный ответ
     """
-    
+
     @property
     def description(self) -> str:
         return "ReAct loop (Reason + Act) - итеративное рассуждение с инструментами"
-    
+
     async def execute(
         self,
         message: str,
@@ -33,8 +35,8 @@ class ReActMode(BaseMode):
         use_rag: bool = True,
         specific_model: str = None,
         user_id: int = None,
-        initial_history: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        initial_history: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Выполнение в ReAct режиме - копия логики из Orchestrator.process_user_message
@@ -43,13 +45,13 @@ class ReActMode(BaseMode):
         effective_history.append({"role": "user", "content": message})
         if not initial_history:
             self.orchestrator.history.append({"role": "user", "content": message})
-        
+
         # Limit history
         if len(effective_history) > 10:
             effective_history = effective_history[-10:]
         if not initial_history and len(self.orchestrator.history) > 10:
             self.orchestrator.history = self.orchestrator.history[-10:]
-        
+
         # RAG context
         rag_context = ""
         if use_rag and self.orchestrator.rag.available and user_id is not None:
@@ -64,18 +66,18 @@ class ReActMode(BaseMode):
                         logger.info(f"Retrieved {len(docs)} documents from RAG")
             except Exception as e:
                 logger.warning(f"RAG query failed: {e}")
-        
+
         # ReAct Loop (Enhanced for precision)
         iteration = 0
         final_answer = ""
         max_iterations = 7  # Increased for better reasoning
         tool_calls_made = []  # Track tool usage
-        task_board_payload: Optional[Dict[str, Any]] = None
-        
+        task_board_payload: dict[str, Any] | None = None
+
         while iteration < max_iterations:
             iteration += 1
             logger.info(f"ReAct iteration {iteration}/{max_iterations}")
-            
+
             # Build system prompt
             system_prompt = self.orchestrator._build_system_prompt(
                 user_message=message,
@@ -84,24 +86,24 @@ class ReActMode(BaseMode):
                 history_override=effective_history if initial_history else None,
                 execution_context=execution_context,
             )
-            
+
             # Get LLM response
             llm_response = ""
             async for chunk in self.orchestrator.llm.stream_chat(
-                system_prompt, 
+                system_prompt,
                 model=model_preference,
                 specific_model=specific_model
             ):
                 llm_response += chunk
-            
+
             # Parse response for actions
             action_match = self.orchestrator._parse_action(llm_response)
-            
+
             if action_match:
                 # Agent wants to use a tool
                 tool_name = action_match['tool']
                 tool_args = action_match['args']
-                
+
                 try:
                     ctx = (execution_context or {}).copy()
                     tool_context = {"user_id": ctx.get("user_id")} if ctx.get("user_id") else None
@@ -115,7 +117,7 @@ class ReActMode(BaseMode):
                         if tool_context is None:
                             tool_context = {}
                         tool_context["allowed_tools"] = ctx.get("allowed_tools")
-                    
+
                     result = await self.orchestrator.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
                     )
@@ -133,7 +135,7 @@ class ReActMode(BaseMode):
                         "args": tool_args,
                         "iteration": iteration
                     })
-                    
+
                     # IDE_FILE_CHANGED event
                     if tool_name == "write_file" and ctx.get("workspace_path"):
                         file_path = tool_args.get("path", "")
@@ -156,7 +158,7 @@ class ReActMode(BaseMode):
                                 yield f"IDE_FILE_CHANGED:{rel_path}\n"
                             except Exception as e:
                                 logger.debug(f"Could not compute relative path: {e}")
-                    
+
                     # Add to history
                     effective_history.append({
                         "role": "assistant",
@@ -175,14 +177,14 @@ class ReActMode(BaseMode):
                             "role": "system",
                             "content": f"OBSERVATION: {result_str}"
                         })
-                    
+
                     continue
-                    
+
                 except Exception as e:
                     error_msg = f"❌ Tool execution failed: {str(e)}"
                     yield f"{error_msg}\n\n"
                     logger.error(error_msg)
-                    
+
                     effective_history.append({
                         "role": "system",
                         "content": f"ERROR: {str(e)}"
@@ -192,14 +194,14 @@ class ReActMode(BaseMode):
                             "role": "system",
                             "content": f"ERROR: {str(e)}"
                         })
-                    
+
                     # Stop early on tool failure to avoid noisy iterations
                     return
             else:
                 # No action - final answer
                 final_answer = llm_response
                 break
-        
+
         # If exhausted iterations without final answer
         if not final_answer:
             final_answer = "Достигнут лимит итераций. Вот что удалось выяснить:\n\n" + llm_response
@@ -241,7 +243,7 @@ class ReActMode(BaseMode):
         effective_history.append({"role": "assistant", "content": final_answer})
         if not initial_history:
             self.orchestrator.history.append({"role": "assistant", "content": final_answer})
-        
+
         # Add to RAG
         if len(final_answer) > 100 and user_id is not None:
             try:
@@ -253,7 +255,7 @@ class ReActMode(BaseMode):
                 )
             except Exception as e:
                 logger.warning(f"Failed to add to RAG: {e}")
-        
+
         # Post-processing: конвертируем #ID в кликабельные ссылки
         if tool_calls_made:
             # Проверяем были ли вызовы tasks_list или task_detail

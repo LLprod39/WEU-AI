@@ -1,27 +1,32 @@
 """
 Tool Manager - Central registry for all agent tools
 """
-from typing import List, Dict, Any, Optional
 import os
+from typing import Any
+
+from django.conf import settings
 from loguru import logger
-from app.tools.base import BaseTool
-from app.tools.ssh_tools import SSHConnectTool, SSHExecuteTool, SSHDisconnectTool
-from app.tools.server_tools import ServersListTool, ServerExecuteTool
-from app.tools.filesystem_tools import (
-    ReadFileTool, WriteFileTool, ListDirectoryTool,
-    CreateDirectoryTool, DeleteFileTool
-)
-from app.tools.web_tools import WebSearchTool, FetchWebpageTool
-from app.tools.tasks_tools import (
-    TasksListTool,
-    TaskDetailTool,
-    TaskCreateTool,
-    TaskUpdateTool,
-    TaskDeleteTool,
-)
+
 from app.mcp.client import MCPClient
 from app.mcp.config import load_mcp_config
-from django.conf import settings
+from app.tools.base import BaseTool
+from app.tools.filesystem_tools import (
+    CreateDirectoryTool,
+    DeleteFileTool,
+    ListDirectoryTool,
+    ReadFileTool,
+    WriteFileTool,
+)
+from app.tools.server_tools import ServerExecuteTool, ServersListTool
+from app.tools.ssh_tools import SSHConnectTool, SSHDisconnectTool, SSHExecuteTool
+from app.tools.tasks_tools import (
+    TaskCreateTool,
+    TaskDeleteTool,
+    TaskDetailTool,
+    TasksListTool,
+    TaskUpdateTool,
+)
+from app.tools.web_tools import FetchWebpageTool, WebSearchTool
 
 
 class ToolManager:
@@ -29,14 +34,14 @@ class ToolManager:
     Manages all available tools for the agent system
     Combines built-in tools and MCP tools
     """
-    
+
     def __init__(self):
-        self.tools: Dict[str, BaseTool] = {}
+        self.tools: dict[str, BaseTool] = {}
         self.mcp_client = MCPClient()
         self._mcp_tool_names = set()
         self.mcp_config, self.mcp_config_sources = load_mcp_config(settings.BASE_DIR)
         self._register_builtin_tools()
-    
+
     def _register_builtin_tools(self):
         """Register all built-in tools"""
         builtin_tools = [
@@ -53,7 +58,7 @@ class ToolManager:
             ListDirectoryTool(),
             CreateDirectoryTool(),
             DeleteFileTool(),
-            
+
             # Web Tools
             WebSearchTool(),
             FetchWebpageTool(),
@@ -64,21 +69,21 @@ class ToolManager:
             TaskUpdateTool(),
             TaskDeleteTool(),
         ]
-        
+
         for tool in builtin_tools:
             self.register_tool(tool)
-    
+
     def register_tool(self, tool: BaseTool):
         """Register a single tool"""
         name = tool._metadata.name
         self.tools[name] = tool
         logger.info(f"Registered tool: {name} (category: {tool._metadata.category})")
-    
-    async def connect_mcp_server_stdio(self, name: str, command: List[str]):
+
+    async def connect_mcp_server_stdio(self, name: str, command: list[str]):
         """Connect to MCP server via stdio and register its tools"""
         await self.mcp_client.connect_stdio_server(name, command)
         self._register_mcp_tools(name)
-    
+
     async def connect_mcp_server_sse(self, name: str, url: str):
         """Connect to MCP server via SSE and register its tools"""
         await self.mcp_client.connect_sse_server(name, url)
@@ -99,7 +104,7 @@ class ToolManager:
         self.mcp_config, self.mcp_config_sources = load_mcp_config(settings.BASE_DIR)
         return self.mcp_config
 
-    def get_mcp_servers(self) -> Dict[str, Any]:
+    def get_mcp_servers(self) -> dict[str, Any]:
         servers_cfg = (self.mcp_config or {}).get("mcpServers") or {}
         statuses = self.mcp_client.get_server_statuses()
         result = {}
@@ -115,7 +120,7 @@ class ToolManager:
             }
         return result
 
-    async def connect_mcp_server(self, name: str) -> Dict[str, Any]:
+    async def connect_mcp_server(self, name: str) -> dict[str, Any]:
         servers_cfg = (self.mcp_config or {}).get("mcpServers") or {}
         cfg = servers_cfg.get(name)
         if not cfg:
@@ -138,26 +143,26 @@ class ToolManager:
     async def disconnect_mcp_server(self, name: str) -> bool:
         return await self.mcp_client.disconnect_server(name)
 
-    def get_mcp_tools(self, name: str) -> List[Dict[str, Any]]:
+    def get_mcp_tools(self, name: str) -> list[dict[str, Any]]:
         tools = self.mcp_client.get_tools_for_server(name)
         return [t.to_dict() for t in tools]
-    
-    def get_tool(self, name: str) -> Optional[BaseTool]:
+
+    def get_tool(self, name: str) -> BaseTool | None:
         """Get a specific tool by name"""
         return self.tools.get(name)
-    
-    def get_all_tools(self) -> List[BaseTool]:
+
+    def get_all_tools(self) -> list[BaseTool]:
         """Get all registered tools"""
         return list(self.tools.values())
-    
-    def get_tools_by_category(self, category: str) -> List[BaseTool]:
+
+    def get_tools_by_category(self, category: str) -> list[BaseTool]:
         """Get tools filtered by category"""
         return [tool for tool in self.tools.values() if tool._metadata.category == category]
-    
+
     def get_tools_description(
         self,
-        exclude_tools: Optional[List[str]] = None,
-        include_tools: Optional[List[str]] = None,
+        exclude_tools: list[str] | None = None,
+        include_tools: list[str] | None = None,
     ) -> str:
         """Get formatted description of tools for the LLM. exclude_tools: skip these. include_tools: allow only these."""
         exclude = set(exclude_tools or [])
@@ -173,9 +178,9 @@ class ToolManager:
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(tool)
-        
+
         description = "AVAILABLE TOOLS:\n\n"
-        
+
         for category, tools in sorted(categories.items()):
             description += f"## {category.upper()}\n"
             for tool in tools:
@@ -186,23 +191,23 @@ class ToolManager:
                         req = "required" if param.required else "optional"
                         description += f"    - {param.name} ({param.type}, {req}): {param.description}\n"
             description += "\n"
-        
+
         return description
-    
-    async def execute_tool(self, tool_name: str, _context: Optional[Dict[str, Any]] = None, **kwargs) -> Any:
+
+    async def execute_tool(self, tool_name: str, _context: dict[str, Any] | None = None, **kwargs) -> Any:
         """Execute a tool by name. _context (user_id, master_password) передаётся инструментам servers_*."""
         tool = self.get_tool(tool_name)
-        
+
         if not tool:
             raise ValueError(f"Unknown tool: {tool_name}")
-        
+
         if _context is not None:
             allowed_tools = _context.get("allowed_tools") if isinstance(_context, dict) else None
             if allowed_tools and tool_name not in allowed_tools:
                 raise PermissionError(f"Tool '{tool_name}' is not allowed for this agent")
             kwargs["_context"] = _context
         logger.info(f"Executing tool: {tool_name} with args: {list(kwargs.keys())}")
-        
+
         try:
             result = await tool.execute(**kwargs)
             logger.success(f"Tool {tool_name} executed successfully")

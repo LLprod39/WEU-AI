@@ -1,8 +1,8 @@
 """
 Server Management Models
 """
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
 from django.utils import timezone
 
 
@@ -131,16 +131,16 @@ class Server(models.Model):
         ('key', 'SSH Key'),
         ('key_password', 'SSH Key + Password'),
     ]
-    
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='servers')
     group = models.ForeignKey(
-        ServerGroup, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        ServerGroup,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='servers'
     )
-    
+
     # Server info
     name = models.CharField(max_length=200)  # Display name
     server_type = models.CharField(
@@ -152,13 +152,13 @@ class Server(models.Model):
     host = models.CharField(max_length=255)
     port = models.IntegerField(default=22)
     username = models.CharField(max_length=100)
-    
+
     # Authentication
     auth_method = models.CharField(max_length=20, choices=AUTH_METHOD_CHOICES, default='password')
     encrypted_password = models.TextField(blank=True)  # Encrypted password if using password auth
     key_path = models.CharField(max_length=500, blank=True)  # Path to SSH key
     salt = models.BinaryField(null=True, blank=True)  # For password encryption
-    
+
     # Additional info
     tags = models.CharField(max_length=500, blank=True)  # Comma-separated tags
     notes = models.TextField(blank=True)
@@ -167,14 +167,14 @@ class Server(models.Model):
         help_text="Корпоративные требования: прокси, VPN, env переменные, условия доступа"
     )
     is_active = models.BooleanField(default=True)
-    
+
     # Network Context для корпоративных сетей
     network_config = models.JSONField(
         default=dict,
         blank=True,
         help_text="Контекст корпоративной сети: прокси, VPN, firewall, env variables"
     )
-    
+
     # Helper fields для UI (заполняются автоматически из network_config)
     has_proxy = models.BooleanField(
         default=False,
@@ -188,19 +188,19 @@ class Server(models.Model):
         default=True,
         help_text="Сервер за корпоративным файрволлом"
     )
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_connected = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         ordering = ['-updated_at']
         indexes = [
             models.Index(fields=['user', '-updated_at']),
             models.Index(fields=['group', 'user']),
         ]
-    
+
     def __str__(self):
         return f"{self.name} ({self.host}:{self.port})"
 
@@ -220,56 +220,56 @@ class Server(models.Model):
             return int(self.port or 22)
         except Exception:
             return 22
-    
+
     def get_connection_string(self) -> str:
         """Get SSH connection string"""
         return f"{self.username}@{self.host}:{self.port}"
-    
+
     def get_network_context_summary(self) -> str:
         """Получить описание сетевого контекста для AI"""
         parts = []
-        
+
         # Сначала из corporate_context (приоритет - текстовые заметки)
         if self.corporate_context:
             parts.append(self.corporate_context.strip())
-        
+
         # Дополнительно из network_config если есть
         if self.network_config:
             nc = self.network_config
-            
+
             # Прокси
             if nc.get('proxy', {}).get('http_proxy'):
                 parts.append(f"Прокси: {nc['proxy']['http_proxy']}")
-            
+
             # VPN
             if nc.get('vpn', {}).get('required'):
                 vpn_type = nc['vpn'].get('type', 'VPN')
                 parts.append(f"VPN: {vpn_type}")
-            
+
             # Bastion
             if nc.get('network', {}).get('bastion_host'):
                 parts.append(f"Bastion: {nc['network']['bastion_host']}")
-            
+
             # Firewall
             if nc.get('firewall', {}).get('inbound_ports'):
                 ports = nc['firewall']['inbound_ports']
                 parts.append(f"Порты: {','.join(map(str, ports))}")
-        
+
         return "\n".join(parts) if parts else "Стандартная сеть"
-    
+
     def update_network_flags(self):
         """Обновить helper flags на основе network_config"""
         if not self.network_config:
             return
-        
+
         nc = self.network_config
-        
+
         # Proxy
         self.has_proxy = bool(nc.get('proxy', {}).get('http_proxy'))
-        
+
         # VPN
         self.requires_vpn = bool(nc.get('vpn', {}).get('required'))
-        
+
         # Firewall (по умолчанию True для корпоративных сетей)
         if nc.get('firewall'):
             self.behind_firewall = True
@@ -325,10 +325,10 @@ class ServerConnection(models.Model):
     status = models.CharField(max_length=20, default='connected')  # connected, disconnected, error
     connected_at = models.DateTimeField(auto_now_add=True)
     disconnected_at = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         ordering = ['-connected_at']
-    
+
     def __str__(self):
         return f"{self.server.name} - {self.status}"
 

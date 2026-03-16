@@ -3,17 +3,22 @@ Views для управления командами (группы пользо�
 """
 import json
 import logging
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse
-from django.http import JsonResponse, HttpResponseForbidden
+
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.views.decorators.http import require_http_methods, require_POST, require_GET
-from django.db.models import Q, Count
+from django.db.models import Count
+from django.http import HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .models import (
-    Team, TeamMember, TeamMemberRole,
-    Project, ProjectMember, ProjectMemberRole,
+    Project,
+    ProjectMember,
+    ProjectMemberRole,
+    Team,
+    TeamMember,
+    TeamMemberRole,
 )
 from .permissions import ProjectPermissions
 

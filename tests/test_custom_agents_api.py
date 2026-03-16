@@ -147,7 +147,7 @@ def test_ensure_mcp_servers_config_merges_extra_servers(tmp_path):
         auto_approve_all=True,
     )
     assert cfg_path
-    with open(cfg_path, "r", encoding="utf-8") as f:
+    with open(cfg_path, encoding="utf-8") as f:
         cfg = json.load(f)
 
     assert "mcpServers" in cfg

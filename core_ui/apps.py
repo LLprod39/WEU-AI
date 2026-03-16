@@ -7,6 +7,7 @@ class CoreUiConfig(AppConfig):
 
     def ready(self):
         from django.db.backends.signals import connection_created
+
         import core_ui.signals  # noqa: F401
 
         def _sqlite_wal_mode(sender, connection, **kwargs):

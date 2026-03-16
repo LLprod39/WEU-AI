@@ -3,39 +3,50 @@ Views для управления проектами
 """
 import json
 import logging
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse
-from django.http import JsonResponse, HttpResponseForbidden
+
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.views.decorators.http import require_http_methods, require_POST, require_GET
-from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Q, Count
+from django.db.models import Count, Q
+from django.http import HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.core.paginator import Paginator
+from django.views.decorators.http import require_http_methods, require_POST
 
+from .email_service import TaskEmailService
 from .models import (
-    Project, ProjectMember, ProjectMemberRole, ProjectInvitation,
-    ProjectMaterial, ProjectMaterialType, Sprint, SprintStatus,
-    SavedFilter, Task, TaskRelation, TaskRelationType,
+    Project,
+    ProjectInvitation,
+    ProjectMaterial,
+    ProjectMaterialType,
+    ProjectMember,
+    ProjectMemberRole,
+    SavedFilter,
+    Sprint,
+    SprintStatus,
+    Task,
+    TaskRelation,
+    TaskRelationType,
     Team,
 )
-from .permissions import (
-    ProjectPermissions, TaskPermissions,
-    get_projects_for_user, get_tasks_for_user,
-    require_project_view, require_project_edit, require_project_manage_members
-)
-from .email_service import TaskEmailService
 from .notification_triggers import (
     notify_project_invitation,
-    notify_project_role_changed,
+    notify_project_member_joined,
     notify_project_member_left,
     notify_project_member_left_to_admins,
-    notify_project_member_joined,
-    notify_task_moved,
-    notify_task_assigned,
-    notify_sprint_started,
+    notify_project_role_changed,
     notify_sprint_completed,
+    notify_sprint_started,
+    notify_task_assigned,
+    notify_task_moved,
+)
+from .permissions import (
+    ProjectPermissions,
+    TaskPermissions,
+    get_projects_for_user,
+    require_project_edit,
+    require_project_manage_members,
+    require_project_view,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,6 @@
 from django.contrib import admin
-from .models import (
-    Credential, CredentialCategory, CredentialTag,
-    CredentialTagRelation, CredentialAccessLog
-)
+
+from .models import Credential, CredentialAccessLog, CredentialCategory, CredentialTag
 
 
 @admin.register(CredentialCategory)

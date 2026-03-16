@@ -1,10 +1,10 @@
 """
 Models for agent profiles, presets, and run logs.
 """
-from typing import Dict
 import secrets
-from django.db import models
+
 from django.contrib.auth.models import User
+from django.db import models
 
 
 class AgentProfile(models.Model):
@@ -43,7 +43,7 @@ class AgentProfile(models.Model):
     runtime = models.CharField(max_length=20, choices=RUNTIME_CHOICES, default="internal")
     mode = models.CharField(max_length=20, choices=MODE_CHOICES, default="simple")
     config = models.JSONField(default=dict, blank=True)
-    
+
     # MCP Configuration per agent
     mcp_servers = models.JSONField(
         default=dict,
@@ -54,7 +54,7 @@ class AgentProfile(models.Model):
         default=False,
         help_text="Автоматически одобрять MCP инструменты без подтверждения"
     )
-    
+
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -159,7 +159,7 @@ class AgentWorkflow(models.Model):
 
     def __str__(self) -> str:
         return self.name
-    
+
     def get_full_project_path(self):
         """Возвращает полный путь к папке проекта"""
         from django.conf import settings
@@ -213,7 +213,7 @@ class CustomAgent(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="custom_agents")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    
+
     # Agent behavior
     system_prompt = models.TextField(
         help_text="Базовый промпт агента (роль, инструкции)",
@@ -223,7 +223,7 @@ class CustomAgent(models.Model):
         blank=True,
         help_text="Дополнительные инструкции для агента"
     )
-    
+
     # Capabilities
     allowed_tools = models.JSONField(
         default=list,
@@ -243,7 +243,7 @@ class CustomAgent(models.Model):
         default="COMPLETE",
         help_text="Фраза для завершения (для Ralph mode)"
     )
-    
+
     # Runtime configuration
     runtime = models.CharField(
         max_length=20,
@@ -266,7 +266,7 @@ class CustomAgent(models.Model):
         default="ralph_internal",
         help_text="Режим оркестратора"
     )
-    
+
     # MCP Configuration
     mcp_servers = models.JSONField(
         default=dict,
@@ -277,7 +277,7 @@ class CustomAgent(models.Model):
         default=False,
         help_text="Автоматически одобрять MCP инструменты"
     )
-    
+
     # Server access and knowledge
     allowed_servers = models.JSONField(
         default=None,
@@ -296,7 +296,7 @@ class CustomAgent(models.Model):
         default='',
         help_text="База знаний агента: инструкции, типичные проблемы, примеры (подставляется в системный промпт)"
     )
-    
+
     # Metadata
     is_active = models.BooleanField(default=True)
     is_public = models.BooleanField(
@@ -307,18 +307,18 @@ class CustomAgent(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         ordering = ["-updated_at"]
         indexes = [
             models.Index(fields=["owner", "-updated_at"]),
             models.Index(fields=["is_active", "is_public"]),
         ]
-    
+
     def __str__(self) -> str:
         return f"{self.name} ({self.runtime})"
-    
-    def to_cli_agent_config(self) -> Dict:
+
+    def to_cli_agent_config(self) -> dict:
         """Экспорт в формат для Claude Code CLI agent config"""
         return {
             "name": self.name,
@@ -330,7 +330,7 @@ class CustomAgent(models.Model):
             "temperature": self.temperature,
             "skill_ids": list(self.skills.values_list("id", flat=True)),
         }
-    
+
     def get_allowed_servers(self, user):
         """
         Возвращает QuerySet серверов, доступных агенту

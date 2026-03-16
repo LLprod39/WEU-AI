@@ -1,9 +1,8 @@
 """
 Core UI models: app-level permissions for users and chat sessions.
 """
-from django.db import models
 from django.contrib.auth.models import User
-
+from django.db import models
 
 # -----------------------------------------
 # Chat history

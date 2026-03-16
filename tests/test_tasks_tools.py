@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from app.tools.tasks_tools import TasksListTool, TaskCreateTool, TaskUpdateTool, TaskDeleteTool
+from app.tools.tasks_tools import TaskCreateTool, TaskDeleteTool, TasksListTool, TaskUpdateTool
 
 
 @pytest.mark.django_db

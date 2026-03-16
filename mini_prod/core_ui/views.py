@@ -9,25 +9,28 @@ import shutil
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from django.utils import timezone as django_timezone
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
-from typing import AsyncGenerator
-from django.shortcuts import render, redirect
-from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from django.contrib.auth.views import LoginView
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods, require_GET
-from django.conf import settings
-from django.db import transaction
-from django.db.models import OuterRef, Subquery, Count, Q
-from django.urls import reverse
+
 from asgiref.sync import async_to_sync, sync_to_async
+from django.conf import settings
+from django.contrib.auth import authenticate
+from django.contrib.auth import login as auth_login
+from django.contrib.auth import logout as auth_logout
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import LoginView
+from django.db import transaction
+from django.db.models import Count, OuterRef, Q, Subquery
+from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils import timezone as django_timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_http_methods
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -61,11 +64,11 @@ try:
     from app.agents.manager import get_agent_manager
 except Exception:
     get_agent_manager = None
-from core_ui.context_processors import user_can_feature, is_server_only_user
-from core_ui.decorators import require_feature, async_login_required, async_require_feature
 from core_ui.activity import log_user_activity
-from core_ui.models import ChatSession, ChatMessage, UserActivityLog
+from core_ui.context_processors import is_server_only_user, user_can_feature
+from core_ui.decorators import async_login_required, async_require_feature, require_feature
 from core_ui.middleware import get_template_name
+from core_ui.models import ChatMessage, ChatSession, UserActivityLog
 
 # Singleton instances
 _unified_orchestrator = None
@@ -161,7 +164,7 @@ def api_health(request):
 class CustomLoginView(LoginView):
     template_name = 'login.html'
     redirect_authenticated_user = True
-    
+
     def get_template_names(self):
         """Return mobile or desktop login template based on device."""
         return [get_template_name(self.request, 'login.html')]
@@ -750,12 +753,14 @@ def _get_provider_billing_snapshot(now_utc: datetime, providers: dict) -> dict:
 
 def _collect_admin_dashboard_data(include_version: bool = False) -> dict:
     from datetime import date, timedelta
-    from django.utils import timezone as tz
+
     from django.contrib.auth.models import User
-    from django.db.models import Count, Sum, Q
+    from django.db.models import Count, Q, Sum
     from django.db.models.functions import TruncHour
-    from servers.models import Server, ServerConnection
+    from django.utils import timezone as tz
+
     from core_ui.models import LLMUsageLog
+    from servers.models import Server, ServerConnection
 
     Task = _model_or_none('tasks', 'Task')
     AgentRun = _model_or_none('agent_hub', 'AgentRun')
@@ -891,11 +896,12 @@ def _collect_admin_dashboard_data(include_version: bool = False) -> dict:
     tasks_in_progress = Task.objects.filter(status='IN_PROGRESS').count() if Task is not None else 0
 
     # Fleet health from monitoring
-    from servers.models import ServerHealthCheck, ServerAlert
+    from servers.models import ServerAlert, ServerHealthCheck
 
     fleet_health = {'avg_cpu': 0, 'avg_memory': 0, 'avg_disk': 0, 'healthy': 0, 'warning': 0, 'critical': 0, 'unreachable': 0}
     try:
-        from django.db.models import Max, Avg as AvgF
+        from django.db.models import Avg as AvgF
+        from django.db.models import Max
         latest_per_server = (
             ServerHealthCheck.objects.values("server_id")
             .annotate(last_id=Max("id"))
@@ -986,7 +992,7 @@ def api_admin_users_activity(request):
     if not request.user.is_staff:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    from django.db.models import Count, Q as QQ
+    from django.db.models import Q as QQ
 
     try:
         limit = min(int(request.GET.get('limit', 50)), 200)
@@ -1046,7 +1052,7 @@ def api_admin_users_sessions(request):
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     from django.contrib.auth.models import User as AuthUser
-    from django.db.models import Max, Count
+
     from servers.models import ServerConnection
 
     last_5min = django_timezone.now() - timedelta(minutes=5)
@@ -1195,7 +1201,7 @@ def _apply_access_profile(user, profile: str) -> None:
             user.save(update_fields=['is_staff'])
     else:
         # admin_full
-        target = {feature: True for feature in features}
+        target = dict.fromkeys(features, True)
         if not user.is_staff:
             user.is_staff = True
             user.save(update_fields=['is_staff'])
@@ -1211,7 +1217,8 @@ def _apply_access_profile(user, profile: str) -> None:
 
 def _get_access_data():
     """Данные для раздела «Управление доступом»."""
-    from django.contrib.auth.models import User, Group
+    from django.contrib.auth.models import Group, User
+
     from core_ui.models import UserAppPermission
 
     users = list(User.objects.all().prefetch_related('groups').order_by('username'))
@@ -1478,8 +1485,9 @@ def _load_task_context_for_user(user_id: int, task_id) -> dict:
         return {}
 
     from django.contrib.auth.models import User
-    from tasks.models import Task
+
     from app.services.permissions import PermissionService
+    from tasks.models import Task
 
     user = User.objects.filter(id=user_id).first()
     if not user:
@@ -1722,7 +1730,7 @@ async def chat_api(request):
                 effective_model = model
                 if model == "auto":
                     effective_model = model_manager.config.default_provider or "cursor"
-                
+
                 if effective_model == "cursor" or effective_model == "auto":  # fallback
                     if not session and user_id:
                         session = await asyncio.to_thread(
@@ -1795,7 +1803,7 @@ async def chat_api(request):
                     created_session_id = session.id
                 if created_session_id is not None:
                     yield f"CHAT_ID:{created_session_id}\n"
-                
+
                 # Разрешаем workspace если передан
                 workspace_path = None
                 if workspace_param:
@@ -1805,7 +1813,7 @@ async def chat_api(request):
                     except ValueError as e:
                         yield f"\n\n❌ Ошибка workspace: {e}\n"
                         return
-                
+
                 # Формируем execution_context (IDE: без RAG и без лишнего контекста серверов)
                 execution_context = {}
                 if user_id:
@@ -1815,18 +1823,18 @@ async def chat_api(request):
                 if workspace_path:
                     execution_context["workspace_path"] = workspace_path
                     execution_context["from_ide"] = True
-                
+
                 # В режиме IDE не подмешиваем RAG (чтобы не тянуть чек-листы и посторонние данные)
                 use_rag_effective = use_rag if not workspace_path else False
                 execution_context["rag_enabled"] = bool(use_rag_effective)
-                
+
                 # Используем UnifiedOrchestrator с auto mode selection
                 orchestrator = await get_unified_orchestrator()
                 orchestrator_mode = data.get('mode')  # Опциональный параметр mode
                 # Для чата по умолчанию используем простой chat mode (без ReAct loop)
                 if not orchestrator_mode and not workspace_path:
                     orchestrator_mode = "chat"
-                
+
                 # Передаем effective_model (уже заменен auto -> default_provider)
                 async for chunk in orchestrator.process_user_message(
                     user_message,
@@ -1871,22 +1879,22 @@ def rag_add_api(request):
         data = json.loads(request.body)
         text = data.get('text', '')
         source = data.get('source', 'manual')
-        
+
         if not text:
             return JsonResponse({'success': False, 'error': 'Empty text'}, status=400)
-        
+
         rag = get_rag_engine()
         if not rag.available:
             return JsonResponse({'success': False, 'error': 'RAG not available'}, status=503)
-        
+
         doc_id = rag.add_text(text, source, user_id=request.user.id)
-        
+
         if doc_id is None:
             return JsonResponse({
                 'success': False,
                 'error': 'Failed to add document to RAG'
             }, status=500)
-        
+
         return JsonResponse({
             'success': True,
             'doc_id': doc_id,
@@ -1909,10 +1917,10 @@ def rag_query_api(request):
         data = json.loads(request.body)
         query = data.get('query', '')
         n_results = data.get('n_results', 5)
-        
+
         if not query:
             return JsonResponse({'success': False, 'error': 'Empty query'}, status=400)
-        
+
         rag = get_rag_engine()
         if not rag.available:
             return JsonResponse({
@@ -1921,10 +1929,10 @@ def rag_query_api(request):
                 'documents': [[]],
                 'metadatas': [[]]
             }, status=503)
-        
+
         try:
             results = rag.query(query, n_results, user_id=request.user.id)
-            
+
             return JsonResponse({
                 'success': True,
                 'documents': results.get('documents', [[]]),
@@ -1965,7 +1973,7 @@ def rag_reset_api(request):
         rag = get_rag_engine()
         if not rag.available:
             return JsonResponse({'success': False, 'error': 'RAG not available'}, status=503)
-        
+
         try:
             rag.reset_db(user_id=request.user.id)
             return JsonResponse({
@@ -2021,18 +2029,18 @@ def rag_documents_api(request):
                 'documents': [],
                 'doc_count': 0
             })
-        
+
         # Get pagination parameters
         limit = int(request.GET.get('limit', 50))  # Default 50 documents
         offset = int(request.GET.get('offset', 0))
-        
+
         # Get documents (limited for performance)
         all_documents = rag.get_documents(limit=limit + offset, user_id=request.user.id)
-        
+
         # Apply pagination
         documents = all_documents[offset:offset + limit]
         total_count = len(all_documents) if offset == 0 else len(all_documents)
-        
+
         return JsonResponse({
             'success': True,
             'documents': documents,
@@ -2198,11 +2206,11 @@ def api_settings(request):
                         delegate_ui = pref.delegate_ui
                 except Exception as e:
                     logger.debug("Failed to load delegate preference: %s", e)
-            
+
             # Provider Registry для статусов
             from app.core.provider_registry import get_provider_registry
             registry = get_provider_registry()
-            
+
             return JsonResponse({
                 'success': True,
                 'config': {
@@ -2608,13 +2616,13 @@ async def api_agent_execute(request):
         agent_name = data.get('agent_name')
         task = data.get('task')
         context = data.get('context', {})
-        
+
         if not agent_name or not task:
             return JsonResponse({'error': 'agent_name and task are required'}, status=400)
-        
+
         agent_manager = get_agent_manager()
         result = await agent_manager.execute_agent(agent_name, task, context)
-        
+
         return JsonResponse(result)
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
@@ -2631,29 +2639,29 @@ def api_upload_file(request):
     try:
         if 'file' not in request.FILES:
             return JsonResponse({'error': 'No file provided'}, status=400)
-        
+
         uploaded_file = request.FILES['file']
         filename = uploaded_file.name
-        
+
         # Check if file type is supported
         if not FileProcessor.is_supported(filename):
             return JsonResponse({
                 'error': f'Unsupported file type. Supported: {", ".join(FileProcessor.SUPPORTED_EXTENSIONS.keys())}'
             }, status=400)
-        
+
         # Generate unique filename
         file_ext = Path(filename).suffix
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = settings.UPLOADED_FILES_DIR / unique_filename
-        
+
         # Save file
         with open(file_path, 'wb') as f:
             for chunk in uploaded_file.chunks():
                 f.write(chunk)
-        
+
         # Process file and extract text
         result = FileProcessor.process_file(str(file_path), filename)
-        
+
         if result['error']:
             # Delete file if processing failed
             try:
@@ -2661,7 +2669,7 @@ def api_upload_file(request):
             except Exception as exc:
                 logger.warning(f"Failed to remove uploaded file {file_path}: {exc}")
             return JsonResponse({'error': result['error']}, status=400)
-        
+
         # Add to RAG
         rag = get_rag_engine()
         if rag.available and result['text']:
@@ -2671,7 +2679,7 @@ def api_upload_file(request):
                 user_id=request.user.id
             )
             result['metadata']['rag_doc_id'] = doc_id
-        
+
         return JsonResponse({
             'success': True,
             'filename': filename,
@@ -2679,7 +2687,7 @@ def api_upload_file(request):
             'text_length': len(result['text']),
             'metadata': result['metadata']
         })
-        
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -2703,31 +2711,31 @@ def _resolve_ide_workspace(workspace_param: str) -> Path:
     """
     if not workspace_param or not workspace_param.strip():
         raise ValueError("workspace parameter is required")
-    
+
     # Нормализуем: убираем начальные/конечные слеши и точки
     normalized = workspace_param.strip().strip('/').strip('\\')
-    
+
     # Защита от путей с ..
     if '..' in normalized or normalized.startswith('/'):
         raise ValueError("Invalid workspace path")
-    
+
     # Собираем полный путь
     projects_dir = Path(settings.AGENT_PROJECTS_DIR)
     workspace_path = projects_dir / normalized
-    
+
     # Проверяем, что итоговый путь находится внутри AGENT_PROJECTS_DIR
     try:
         resolved = workspace_path.resolve()
         projects_resolved = projects_dir.resolve()
-        
+
         # Проверка через is_relative_to (Python 3.9+)
         if not str(resolved).startswith(str(projects_resolved)):
-            raise ValueError(f"Workspace path must be within AGENT_PROJECTS_DIR")
+            raise ValueError("Workspace path must be within AGENT_PROJECTS_DIR")
     except Exception as e:
         if isinstance(e, ValueError):
             raise
         raise ValueError(f"Invalid workspace path: {e}")
-    
+
     return workspace_path
 
 
@@ -2743,16 +2751,16 @@ def api_ide_list_files(request):
     try:
         workspace_param = request.GET.get('workspace', '').strip()
         path_param = request.GET.get('path', '').strip()
-        
+
         if not workspace_param:
             return JsonResponse({'error': 'workspace parameter is required'}, status=400)
-        
+
         # Разрешаем workspace
         try:
             workspace_root = _resolve_ide_workspace(workspace_param)
         except ValueError as e:
             return JsonResponse({'error': str(e)}, status=403)
-        
+
         # Нормализуем path внутри workspace
         if path_param:
             # Убираем начальные слеши
@@ -2763,7 +2771,7 @@ def api_ide_list_files(request):
             target_path = workspace_root / path_param
         else:
             target_path = workspace_root
-        
+
         # Проверяем, что target_path всё ещё внутри workspace_root
         try:
             target_resolved = target_path.resolve()
@@ -2773,14 +2781,14 @@ def api_ide_list_files(request):
         except (OSError, ValueError) as e:
             logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
-        
+
         # Проверяем существование
         if not target_path.exists():
             return JsonResponse({'error': 'Path not found'}, status=404)
-        
+
         if not target_path.is_dir():
             return JsonResponse({'error': 'Path is not a directory'}, status=400)
-        
+
         # Собираем список файлов и папок
         files = []
         try:
@@ -2788,7 +2796,7 @@ def api_ide_list_files(request):
                 # Пропускаем скрытые файлы/папки (начинающиеся с .)
                 if item.name.startswith('.'):
                     continue
-                
+
                 item_type = 'dir' if item.is_dir() else 'file'
                 # Относительный путь от workspace_root
                 rel_path = item.relative_to(workspace_root)
@@ -2802,9 +2810,9 @@ def api_ide_list_files(request):
         except Exception as e:
             logger.error(f"Error listing directory {target_path}: {e}")
             return JsonResponse({'error': str(e)}, status=500)
-        
+
         return JsonResponse({'files': files})
-        
+
     except Exception as e:
         logger.error(f"api_ide_list_files error: {e}")
         return JsonResponse({'error': str(e)}, status=500)
@@ -2822,21 +2830,21 @@ def api_ide_read_file(request):
     try:
         workspace_param = request.GET.get('workspace', '').strip()
         path_param = request.GET.get('path', '').strip()
-        
+
         if not workspace_param or not path_param:
             return JsonResponse({'error': 'workspace and path parameters are required'}, status=400)
-        
+
         # Разрешаем workspace
         try:
             workspace_root = _resolve_ide_workspace(workspace_param)
         except ValueError as e:
             return JsonResponse({'error': str(e)}, status=403)
-        
+
         # Нормализуем path
         path_param = path_param.strip('/').strip('\\')
         if '..' in path_param:
             return JsonResponse({'error': 'Invalid path'}, status=400)
-        
+
         file_path = workspace_root / path_param
 
         # Проверяем безопасность пути
@@ -2848,17 +2856,17 @@ def api_ide_read_file(request):
         except (OSError, ValueError) as e:
             logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
-        
+
         # Проверяем существование и что это файл
         if not file_path.exists():
             return JsonResponse({'error': 'File not found'}, status=404)
-        
+
         if not file_path.is_file():
             return JsonResponse({'error': 'Path is not a file'}, status=400)
-        
+
         # Читаем файл
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 content = f.read()
         except UnicodeDecodeError:
             # Пробуем как бинарный файл
@@ -2868,11 +2876,11 @@ def api_ide_read_file(request):
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
             return JsonResponse({'error': str(e)}, status=500)
-        
+
         from django.http import HttpResponse
         response = HttpResponse(content, content_type='text/plain; charset=utf-8')
         return response
-        
+
     except Exception as e:
         logger.error(f"api_ide_read_file error: {e}")
         return JsonResponse({'error': str(e)}, status=500)
@@ -2900,21 +2908,21 @@ def api_ide_write_file(request):
             workspace_param = request.GET.get('workspace', '').strip()
             path_param = request.GET.get('path', '').strip()
             content = request.body.decode('utf-8') if request.body else ''
-        
+
         if not workspace_param or not path_param:
             return JsonResponse({'error': 'workspace and path parameters are required'}, status=400)
-        
+
         # Разрешаем workspace
         try:
             workspace_root = _resolve_ide_workspace(workspace_param)
         except ValueError as e:
             return JsonResponse({'error': str(e)}, status=403)
-        
+
         # Нормализуем path
         path_param = path_param.strip('/').strip('\\')
         if '..' in path_param:
             return JsonResponse({'error': 'Invalid path'}, status=400)
-        
+
         file_path = workspace_root / path_param
 
         # Проверяем безопасность пути
@@ -2926,7 +2934,7 @@ def api_ide_write_file(request):
         except (OSError, ValueError) as e:
             logger.debug(f"Invalid path resolution: {e}")
             return JsonResponse({'error': 'Invalid path'}, status=400)
-        
+
         # Создаём родительские директории если нужно
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2935,7 +2943,7 @@ def api_ide_write_file(request):
         except Exception as e:
             logger.error(f"Error creating parent directories for {file_path}: {e}")
             return JsonResponse({'error': str(e)}, status=500)
-        
+
         # Записываем файл
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -2945,13 +2953,13 @@ def api_ide_write_file(request):
         except Exception as e:
             logger.error(f"Error writing file {file_path}: {e}")
             return JsonResponse({'error': str(e)}, status=500)
-        
+
         return JsonResponse({
             'success': True,
             'path': str(file_path.relative_to(workspace_root)).replace('\\', '/'),
             'message': 'File saved successfully'
         })
-        
+
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
@@ -2988,7 +2996,8 @@ def api_access_users(request):
     GET /api/access/users/ - список пользователей
     POST /api/access/users/ - создание нового пользователя
     """
-    from django.contrib.auth.models import User, Group
+    from django.contrib.auth.models import Group, User
+
     from core_ui.models import UserAppPermission
 
     if request.method == 'GET':
@@ -3092,7 +3101,8 @@ def api_access_user_detail(request, user_id):
     PUT /api/access/users/<id>/ - обновить пользователя
     DELETE /api/access/users/<id>/ - удалить пользователя
     """
-    from django.contrib.auth.models import User, Group
+    from django.contrib.auth.models import Group, User
+
     from core_ui.models import UserAppPermission
 
     try:
@@ -3239,6 +3249,7 @@ def api_access_user_profile(request, user_id):
     profile: server_only | admin_full | reset_defaults | custom
     """
     from django.contrib.auth.models import User
+
     from core_ui.models import UserAppPermission
 
     try:
@@ -3455,7 +3466,8 @@ def api_access_permissions(request):
     POST /api/access/permissions/ - создание/обновление права
     """
     from django.contrib.auth.models import User
-    from core_ui.models import UserAppPermission, FEATURE_CHOICES
+
+    from core_ui.models import FEATURE_CHOICES, UserAppPermission
 
     if request.method == 'GET':
         permissions = UserAppPermission.objects.select_related('user').all().order_by('user__username', 'feature')

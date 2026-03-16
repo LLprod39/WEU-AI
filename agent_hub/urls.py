@@ -1,6 +1,7 @@
 from django.urls import path
-from . import views
+
 from . import automation as automation_views
+from . import views
 from . import webhooks as webhook_views
 
 app_name = "agent_hub"

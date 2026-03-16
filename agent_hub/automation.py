@@ -4,7 +4,7 @@ Automation and run endpoints for custom agents.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict
+from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -12,13 +12,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from loguru import logger
 
-from core_ui.decorators import require_feature
 from agent_hub.models import CustomAgent
 from app.services.workflow_service import WorkflowService
+from core_ui.decorators import require_feature
 from tasks.models import Task
 
 
-def _parse_json_body(request) -> Dict[str, Any]:
+def _parse_json_body(request) -> dict[str, Any]:
     try:
         return json.loads(request.body or "{}")
     except json.JSONDecodeError:

@@ -4,14 +4,13 @@ MCP configuration loader with project and global precedence.
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
+from typing import Any
 
 DEFAULT_PROJECT_FILENAMES = ["mcp_config.json", "mcp.json", ".cursor/mcp.json"]
 DEFAULT_GLOBAL_FILENAMES = [".cursor/mcp.json", ".config/cursor/mcp.json"]
 
 
-def _read_json(path: Path) -> Dict[str, Any]:
+def _read_json(path: Path) -> dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as f:
             return json.load(f) or {}
@@ -29,15 +28,15 @@ def _expand_env(value: Any) -> Any:
     return value
 
 
-def _merge_servers(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_servers(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
     for name, cfg in (override or {}).items():
         merged[name] = cfg
     return merged
 
 
-def _collect_project_configs(base_dir: Path) -> List[Path]:
-    found: List[Path] = []
+def _collect_project_configs(base_dir: Path) -> list[Path]:
+    found: list[Path] = []
     for root in [base_dir] + list(base_dir.parents):
         for fname in DEFAULT_PROJECT_FILENAMES:
             path = (root / fname)
@@ -46,9 +45,9 @@ def _collect_project_configs(base_dir: Path) -> List[Path]:
     return found
 
 
-def _collect_global_configs() -> List[Path]:
+def _collect_global_configs() -> list[Path]:
     home = Path.home()
-    found: List[Path] = []
+    found: list[Path] = []
     for fname in DEFAULT_GLOBAL_FILENAMES:
         path = (home / fname)
         if path.exists():
@@ -56,7 +55,7 @@ def _collect_global_configs() -> List[Path]:
     return found
 
 
-def load_mcp_config(base_dir) -> Tuple[Dict[str, Any], List[str]]:
+def load_mcp_config(base_dir) -> tuple[dict[str, Any], list[str]]:
     """
     Load MCP configuration with precedence:
     global -> project (closest to base_dir wins).
@@ -72,8 +71,8 @@ def load_mcp_config(base_dir) -> Tuple[Dict[str, Any], List[str]]:
         # Ensure closest project config has highest priority
         configs.extend(reversed(project_configs))
 
-    merged_servers: Dict[str, Any] = {}
-    sources: List[str] = []
+    merged_servers: dict[str, Any] = {}
+    sources: list[str] = []
     for cfg_path in configs:
         cfg = _read_json(cfg_path)
         servers = cfg.get("mcpServers") or {}

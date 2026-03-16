@@ -5,17 +5,16 @@
 """
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from loguru import logger
 
 from app.tools.ssh_tools import ssh_manager
 
-
 # --- Парсеры вывода команд (locale-independent, LANG=C) ---
 
 
-def _parse_free_b(stdout: str) -> Dict[str, Any]:
+def _parse_free_b(stdout: str) -> dict[str, Any]:
     """Парсит вывод 'LANG=C free -b'. Строка Mem: total used free ..."""
     ram = {"total": 0, "used": 0, "free": 0, "percent_used": 0.0}
     for line in stdout.strip().splitlines():
@@ -35,9 +34,9 @@ def _parse_free_b(stdout: str) -> Dict[str, Any]:
     return ram
 
 
-def _parse_df_b1(stdout: str) -> List[Dict[str, Any]]:
+def _parse_df_b1(stdout: str) -> list[dict[str, Any]]:
     """Парсит вывод 'LANG=C df -B1'. Строки: Filesystem 1B-blocks Used Available Use% Mounted on."""
-    disk: List[Dict[str, Any]] = []
+    disk: list[dict[str, Any]] = []
     lines = stdout.strip().splitlines()
     if not lines:
         return disk
@@ -66,7 +65,7 @@ def _parse_df_b1(stdout: str) -> List[Dict[str, Any]]:
     return disk
 
 
-def _parse_loadavg(stdout: str) -> Dict[str, float]:
+def _parse_loadavg(stdout: str) -> dict[str, float]:
     """Парсит /proc/loadavg: 'load1 load5 load15 ...'"""
     load = {"load1": 0.0, "load5": 0.0, "load15": 0.0}
     line = (stdout.strip().splitlines() or [""])[0]
@@ -89,7 +88,7 @@ def _parse_nproc(stdout: str) -> int:
         return 0
 
 
-def _parse_cpu_usage_top(stdout: str) -> Optional[float]:
+def _parse_cpu_usage_top(stdout: str) -> float | None:
     """Парсит 'LANG=C top -bn1' — строка Cpu(s): X.X%us ... или %Cpu(s): ..."""
     for line in stdout.strip().splitlines():
         if "Cpu(s):" in line or "%Cpu(s):" in line:
@@ -107,7 +106,7 @@ def _parse_cpu_usage_top(stdout: str) -> Optional[float]:
     return None
 
 
-def _resolve_password(server: Any, master_password: Optional[str]) -> Optional[str]:
+def _resolve_password(server: Any, master_password: str | None) -> str | None:
     """Получить пароль для Server: расшифровка или _plain_password."""
     mp = master_password or os.environ.get("MASTER_PASSWORD")
     if server.auth_method not in ("password", "key_password"):
@@ -124,7 +123,7 @@ def _resolve_password(server: Any, master_password: Optional[str]) -> Optional[s
 
 def _server_to_connection_params(
     server: Any,
-    master_password: Optional[str] = None,
+    master_password: str | None = None,
 ) -> tuple:
     """
     Извлекает (host, username, password, key_path, port, network_config) из Server
@@ -159,9 +158,9 @@ def _server_to_connection_params(
 
 async def collect_metrics(
     server: Any,
-    master_password: Optional[str] = None,
+    master_password: str | None = None,
     include_cpu_usage: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Собирает метрики с сервера по SSH.
 
@@ -181,7 +180,7 @@ async def collect_metrics(
             - cpu: { cores: int, usage_percent: float | None }
             - error: строка при ошибке (остальные поля могут быть частично заполнены)
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "ram": {"total": 0, "used": 0, "free": 0, "percent_used": 0.0},
         "disk": [],
         "load": {"load1": 0.0, "load5": 0.0, "load15": 0.0},

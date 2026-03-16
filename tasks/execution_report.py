@@ -2,7 +2,6 @@
 Генерация структурированного отчёта о выполнении задачи из AgentWorkflowRun.
 После выполнения шагов LLM генерирует краткий понятный отчёт (что сделано, команды, ошибки).
 """
-import asyncio
 from django.utils import timezone
 from loguru import logger
 

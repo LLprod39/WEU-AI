@@ -7,12 +7,14 @@ Chat Mode - простой режим для чата без ReAct loop
 import asyncio
 import json
 import re
-from typing import AsyncGenerator, List, Dict, Any
-from loguru import logger
-from app.core.modes.base import BaseMode
-from app.core.task_board import build_task_board_payload
-from app.core.server_board import build_server_board_payload
+from collections.abc import AsyncGenerator
+from typing import Any
 
+from loguru import logger
+
+from app.core.modes.base import BaseMode
+from app.core.server_board import build_server_board_payload
+from app.core.task_board import build_task_board_payload
 
 # Системные правила для чата (профессиональный стиль)
 CHAT_SYSTEM_RULES = """
@@ -49,8 +51,8 @@ class ChatMode(BaseMode):
         use_rag: bool = True,
         specific_model: str = None,
         user_id: int = None,
-        initial_history: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        initial_history: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Выполнение в простом режиме чата
@@ -263,7 +265,7 @@ class ChatMode(BaseMode):
         return any(re.search(p, text) for p in patterns)
 
     @staticmethod
-    def _extract_last_task_payload(history: List[Dict[str, str]]) -> Dict[str, Any]:
+    def _extract_last_task_payload(history: list[dict[str, str]]) -> dict[str, Any]:
         for msg in reversed(history or []):
             if msg.get("role") != "assistant":
                 continue
@@ -289,8 +291,8 @@ class ChatMode(BaseMode):
         self,
         user_message: str,
         rag_context: str,
-        history: List[Dict[str, str]],
-        execution_context: Dict[str, Any] = None,
+        history: list[dict[str, str]],
+        execution_context: dict[str, Any] = None,
     ) -> str:
         """Построить промпт для чата"""
 
@@ -353,7 +355,7 @@ ACTION: tool_name {{"param": "value"}}
         user_message: str,
         tool_name: str,
         tool_result: str,
-        execution_context: Dict[str, Any] = None,
+        execution_context: dict[str, Any] = None,
     ) -> str:
         """Построить финальный промпт с данными инструмента"""
 

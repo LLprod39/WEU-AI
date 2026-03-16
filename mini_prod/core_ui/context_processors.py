@@ -3,9 +3,9 @@ Context processors for core_ui: inject user_can_* flags for menu and guards.
 Also provides user_can_feature(user, feature) for use in views/decorators.
 """
 from core_ui.models import (
-    UserAppPermission,
     DEFAULT_ALLOWED_FEATURES,
     FEATURE_CHOICES,
+    UserAppPermission,
 )
 
 FEATURE_SLUGS = [slug for slug, _ in FEATURE_CHOICES]

@@ -4,6 +4,7 @@ RAG Engine — опционально при полной сборке (sentence
 """
 import os
 import uuid
+
 from loguru import logger
 
 # Ленивый кэш энкодера (только при полной сборке)
@@ -20,7 +21,7 @@ def get_encoder():
         _encoder_cache = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
         logger.info("SentenceTransformer loaded and cached")
         return _encoder_cache
-    except ImportError as e:
+    except ImportError:
         logger.info("RAG (mini build): sentence_transformers not installed. Use full build for embeddings.")
         return None
     except Exception as e:
