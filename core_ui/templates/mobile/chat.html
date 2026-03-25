@@ -4,14 +4,14 @@
 {% block header_title %}Чат{% endblock %}
 
 {% block header_left %}
-<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn">
-    <span class="material-icons-round">history</span>
+<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn" aria-label="История чатов">
+    <span class="material-icons-round" aria-hidden="true">history</span>
 </button>
 {% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn">
-    <span class="material-icons-round">add</span>
+<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn" aria-label="Новый чат">
+    <span class="material-icons-round" aria-hidden="true">add</span>
 </button>
 {% endblock %}
 
@@ -24,8 +24,8 @@
         <div class="mobile-drawer-content" style="left: 0; right: auto;">
             <div class="mobile-drawer-header">
                 <span class="text-lg font-semibold">История чатов</span>
-                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close" aria-label="Закрыть историю чатов">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-drawer-body" id="mobile-chat-history-list">
