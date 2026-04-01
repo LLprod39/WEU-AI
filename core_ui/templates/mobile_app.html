@@ -598,12 +598,12 @@ html, body {
       <div class="header-page-title" id="headerPageTitle">Главная</div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn" id="notifBtn" onclick="switchTab('notifs')" title="Уведомления">
-        <span class="material-icons-round">notifications</span>
+      <button class="icon-btn" id="notifBtn" onclick="switchTab('notifs')" title="Уведомления" aria-label="Уведомления">
+        <span class="material-icons-round" aria-hidden="true">notifications</span>
         <span class="notif-badge" id="headerNotifBadge"></span>
       </button>
-      <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="Обновить">
-        <span class="material-icons-round" id="refreshIcon">refresh</span>
+      <button class="icon-btn" id="refreshBtn" onclick="refreshCurrent()" title="Обновить" aria-label="Обновить">
+        <span class="material-icons-round" id="refreshIcon" aria-hidden="true">refresh</span>
       </button>
     </div>
   </header>
