@@ -273,6 +273,7 @@
                 flex-shrink: 0; transition: all .18s;
             }
             #sidebar-toggle:hover { background: rgba(255,255,255,0.07); color: var(--t1); }
+            #sidebar-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
             #sidebar-toggle .material-icons-round { font-size: 20px; }
         }
 
@@ -362,7 +363,7 @@
         <a href="{% url 'welcome' %}" class="dh-link"><span class="material-icons-round">home</span><span class="htxt">Главная</span></a>
         <a href="{% url 'login' %}" class="dh-link btn-login"><span class="material-icons-round">login</span> Войти</a>
     </div>
-    <button id="sidebar-toggle" onclick="toggleSidebar()"><span class="material-icons-round">menu</span></button>
+    <button id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar"><span class="material-icons-round" aria-hidden="true">menu</span></button>
 </header>
 
 <!-- ══ MOBILE SIDEBAR OVERLAY ══ -->
