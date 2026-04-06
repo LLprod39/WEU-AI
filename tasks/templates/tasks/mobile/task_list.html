@@ -49,11 +49,11 @@
                 {% for task in tasks_todo %}
                 <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
                     <div class="mobile-swipe-actions">
-                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
-                            <span class="material-icons-round">edit</span>
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})" aria-label="Редактировать задачу" title="Редактировать задачу">
+                            <span class="material-icons-round" aria-hidden="true">edit</span>
                         </button>
-                        <button type="button" class="mobile-swipe-action delete" onclick="MobileTasks.deleteTask({{ task.id }})">
-                            <span class="material-icons-round">delete</span>
+                        <button type="button" class="mobile-swipe-action delete" onclick="MobileTasks.deleteTask({{ task.id }})" aria-label="Удалить задачу" title="Удалить задачу">
+                            <span class="material-icons-round" aria-hidden="true">delete</span>
                         </button>
                     </div>
                     <div class="mobile-swipe-content">
@@ -100,8 +100,8 @@
                 {% for task in tasks_in_progress %}
                 <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
                     <div class="mobile-swipe-actions">
-                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
-                            <span class="material-icons-round">edit</span>
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})" aria-label="Редактировать задачу" title="Редактировать задачу">
+                            <span class="material-icons-round" aria-hidden="true">edit</span>
                         </button>
                     </div>
                     <div class="mobile-swipe-content">
@@ -159,8 +159,8 @@
     </div>
     
     <!-- FAB - Create Task -->
-    <button type="button" class="mobile-fab" id="mobile-task-create-btn">
-        <span class="material-icons-round">add</span>
+    <button type="button" class="mobile-fab" id="mobile-task-create-btn" aria-label="Создать задачу" title="Создать задачу">
+        <span class="material-icons-round" aria-hidden="true">add</span>
     </button>
     
     <!-- Create Task Modal -->
