@@ -87,8 +87,8 @@
             <!-- Left action -->
             <div class="mobile-header-left">
                 {% block header_left %}
-                <button type="button" id="mobile-back-btn" class="mobile-header-btn hidden" onclick="history.back()">
-                    <span class="material-icons-round">arrow_back</span>
+                <button type="button" id="mobile-back-btn" class="mobile-header-btn hidden" onclick="history.back()" aria-label="Назад">
+                    <span class="material-icons-round" aria-hidden="true">arrow_back</span>
                 </button>
                 {% endblock %}
             </div>
@@ -165,8 +165,8 @@
         <div class="mobile-drawer-content">
             <div class="mobile-drawer-header">
                 <span class="text-lg font-semibold">Меню</span>
-                <button type="button" class="mobile-drawer-close" id="mobile-drawer-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-drawer-close" aria-label="Закрыть меню">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-drawer-body">
