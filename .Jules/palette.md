@@ -1,0 +1,3 @@
+## 2026-04-18 - Missing ARIA Labels on Icon-Only Mobile Buttons
+**Learning:** Icon-only buttons used in the mobile UI (such as the navigation drawer close button, back button, and chat history buttons) were missing accessible labels. Because they only contain `material-icons-round` spans, screen readers announce them generically or use the icon text (which might not be descriptive, e.g., "add", "close", "history").
+**Action:** Always add explicit `aria-label` attributes directly to `<button>` elements that only contain icons. Additionally, add `aria-hidden="true"` to the inner icon span to prevent screen readers from reading the generic icon name alongside the explicit `aria-label`.
