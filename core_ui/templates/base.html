@@ -773,8 +773,9 @@
                             var btnDismiss = document.createElement('button');
                             btnDismiss.type = 'button';
                             btnDismiss.className = 'px-2 py-1.5 rounded-lg text-gray-500 text-xs hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100';
-                            btnDismiss.innerHTML = '<span class="material-icons-round text-sm">close</span>';
+                            btnDismiss.innerHTML = '<span class="material-icons-round text-sm" aria-hidden="true">close</span>';
                             btnDismiss.title = 'Отметить прочитанным';
+                            btnDismiss.setAttribute('aria-label', 'Отметить прочитанным');
                             btnDismiss.addEventListener('click', function(e) {
                                 e.stopPropagation();
                                 fetch('/tasks/notifications/' + n.id + '/action/', {
