@@ -1,0 +1,3 @@
+## 2024-05-18 - Missing ARIA labels on Icon-only Buttons
+**Learning:** Found multiple instances where icon-only buttons (using SVGs or material icons) lack an explicit `aria-label` text description, making them inaccessible to screen readers, and inner spans/svgs not hidden.
+**Action:** When creating or modifying components with icon-only buttons, systematically ensure an `aria-label` attribute is added directly to the parent `<button>`, and `aria-hidden="true"` is placed on the inner decorative span/svg element so the screen reader clearly articulates the button’s function and ignores the graphical element.
