@@ -478,9 +478,9 @@
                     </div>
                 </div>
                 <div style="display:flex;gap:3px">
-                    <button class="tbtn" id="ai-stop-btn-m" onclick="stopAIM()" title="Остановить" style="display:none"><span class="material-icons-round" style="font-size:14px;color:#ef4444">stop_circle</span></button>
-                    <button class="tbtn" onclick="clearAIChat()" title="Очистить"><span class="material-icons-round" style="font-size:14px">cleaning_services</span></button>
-                    <button class="tbtn" onclick="toggleAI()"><span class="material-icons-round" style="font-size:14px">close</span></button>
+                    <button class="tbtn" id="ai-stop-btn-m" onclick="stopAIM()" title="Остановить" aria-label="Остановить генерацию" style="display:none"><span class="material-icons-round" aria-hidden="true" style="font-size:14px;color:#ef4444">stop_circle</span></button>
+                    <button class="tbtn" onclick="clearAIChat()" title="Очистить" aria-label="Очистить чат"><span class="material-icons-round" aria-hidden="true" style="font-size:14px">cleaning_services</span></button>
+                    <button class="tbtn" onclick="toggleAI()" aria-label="Закрыть AI помощник"><span class="material-icons-round" aria-hidden="true" style="font-size:14px">close</span></button>
                 </div>
             </div>
 
@@ -930,7 +930,7 @@ function handleMQuestion(msg) {
     <div class="m-q-text">${esc(msg.question||'Как лучше продолжить?')}</div>
     <div class="m-q-row">
         <input type="text" class="m-q-inp" id="m-q-inp-${qid}" placeholder="Ваш ответ..." onkeydown="if(event.key==='Enter')sendMReply('${qid}')">
-        <button class="m-q-send" onclick="sendMReply('${qid}')"><span class="material-icons-round" style="font-size:14px">send</span></button>
+        <button class="m-q-send" onclick="sendMReply('${qid}')" aria-label="Отправить ответ"><span class="material-icons-round" aria-hidden="true" style="font-size:14px">send</span></button>
     </div>`;
     c.insertBefore(d,eid('ai-thinking'));
     setTimeout(()=>eid('m-q-inp-'+qid)?.focus(),100);
