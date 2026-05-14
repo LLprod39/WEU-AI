@@ -87,8 +87,8 @@
             <!-- Left action -->
             <div class="mobile-header-left">
                 {% block header_left %}
-                <button type="button" id="mobile-back-btn" class="mobile-header-btn hidden" onclick="history.back()">
-                    <span class="material-icons-round">arrow_back</span>
+                <button type="button" id="mobile-back-btn" class="mobile-header-btn hidden" onclick="history.back()" aria-label="Назад">
+                    <span class="material-icons-round" aria-hidden="true">arrow_back</span>
                 </button>
                 {% endblock %}
             </div>
@@ -121,7 +121,7 @@
         </a>
         <form action="{% url 'logout' %}" method="post" class="mobile-nav-item">
             {% csrf_token %}
-            <button type="submit" class="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-400">
+            <button type="submit" class="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-400" aria-label="Выйти из аккаунта">
                 <span class="material-icons-round mobile-nav-icon">logout</span>
                 <span class="mobile-nav-label">Выйти</span>
             </button>
@@ -151,7 +151,7 @@
             <span class="mobile-nav-label">База</span>
         </a>
         {% endif %}
-        <button type="button" class="mobile-nav-item" id="mobile-more-btn" data-page="more">
+        <button type="button" class="mobile-nav-item" id="mobile-more-btn" data-page="more" aria-label="Дополнительное меню">
             <span class="material-icons-round mobile-nav-icon">more_horiz</span>
             <span class="mobile-nav-label">Ещё</span>
         </button>
@@ -165,8 +165,8 @@
         <div class="mobile-drawer-content">
             <div class="mobile-drawer-header">
                 <span class="text-lg font-semibold">Меню</span>
-                <button type="button" class="mobile-drawer-close" id="mobile-drawer-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-drawer-close" aria-label="Закрыть меню">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-drawer-body">

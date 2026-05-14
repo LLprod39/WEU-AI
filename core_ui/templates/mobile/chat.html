@@ -4,14 +4,14 @@
 {% block header_title %}Чат{% endblock %}
 
 {% block header_left %}
-<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn">
-    <span class="material-icons-round">history</span>
+<button type="button" id="mobile-chat-history-btn" class="mobile-header-btn" aria-label="История чатов">
+    <span class="material-icons-round" aria-hidden="true">history</span>
 </button>
 {% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn">
-    <span class="material-icons-round">add</span>
+<button type="button" id="mobile-chat-new-btn" class="mobile-header-btn" aria-label="Новый чат">
+    <span class="material-icons-round" aria-hidden="true">add</span>
 </button>
 {% endblock %}
 
@@ -24,8 +24,8 @@
         <div class="mobile-drawer-content" style="left: 0; right: auto;">
             <div class="mobile-drawer-header">
                 <span class="text-lg font-semibold">История чатов</span>
-                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-drawer-close" id="mobile-chat-history-close" aria-label="Закрыть историю">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-drawer-body" id="mobile-chat-history-list">
@@ -78,8 +78,8 @@
     <div class="mobile-chat-input-container" id="mobile-chat-input-container">
         <!-- Options bar -->
         <div class="mobile-chat-options" id="mobile-chat-options">
-            <button type="button" class="mobile-chat-option-btn" id="mobile-rag-toggle" title="RAG">
-                <span class="material-icons-round">storage</span>
+            <button type="button" class="mobile-chat-option-btn" id="mobile-rag-toggle" title="RAG" aria-label="Включить RAG">
+                <span class="material-icons-round" aria-hidden="true">storage</span>
             </button>
             <span class="text-xs text-gray-500" id="mobile-model-label">auto</span>
         </div>
@@ -94,8 +94,8 @@
                 autocorrect="on"
                 spellcheck="true"
             ></textarea>
-            <button type="button" id="mobile-chat-send" class="mobile-chat-send-btn" disabled>
-                <span class="material-icons-round">send</span>
+            <button type="button" id="mobile-chat-send" class="mobile-chat-send-btn" disabled aria-label="Отправить сообщение">
+                <span class="material-icons-round" aria-hidden="true">send</span>
             </button>
         </div>
     </div>

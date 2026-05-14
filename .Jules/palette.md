@@ -1,0 +1,3 @@
+## 2026-05-14 - Missing ARIA Labels on Mobile Icon-only Buttons
+**Learning:** Icon-only buttons relying on child `<span class="material-icons-round">` elements are common in this design system, but they often lack accessible names for screen readers in the mobile UI. This prevents visually impaired users from understanding the purpose of critical navigation and action buttons (like history, close, add document, RAG toggle).
+**Action:** When adding or auditing icon-only buttons in the UI, always enforce the addition of a descriptive `aria-label` attribute on the parent `<button>` element and apply `aria-hidden="true"` to the inner `<span class="material-icons-round">` to avoid redundant or broken screen reader announcements.
