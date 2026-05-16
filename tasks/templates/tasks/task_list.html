@@ -2195,8 +2195,8 @@
     <main class="workspace-main">
         <!-- Header -->
         <header class="workspace-header">
-            <button class="toggle-sidebar-btn" onclick="toggleSidebar()">
-                <span class="material-icons-round" style="font-size: 18px;">menu</span>
+            <button class="toggle-sidebar-btn" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+                <span class="material-icons-round" aria-hidden="true" style="font-size: 18px;">menu</span>
             </button>
 
             <!-- View Tabs -->
@@ -2475,8 +2475,8 @@
     <div class="modal-content small">
         <div class="modal-header">
             <h2 class="modal-title">Create Task</h2>
-            <button class="modal-close" onclick="closeCreateModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeCreateModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="createTaskForm" action="{% url 'tasks:task_create' %}" method="POST">
@@ -2564,8 +2564,8 @@
     <div class="modal-content small">
         <div class="modal-header">
             <h2 class="modal-title">New Project</h2>
-            <button class="modal-close" onclick="closeProjectModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeProjectModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="createProjectForm" onsubmit="createProject(event)">
@@ -2604,8 +2604,8 @@
     <div class="modal-content small">
         <div class="modal-header">
             <h2 class="modal-title">New Sprint</h2>
-            <button class="modal-close" onclick="closeSprintModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeSprintModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="createSprintForm" onsubmit="createSprint(event)">
@@ -2645,8 +2645,8 @@
     <div class="modal-content small">
         <div class="modal-header">
             <h2 class="modal-title">Add Material</h2>
-            <button class="modal-close" onclick="closeMaterialModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeMaterialModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="addMaterialForm" onsubmit="createMaterial(event)" enctype="multipart/form-data">
@@ -2704,8 +2704,8 @@
     <div class="modal-content small">
         <div class="modal-header">
             <h2 class="modal-title">Save current view</h2>
-            <button class="modal-close" onclick="closeSaveFilterModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeSaveFilterModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="saveFilterForm" onsubmit="saveCurrentFilter(event)">
@@ -2735,8 +2735,8 @@
     <div class="modal-content large">
         <div class="modal-header">
             <h2 class="modal-title" id="detailTitle">Task Details</h2>
-            <button class="modal-close" onclick="closeDetailModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeDetailModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="modal-body">
@@ -2861,8 +2861,8 @@
                 <h2 class="modal-title" style="font-size:16px; margin:0 0 2px 0;" id="reportModalTitle">Отчёт о выполнении</h2>
                 <div id="reportModalMeta" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);"></div>
             </div>
-            <button class="modal-close" onclick="closeReportModal()">
-                <span class="material-icons-round">close</span>
+            <button class="modal-close" onclick="closeReportModal()" aria-label="Close modal">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="modal-body" id="reportModalBody" style="flex:1; overflow-y:auto; padding:0;">
