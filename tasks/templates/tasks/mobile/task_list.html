@@ -5,8 +5,8 @@
 {% block header_title %}Задачи{% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-task-filter-btn" class="mobile-header-btn">
-    <span class="material-icons-round">filter_list</span>
+<button type="button" id="mobile-task-filter-btn" class="mobile-header-btn" aria-label="Фильтры">
+    <span class="material-icons-round" aria-hidden="true">filter_list</span>
 </button>
 {% endblock %}
 
@@ -49,11 +49,11 @@
                 {% for task in tasks_todo %}
                 <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
                     <div class="mobile-swipe-actions">
-                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
-                            <span class="material-icons-round">edit</span>
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})" aria-label="Редактировать">
+                            <span class="material-icons-round" aria-hidden="true">edit</span>
                         </button>
-                        <button type="button" class="mobile-swipe-action delete" onclick="MobileTasks.deleteTask({{ task.id }})">
-                            <span class="material-icons-round">delete</span>
+                        <button type="button" class="mobile-swipe-action delete" onclick="MobileTasks.deleteTask({{ task.id }})" aria-label="Удалить">
+                            <span class="material-icons-round" aria-hidden="true">delete</span>
                         </button>
                     </div>
                     <div class="mobile-swipe-content">
@@ -100,8 +100,8 @@
                 {% for task in tasks_in_progress %}
                 <div class="mobile-swipe-container" data-task-id="{{ task.id }}">
                     <div class="mobile-swipe-actions">
-                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})">
-                            <span class="material-icons-round">edit</span>
+                        <button type="button" class="mobile-swipe-action edit" onclick="MobileTasks.editTask({{ task.id }})" aria-label="Редактировать">
+                            <span class="material-icons-round" aria-hidden="true">edit</span>
                         </button>
                     </div>
                     <div class="mobile-swipe-content">
@@ -159,8 +159,8 @@
     </div>
     
     <!-- FAB - Create Task -->
-    <button type="button" class="mobile-fab" id="mobile-task-create-btn">
-        <span class="material-icons-round">add</span>
+    <button type="button" class="mobile-fab" id="mobile-task-create-btn" aria-label="Создать задачу">
+        <span class="material-icons-round" aria-hidden="true">add</span>
     </button>
     
     <!-- Create Task Modal -->
@@ -169,8 +169,8 @@
         <div class="mobile-modal-content">
             <div class="mobile-modal-header">
                 <h2 class="text-lg font-semibold">Новая задача</h2>
-                <button type="button" class="mobile-modal-close" id="mobile-task-modal-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-modal-close" id="mobile-task-modal-close" aria-label="Закрыть">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-modal-body">
