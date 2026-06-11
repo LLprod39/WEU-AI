@@ -4,8 +4,8 @@
 {% block header_title %}База знаний{% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-kb-add-btn" class="mobile-header-btn">
-    <span class="material-icons-round">add</span>
+<button type="button" id="mobile-kb-add-btn" class="mobile-header-btn" aria-label="Добавить документ">
+    <span class="material-icons-round" aria-hidden="true">add</span>
 </button>
 {% endblock %}
 
@@ -46,8 +46,8 @@
     </div>
     
     <!-- FAB - Add Document -->
-    <button type="button" class="mobile-fab" id="mobile-kb-fab">
-        <span class="material-icons-round">upload_file</span>
+    <button type="button" class="mobile-fab" id="mobile-kb-fab" aria-label="Загрузить файл">
+        <span class="material-icons-round" aria-hidden="true">upload_file</span>
     </button>
     
     <!-- Add Document Modal -->
@@ -56,8 +56,8 @@
         <div class="mobile-modal-content">
             <div class="mobile-modal-header">
                 <h2 class="text-lg font-semibold">Добавить документ</h2>
-                <button type="button" class="mobile-modal-close" id="mobile-kb-modal-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-modal-close" id="mobile-kb-modal-close" aria-label="Закрыть окно">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-modal-body">
