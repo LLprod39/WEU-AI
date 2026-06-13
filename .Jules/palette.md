@@ -1,0 +1,3 @@
+## 2026-06-13 - Accessibility: Focus states and ARIA labels for icon-only buttons
+**Learning:** Icon-only buttons lacking ARIA labels provide no context to screen readers, violating WCAG guidelines. Moreover, relying solely on hover effects without explicit keyboard focus outlines (like `focus:ring-2`) creates severe accessibility barriers for users navigating via keyboard, as they cannot perceive the current active element.
+**Action:** Consistently append `aria-label` to parent `<button>` elements and `aria-hidden="true"` to their inner decorative icons. Additionally, always define explicit focus states (e.g., `focus:outline-none focus:ring-2 focus:ring-primary/50`) on interactive components alongside standard `hover` classes.
