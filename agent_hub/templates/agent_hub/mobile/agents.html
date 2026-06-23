@@ -5,8 +5,8 @@
 {% block header_title %}Агенты{% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-refresh-btn" class="mobile-header-btn" onclick="MobileAgents.refresh()">
-    <span class="material-icons-round">refresh</span>
+<button type="button" id="mobile-refresh-btn" class="mobile-header-btn" onclick="MobileAgents.refresh()" aria-label="Обновить">
+    <span class="material-icons-round" aria-hidden="true">refresh</span>
 </button>
 {% endblock %}
 
@@ -46,8 +46,8 @@
                             {% if workflow.target_server %}• {{ workflow.target_server.name }}{% endif %}
                         </div>
                     </div>
-                    <button type="button" class="mobile-card-action success" onclick="MobileAgents.runWorkflow({{ workflow.id }}, '{{ workflow.name|escapejs }}')">
-                        <span class="material-icons-round">play_arrow</span>
+                    <button type="button" class="mobile-card-action success" onclick="MobileAgents.runWorkflow({{ workflow.id }}, '{{ workflow.name|escapejs }}')" aria-label="Запустить">
+                        <span class="material-icons-round" aria-hidden="true">play_arrow</span>
                     </button>
                 </div>
                 <div class="mobile-card-actions">
@@ -157,8 +157,8 @@
     </div>
     
     <!-- FAB -->
-    <button type="button" class="mobile-fab" onclick="MobileAgents.showQuickMenu()">
-        <span class="material-icons-round">add</span>
+    <button type="button" class="mobile-fab" onclick="MobileAgents.showQuickMenu()" aria-label="Быстрое меню">
+        <span class="material-icons-round" aria-hidden="true">add</span>
     </button>
 </div>
 
@@ -197,8 +197,8 @@
     <div class="mobile-modal-panel">
         <div class="mobile-modal-header">
             <span class="mobile-modal-title">Создать Workflow</span>
-            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-workflow')">
-                <span class="material-icons-round">close</span>
+            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-workflow')" aria-label="Закрыть">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="mobile-modal-body">
@@ -244,8 +244,8 @@
     <div class="mobile-modal-panel">
         <div class="mobile-modal-header">
             <span class="mobile-modal-title">Создать Агента</span>
-            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-agent')">
-                <span class="material-icons-round">close</span>
+            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-agent')" aria-label="Закрыть">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="mobile-modal-body">
@@ -290,8 +290,8 @@
     <div class="mobile-modal-panel">
         <div class="mobile-modal-header">
             <span class="mobile-modal-title">Запуск</span>
-            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-workflow')">
-                <span class="material-icons-round">close</span>
+            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-workflow')" aria-label="Закрыть">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="mobile-modal-body">
@@ -324,8 +324,8 @@
     <div class="mobile-modal-panel">
         <div class="mobile-modal-header">
             <span class="mobile-modal-title">Запуск агента</span>
-            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-agent')">
-                <span class="material-icons-round">close</span>
+            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-agent')" aria-label="Закрыть">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="mobile-modal-body">
@@ -362,8 +362,8 @@
     <div class="mobile-modal-panel">
         <div class="mobile-modal-header">
             <span class="mobile-modal-title">Быстрая задача</span>
-            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('quick-task')">
-                <span class="material-icons-round">close</span>
+            <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('quick-task')" aria-label="Закрыть">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="mobile-modal-body">
@@ -393,16 +393,16 @@
 <div id="modal-logs" class="mobile-modal fullscreen hidden">
     <div class="mobile-modal-panel fullscreen">
         <div class="mobile-modal-header">
-            <button type="button" class="mobile-modal-back" onclick="MobileAgents.hideModal('logs')">
-                <span class="material-icons-round">arrow_back</span>
+            <button type="button" class="mobile-modal-back" onclick="MobileAgents.hideModal('logs')" aria-label="Назад">
+                <span class="material-icons-round" aria-hidden="true">arrow_back</span>
             </button>
             <span class="mobile-modal-title" id="logs-title">Логи</span>
             <div class="mobile-modal-header-actions">
-                <button type="button" id="logs-stop-btn" class="mobile-header-btn danger hidden" onclick="MobileAgents.stopRun()">
-                    <span class="material-icons-round">stop</span>
+                <button type="button" id="logs-stop-btn" class="mobile-header-btn danger hidden" onclick="MobileAgents.stopRun()" aria-label="Остановить">
+                    <span class="material-icons-round" aria-hidden="true">stop</span>
                 </button>
-                <button type="button" class="mobile-header-btn" onclick="MobileAgents.refreshLogs()">
-                    <span class="material-icons-round">refresh</span>
+                <button type="button" class="mobile-header-btn" onclick="MobileAgents.refreshLogs()" aria-label="Обновить">
+                    <span class="material-icons-round" aria-hidden="true">refresh</span>
                 </button>
             </div>
         </div>
