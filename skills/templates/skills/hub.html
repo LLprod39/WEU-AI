@@ -585,7 +585,7 @@
                         </details>
                         <div class="flex gap-2">
                             <textarea id="gen-input" rows="2" class="input-field flex-1 text-xs" placeholder="Опишите MCP-сервер..."></textarea>
-                            <button type="button" id="btn-gen-send" class="btn-primary text-xs px-4 self-end"><span class="material-icons-round text-sm">send</span></button>
+                            <button type="button" id="btn-gen-send" class="btn-primary text-xs px-4 self-end" aria-label="Отправить"><span class="material-icons-round text-sm" aria-hidden="true">send</span></button>
                         </div>
                     </div>
                 </div>
@@ -594,8 +594,8 @@
                     <div class="p-4 border-b border-white/[.06] flex items-center justify-between flex-shrink-0">
                         <h2 class="text-sm font-semibold text-white">Код MCP-сервера</h2>
                         <div class="flex gap-1.5">
-                            <button type="button" id="btn-gen-edit" class="btn-ghost text-[11px] px-2 py-1" title="Редактировать"><span class="material-icons-round text-sm">edit</span></button>
-                            <button type="button" id="btn-gen-copy" class="btn-ghost text-[11px] px-2 py-1" title="Копировать"><span class="material-icons-round text-sm">content_copy</span></button>
+                            <button type="button" id="btn-gen-edit" class="btn-ghost text-[11px] px-2 py-1" title="Редактировать" aria-label="Редактировать"><span class="material-icons-round text-sm" aria-hidden="true">edit</span></button>
+                            <button type="button" id="btn-gen-copy" class="btn-ghost text-[11px] px-2 py-1" title="Копировать" aria-label="Копировать"><span class="material-icons-round text-sm" aria-hidden="true">content_copy</span></button>
                         </div>
                     </div>
                     <div id="gen-code-view" class="flex-1 overflow-auto p-4">
