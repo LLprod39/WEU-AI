@@ -1233,6 +1233,7 @@
 .wf-action-btn:hover { background: var(--hub-card-2); border-color: var(--hub-border); color: var(--hub-text); }
 .wf-action-btn.danger:hover { background: color-mix(in srgb,#f43f5e 12%,transparent); color: #f43f5e; border-color: color-mix(in srgb,#f43f5e 30%,transparent); }
 .wf-action-btn.primary:hover { background: color-mix(in srgb,var(--primary,#6366f1) 12%,transparent); color: var(--primary,#6366f1); border-color: color-mix(in srgb,var(--primary,#6366f1) 30%,transparent); }
+.wf-action-btn:focus-visible { outline: 2px solid var(--primary, #6366f1); outline-offset: 2px; }
 
 /* Preset cards redesign */
 .wf-preset-card {
@@ -1735,17 +1736,17 @@
                                     </td>
                                     <td>
                                         <div class="wf-actions" style="justify-content:flex-end;">
-                                            <button type="button" onclick="editWorkflow({{ workflow.id }})" class="wf-action-btn" title="Редактировать">
-                                                <span class="material-icons-round" style="font-size:15px;">edit</span>
+                                            <button type="button" onclick="editWorkflow({{ workflow.id }})" class="wf-action-btn" title="Редактировать" aria-label="Редактировать">
+                                                <span class="material-icons-round" style="font-size:15px;" aria-hidden="true">edit</span>
                                             </button>
-                                            <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="wf-action-btn" title="Просмотр шагов">
-                                                <span class="material-icons-round" style="font-size:15px;">list_alt</span>
+                                            <button type="button" onclick="openWorkflowScript({{ workflow.id }})" class="wf-action-btn" title="Просмотр шагов" aria-label="Просмотр шагов">
+                                                <span class="material-icons-round" style="font-size:15px;" aria-hidden="true">list_alt</span>
                                             </button>
-                                            <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="wf-action-btn danger" title="Удалить">
-                                                <span class="material-icons-round" style="font-size:15px;">delete_outline</span>
+                                            <button type="button" onclick="deleteWorkflow({{ workflow.id }})" class="wf-action-btn danger" title="Удалить" aria-label="Удалить">
+                                                <span class="material-icons-round" style="font-size:15px;" aria-hidden="true">delete_outline</span>
                                             </button>
-                                            <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="wf-action-btn primary" title="Запустить">
-                                                <span class="material-icons-round" style="font-size:15px;">play_arrow</span>
+                                            <button type="button" onclick="runWorkflow({{ workflow.id }}, event)" class="wf-action-btn primary" title="Запустить" aria-label="Запустить">
+                                                <span class="material-icons-round" style="font-size:15px;" aria-hidden="true">play_arrow</span>
                                             </button>
                                         </div>
                                     </td>
