@@ -817,11 +817,11 @@
                     <div id="latency-badge" class="hidden" style="font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,.04);padding:3px 7px;border-radius:5px;"></div>
                 </div>
                 <div class="terminal-toolbar-right">
-                    <button class="toolbar-btn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect"><span class="material-icons-round" style="font-size:18px">link</span></button>
-                    <button class="toolbar-btn" onclick="disconnectTerminal()" title="Disconnect"><span class="material-icons-round" style="font-size:18px">link_off</span></button>
-                    <button class="toolbar-btn" onclick="clearTerminal()" title="Clear"><span class="material-icons-round" style="font-size:18px">delete_sweep</span></button>
-                    <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window"><span class="material-icons-round" style="font-size:18px">open_in_new</span></button>
-                    <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant"><span class="material-icons-round" style="font-size:18px">psychology</span></button>
+                    <button class="toolbar-btn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect" aria-label="Подключить"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">link</span></button>
+                    <button class="toolbar-btn" onclick="disconnectTerminal()" title="Disconnect" aria-label="Отключить"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">link_off</span></button>
+                    <button class="toolbar-btn" onclick="clearTerminal()" title="Clear" aria-label="Очистить"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">delete_sweep</span></button>
+                    <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window" aria-label="Открыть в новом окне"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">open_in_new</span></button>
+                    <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant" aria-label="AI Ассистент"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">psychology</span></button>
                 </div>
             </div>
 
