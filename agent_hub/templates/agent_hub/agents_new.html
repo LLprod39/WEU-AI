@@ -128,8 +128,8 @@
                                 <span class="material-icons-round">description</span>
                             </a>
                             {% if run.status == 'running' %}
-                            <button onclick="stopAgentRun({{ run.id }})" class="btn-icon-sm btn-danger" title="Stop">
-                                <span class="material-icons-round">stop</span>
+                            <button onclick="stopAgentRun({{ run.id }})" class="btn-icon-sm btn-danger" title="Stop" aria-label="Остановить">
+                                <span class="material-icons-round" aria-hidden="true">stop</span>
                             </button>
                             {% endif %}
                         </div>
