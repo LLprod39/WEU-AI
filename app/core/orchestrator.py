@@ -17,19 +17,21 @@ warnings.warn(
     stacklevel=2
 )
 
-from app.core.llm import LLMProvider
-from app.rag.engine import RAGEngine
-from app.tools.manager import get_tool_manager
-from loguru import logger
 import asyncio
-import re
 import json
 import os
-from typing import AsyncGenerator, List, Dict, Any
+import re
+from collections.abc import AsyncGenerator
+from typing import Any
 
+from loguru import logger
+
+from app.core.llm import LLMProvider
 
 # Re-export AGENT_SYSTEM_RULES_RU from unified_orchestrator for backward compatibility
 from app.core.unified_orchestrator import AGENT_SYSTEM_RULES_RU
+from app.rag.engine import RAGEngine
+from app.tools.manager import get_tool_manager
 
 
 class Orchestrator:
@@ -44,25 +46,25 @@ class Orchestrator:
     - MCP server integration
     - Smart context management
     """
-    
+
     def __init__(self):
         self.llm = LLMProvider()
         self.rag = RAGEngine()
         self.tool_manager = get_tool_manager()
-        self.history: List[Dict[str, str]] = []
+        self.history: list[dict[str, str]] = []
         self.max_iterations = 5  # Max ReAct loop iterations
-        
+
     async def initialize(self):
         """
         Initialize the orchestrator and connect to external services
         """
         logger.info("Initializing Orchestrator...")
-        
+
         # Example: Connect to MCP servers if needed
         # await self.tool_manager.connect_mcp_server_sse("filesystem", "http://localhost:8000/sse")
-        
+
         logger.success("Orchestrator initialized")
-    
+
     async def process_user_message(
         self,
         message: str,
@@ -70,8 +72,8 @@ class Orchestrator:
         use_rag: bool = True,
         specific_model: str = None,
         user_id=None,
-        initial_history: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,  # connection_id, allowed_actions и т.п. для делегированных задач
+        initial_history: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,  # connection_id, allowed_actions и т.п. для делегированных задач
     ) -> AsyncGenerator[str, None]:
         """
         Process user message with full ReAct loop
@@ -92,18 +94,18 @@ class Orchestrator:
         effective_history.append({"role": "user", "content": message})
         if not initial_history:
             self.history.append({"role": "user", "content": message})
-        
+
         # Resolve model preference
         if not model_preference:
             from app.core.model_config import model_manager
             model_preference = model_manager.config.default_provider
-        
+
         # Limit history to last 10 messages (for prompt)
         if len(effective_history) > 10:
             effective_history = effective_history[-10:]
         if not initial_history and len(self.history) > 10:
             self.history = self.history[-10:]
-        
+
         # Step 1: Retrieve RAG context (RAG.query — sync, вызываем в thread)
         rag_context = ""
         if use_rag and self.rag.available and user_id is not None:
@@ -118,15 +120,15 @@ class Orchestrator:
                         logger.info(f"Retrieved {len(docs)} documents from RAG")
             except Exception as e:
                 logger.warning(f"RAG query failed: {e}")
-        
+
         # Step 2: ReAct Loop
         iteration = 0
         final_answer = ""
-        
+
         while iteration < self.max_iterations:
             iteration += 1
             logger.info(f"ReAct iteration {iteration}/{self.max_iterations}")
-            
+
             # Build system prompt (use effective_history when continuing saved chat)
             system_prompt = self._build_system_prompt(
                 user_message=message,
@@ -135,11 +137,11 @@ class Orchestrator:
                 history_override=effective_history if initial_history else None,
                 execution_context=execution_context,
             )
-            
+
             # Get LLM response
             llm_response = ""
             async for chunk in self.llm.stream_chat(
-                system_prompt, 
+                system_prompt,
                 model=model_preference,
                 specific_model=specific_model
             ):
@@ -147,17 +149,17 @@ class Orchestrator:
                 # Stream thinking process to user (optional - can be disabled for cleaner UX)
                 if iteration == 1:  # Only show first iteration thinking
                     yield chunk
-            
+
             # Parse response for actions
             action_match = self._parse_action(llm_response)
-            
+
             if action_match:
                 # Agent wants to use a tool
                 tool_name = action_match['tool']
                 tool_args = action_match['args']
-                
+
                 yield f"\n\n🔧 **Using tool: {tool_name}**\n"
-                
+
                 try:
                     # Контекст для инструментов servers_list / server_execute (user_id, master_password)
                     ctx = (execution_context or {}).copy()
@@ -173,15 +175,15 @@ class Orchestrator:
                         if tool_context is None:
                             tool_context = {}
                         tool_context["allowed_tools"] = ctx.get("allowed_tools")
-                    
+
                     result = await self.tool_manager.execute_tool(
                         tool_name, _context=tool_context, **tool_args
                     )
-                    
+
                     # Format result
                     result_str = self._format_tool_result(result)
                     yield f"✅ **Result:**\n```\n{result_str}\n```\n\n"
-                    
+
                     # Если это write_file и есть workspace_path, выдаём событие IDE_FILE_CHANGED
                     if tool_name == "write_file" and ctx.get("workspace_path"):
                         file_path = tool_args.get("path", "")
@@ -207,7 +209,7 @@ class Orchestrator:
                                 yield f"IDE_FILE_CHANGED:{rel_path}\n"
                             except Exception as e:
                                 logger.debug(f"Could not compute relative path for IDE_FILE_CHANGED: {e}")
-                    
+
                     # Add to effective history (and self.history if not override)
                     effective_history.append({
                         "role": "assistant",
@@ -226,15 +228,15 @@ class Orchestrator:
                             "role": "system",
                             "content": f"OBSERVATION: {result_str}"
                         })
-                    
+
                     # Continue loop with new observation
                     continue
-                    
+
                 except Exception as e:
                     error_msg = f"❌ Tool execution failed: {str(e)}"
                     yield f"{error_msg}\n\n"
                     logger.error(error_msg)
-                    
+
                     effective_history.append({
                         "role": "system",
                         "content": f"ERROR: {str(e)}"
@@ -244,23 +246,23 @@ class Orchestrator:
                             "role": "system",
                             "content": f"ERROR: {str(e)}"
                         })
-                    
+
                     # Continue loop to let agent handle error
                     continue
             else:
                 # No action - this is the final answer
                 final_answer = llm_response
                 break
-        
+
         # If we exhausted iterations without final answer, use last response
         if not final_answer:
             final_answer = "Достигнут лимит итераций. Вот что удалось выяснить:\n\n" + llm_response
-        
+
         # Add final answer to history
         effective_history.append({"role": "assistant", "content": final_answer})
         if not initial_history:
             self.history.append({"role": "assistant", "content": final_answer})
-        
+
         # Add to RAG if it's valuable information (RAG.add_text — sync, в thread)
         if len(final_answer) > 100 and user_id is not None:  # Only add substantial responses
             try:
@@ -272,18 +274,18 @@ class Orchestrator:
                 )
             except Exception as e:
                 logger.warning(f"Failed to add to RAG: {e}")
-        
+
         # If we already streamed the answer (iteration 1), don't stream again
         if iteration > 1:
             yield f"\n\n{final_answer}"
-    
+
     def _build_system_prompt(
         self,
         user_message: str,
         rag_context: str,
         iteration: int,
-        history_override: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        history_override: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
     ) -> str:
         """Build the ReAct system prompt. execution_context may contain connection_id, allowed_actions for delegated tasks."""
         history_source = history_override if history_override is not None else self.history
@@ -306,7 +308,7 @@ class Orchestrator:
         exclude_tools = None
         include_tools = None
         servers_block = ""
-        
+
         if execution_context:
             include_tools = execution_context.get("allowed_tools")
             conn_id = execution_context.get("connection_id")
@@ -314,16 +316,16 @@ class Orchestrator:
             target_server = execution_context.get("server", {})
             # Флаг: показывать ли серверы в промпте (по умолчанию НЕТ для обычного чата)
             include_servers = execution_context.get("include_servers", False)
-            
+
             if conn_id:
                 # Когда есть connection_id — используем ТОЛЬКО этот сервер
                 # Исключаем ssh_connect и server_execute (чтобы агент не переключился на другой сервер)
                 exclude_tools = ["ssh_connect", "servers_list", "server_execute"]
-                
+
                 server_name = target_server.get("name", "целевой сервер")
                 server_host = target_server.get("host", "")
                 server_info = f"{server_name} ({server_host})" if server_host else server_name
-                
+
                 ctx_block = f"""
 КОНТЕКСТ ВЫПОЛНЕНИЯ ЗАДАЧИ:
 - Уже установлено SSH-соединение с сервером: **{server_info}**
@@ -341,7 +343,7 @@ class Orchestrator:
                     servers_block = self._get_user_servers_block(user_id)
             # else: обычный чат — НЕ показываем серверы автоматически
             # Пользователь может использовать инструмент servers_list если нужно
-            
+
             # Добавляем информацию о workspace если есть
             workspace_path = execution_context.get("workspace_path")
             from_ide = execution_context.get("from_ide", False)
@@ -354,7 +356,7 @@ class Orchestrator:
 - Инструменты read_file, write_file, list_directory автоматически разрешат относительные пути относительно workspace
 """
                 ctx_block = (ctx_block + "\n" + workspace_block).strip() if ctx_block else workspace_block.strip()
-            
+
             # Режим IDE: не выводить данные серверов и посторонние чек-листы
             if from_ide:
                 ide_rule = """
@@ -419,7 +421,7 @@ class Orchestrator:
 
 Твой ответ:"""
         return prompt
-    
+
     def _get_user_servers_block(self, user_id: int) -> str:
         """
         Возвращает блок с актуальным списком серверов пользователя для системного промпта.
@@ -453,20 +455,20 @@ class Orchestrator:
         # Look for ACTION: tool_name {json}
         pattern = r'ACTION:\s*([\w\-.]+)\s*(\{.*?\})'
         match = re.search(pattern, response, re.DOTALL)
-        
+
         if match:
             tool_name = match.group(1)
             args_str = match.group(2)
-            
+
             try:
                 args = json.loads(args_str)
                 return {"tool": tool_name, "args": args}
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse action arguments: {e}")
                 return None
-        
+
         return None
-    
+
     def _format_tool_result(self, result: Any) -> str:
         """Format tool execution result for display"""
         if isinstance(result, dict):
@@ -475,16 +477,16 @@ class Orchestrator:
             return result
         else:
             return str(result)
-    
-    def get_available_tools(self) -> List[Dict]:
+
+    def get_available_tools(self) -> list[dict]:
         """Get list of all available tools"""
         return [tool.to_dict() for tool in self.tool_manager.get_all_tools()]
-    
+
     def clear_history(self):
         """Clear conversation history"""
         self.history = []
         logger.info("Conversation history cleared")
-    
+
     async def add_to_knowledge_base(self, text: str, source: str = "manual", user_id=None):
         """Add text to RAG knowledge base (user_id required for per-user isolation)."""
         if self.rag.available and user_id is not None:

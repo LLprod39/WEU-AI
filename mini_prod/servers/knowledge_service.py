@@ -22,7 +22,8 @@ Usage:
         task_id=123
     )
 """
-from typing import Optional, List, Dict, Any
+from typing import Any
+
 from django.contrib.auth.models import User
 from django.utils import timezone
 from loguru import logger
@@ -49,7 +50,7 @@ class ServerKnowledgeService:
         Returns:
             Formatted context string for AI
         """
-        from servers.models import GlobalServerRules, ServerKnowledge, ServerGroupKnowledge
+        from servers.models import GlobalServerRules, ServerGroupKnowledge, ServerKnowledge
 
         parts = []
 
@@ -78,7 +79,7 @@ class ServerKnowledgeService:
 
             if group_knowledge:
                 knowledge_texts = [f"• [{k.category}] {k.title}: {k.content}" for k in group_knowledge]
-                parts.append(f"=== ЗНАНИЯ ГРУППЫ ===\n" + "\n".join(knowledge_texts))
+                parts.append("=== ЗНАНИЯ ГРУППЫ ===\n" + "\n".join(knowledge_texts))
 
         # 3. Server basic info
         server_parts = []
@@ -115,12 +116,12 @@ class ServerKnowledgeService:
                 knowledge_text.append(f"\n[{cat}]")
                 knowledge_text.extend(items[:5])  # Max 5 per category
 
-            parts.append(f"=== НАКОПЛЕННЫЕ ЗНАНИЯ О СЕРВЕРЕ ===\n" + "\n".join(knowledge_text))
+            parts.append("=== НАКОПЛЕННЫЕ ЗНАНИЯ О СЕРВЕРЕ ===\n" + "\n".join(knowledge_text))
 
         return "\n\n".join(parts) if parts else ""
 
     @staticmethod
-    def get_forbidden_commands(server, user: User) -> List[str]:
+    def get_forbidden_commands(server, user: User) -> list[str]:
         """
         Get list of forbidden commands for a server.
         Combines: global + group + server-specific forbidden commands.
@@ -144,7 +145,7 @@ class ServerKnowledgeService:
         return list(forbidden)
 
     @staticmethod
-    def get_environment_vars(server, user: User) -> Dict[str, str]:
+    def get_environment_vars(server, user: User) -> dict[str, str]:
         """
         Get merged environment variables for a server.
         Priority: server network_config > group > global
@@ -233,7 +234,7 @@ class ServerKnowledgeService:
         command: str,
         task_id: int = None,
         user: User = None
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Analyze command output and extract knowledge.
         This is called after task execution to learn about the server.
@@ -261,7 +262,7 @@ class ServerKnowledgeService:
             k = ServerKnowledgeService.save_ai_knowledge(
                 server=server,
                 title="ОС CentOS/RHEL",
-                content=f"Обнаружена ОС CentOS или Red Hat",
+                content="Обнаружена ОС CentOS или Red Hat",
                 category='system',
                 task_id=task_id,
                 user=user
@@ -330,9 +331,9 @@ class ServerKnowledgeService:
         return rules
 
     @staticmethod
-    def get_context_summary(server, user: User) -> Dict[str, Any]:
+    def get_context_summary(server, user: User) -> dict[str, Any]:
         """Get summary of all context sources (for UI display)"""
-        from servers.models import GlobalServerRules, ServerKnowledge, ServerGroupKnowledge
+        from servers.models import GlobalServerRules, ServerGroupKnowledge, ServerKnowledge
 
         summary = {
             'has_global_rules': False,

@@ -1,14 +1,16 @@
 """
 Unified Orchestrator - единый оркестратор с поддержкой нескольких режимов
 """
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from loguru import logger
+
 from app.core.llm import LLMProvider
+from app.core.model_config import model_manager
+from app.core.modes import ChatMode, RalphInternalMode, ReActMode
 from app.rag.engine import RAGEngine
 from app.tools.manager import get_tool_manager
-from app.core.model_config import model_manager
-from app.core.modes import ReActMode, RalphInternalMode, ChatMode
-
 
 # Инструкции и ограничения агента: язык и безопасность
 AGENT_SYSTEM_RULES_RU = """
@@ -73,7 +75,7 @@ class UnifiedOrchestrator:
     
     Автоматически выбирает режим на основе конфигурации или параметров
     """
-    
+
     MODES = {
         "chat": ChatMode,  # простой чат без loop
         "react": ReActMode,
@@ -83,23 +85,23 @@ class UnifiedOrchestrator:
         "ralph": RalphInternalMode,  # alias for backward compatibility
         "ralph_cli": RalphInternalMode,  # legacy alias
     }
-    
+
     def __init__(self):
         self.llm = LLMProvider()
         self.rag = RAGEngine()
         self.tool_manager = get_tool_manager()
-        self.history: List[Dict[str, str]] = []
-        
+        self.history: list[dict[str, str]] = []
+
         # Инициализация режимов
         self._modes = {}
         for mode_name, mode_class in self.MODES.items():
             self._modes[mode_name] = mode_class(self)
-    
+
     async def initialize(self):
         """Initialize the orchestrator"""
         logger.info("Initializing UnifiedOrchestrator...")
         logger.success("UnifiedOrchestrator initialized")
-    
+
     async def process_user_message(
         self,
         message: str,
@@ -107,8 +109,8 @@ class UnifiedOrchestrator:
         use_rag: bool = True,
         specific_model: str = None,
         user_id: int = None,
-        initial_history: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        initial_history: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
         mode: str = None,
     ) -> AsyncGenerator[str, None]:
         """
@@ -131,21 +133,21 @@ class UnifiedOrchestrator:
         # Resolve mode
         if mode is None:
             mode = model_manager.config.default_orchestrator_mode
-        
+
         # Validate mode
         if mode not in self.MODES:
             logger.warning(f"Unknown mode '{mode}', falling back to ralph_internal")
             mode = "ralph_internal"
-        
+
         logger.info(f"UnifiedOrchestrator: using mode '{mode}'")
-        
+
         # Get mode handler
         mode_handler = self._modes[mode]
-        
+
         # Нормализовать model_preference: заменить "auto"/None на default_provider
         if not model_preference or model_preference == "auto":
             model_preference = model_manager.config.default_provider or "cursor"
-        
+
         # Execute in selected mode
         async for chunk in mode_handler.execute(
             message=message,
@@ -157,23 +159,23 @@ class UnifiedOrchestrator:
             execution_context=execution_context,
         ):
             yield chunk
-    
+
     def _build_system_prompt(
         self,
         user_message: str,
         rag_context: str,
         iteration: int,
-        history_override: List[Dict[str, str]] = None,
-        execution_context: Dict[str, Any] = None,
+        history_override: list[dict[str, str]] = None,
+        execution_context: dict[str, Any] = None,
     ) -> str:
         """
         Build system prompt (для ReAct mode)
         Использует логику из Orchestrator
         """
         # AGENT_SYSTEM_RULES_RU is now defined in this module
-        
+
         history_source = history_override if history_override is not None else self.history
-        
+
         history_text = ""
         if len(history_source) > 1:
             recent = history_source[-6:]
@@ -187,13 +189,13 @@ class UnifiedOrchestrator:
                     truncated = content[:200]
                 history_lines.append(f"{msg['role'].upper()}: {truncated}")
             history_text = "\n".join(history_lines)
-        
+
         ctx_block = ""
         exclude_tools = None
         include_tools = None
         servers_block = ""
         skill_block = ""
-        
+
         if execution_context:
             skill_context_text = (execution_context.get("skill_context") or "").strip()
             if skill_context_text:
@@ -206,13 +208,13 @@ SKILLS КОНТЕКСТ (приоритет ниже platform rules, выше us
             allowed = execution_context.get("allowed_actions", "")
             target_server = execution_context.get("server", {})
             include_servers = execution_context.get("include_servers", False)
-            
+
             if conn_id:
                 exclude_tools = ["ssh_connect", "servers_list", "server_execute"]
                 server_name = target_server.get("name", "целевой сервер")
                 server_host = target_server.get("host", "")
                 server_info = f"{server_name} ({server_host})" if server_host else server_name
-                
+
                 ctx_block = f"""
 КОНТЕКСТ ВЫПОЛНЕНИЯ ЗАДАЧИ:
 - Уже установлено SSH-соединение с сервером: **{server_info}**
@@ -225,7 +227,7 @@ SKILLS КОНТЕКСТ (приоритет ниже platform rules, выше us
                 user_id = execution_context.get("user_id")
                 if user_id:
                     servers_block = self._get_user_servers_block(user_id)
-            
+
             workspace_path = execution_context.get("workspace_path")
             from_ide = execution_context.get("from_ide", False)
             if workspace_path:
@@ -235,7 +237,7 @@ SKILLS КОНТЕКСТ (приоритет ниже platform rules, выше us
 - Все пути к файлам указывай относительно этой директории
 """
                 ctx_block = (ctx_block + "\n" + workspace_block).strip() if ctx_block else workspace_block.strip()
-            
+
             if from_ide:
                 ide_rule = """
 РЕЖИМ IDE:
@@ -243,12 +245,12 @@ SKILLS КОНТЕКСТ (приоритет ниже platform rules, выше us
 """
                 ctx_block = (ctx_block + "\n" + ide_rule).strip() if ctx_block else ide_rule.strip()
                 servers_block = ""
-        
+
         tools_description = self.tool_manager.get_tools_description(
             exclude_tools=exclude_tools,
             include_tools=include_tools,
         )
-        
+
         prompt = f"""You are WEU Agent — интеллектуальный ассистент с доступом к инструментам.
 {AGENT_SYSTEM_RULES_RU}
 {ctx_block}
@@ -277,7 +279,7 @@ ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
 
 Твой ответ:"""
         return prompt
-    
+
     def _get_user_servers_block(self, user_id: int) -> str:
         """Возвращает блок с серверами пользователя"""
         if not user_id:
@@ -296,55 +298,55 @@ ACTION: tool_name {{"param1": "value1", "param2": "value2"}}
         except Exception as e:
             logger.warning(f"_get_user_servers_block error: {e}")
             return ""
-    
+
     def _parse_action(self, response: str) -> dict:
         """
         Parse action from LLM response
         Returns: {"tool": "tool_name", "args": {dict}} or None
         """
-        import re
         import json
-        
+        import re
+
         pattern = r'ACTION:\s*([\w\-.]+)\s*(\{.*?\})'
         match = re.search(pattern, response, re.DOTALL)
-        
+
         if match:
             tool_name = match.group(1)
             args_str = match.group(2)
-            
+
             try:
                 args = json.loads(args_str)
                 return {"tool": tool_name, "args": args}
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse action arguments: {e}")
                 return None
-        
+
         return None
-    
+
     def _format_tool_result(self, result: Any) -> str:
         """Format tool execution result"""
         import json
-        
+
         if isinstance(result, dict):
             return json.dumps(result, indent=2, ensure_ascii=False)
         elif isinstance(result, str):
             return result
         else:
             return str(result)
-    
-    def get_available_tools(self) -> List[Dict]:
+
+    def get_available_tools(self) -> list[dict]:
         """Get list of all available tools"""
         return [tool.to_dict() for tool in self.tool_manager.get_all_tools()]
-    
+
     def clear_history(self):
         """Clear conversation history"""
         self.history = []
         logger.info("Conversation history cleared")
-    
+
     async def add_to_knowledge_base(self, text: str, source: str = "manual", user_id=None):
         """Add text to RAG knowledge base"""
         import asyncio
-        
+
         if self.rag.available and user_id is not None:
             doc_id = await asyncio.to_thread(
                 self.rag.add_text, text, source, user_id

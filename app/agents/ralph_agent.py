@@ -2,8 +2,10 @@
 Ralph Wiggum Agent - iterative self-improving agent
 Based on the Ralph Wiggum technique from https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum
 """
-from typing import Dict, Any, Optional
+from typing import Any
+
 from loguru import logger
+
 from app.agents.base_agent import BaseAgent
 from app.core.model_config import model_manager
 
@@ -18,15 +20,15 @@ class RalphWiggumAgent(BaseAgent):
     - Improves based on results
     - Continues until completion or max iterations
     """
-    
+
     def __init__(self):
         super().__init__(
             name="Ralph Wiggum Agent",
             description="Iterative self-improving agent. Works on tasks repeatedly until completion criteria are met."
         )
         self.default_max_iterations = 10
-    
-    async def execute(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+    async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Execute task with iterative improvement loop.
         
@@ -36,7 +38,7 @@ class RalphWiggumAgent(BaseAgent):
             - initial_prompt: str - optional initial prompt template
         """
         context = self.validate_context(context)
-        
+
         try:
             completion_promise = context.get('completion_promise', 'COMPLETE')
             max_iterations = context.get('max_iterations', self.default_max_iterations)
@@ -47,26 +49,26 @@ class RalphWiggumAgent(BaseAgent):
             model_preference = context.get('model', model_manager.config.default_provider)
             specific_model = context.get('specific_model')
             use_rag = context.get('use_rag', True)
-            
+
             logger.info(f"Ralph Agent starting: max_iterations={max_iterations}, completion_promise='{completion_promise}'")
-            
+
             # Build initial prompt
             initial_prompt = context.get('initial_prompt', task)
             stuck_guidance = (
                 "Если задача заблокирована, явно опиши блокеры и что нужно для прогресса. "
                 "Не выводи completion promise, если работа не завершена."
             )
-            
+
             # Iterative loop
             iteration = 0
             all_results = []
             last_result = ""
             completion_promise = (completion_promise or "").strip()
-            
+
             while iteration < max_iterations:
                 iteration += 1
                 logger.info(f"Ralph iteration {iteration}/{max_iterations}")
-                
+
                 # Build prompt for this iteration
                 if iteration == 1:
                     prompt = f"""You are working on the following task. Work on it step by step.
@@ -95,7 +97,7 @@ If requirements are unclear, list 1-3 clarifying questions before proceeding and
 {stuck_guidance}
 
 Continue:"""
-                
+
                 # Get RAG context if available
                 rag_context = ""
                 if use_rag and self.rag_engine.available:
@@ -109,19 +111,19 @@ Continue:"""
                                     prompt = f"{rag_context}\n\n{prompt}"
                     except Exception as e:
                         logger.warning(f"RAG query failed: {e}")
-                
+
                 # Execute iteration
                 iteration_result = ""
                 async for chunk in self.llm_provider.stream_chat(
-                    prompt, 
-                    model=model_preference, 
+                    prompt,
+                    model=model_preference,
                     specific_model=specific_model
                 ):
                     iteration_result += chunk
-                
+
                 last_result = iteration_result
                 all_results.append(f"**Iteration {iteration}:**\n{iteration_result}\n")
-                
+
                 # Check for completion
                 if completion_promise and self._has_completion_promise(iteration_result, completion_promise):
                     logger.success(f"Ralph Agent completed at iteration {iteration}")
@@ -137,7 +139,7 @@ Continue:"""
                             'completed': True
                         }
                     }
-                
+
                 # If we're at max iterations, return what we have
                 if iteration >= max_iterations:
                     logger.warning(f"Ralph Agent reached max iterations ({max_iterations}) without completion")
@@ -153,7 +155,7 @@ Continue:"""
                             'completed': False
                         }
                     }
-            
+
             # Should not reach here, but just in case
             return {
                 'success': True,
@@ -166,7 +168,7 @@ Continue:"""
                     'completed': False
                 }
             }
-            
+
         except Exception as e:
             logger.error(f"Ralph Agent execution failed: {e}")
             return {

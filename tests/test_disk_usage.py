@@ -9,8 +9,8 @@
 """
 from pathlib import Path
 
-from django.test import TestCase, Client
 from django.contrib.auth.models import User
+from django.test import Client, TestCase
 
 from app.utils.disk_usage import get_disk_usage, get_disk_usage_report
 

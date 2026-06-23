@@ -9,8 +9,8 @@ from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 
 from agent_hub.models import (
-    AgentProfile,
     AgentPreset,
+    AgentProfile,
     AgentRun,
     AgentWorkflow,
     AgentWorkflowRun,
@@ -149,11 +149,11 @@ def admin_logs_page(request):
 def custom_agents_view(request):
     """Custom agents management page."""
     from servers.models import Server
-    
+
     servers_data = [
         {"id": s.id, "name": s.name, "host": s.host}
         for s in Server.objects.filter(user=request.user, is_active=True)
     ]
-    
+
     template = get_template_name(request, "agent_hub/custom_agents.html")
     return render(request, template, {"servers_data": servers_data})

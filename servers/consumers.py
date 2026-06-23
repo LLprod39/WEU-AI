@@ -11,7 +11,7 @@ import re
 import shlex
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import asyncssh
 from channels.db import database_sync_to_async
@@ -114,24 +114,24 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
           {type: "ai_reply", q_id: str, text: str}
     """
 
-    server: Optional[Server] = None
-    _user_id: Optional[int] = None
+    server: Server | None = None
+    _user_id: int | None = None
 
-    _ssh_conn: Optional[asyncssh.SSHClientConnection] = None
-    _ssh_proc: Optional[asyncssh.SSHClientProcess[str]] = None
-    _stdout_task: Optional[asyncio.Task[None]] = None
-    _stderr_task: Optional[asyncio.Task[None]] = None
-    _wait_task: Optional[asyncio.Task[None]] = None
+    _ssh_conn: asyncssh.SSHClientConnection | None = None
+    _ssh_proc: asyncssh.SSHClientProcess[str] | None = None
+    _stdout_task: asyncio.Task[None] | None = None
+    _stderr_task: asyncio.Task[None] | None = None
+    _wait_task: asyncio.Task[None] | None = None
     _connect_lock: asyncio.Lock
 
     _ai_lock: asyncio.Lock
-    _ai_task: Optional[asyncio.Task[None]] = None
+    _ai_task: asyncio.Task[None] | None = None
     _ai_plan: list[dict[str, Any]]
     _ai_plan_index: int
     _ai_next_id: int
     _ai_forbidden_patterns: list[str]
     _ai_exit_futures: dict[int, asyncio.Future[int]]
-    _ai_active_cmd_id: Optional[int]
+    _ai_active_cmd_id: int | None
     _ai_active_output: str
     _ai_user_message: str
     _ai_execution_mode: str
@@ -140,7 +140,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
     _terminal_tail: str
     _ai_history: list[dict]
     _unavailable_cmds: set[str]    # commands that returned exit=127 this session
-    _ai_reply_futures: dict[str, "asyncio.Future[str]"]  # q_id → future waiting for user reply
+    _ai_reply_futures: dict[str, asyncio.Future[str]]  # q_id → future waiting for user reply
     _ai_error_retries: dict[int, int]   # cmd_id → retry count (max 2)
     _ai_run_id: str
     _ai_marker_token: str
@@ -436,7 +436,7 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         except Exception as e:
             await self.send_json({"type": "error", "message": f"resize failed: {e}"})
 
-    async def _interrupt_active_command(self) -> Optional[int]:
+    async def _interrupt_active_command(self) -> int | None:
         """
         Try to interrupt active command with Ctrl+C and unblock waiter with exit=130.
         Returns active cmd_id if interrupted.
@@ -1341,12 +1341,12 @@ class SSHTerminalConsumer(AsyncJsonWebsocketConsumer):
         self._ssh_proc.stdin.write(marker_cmd + "\n")
 
         # For streaming commands: schedule Ctrl+C after 8 s to allow output capture
-        interrupt_task: Optional[asyncio.Task] = None
+        interrupt_task: asyncio.Task | None = None
         if is_streaming:
             interrupt_task = asyncio.create_task(self._interrupt_streaming_after(8.0))
 
         # For install commands: start periodic monitoring
-        monitor_task: Optional[asyncio.Task] = None
+        monitor_task: asyncio.Task | None = None
         if is_install and not is_streaming:
             monitor_task = asyncio.create_task(self._monitor_install(cmd_id, clean_cmd))
 
@@ -1937,6 +1937,7 @@ EXIT_CODE: {exit_code}
         issues: list[str],
     ) -> dict[str, Any]:
         from django.contrib.auth.models import User
+
         from servers.knowledge_service import ServerKnowledgeService
         from servers.models import Server
 

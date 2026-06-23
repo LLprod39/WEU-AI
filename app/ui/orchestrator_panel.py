@@ -1,7 +1,6 @@
-import asyncio
-from nicegui import ui, app
+from nicegui import app, ui
+
 from app.core.unified_orchestrator import UnifiedOrchestrator
-import os
 
 # Initialize UnifiedOrchestrator
 orchestrator = UnifiedOrchestrator()
@@ -30,7 +29,7 @@ async def main_page():
         info='#3b82f6',
         warning='#f59e0b'
     )
-    
+
     # Custom CSS - Гибкая настройка через CSS переменные
     ui.add_head_html('''
         <style>
@@ -139,7 +138,7 @@ async def main_page():
 
     # --- UI Layout - Современный легкий дизайн ---
     with ui.column().classes('w-full h-screen p-0 m-0 no-wrap items-center').style('background: var(--bg-base); color: var(--text-primary);'):
-        
+
         # Header - Улучшенный
         with ui.row().classes('w-full h-16 px-6 items-center justify-between glass-panel z-10'):
             ui.label('ORCHESTRATOR').classes('text-xl font-bold tracking-wider').style('color: var(--primary);')
@@ -149,7 +148,7 @@ async def main_page():
 
         # Chat Container - Улучшенный
         chat_container = ui.column().classes('w-full max-w-4xl flex-grow overflow-y-auto p-6 gap-4')
-        
+
         with chat_container:
             ui.label('Система онлайн. Готова к работе.').classes('text-center w-full py-4 text-sm').style('color: var(--text-secondary);')
 
@@ -157,19 +156,19 @@ async def main_page():
         with ui.column().classes('w-full max-w-4xl p-4 pb-6'):
             with ui.row().classes('w-full gap-2 items-end glass-panel rounded-xl p-3'):
                 text_input = ui.textarea(placeholder='Введите вашу инструкцию...').props('rows=1 autogrow borderless').classes('flex-grow px-3 py-2').style('background: transparent; color: var(--text-primary); font-size: 14px;')
-                
+
                 async def send_message():
                     msg = text_input.value
                     if not msg: return
-                    
+
                     text_input.value = ''
-                    
+
                     with chat_container:
                         with ui.row().classes('w-full justify-end'):
                             ui.label(msg).classes('chat-bubble-user max-w-xl')
-                        
+
                         spinner = ui.spinner('dots', size='lg', color='primary').classes('ml-4')
-                    
+
                     # Process with Orchestrator
                     response_text = ""
                     try:
@@ -182,13 +181,12 @@ async def main_page():
                                 response_text += chunk
                     except Exception as e:
                         response_text = f"Error: {str(e)}"
-                    
+
                     spinner.delete()
-                    
-                    with chat_container:
-                        with ui.row().classes('w-full justify-start'):
-                            ui.markdown(response_text).classes('chat-bubble-ai max-w-xl')
-                            
+
+                    with chat_container, ui.row().classes('w-full justify-start'):
+                        ui.markdown(response_text).classes('chat-bubble-ai max-w-xl')
+
                     chat_container.scroll_to(percent=1.0)
 
                 ui.button(icon='send', on_click=send_message).props('round flat color=primary')

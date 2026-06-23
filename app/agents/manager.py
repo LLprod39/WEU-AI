@@ -1,14 +1,15 @@
 """
 Agent Manager - manages all available agents
 """
-from typing import Dict, List, Optional
+
 from loguru import logger
+
 from app.agents.base_agent import BaseAgent
-from app.agents.react_agent import ReActAgent
-from app.agents.simple_agent import SimpleAgent
+from app.agents.claude_code_agent import ClaudeCodeAgent
 from app.agents.complex_agent import ComplexAgent
 from app.agents.ralph_agent import RalphWiggumAgent
-from app.agents.claude_code_agent import ClaudeCodeAgent
+from app.agents.react_agent import ReActAgent
+from app.agents.simple_agent import SimpleAgent
 
 
 class AgentManager:
@@ -16,9 +17,9 @@ class AgentManager:
     Manages all available agents in the system.
     Provides registration, discovery, and execution of agents.
     """
-    
+
     def __init__(self):
-        self.agents: Dict[str, BaseAgent] = {}
+        self.agents: dict[str, BaseAgent] = {}
         self._register_builtin_agents()
         self._agent_type_map = {
             "simple": "Simple Agent",
@@ -27,7 +28,7 @@ class AgentManager:
             "ralph": "Ralph Wiggum Agent",
             "claude_code": "Claude Code Agent",
         }
-    
+
     def _register_builtin_agents(self):
         """Register all built-in agents"""
         builtin_agents = [
@@ -37,20 +38,20 @@ class AgentManager:
             RalphWiggumAgent(),
             ClaudeCodeAgent(),
         ]
-        
+
         for agent in builtin_agents:
             self.register_agent(agent)
-    
+
     def register_agent(self, agent: BaseAgent):
         """Register an agent"""
         name = agent.name
         if name in self.agents:
             logger.warning(f"Agent '{name}' already registered, overwriting")
-        
+
         self.agents[name] = agent
         logger.info(f"Registered agent: {name}")
-    
-    def get_agent(self, name: str) -> Optional[BaseAgent]:
+
+    def get_agent(self, name: str) -> BaseAgent | None:
         """Get an agent by name"""
         return self.agents.get(name)
 
@@ -61,23 +62,23 @@ class AgentManager:
         if agent_type_or_name in self.agents:
             return agent_type_or_name
         return self._agent_type_map.get(agent_type_or_name, agent_type_or_name)
-    
-    def get_all_agents(self) -> List[BaseAgent]:
+
+    def get_all_agents(self) -> list[BaseAgent]:
         """Get all registered agents"""
         return list(self.agents.values())
-    
-    def get_agent_info(self, name: str) -> Optional[Dict]:
+
+    def get_agent_info(self, name: str) -> dict | None:
         """Get agent information"""
         agent = self.get_agent(name)
         if agent:
             return agent.get_info()
         return None
-    
-    def list_agents(self) -> List[Dict]:
+
+    def list_agents(self) -> list[dict]:
         """List all agents with their information"""
         return [agent.get_info() for agent in self.agents.values()]
-    
-    async def execute_agent(self, agent_name: str, task: str, context: Optional[Dict] = None) -> Dict:
+
+    async def execute_agent(self, agent_name: str, task: str, context: dict | None = None) -> dict:
         """
         Execute an agent with a task.
         
@@ -102,7 +103,7 @@ class AgentManager:
                 'error': f"Agent '{agent_name}' not found",
                 'metadata': {}
             }
-        
+
         try:
             logger.info(f"Executing agent '{agent_name}' with task: {task[:100]}...")
             result = await agent.execute(task, context)

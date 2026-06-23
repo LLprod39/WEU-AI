@@ -3,10 +3,10 @@ Helpers for server board payloads in chat responses (card-style display like tas
 """
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def _parse_tool_payload(tool_result: Any) -> Optional[Dict[str, Any]]:
+def _parse_tool_payload(tool_result: Any) -> dict[str, Any] | None:
     if isinstance(tool_result, dict):
         return tool_result
     if isinstance(tool_result, str):
@@ -22,7 +22,7 @@ def build_server_board_payload(
     tool_name: str,
     tool_result: Any,
     query: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     if tool_name != "servers_list":
         return None
 
@@ -34,7 +34,7 @@ def build_server_board_payload(
     if not isinstance(raw_servers, list):
         return None
 
-    servers: List[Dict[str, Any]] = []
+    servers: list[dict[str, Any]] = []
     for s in raw_servers:
         if not isinstance(s, dict):
             continue
@@ -53,7 +53,7 @@ def build_server_board_payload(
             "host_port": f"{host}:{port}",
             "actions": {
                 "terminal": f"/servers/{sid}/terminal/",
-                "details": f"/servers/",
+                "details": "/servers/",
             },
         })
 

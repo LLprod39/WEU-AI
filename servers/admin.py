@@ -1,13 +1,14 @@
 from django.contrib import admin
+
 from .models import (
     Server,
-    ServerGroup,
-    ServerConnection,
     ServerCommandHistory,
+    ServerConnection,
+    ServerGroup,
     ServerGroupMember,
-    ServerGroupTag,
-    ServerGroupSubscription,
     ServerGroupPermission,
+    ServerGroupSubscription,
+    ServerGroupTag,
 )
 
 

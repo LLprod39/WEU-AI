@@ -1,5 +1,6 @@
-from asgiref.sync import async_to_sync
 from unittest.mock import AsyncMock
+
+from asgiref.sync import async_to_sync
 
 from servers.rdp_consumer import RDPTerminalConsumer
 

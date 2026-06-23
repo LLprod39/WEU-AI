@@ -1,6 +1,6 @@
-from nicegui import ui
-import app.ui.orchestrator_panel
 import os
+
+from nicegui import ui
 
 if __name__ in {"__main__", "__mp_main__"}:
     # Initialize and run the NiceGUI application

@@ -2,22 +2,22 @@
 Tools for accessing and managing Tasks data for the current user.
 """
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
-from app.tools.base import BaseTool, ToolMetadata, ToolParameter
-from app.services.permissions import PermissionService
 from asgiref.sync import sync_to_async
-from django.db.models import Q, Count, Case, When, Value, IntegerField
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from app.services.permissions import PermissionService
+from app.tools.base import BaseTool, ToolMetadata, ToolParameter
 
 OPEN_STATUSES = ("TODO", "IN_PROGRESS", "BLOCKED")
 ALL_STATUSES = ("TODO", "IN_PROGRESS", "DONE", "BLOCKED", "CANCELLED")
 ALL_PRIORITIES = ("HIGH", "MEDIUM", "LOW")
 
 
-def _get_user_id(kwargs: Dict[str, Any]) -> Optional[int]:
+def _get_user_id(kwargs: dict[str, Any]) -> int | None:
     ctx = kwargs.get("_context") or {}
     user_id = ctx.get("user_id")
     if not user_id:
@@ -28,7 +28,7 @@ def _get_user_id(kwargs: Dict[str, Any]) -> Optional[int]:
         return None
 
 
-def _dt(dt) -> Optional[str]:
+def _dt(dt) -> str | None:
     return dt.isoformat() if dt else None
 
 
@@ -65,7 +65,7 @@ def _parse_due_date(value: Any):
     return dt
 
 
-def _task_json(task, user=None) -> Dict[str, Any]:
+def _task_json(task, user=None) -> dict[str, Any]:
     can_delete = False
     if user is not None:
         try:
@@ -301,6 +301,7 @@ class TaskDetailTool(BaseTool):
             return "Требуется контекст пользователя (user_id). Используй только в чате WEU AI."
 
         from django.contrib.auth.models import User
+
         from tasks.models import Task
 
         user = User.objects.filter(id=user_id).first()
@@ -365,6 +366,7 @@ class TaskCreateTool(BaseTool):
             return "Требуется контекст пользователя (user_id)."
 
         from django.contrib.auth.models import User
+
         from tasks.models import Task
 
         user = User.objects.filter(id=user_id).first()
@@ -442,6 +444,7 @@ class TaskUpdateTool(BaseTool):
             return "Требуется контекст пользователя (user_id)."
 
         from django.contrib.auth.models import User
+
         from tasks.models import Task
 
         user = User.objects.filter(id=user_id).first()
@@ -555,6 +558,7 @@ class TaskDeleteTool(BaseTool):
             return "Требуется контекст пользователя (user_id)."
 
         from django.contrib.auth.models import User
+
         from tasks.models import Task
 
         user = User.objects.filter(id=user_id).first()

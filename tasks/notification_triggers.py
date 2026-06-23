@@ -2,10 +2,11 @@
 Триггеры уведомлений: создание TaskNotification и отправка email при событиях.
 """
 import re
-from django.urls import reverse
-from django.contrib.auth.models import User
 
-from .models import TaskNotification, ProjectMember, ProjectMemberRole
+from django.contrib.auth.models import User
+from django.urls import reverse
+
+from .models import ProjectMember, ProjectMemberRole, TaskNotification
 
 
 def notify_project_invitation(invitation):

@@ -1,8 +1,8 @@
 import re
 import subprocess
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from django.conf import settings
 from django.db.models import Q

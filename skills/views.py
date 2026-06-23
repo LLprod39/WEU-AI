@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -12,8 +13,6 @@ from django.views.decorators.http import require_http_methods
 
 from core_ui.context_processors import user_can_feature
 from core_ui.decorators import require_feature
-from django.contrib.auth.decorators import login_required
-
 from skills.assistant import SkillAssistantError, run_skill_assistant
 from skills.models import Skill, SkillShare, UserMCPServer
 from skills.services import SkillService
@@ -948,7 +947,7 @@ def _load_skill_catalog() -> list:
     if not path.exists():
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
         return []
@@ -1084,7 +1083,7 @@ def _load_mcp_catalog() -> list:
     if not path.exists():
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
         return []
@@ -1480,9 +1479,10 @@ def api_mcp_registry_search(request):
     GET ?q=search&cursor=...&limit=48
     Возвращает { servers: [...], next_cursor, count }.
     """
-    from urllib.request import Request as URLRequest, urlopen
-    from urllib.error import URLError, HTTPError
     import urllib.parse
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request as URLRequest
+    from urllib.request import urlopen
 
     q = (request.GET.get("q") or "").strip()
     cursor = (request.GET.get("cursor") or "").strip()

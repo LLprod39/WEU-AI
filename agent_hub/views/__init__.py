@@ -28,78 +28,77 @@ Example:
 
 # Import from new modular structure
 from agent_hub.views.pages import (
-    agents_page,
-    logs_page,
     admin_logs_page,
+    agents_page,
     custom_agents_view,
+    logs_page,
 )
-
 from agent_hub.views_legacy import (
-    # Profiles API
-    api_profiles_list,
-    api_profiles_create,
-    api_profiles_update,
-    api_profiles_delete,
-    api_profile_run,
-    # Agent Runs API
-    api_agent_run,
-    api_runs_list,
-    api_run_status,
-    api_run_stop,
-    api_run_delete,
-    # Projects API
-    api_projects_list,
-    api_projects_create,
-    # Workflows API
-    api_workflows_list,
-    api_workflow_import,
-    api_workflow_get,
-    api_workflow_update,
-    api_workflow_delete,
-    api_workflow_generate,
-    api_workflow_from_task,
-    api_workflow_create_manual,
-    api_tasks_generate,
-    # Workflow Runs API
-    api_workflow_run,
-    api_workflow_run_status,
-    api_workflow_stop,
-    api_workflow_restart,
-    api_workflow_skip_step,
-    api_workflow_skip_specific_step,
-    api_workflow_continue,
-    api_workflow_retry_step,
-    api_workflow_run_delete,
-    api_workflow_download_project,
-    # Admin API
-    admin_api_runs_list,
-    admin_api_run_status,
-    admin_api_run_update,
-    admin_api_run_restart,
-    admin_api_workflow_run_status,
-    admin_api_workflow_run_update,
-    admin_api_workflow_run_restart,
-    # Assist API
-    api_assist_config,
-    api_assist_auto,
-    # MCP API
-    api_mcp_servers,
-    api_mcp_server_connect,
-    api_mcp_server_disconnect,
-    api_mcp_server_tools,
-    # Models and Smart Analyze
-    api_list_models,
-    api_smart_analyze,
-    # Custom Agents API
-    api_custom_agents_list,
-    api_custom_agent_detail,
-    api_custom_agent_remove_mcp,
-    api_custom_agent_export,
+    _build_ralph_yml_from_steps,
     # Helper functions used by other modules
     _generate_workflow_script,
     _start_workflow_run,
     _write_ralph_yml,
-    _build_ralph_yml_from_steps,
+    admin_api_run_restart,
+    admin_api_run_status,
+    admin_api_run_update,
+    # Admin API
+    admin_api_runs_list,
+    admin_api_workflow_run_restart,
+    admin_api_workflow_run_status,
+    admin_api_workflow_run_update,
+    # Agent Runs API
+    api_agent_run,
+    api_assist_auto,
+    # Assist API
+    api_assist_config,
+    api_custom_agent_detail,
+    api_custom_agent_export,
+    api_custom_agent_remove_mcp,
+    # Custom Agents API
+    api_custom_agents_list,
+    # Models and Smart Analyze
+    api_list_models,
+    api_mcp_server_connect,
+    api_mcp_server_disconnect,
+    api_mcp_server_tools,
+    # MCP API
+    api_mcp_servers,
+    api_profile_run,
+    api_profiles_create,
+    api_profiles_delete,
+    # Profiles API
+    api_profiles_list,
+    api_profiles_update,
+    api_projects_create,
+    # Projects API
+    api_projects_list,
+    api_run_delete,
+    api_run_status,
+    api_run_stop,
+    api_runs_list,
+    api_smart_analyze,
+    api_tasks_generate,
+    api_workflow_continue,
+    api_workflow_create_manual,
+    api_workflow_delete,
+    api_workflow_download_project,
+    api_workflow_from_task,
+    api_workflow_generate,
+    api_workflow_get,
+    api_workflow_import,
+    api_workflow_restart,
+    api_workflow_retry_step,
+    # Workflow Runs API
+    api_workflow_run,
+    api_workflow_run_delete,
+    api_workflow_run_status,
+    api_workflow_skip_specific_step,
+    api_workflow_skip_step,
+    api_workflow_stop,
+    api_workflow_update,
+    # Workflows API
+    api_workflows_list,
     create_workflow_from_task,
 )
 

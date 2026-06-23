@@ -2,10 +2,11 @@
 CLI runtime integration for Cursor, OpenCode, and Gemini CLI.
 """
 import asyncio
+import os
 import shlex
 from dataclasses import dataclass
-from typing import Dict, Any, List
-import os
+from typing import Any
+
 from django.conf import settings
 from loguru import logger
 
@@ -15,7 +16,7 @@ class CliRunResult:
     success: bool
     output: str
     logs: str
-    meta: Dict[str, Any]
+    meta: dict[str, Any]
 
 
 class CliRuntimeManager:
@@ -24,10 +25,10 @@ class CliRuntimeManager:
     def __init__(self):
         self.config = getattr(settings, "CLI_RUNTIME_CONFIG", {})
 
-    def _get_runtime(self, runtime: str) -> Dict[str, Any]:
+    def _get_runtime(self, runtime: str) -> dict[str, Any]:
         return self.config.get(runtime, {})
 
-    async def run(self, runtime: str, task: str, config: Dict[str, Any], mcp_config: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def run(self, runtime: str, task: str, config: dict[str, Any], mcp_config: dict[str, Any] = None) -> dict[str, Any]:
         """
         Run CLI command once or in a Ralph-like loop if enabled.
 
@@ -94,7 +95,7 @@ class CliRuntimeManager:
 
         return await self._run_once(runtime, task, config)
 
-    async def _run_once(self, runtime: str, task: str, config: Dict[str, Any], mcp_config: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def _run_once(self, runtime: str, task: str, config: dict[str, Any], mcp_config: dict[str, Any] = None) -> dict[str, Any]:
         runtime_cfg = self._get_runtime(runtime)
         if not runtime_cfg:
             raise ValueError(f"Runtime '{runtime}' is not configured")
@@ -107,7 +108,7 @@ class CliRuntimeManager:
         args_template = [self._format_arg(runtime_cfg, arg) for arg in args_template]
         prompt_style = runtime_cfg.get("prompt_style", "flag")
         allowed_args = runtime_cfg.get("allowed_args", [])
-        
+
         # Setup MCP if provided
         mcp_config_file = None
         if mcp_config and runtime in ["cursor", "claude"]:
@@ -150,14 +151,14 @@ class CliRuntimeManager:
             subprocess_env = dict(os.environ)
             extra = getattr(settings, "CURSOR_CLI_EXTRA_ENV", None) or {}
             subprocess_env.update(extra)
-            
+
             # MCP config file для Cursor
             if mcp_config_file:
                 subprocess_env['MCP_CONFIG_PATH'] = mcp_config_file
-        
+
         elif runtime == "claude":
             subprocess_env = dict(os.environ)
-            
+
             # MCP config file для Claude
             if mcp_config_file:
                 # Claude использует переменную MCP_CONFIG или .cursor/mcp.json
@@ -200,10 +201,10 @@ class CliRuntimeManager:
         target = re.sub(r"\s+", " ", promise.strip())
         return extracted == target
 
-    def _resolve_command(self, runtime_cfg: Dict[str, Any], command_template: str) -> str:
+    def _resolve_command(self, runtime_cfg: dict[str, Any], command_template: str) -> str:
         return command_template
 
-    def _format_arg(self, runtime_cfg: Dict[str, Any], arg: str) -> str:
+    def _format_arg(self, runtime_cfg: dict[str, Any], arg: str) -> str:
         if arg != "{workspace}":
             return arg
         return str(getattr(settings, "BASE_DIR", ""))

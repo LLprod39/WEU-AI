@@ -1,11 +1,13 @@
 """
 ReAct Agent - wrapper for UnifiedOrchestrator with ReAct mode
 """
-from typing import Dict, Any, Optional
+from typing import Any
+
 from loguru import logger
+
 from app.agents.base_agent import BaseAgent
-from app.core.unified_orchestrator import UnifiedOrchestrator
 from app.core.model_config import model_manager
+from app.core.unified_orchestrator import UnifiedOrchestrator
 
 
 class ReActAgent(BaseAgent):
@@ -29,24 +31,24 @@ class ReActAgent(BaseAgent):
             # Mark as not initialized yet
             self._orchestrator.initialized = False
         return self._orchestrator
-    
-    async def execute(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+    async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Execute task using ReAct loop via Orchestrator.
         """
         context = self.validate_context(context)
-        
+
         try:
             # Get model preference from context or use default
             model_preference = context.get('model', model_manager.config.default_provider)
             use_rag = context.get('use_rag', True)
             specific_model = context.get('specific_model')
-            
+
             # Initialize orchestrator if needed
             if not hasattr(self._orchestrator, 'initialized') or not self._orchestrator.initialized:
                 await self.orchestrator.initialize()
                 self.orchestrator.initialized = True
-            
+
             # Build execution_context for delegated tasks (connection_id, server, allowed_actions)
             execution_context = None
             if context.get('connection_id'):
@@ -69,9 +71,9 @@ class ReActAgent(BaseAgent):
                 mode="react",  # Explicitly use ReAct mode
             ):
                 result_parts.append(chunk)
-            
+
             result_text = ''.join(result_parts)
-            
+
             return {
                 'success': True,
                 'result': result_text,
@@ -82,7 +84,7 @@ class ReActAgent(BaseAgent):
                     'agent_type': 'react'
                 }
             }
-            
+
         except Exception as e:
             logger.error(f"ReAct Agent execution failed: {e}")
             return {

@@ -4,10 +4,10 @@
 """
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def get_disk_usage(path: str | Path) -> Dict[str, Any]:
+def get_disk_usage(path: str | Path) -> dict[str, Any]:
     """
     Возвращает статистику диска для заданного пути.
 
@@ -26,7 +26,7 @@ def get_disk_usage(path: str | Path) -> Dict[str, Any]:
         - percent_used: доля занятого 0..100 (или None при ошибке)
         - error: сообщение об ошибке (если была), иначе отсутствует
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "path": "",
         "total": None,
         "used": None,
@@ -59,11 +59,11 @@ def get_disk_usage(path: str | Path) -> Dict[str, Any]:
 def get_disk_usage_report(
     *,
     include_root: bool = True,
-    media_root: Optional[Path] = None,
-    uploaded_files_dir: Optional[Path] = None,
-    agent_projects_dir: Optional[Path] = None,
-    base_dir: Optional[Path] = None,
-) -> List[Dict[str, Any]]:
+    media_root: Path | None = None,
+    uploaded_files_dir: Path | None = None,
+    agent_projects_dir: Path | None = None,
+    base_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """
     Формирует отчёт по диску для стандартных путей приложения.
 
@@ -79,10 +79,10 @@ def get_disk_usage_report(
         Пути с None не добавляются. Порядок: root (если есть), base_dir, media_root,
         uploaded_files_dir (если передан и отличается от media), agent_projects_dir.
     """
-    report: List[Dict[str, Any]] = []
+    report: list[dict[str, Any]] = []
     seen_paths: set = set()
 
-    def add(path: Optional[Path], label_prefix: str = "") -> None:
+    def add(path: Path | None, label_prefix: str = "") -> None:
         if path is None:
             return
         p = Path(path).resolve()

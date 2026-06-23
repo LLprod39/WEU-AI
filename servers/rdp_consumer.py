@@ -9,8 +9,9 @@ import asyncio
 import contextlib
 import json
 import os
-from channels.generic.websocket import AsyncWebsocketConsumer
+
 from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db.models import Q
 from django.utils import timezone
 from loguru import logger

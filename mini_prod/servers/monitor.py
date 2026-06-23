@@ -393,7 +393,7 @@ async def _save_unreachable(server: Server, error_msg: str, elapsed_ms: int = 0)
             server=server,
             alert_type=ServerAlert.TYPE_UNREACHABLE,
             severity=ServerAlert.SEVERITY_CRITICAL,
-            title=f"Server unreachable",
+            title="Server unreachable",
             message=error_msg[:500],
         )
     return health

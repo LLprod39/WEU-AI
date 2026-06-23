@@ -66,6 +66,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from core_ui.managed_secrets import get_mcp_secret_env, get_mcp_secret_env_keys
+
 from .mcp_client import MCPClientError, inspect_mcp_server
 from .models import AgentConfig, MCPServerPool, Pipeline, PipelineRun, PipelineTemplate, PipelineTrigger
 from .pipeline_validation import ensure_json_object, validate_pipeline_definition

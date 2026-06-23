@@ -3,24 +3,25 @@
 Анализирует задачи, извлекает информацию о серверах, предлагает автоматическое выполнение
 """
 import re
-from typing import Dict, List, Optional, Tuple, Any
-from django.contrib.auth.models import User
-from django.utils import timezone
-from loguru import logger
-from asgiref.sync import async_to_sync
+from typing import Any
 
-from .models import Task, SubTask, TaskNotification, TaskExecution, TaskExecutionSettings
+from asgiref.sync import async_to_sync
+from django.contrib.auth.models import User
+from loguru import logger
+
 from servers.models import Server
+
 from .ai_assistant import TaskAIAssistant
+from .models import Task, TaskExecution, TaskExecutionSettings, TaskNotification
 
 
 class SmartTaskAnalyzer:
     """Умный анализатор задач"""
-    
+
     def __init__(self):
         self.ai_assistant = TaskAIAssistant()
-    
-    def analyze_task(self, task: Task, user: User) -> Dict[str, Any]:
+
+    def analyze_task(self, task: Task, user: User) -> dict[str, Any]:
         """
         Полный анализ задачи:
         1. Извлечение упоминаний серверов
@@ -37,36 +38,36 @@ class SmartTaskAnalyzer:
             'estimated_duration_hours': None,
             'recommended_agent': None,
         }
-        
+
         # Получаем настройки пользователя
         settings = TaskExecutionSettings.get_for_user(user)
-        
+
         # 1. Извлечение серверов из описания
         text_to_analyze = f"{task.title}\n{task.description}"
         detected_servers = self._extract_server_mentions(text_to_analyze, user)
         result['servers_detected'] = detected_servers
-        
+
         # 2. Сопоставление с базой серверов
         matched_servers = self._match_servers(detected_servers, user)
         result['servers_matched'] = matched_servers
-        
+
         # 3. Контекст серверов для ИИ (имя, хост, порт — без паролей)
         user_servers = Server.objects.filter(user=user, is_active=True)
         servers_context = [
             {"name": s.name, "host": s.host, "port": getattr(s, 'port', 22)}
             for s in user_servers
         ]
-        
+
         # Список серверов для выбора в UI
         available_servers = [
             {"id": s.id, "name": s.name, "host": s.host}
             for s in user_servers
         ]
-        
+
         # 3.5. Получаем список CustomAgent пользователя для анализа
         from agent_hub.models import CustomAgent
         custom_agents = CustomAgent.objects.filter(owner=user, is_active=True)
-        
+
         agents_context = []
         for agent in custom_agents:
             # Формируем краткое описание агента для ИИ
@@ -75,7 +76,7 @@ class SmartTaskAnalyzer:
                 server_ids = agent.allowed_servers
                 server_names = Server.objects.filter(id__in=server_ids, user=user).values_list('name', flat=True)
                 allowed_servers_desc = ", ".join(server_names) if server_names else "нет доступа к серверам"
-            
+
             agents_context.append({
                 "id": agent.id,
                 "name": agent.name,
@@ -85,7 +86,7 @@ class SmartTaskAnalyzer:
                 "allowed_servers": allowed_servers_desc,
                 "runtime": agent.runtime,
             })
-        
+
         # 4. Анализ через ИИ: может ли ИИ выполнить задачу (can_delegate_to_ai, reason, recommended_agent, ...)
         ai_analysis = async_to_sync(self.ai_assistant.analyze_task)(
             task.title,
@@ -93,7 +94,7 @@ class SmartTaskAnalyzer:
             servers_context=servers_context,
             agents_context=agents_context,
         )
-        
+
         if ai_analysis.get('success') and ai_analysis.get('analysis'):
             analysis = ai_analysis['analysis']
             result['recommended_agent'] = analysis.get('recommended_agent', 'react')
@@ -104,18 +105,18 @@ class SmartTaskAnalyzer:
             result['estimated_duration_hours'] = self._parse_duration(
                 analysis.get('estimated_time', '')
             )
-            
+
             # Сохраняем рекомендованного агента в Task
             if result['recommended_custom_agent_id']:
                 try:
                     task.recommended_custom_agent_id = result['recommended_custom_agent_id']
                 except Exception as e:
                     logger.warning(f"Failed to set recommended_custom_agent: {e}")
-            
+
             task.ai_agent_type = result['recommended_agent']
             if result['estimated_duration_hours']:
                 task.estimated_duration_hours = result['estimated_duration_hours']
-            
+
             # Если ИИ определил сервер по контексту — попробуем найти его
             ai_target_server = analysis.get('target_server_name')
             if ai_target_server and not matched_servers:
@@ -127,7 +128,7 @@ class SmartTaskAnalyzer:
                 if ai_matched:
                     matched_servers = ai_matched
                     result['servers_matched'] = matched_servers
-            
+
             # Если сервер не найден, но есть сервер по умолчанию — используем его
             if not matched_servers and settings.default_server:
                 matched_servers = [{
@@ -137,12 +138,12 @@ class SmartTaskAnalyzer:
                     'confidence': 'low'
                 }]
                 result['servers_matched'] = matched_servers
-            
+
             # 5. Логика создания уведомлений с учётом настроек
             can_delegate = analysis.get('can_delegate_to_ai') is True
             missing_info = analysis.get('missing_info')
             complexity = analysis.get('complexity', 'medium')
-            
+
             # Проверяем, нужны ли уточняющие вопросы
             if missing_info and settings.ask_questions_before_execution:
                 task.save()
@@ -152,7 +153,7 @@ class SmartTaskAnalyzer:
                 task.target_server = matched_servers[0]['server']
                 task.server_name_mentioned = matched_servers[0]['mentioned_name']
                 task.save()
-                
+
                 # Проверяем настройки: требуется ли подтверждение сервера
                 if settings.require_server_confirmation:
                     # Всегда требуем подтверждение сервера
@@ -171,18 +172,18 @@ class SmartTaskAnalyzer:
                 self._create_analysis_result_notification(task, user, analysis, matched_servers, available_servers)
         else:
             task.save()
-        
+
         return result
-    
-    def _extract_server_mentions(self, text: str, user: User) -> List[Dict[str, str]]:
+
+    def _extract_server_mentions(self, text: str, user: User) -> list[dict[str, str]]:
         """Извлечение упоминаний серверов из текста"""
         mentions = []
-        
+
         # Получаем все серверы пользователя для поиска
         user_servers = Server.objects.filter(user=user, is_active=True)
         server_names = {s.name.lower(): s for s in user_servers}
         server_hosts = {s.host.lower(): s for s in user_servers}
-        
+
         # Поиск по названиям серверов
         for server_name, server in server_names.items():
             # Ищем точное совпадение или в составе слова
@@ -193,7 +194,7 @@ class SmartTaskAnalyzer:
                     'type': 'name',
                     'confidence': 'high'
                 })
-        
+
         # Поиск по хостам
         for host, server in server_hosts.items():
             pattern = r'\b' + re.escape(host) + r'\b'
@@ -203,14 +204,14 @@ class SmartTaskAnalyzer:
                     'type': 'host',
                     'confidence': 'high'
                 })
-        
+
         # Поиск паттернов типа "сервер X", "на сервере Y"
         server_patterns = [
             r'(?:на|с|от|к|для)\s+(?:сервере?|server|хост|host)\s+([a-zA-Z0-9._-]+)',
             r'(?:сервер|server|хост|host)\s+([a-zA-Z0-9._-]+)',
             r'([a-zA-Z0-9._-]+)\s+(?:сервер|server)',
         ]
-        
+
         for pattern in server_patterns:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
@@ -221,17 +222,17 @@ class SmartTaskAnalyzer:
                         'type': 'pattern',
                         'confidence': 'medium'
                     })
-        
+
         return mentions
-    
-    def _match_servers(self, mentions: List[Dict], user: User) -> List[Dict[str, Any]]:
+
+    def _match_servers(self, mentions: list[dict], user: User) -> list[dict[str, Any]]:
         """Сопоставление упоминаний с реальными серверами"""
         matched = []
         user_servers = Server.objects.filter(user=user, is_active=True)
-        
+
         for mention in mentions:
             mentioned_name = mention['mentioned_name'].lower()
-            
+
             # Точное совпадение по имени
             server = user_servers.filter(name__iexact=mentioned_name).first()
             if server:
@@ -242,7 +243,7 @@ class SmartTaskAnalyzer:
                     'confidence': 'high'
                 })
                 continue
-            
+
             # Точное совпадение по хосту
             server = user_servers.filter(host__iexact=mentioned_name).first()
             if server:
@@ -253,7 +254,7 @@ class SmartTaskAnalyzer:
                     'confidence': 'high'
                 })
                 continue
-            
+
             # Частичное совпадение по имени
             server = user_servers.filter(name__icontains=mentioned_name).first()
             if server:
@@ -264,23 +265,23 @@ class SmartTaskAnalyzer:
                     'confidence': 'medium'
                 })
                 continue
-        
+
         return matched
-    
-    def _parse_duration(self, duration_str: str) -> Optional[float]:
+
+    def _parse_duration(self, duration_str: str) -> float | None:
         """Парсинг строки с оценкой времени в часы"""
         if not duration_str:
             return None
-        
+
         duration_str = duration_str.lower().strip()
-        
+
         # Паттерны: "2 hours", "3 дня", "1.5 часа", "30 минут"
         patterns = [
             (r'(\d+\.?\d*)\s*(?:час|hour|ч|h)', 1.0),  # часы
             (r'(\d+\.?\d*)\s*(?:день|day|д|d)', 24.0),  # дни
             (r'(\d+\.?\d*)\s*(?:минут|minute|мин|m)', 1/60.0),  # минуты
         ]
-        
+
         for pattern, multiplier in patterns:
             match = re.search(pattern, duration_str)
             if match:
@@ -289,25 +290,25 @@ class SmartTaskAnalyzer:
                     return value * multiplier
                 except ValueError:
                     continue
-        
+
         return None
-    
+
     def _create_auto_execution_notification(
         self,
         task: Task,
         user: User,
-        server_match: Dict[str, Any],
-        analysis: Dict[str, Any] = None,
-        available_servers: List[Dict[str, Any]] = None
+        server_match: dict[str, Any],
+        analysis: dict[str, Any] = None,
+        available_servers: list[dict[str, Any]] = None
     ):
         """Создание уведомления о предложении автоматического выполнения"""
         server = server_match['server']
-        
+
         reason = (analysis or {}).get('reason', '')
         estimated_time = (analysis or {}).get('estimated_time', '')
         complexity = (analysis or {}).get('complexity', '')
         risks = (analysis or {}).get('risks')
-        
+
         # Информация об агенте
         agent_info = ""
         custom_agent_id = (analysis or {}).get('recommended_custom_agent_id')
@@ -316,7 +317,7 @@ class SmartTaskAnalyzer:
             agent = CustomAgent.objects.filter(id=custom_agent_id, owner=user).first()
             if agent:
                 agent_info = f'🤖 Агент: **{agent.name}** ({agent.runtime})'
-        
+
         message_parts = [
             f'🖥️ Обнаружен сервер: **{server.name}** ({server.host})',
             f'📋 Задача: «{task.title}»',
@@ -335,7 +336,7 @@ class SmartTaskAnalyzer:
             message_parts.append(f'⚠️ Риски: {risks}')
         message_parts.append('')
         message_parts.append('Хотите делегировать выполнение ИИ?')
-        
+
         notification = TaskNotification.objects.create(
             task=task,
             user=user,
@@ -353,29 +354,29 @@ class SmartTaskAnalyzer:
             },
             action_url=f'/tasks/{task.id}/approve-auto-execution/',
         )
-        
+
         task.auto_execution_suggested = True
         task.save()
-        
+
         logger.info(f"Created auto-execution notification for task {task.id} and server {server.id}")
-    
+
     def _create_server_confirmation_notification(
         self,
         task: Task,
         user: User,
-        server_match: Dict[str, Any],
-        analysis: Dict[str, Any] = None,
-        available_servers: List[Dict[str, Any]] = None
+        server_match: dict[str, Any],
+        analysis: dict[str, Any] = None,
+        available_servers: list[dict[str, Any]] = None
     ):
         """Создание уведомления для подтверждения сервера перед выполнением"""
         server = server_match['server']
         match_type = server_match.get('match_type', 'unknown')
-        
+
         reason = (analysis or {}).get('reason', '')
         estimated_time = (analysis or {}).get('estimated_time', '')
         complexity = (analysis or {}).get('complexity', '')
         risks = (analysis or {}).get('risks')
-        
+
         # Формируем сообщение о способе определения сервера
         match_explanation = {
             'exact_name': 'Сервер определён по точному совпадению названия в тексте задачи',
@@ -384,17 +385,17 @@ class SmartTaskAnalyzer:
             'ai_detected': 'Сервер определён ИИ на основе контекста задачи',
             'default': 'Используется сервер по умолчанию (сервер не указан в задаче)',
         }.get(match_type, 'Сервер определён автоматически')
-        
+
         message_parts = [
             f'📋 Задача: «{task.title}»',
             '',
-            f'🖥️ **Я собираюсь выполнить эту задачу на сервере:**',
+            '🖥️ **Я собираюсь выполнить эту задачу на сервере:**',
             f'**{server.name}** ({server.host})',
             '',
             f'ℹ️ {match_explanation}',
             '',
         ]
-        
+
         if reason:
             message_parts.append(f'✅ {reason}')
         if estimated_time:
@@ -404,10 +405,10 @@ class SmartTaskAnalyzer:
             message_parts.append(f'{complexity_emoji} Сложность: {complexity}')
         if risks:
             message_parts.append(f'⚠️ Риски: {risks}')
-        
+
         message_parts.append('')
         message_parts.append('**Подтвердите сервер или выберите другой:**')
-        
+
         notification = TaskNotification.objects.create(
             task=task,
             user=user,
@@ -425,25 +426,25 @@ class SmartTaskAnalyzer:
             },
             action_url=f'/tasks/{task.id}/approve-auto-execution/',
         )
-        
+
         task.auto_execution_suggested = True
         task.save()
-        
+
         logger.info(f"Created server confirmation notification for task {task.id} and server {server.id}")
-    
+
     def _create_questions_notification(
         self,
         task: Task,
         user: User,
-        analysis: Dict[str, Any],
-        matched_servers: List[Dict[str, Any]],
-        available_servers: List[Dict[str, Any]] = None
+        analysis: dict[str, Any],
+        matched_servers: list[dict[str, Any]],
+        available_servers: list[dict[str, Any]] = None
     ):
         """Создание уведомления с уточняющими вопросами"""
         missing_info = analysis.get('missing_info', '')
         reason = analysis.get('reason', '')
         target_server_name = analysis.get('target_server_name')
-        
+
         message_parts = [
             f'📋 Задача: «{task.title}»',
             '',
@@ -452,11 +453,11 @@ class SmartTaskAnalyzer:
             f'{missing_info}',
             '',
         ]
-        
+
         if reason:
             message_parts.append(f'💬 {reason}')
             message_parts.append('')
-        
+
         if matched_servers:
             server = matched_servers[0]['server']
             message_parts.append(f'🖥️ Предполагаемый сервер: **{server.name}** ({server.host})')
@@ -464,13 +465,13 @@ class SmartTaskAnalyzer:
             message_parts.append(f'🖥️ Упомянутый сервер: {target_server_name} (не найден в вашем списке)')
         else:
             message_parts.append('🖥️ Сервер не определён — выберите сервер для выполнения')
-        
+
         message_parts.append('')
         message_parts.append('Ответьте на вопросы и я смогу выполнить задачу.')
-        
+
         # Формируем список вопросов для структурированного ответа
         questions = self._parse_questions(missing_info)
-        
+
         notification = TaskNotification.objects.create(
             task=task,
             user=user,
@@ -487,14 +488,14 @@ class SmartTaskAnalyzer:
                 'available_servers': available_servers or [],
             },
         )
-        
+
         logger.info(f"Created questions notification for task {task.id}")
-    
-    def _parse_questions(self, missing_info: str) -> List[Dict[str, str]]:
+
+    def _parse_questions(self, missing_info: str) -> list[dict[str, str]]:
         """Парсинг текста с вопросами в структурированный список"""
         if not missing_info:
             return []
-        
+
         questions = []
         # Пробуем разбить по номерам (1. 2. 3.) или по переносам строк
         lines = missing_info.split('\n')
@@ -510,7 +511,7 @@ class SmartTaskAnalyzer:
                     'question': line,
                     'answer': ''
                 })
-        
+
         # Если не удалось разбить — один вопрос
         if not questions:
             questions.append({
@@ -518,16 +519,16 @@ class SmartTaskAnalyzer:
                 'question': missing_info,
                 'answer': ''
             })
-        
+
         return questions
-    
+
     def _create_analysis_result_notification(
         self,
         task: Task,
         user: User,
-        analysis: Dict[str, Any],
-        matched_servers: List[Dict[str, Any]],
-        available_servers: List[Dict[str, Any]] = None
+        analysis: dict[str, Any],
+        matched_servers: list[dict[str, Any]],
+        available_servers: list[dict[str, Any]] = None
     ):
         """Создание уведомления о результате анализа когда ИИ не может выполнить задачу"""
         reason = analysis.get('reason', 'Не удалось определить причину')
@@ -535,7 +536,7 @@ class SmartTaskAnalyzer:
         risks = analysis.get('risks')
         target_server = analysis.get('target_server_name')
         can_delegate = analysis.get('can_delegate_to_ai', False)
-        
+
         # Определяем тип уведомления
         if not matched_servers and not target_server:
             # Сервер не найден
@@ -552,9 +553,9 @@ class SmartTaskAnalyzer:
         else:
             title = '📋 Анализ задачи завершён'
             notification_type = 'INFO'
-        
+
         message_parts = [f'📋 Задача: «{task.title}»', '']
-        
+
         if target_server:
             message_parts.append(f'🖥️ Определён сервер: {target_server}')
             if not matched_servers:
@@ -563,18 +564,18 @@ class SmartTaskAnalyzer:
             message_parts.append('🔍 Сервер не указан в задаче и не удалось определить из контекста.')
             if available_servers:
                 message_parts.append('Выберите сервер из списка для выполнения задачи.')
-        
+
         message_parts.append('')
         message_parts.append(f'💬 {reason}')
-        
+
         if missing_info:
             message_parts.append('')
             message_parts.append(f'❓ Уточните: {missing_info}')
-        
+
         if risks:
             message_parts.append('')
             message_parts.append(f'⚠️ Риски: {risks}')
-        
+
         TaskNotification.objects.create(
             task=task,
             user=user,
@@ -588,10 +589,10 @@ class SmartTaskAnalyzer:
                 'action': 'select_server' if not matched_servers else None,
             },
         )
-        
+
         logger.info(f"Created analysis result notification for task {task.id}: {notification_type}")
-    
-    def breakdown_task_with_timings(self, task: Task) -> List[Dict[str, Any]]:
+
+    def breakdown_task_with_timings(self, task: Task) -> list[dict[str, Any]]:
         """
         Разбиение задачи на подзадачи с таймингами через ИИ
         """
@@ -600,14 +601,14 @@ class SmartTaskAnalyzer:
             task.title,
             task.description
         )
-        
+
         if not subtasks_titles:
             return []
-        
+
         # Для каждой подзадачи получаем оценку времени через ИИ
         subtasks_with_timing = []
         total_minutes = 0
-        
+
         for idx, subtask_title in enumerate(subtasks_titles):
             # Оцениваем время для подзадачи
             estimated_minutes = self._estimate_subtask_duration(
@@ -615,34 +616,34 @@ class SmartTaskAnalyzer:
                 task.description,
                 subtask_title
             )
-            
+
             subtasks_with_timing.append({
                 'title': subtask_title,
                 'order': idx + 1,
                 'estimated_duration_minutes': estimated_minutes,
             })
-            
+
             if estimated_minutes:
                 total_minutes += estimated_minutes
-        
+
         # Обновляем общую оценку задачи
         if total_minutes:
             task.estimated_duration_hours = total_minutes / 60.0
             task.save()
-        
+
         return subtasks_with_timing
-    
+
     def _estimate_subtask_duration(
         self,
         task_title: str,
         task_description: str,
         subtask_title: str
-    ) -> Optional[int]:
+    ) -> int | None:
         """Оценка времени выполнения подзадачи через ИИ"""
         try:
             model = async_to_sync(lambda: self.ai_assistant.llm)()
             from app.core.model_config import model_manager
-            
+
             prompt = f"""Оцени время выполнения следующей подзадачи в минутах.
 
 Задача: {task_title}
@@ -658,49 +659,49 @@ class SmartTaskAnalyzer:
 - Очень сложная: 120
 
 Ответ (только число):"""
-            
+
             # Используем синхронный вызов для простоты
             from app.core.llm import LLMProvider
             llm = LLMProvider()
             response_text = ""
-            
+
             async def get_response():
                 nonlocal response_text
                 async for chunk in llm.stream_chat(prompt, model=model_manager.config.default_provider):
                     response_text += chunk
-            
+
             async_to_sync(get_response)()
-            
+
             # Извлекаем число из ответа
             numbers = re.findall(r'\d+', response_text)
             if numbers:
                 return int(numbers[0])
-            
+
             return None
         except Exception as e:
             logger.error(f"Error estimating subtask duration: {e}")
             return None
-    
+
     def approve_auto_execution(self, task: Task, user: User) -> bool:
         """Одобрение автоматического выполнения задачи"""
         if not task.target_server:
             return False
-        
+
         task.auto_execution_approved = True
         task.assigned_to_ai = True
         task.ai_execution_status = 'PENDING'
         task.save()
-        
+
         # Создаем запись о выполнении
         execution = TaskExecution.objects.create(
             task=task,
             agent_type=task.ai_agent_type or 'react',
             status='PENDING'
         )
-        
+
         logger.info(f"Auto-execution approved for task {task.id}")
         return True
-    
+
     def change_server_and_approve(self, task: Task, user: User, new_server_id: int) -> bool:
         """Изменить сервер для задачи и одобрить выполнение"""
         try:
@@ -708,20 +709,20 @@ class SmartTaskAnalyzer:
             task.target_server = new_server
             task.server_name_mentioned = new_server.name
             task.save()
-            
+
             logger.info(f"Changed server for task {task.id} to {new_server.name}")
             return self.approve_auto_execution(task, user)
         except Server.DoesNotExist:
             logger.error(f"Server {new_server_id} not found for user {user.id}")
             return False
-    
+
     def reanalyze_with_answers(
         self,
         task: Task,
         user: User,
-        answers: List[Dict[str, str]],
-        selected_server_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+        answers: list[dict[str, str]],
+        selected_server_id: int | None = None
+    ) -> dict[str, Any]:
         """
         Повторный анализ задачи с ответами на уточняющие вопросы
         
@@ -736,12 +737,12 @@ class SmartTaskAnalyzer:
             f"Вопрос: {a.get('question', '')}\nОтвет: {a.get('answer', '')}"
             for a in answers if a.get('answer')
         ])
-        
+
         # Обновляем описание задачи с ответами
         original_description = task.description
         if answers_text:
             task.description = f"{original_description}\n\n--- Дополнительная информация ---\n{answers_text}"
-        
+
         # Если указан сервер — устанавливаем его
         if selected_server_id:
             try:
@@ -750,16 +751,16 @@ class SmartTaskAnalyzer:
                 task.server_name_mentioned = server.name
             except Server.DoesNotExist:
                 pass
-        
+
         task.save()
-        
+
         # Повторный анализ
         result = self.analyze_task(task, user)
-        
+
         # Восстанавливаем оригинальное описание (ответы сохранены в action_data уведомления)
         task.description = original_description
         task.save()
-        
+
         # Если задача может быть делегирована и сервер установлен - сразу создаем workflow
         if result.get('can_auto_execute') and task.target_server:
             try:
@@ -773,5 +774,5 @@ class SmartTaskAnalyzer:
             except Exception as e:
                 logger.error(f"Failed to auto-create workflow after questions: {e}")
                 result['workflow_error'] = str(e)
-        
+
         return result

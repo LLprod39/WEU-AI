@@ -2,28 +2,30 @@
 AI Assistant for Task Management
 Analyzes tasks, provides recommendations, and generates reports
 """
-from typing import Dict, List, Any, Optional
+from typing import Any
+
+from asgiref.sync import async_to_sync
 from loguru import logger
+
+from app.agents.manager import get_agent_manager
 from app.core.llm import LLMProvider
 from app.core.model_config import model_manager
-from app.agents.manager import get_agent_manager
-from asgiref.sync import async_to_sync
 
 
 class TaskAIAssistant:
     """AI assistant for analyzing and managing tasks"""
-    
+
     def __init__(self):
         self.llm = LLMProvider()
         self.agent_manager = get_agent_manager()
-    
+
     async def analyze_task(
         self,
         task_title: str,
         task_description: str,
-        servers_context: Optional[List[Dict[str, Any]]] = None,
-        agents_context: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        servers_context: list[dict[str, Any]] | None = None,
+        agents_context: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         Анализ задачи: может ли ИИ выполнить её сам (есть нужный сервер и тип операции допустим).
         Ответ только на русском, JSON с полями can_delegate_to_ai, reason, recommended_agent и т.д.
@@ -39,10 +41,10 @@ class TaskAIAssistant:
                     f"- {s.get('name', '')} (хост: {s.get('host', '')}, порт: {s.get('port', 22)})"
                     for s in servers_context
                 ]
-                servers_text = f"Доступные серверы пользователя:\n" + "\n".join(parts)
+                servers_text = "Доступные серверы пользователя:\n" + "\n".join(parts)
             else:
                 servers_text = "Список доступных серверов пуст — пользователь не добавил серверы."
-            
+
             # Контекст агентов
             agents_text = ""
             if agents_context:
@@ -60,7 +62,7 @@ class TaskAIAssistant:
                         agent_desc += f"\n  Доступ к серверам: {agent['allowed_servers']}"
                     agent_desc += f"\n  Runtime: {agent['runtime']}"
                     parts.append(agent_desc)
-                agents_text = f"Созданные агенты пользователя:\n" + "\n".join(parts)
+                agents_text = "Созданные агенты пользователя:\n" + "\n".join(parts)
             else:
                 agents_text = "У пользователя нет созданных агентов. Можно использовать стандартные типы (react, simple, complex, ralph)."
 
@@ -157,34 +159,34 @@ class TaskAIAssistant:
                 'error': str(e),
                 'analysis': None
             }
-    
+
     async def improve_description(self, task_title: str, task_description: str) -> str:
         """Improve task description to be more clear and actionable"""
         try:
             model = model_manager.config.default_provider
-            
+
             prompt = f"""You are a professional project manager. Improve the following task description to be more clear, actionable, and professional.
 
 Task Title: {task_title}
 Current Description: {task_description}
 
 Return only the improved description as plain text. Do not add any conversational filler."""
-            
+
             response_text = ""
             async for chunk in self.llm.stream_chat(prompt, model=model):
                 response_text += chunk
-            
+
             return response_text.strip()
-            
+
         except Exception as e:
             logger.error(f"Description improvement failed: {e}")
             return task_description
-    
-    async def breakdown_task(self, task_title: str, task_description: str) -> List[str]:
+
+    async def breakdown_task(self, task_title: str, task_description: str) -> list[str]:
         """Break down a complex task into smaller subtasks"""
         try:
             model = model_manager.config.default_provider
-            
+
             prompt = f"""You are a professional project manager. Break down the following task into smaller, actionable subtasks.
 
 Task Title: {task_title}
@@ -192,20 +194,20 @@ Description: {task_description}
 
 Return the subtasks as a JSON list of strings. Example: ["Subtask 1", "Subtask 2"]
 Do not add markdown formatting or any other text."""
-            
+
             response_text = ""
             async for chunk in self.llm.stream_chat(prompt, model=model):
                 response_text += chunk
-            
+
             # Parse JSON
             import json
             import re
-            
+
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
             elif "```" in response_text:
                 response_text = response_text.split("```")[1].split("```")[0].strip()
-            
+
             json_match = re.search(r'\[.*?\]', response_text, re.DOTALL)
             if json_match:
                 try:
@@ -214,7 +216,7 @@ Do not add markdown formatting or any other text."""
                         return subtasks
                 except:
                     logger.debug("Failed to parse JSON subtasks response.")
-            
+
             # Fallback: split by lines
             lines = [line.strip() for line in response_text.split('\n') if line.strip()]
             subtasks = []
@@ -222,24 +224,24 @@ Do not add markdown formatting or any other text."""
                 line = re.sub(r'^\d+[\.\)]\s*', '', line)
                 if line and len(line) > 5:
                     subtasks.append(line)
-            
+
             return subtasks if subtasks else []
-            
+
         except Exception as e:
             logger.error(f"Task breakdown failed: {e}")
             return []
-    
-    async def generate_progress_report(self, tasks: List[Dict]) -> str:
+
+    async def generate_progress_report(self, tasks: list[dict]) -> str:
         """Generate a progress report for a list of tasks"""
         try:
             model = model_manager.config.default_provider
-            
+
             # Format tasks summary
             tasks_summary = "\n".join([
                 f"- {t.get('title', 'Untitled')}: {t.get('status', 'Unknown')}"
                 for t in tasks
             ])
-            
+
             prompt = f"""Generate a professional progress report for the following tasks:
 
 Tasks:
@@ -253,13 +255,13 @@ Provide a comprehensive report including:
 5. Recommendations
 
 Format as a clear, professional report."""
-            
+
             response_text = ""
             async for chunk in self.llm.stream_chat(prompt, model=model):
                 response_text += chunk
-            
+
             return response_text.strip()
-            
+
         except Exception as e:
             logger.error(f"Report generation failed: {e}")
             return "Error generating report"
@@ -269,9 +271,9 @@ Format as a clear, professional report."""
 def analyze_task_sync(
     task_title: str,
     task_description: str,
-    servers_context: Optional[List[Dict[str, Any]]] = None,
-    agents_context: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    servers_context: list[dict[str, Any]] | None = None,
+    agents_context: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Synchronous wrapper for analyze_task"""
     assistant = TaskAIAssistant()
     return async_to_sync(assistant.analyze_task)(task_title, task_description, servers_context, agents_context)
@@ -283,7 +285,7 @@ def improve_description_sync(task_title: str, task_description: str) -> str:
     return async_to_sync(assistant.improve_description)(task_title, task_description)
 
 
-def breakdown_task_sync(task_title: str, task_description: str) -> List[str]:
+def breakdown_task_sync(task_title: str, task_description: str) -> list[str]:
     """Synchronous wrapper for breakdown_task"""
     assistant = TaskAIAssistant()
     return async_to_sync(assistant.breakdown_task)(task_title, task_description)

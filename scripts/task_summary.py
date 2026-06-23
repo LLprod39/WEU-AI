@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 """Краткая сводка по активным задачам (скрипт для manage.py shell)."""
 import os
+
 import django
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "web_ui.settings")
 django.setup()
 
-from tasks.models import Task
 from django.db.models import Count
+
+from tasks.models import Task
 
 active = Task.objects.exclude(status__in=["DONE", "CANCELLED"])
 by_status = active.values("status").annotate(c=Count("id")).order_by("status")

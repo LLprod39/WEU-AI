@@ -19,8 +19,9 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import User
-    from tasks.models import Task
+
     from agent_hub.models import AgentWorkflow, AgentWorkflowRun
+    from tasks.models import Task
 
 
 class WorkflowService:
@@ -59,15 +60,15 @@ class WorkflowService:
         """
         # Import models here to avoid circular imports at module level
         from agent_hub.models import AgentWorkflow
-        from app.core.model_config import model_manager
 
         # Import helper functions from views (will be moved to services later)
         from agent_hub.views import (
+            _build_ralph_yml_from_steps,
             _generate_workflow_script,
             _start_workflow_run,
             _write_ralph_yml,
-            _build_ralph_yml_from_steps,
         )
+        from app.core.model_config import model_manager
 
         task_text = f"{task.title}\n\n{task.description or ''}".strip()
         if not task_text:
@@ -93,17 +94,17 @@ class WorkflowService:
 
         # Get runtime from settings (explicit override has highest priority)
         default_runtime = runtime_override or model_manager.config.default_provider or "cursor"
-        
+
         # Load recommended CustomAgent if specified
         custom_agent = None
         if hasattr(task, 'recommended_custom_agent_id') and task.recommended_custom_agent_id:
             from agent_hub.models import CustomAgent
             custom_agent = CustomAgent.objects.filter(
-                id=task.recommended_custom_agent_id, 
-                owner=user, 
+                id=task.recommended_custom_agent_id,
+                owner=user,
                 is_active=True
             ).first()
-        
+
         # If custom_agent exists, use its parameters
         selected_skill_ids: list[int] = []
         if custom_agent:
@@ -111,7 +112,7 @@ class WorkflowService:
                 default_runtime = custom_agent.runtime
             logger.info(f"Using CustomAgent {custom_agent.name} (id={custom_agent.id}) for task {task.id}")
             selected_skill_ids = list(custom_agent.skills.values_list("id", flat=True))
-            
+
             # Add knowledge_base to task text if available
             if hasattr(custom_agent, 'knowledge_base') and custom_agent.knowledge_base:
                 task_text += f"\n\n--- База знаний агента ---\n{custom_agent.knowledge_base}"

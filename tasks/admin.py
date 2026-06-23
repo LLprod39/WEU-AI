@@ -1,8 +1,6 @@
 from django.contrib import admin
-from .models import (
-    Task, SubTask, TaskLabel, TaskLabelRelation,
-    TaskComment, TaskAttachment, TaskHistory, TaskShare
-)
+
+from .models import SubTask, Task, TaskAttachment, TaskComment, TaskHistory, TaskLabel, TaskShare
 
 
 @admin.register(Task)

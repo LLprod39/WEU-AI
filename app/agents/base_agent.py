@@ -2,8 +2,7 @@
 Base Agent class - foundation for all agents
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-from loguru import logger
+from typing import Any
 
 
 class BaseAgent(ABC):
@@ -11,14 +10,14 @@ class BaseAgent(ABC):
     Base class for all agents.
     All agents must implement the execute method.
     """
-    
+
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
         self._tool_manager = None
         self._rag_engine = None
         self._llm_provider = None
-    
+
     @property
     def tool_manager(self):
         """Lazy load tool manager"""
@@ -26,7 +25,7 @@ class BaseAgent(ABC):
             from app.tools.manager import get_tool_manager
             self._tool_manager = get_tool_manager()
         return self._tool_manager
-    
+
     @property
     def rag_engine(self):
         """Lazy load RAG engine"""
@@ -34,7 +33,7 @@ class BaseAgent(ABC):
             from app.rag.engine import RAGEngine
             self._rag_engine = RAGEngine()
         return self._rag_engine
-    
+
     @property
     def llm_provider(self):
         """Lazy load LLM provider"""
@@ -42,9 +41,9 @@ class BaseAgent(ABC):
             from app.core.llm import LLMProvider
             self._llm_provider = LLMProvider()
         return self._llm_provider
-    
+
     @abstractmethod
-    async def execute(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def execute(self, task: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Execute the agent's task.
         
@@ -60,16 +59,16 @@ class BaseAgent(ABC):
                 - metadata: Optional[Dict] (additional metadata)
         """
         raise NotImplementedError("BaseAgent.execute must be implemented by subclasses.")
-    
-    def get_info(self) -> Dict[str, Any]:
+
+    def get_info(self) -> dict[str, Any]:
         """Get agent information"""
         return {
             'name': self.name,
             'description': self.description,
             'type': self.__class__.__name__
         }
-    
-    def validate_context(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+    def validate_context(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Validate and normalize context"""
         if context is None:
             context = {}

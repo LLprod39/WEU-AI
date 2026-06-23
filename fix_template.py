@@ -1,6 +1,6 @@
 f = r'c:\work_ai\agent_projects\web_rA\servers\templates\servers\list.html'
 
-with open(f, 'r', encoding='utf-8') as fp:
+with open(f, encoding='utf-8') as fp:
     content = fp.read()
 
 # Fix grid + card size

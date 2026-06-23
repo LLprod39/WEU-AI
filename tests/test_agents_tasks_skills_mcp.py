@@ -3,9 +3,9 @@
 Проверяет работоспособность цепочки AgentManager -> ToolManager -> Skills -> MCP config.
 """
 import json
+
 import pytest
 from asgiref.sync import async_to_sync
-
 
 # --- AgentManager ---
 
@@ -139,6 +139,7 @@ def test_skill_service_build_skill_context(user):
 def test_mcp_config_load_returns_structure():
     """load_mcp_config возвращает (config_dict, sources_list)."""
     from django.conf import settings
+
     from app.mcp.config import load_mcp_config
 
     config, sources = load_mcp_config(settings.BASE_DIR)

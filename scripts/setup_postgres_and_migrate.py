@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Настройка PostgreSQL для WEU: создание БД, миграции, суперпользователь и перенос данных из SQLite.
 
@@ -33,10 +32,10 @@
   createuser -U postgres -P weu
   createdb -U postgres -O weu weu_platform
 """
-from pathlib import Path
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 # Корень проекта (родитель каталога scripts)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

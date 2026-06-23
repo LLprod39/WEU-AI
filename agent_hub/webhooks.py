@@ -7,7 +7,7 @@ import json
 import re
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 from asgiref.sync import async_to_sync
 from django.contrib.auth.decorators import login_required
@@ -17,13 +17,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from loguru import logger
 
-from core_ui.decorators import require_feature
 from agent_hub.models import AgentWebhook, AgentWebhookEvent, CustomAgent
+from app.services.workflow_service import WorkflowService
+from core_ui.decorators import require_feature
 from servers.models import Server
 from tasks.models import Task
 from tasks.task_executor import TaskExecutor
-from app.services.workflow_service import WorkflowService
-
 
 DEFAULT_TITLE_TEMPLATE = "{{webhook_name}}: {{event_name}}"
 DEFAULT_DESCRIPTION_TEMPLATE = "Источник: {{source}}\nВремя: {{received_at}}\n\nPayload:\n{{payload_json}}"
@@ -31,7 +30,7 @@ DEFAULT_VERIFY_PROMISE = "PASS"
 ALLOWED_WORKFLOW_RUNTIMES = {"internal", "cursor", "claude", "codex", "opencode", "gemini", "ralph"}
 
 
-def _parse_payload(request) -> Dict[str, Any]:
+def _parse_payload(request) -> dict[str, Any]:
     try:
         body = request.body.decode("utf-8") if request.body else ""
         if body:
@@ -87,7 +86,7 @@ def _get_by_path(data: Any, path: str) -> Any:
     return current
 
 
-def _render_template(template: str, payload: Dict[str, Any], extra: Dict[str, Any]) -> str:
+def _render_template(template: str, payload: dict[str, Any], extra: dict[str, Any]) -> str:
     if not template:
         return ""
 
@@ -109,7 +108,7 @@ def _render_template(template: str, payload: Dict[str, Any], extra: Dict[str, An
     return re.sub(r"\{\{\s*([^}]+)\s*\}\}", _replace, template)
 
 
-def _resolve_server(owner, payload: Dict[str, Any], config: Dict[str, Any]) -> Optional[Server]:
+def _resolve_server(owner, payload: dict[str, Any], config: dict[str, Any]) -> Server | None:
     if not owner:
         return None
 
@@ -148,12 +147,12 @@ def _resolve_server(owner, payload: Dict[str, Any], config: Dict[str, Any]) -> O
 
 def _build_remediation_script(
     task: Task,
-    payload: Dict[str, Any],
-    target_server: Optional[Server],
+    payload: dict[str, Any],
+    target_server: Server | None,
     runtime: str,
-    skill_ids: Optional[list[int]] = None,
-    verify_prompt: Optional[str] = None,
-) -> Dict[str, Any]:
+    skill_ids: list[int] | None = None,
+    verify_prompt: str | None = None,
+) -> dict[str, Any]:
     payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
     server_name = target_server.name if target_server else ""
     server_hint = f"Target server: {server_name}" if server_name else "No explicit server"
@@ -265,10 +264,10 @@ def _normalize_email_list(value: Any) -> list[str]:
     return emails
 
 
-def _normalize_notify_config(raw_notify: Any) -> Dict[str, Any]:
+def _normalize_notify_config(raw_notify: Any) -> dict[str, Any]:
     if not isinstance(raw_notify, dict):
         return {}
-    notify: Dict[str, Any] = {}
+    notify: dict[str, Any] = {}
     emails = _normalize_email_list(raw_notify.get("emails"))
     if emails:
         notify["emails"] = emails
@@ -279,8 +278,8 @@ def _normalize_notify_config(raw_notify: Any) -> Dict[str, Any]:
     return notify
 
 
-def _build_notify_config_from_webhook_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    notify: Dict[str, Any] = {}
+def _build_notify_config_from_webhook_config(config: dict[str, Any]) -> dict[str, Any]:
+    notify: dict[str, Any] = {}
     emails = _normalize_email_list(config.get("notify_emails"))
     if emails:
         notify["emails"] = emails
@@ -308,7 +307,7 @@ def _normalize_int_list(value: Any) -> list[int]:
     return out
 
 
-def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
+def _normalize_workflow_script(raw_script: Any) -> dict[str, Any] | None:
     if isinstance(raw_script, str):
         try:
             raw_script = json.loads(raw_script)
@@ -317,7 +316,7 @@ def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(raw_script, dict):
         return None
 
-    script: Dict[str, Any] = {}
+    script: dict[str, Any] = {}
     name = str(raw_script.get("name") or "").strip()
     description = str(raw_script.get("description") or "").strip()
     runtime = str(raw_script.get("runtime") or "").strip().lower()
@@ -336,7 +335,7 @@ def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
         script["model"] = model[:100]
 
     steps_raw = raw_script.get("steps")
-    steps: list[Dict[str, Any]] = []
+    steps: list[dict[str, Any]] = []
     if isinstance(steps_raw, list):
         for idx, raw_step in enumerate(steps_raw[:30], start=1):
             if not isinstance(raw_step, dict):
@@ -344,7 +343,7 @@ def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
             prompt = str(raw_step.get("prompt") or "").strip()
             if not prompt:
                 continue
-            step: Dict[str, Any] = {
+            step: dict[str, Any] = {
                 "title": (str(raw_step.get("title") or f"Step {idx}").strip() or f"Step {idx}")[:200],
                 "prompt": prompt,
                 "completion_promise": (str(raw_step.get("completion_promise") or "STEP_DONE").strip() or "STEP_DONE")[:100],
@@ -377,11 +376,11 @@ def _normalize_workflow_script(raw_script: Any) -> Optional[Dict[str, Any]]:
     return script
 
 
-def _normalize_webhook_config(raw_config: Any) -> Dict[str, Any]:
+def _normalize_webhook_config(raw_config: Any) -> dict[str, Any]:
     if not isinstance(raw_config, dict):
         return {}
 
-    cfg: Dict[str, Any] = {}
+    cfg: dict[str, Any] = {}
     for key in (
         "workflow_template",
         "workflow_name_template",
@@ -424,7 +423,7 @@ def _normalize_webhook_config(raw_config: Any) -> Dict[str, Any]:
 
     server_map_raw = raw_config.get("server_map")
     if isinstance(server_map_raw, dict):
-        server_map: Dict[str, int] = {}
+        server_map: dict[str, int] = {}
         for raw_name, raw_id in server_map_raw.items():
             name = str(raw_name or "").strip()
             if not name:
@@ -450,7 +449,7 @@ def _normalize_webhook_config(raw_config: Any) -> Dict[str, Any]:
     return cfg
 
 
-def _render_template_tree(value: Any, payload: Dict[str, Any], extra: Dict[str, Any]) -> Any:
+def _render_template_tree(value: Any, payload: dict[str, Any], extra: dict[str, Any]) -> Any:
     if isinstance(value, str):
         return _render_template(value, payload, extra)
     if isinstance(value, list):
@@ -460,11 +459,11 @@ def _render_template_tree(value: Any, payload: Dict[str, Any], extra: Dict[str, 
     return value
 
 
-def _ensure_ralph_yml(script: Dict[str, Any], runtime: str) -> None:
+def _ensure_ralph_yml(script: dict[str, Any], runtime: str) -> None:
     if runtime != "ralph" or script.get("ralph_yml"):
         return
     steps = script.get("steps") if isinstance(script.get("steps"), list) else []
-    hats: Dict[str, Any] = {}
+    hats: dict[str, Any] = {}
     previous_event = "task.start"
     for idx, step in enumerate(steps, start=1):
         next_event = f"step_{idx}.done"
@@ -488,14 +487,14 @@ def _ensure_ralph_yml(script: Dict[str, Any], runtime: str) -> None:
 
 
 def _apply_workflow_script_overrides(
-    script: Dict[str, Any],
-    config: Dict[str, Any],
-    payload: Dict[str, Any],
-    extra: Dict[str, Any],
-    target_server: Optional[Server],
+    script: dict[str, Any],
+    config: dict[str, Any],
+    payload: dict[str, Any],
+    extra: dict[str, Any],
+    target_server: Server | None,
     default_name: str,
     default_description: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if not isinstance(script, dict):
         script = {}
 
@@ -517,7 +516,7 @@ def _apply_workflow_script_overrides(
 
     notify_from_cfg = _build_notify_config_from_webhook_config(config)
     existing_notify = _normalize_notify_config(script.get("notify"))
-    merged_notify: Dict[str, Any] = {}
+    merged_notify: dict[str, Any] = {}
     emails = _normalize_email_list((existing_notify.get("emails") or []) + (notify_from_cfg.get("emails") or []))
     if emails:
         merged_notify["emails"] = emails
@@ -538,12 +537,14 @@ def _apply_workflow_script_overrides(
 def _create_workflow_from_script(
     owner,
     task: Task,
-    target_server: Optional[Server],
-    script: Dict[str, Any],
+    target_server: Server | None,
+    script: dict[str, Any],
     runtime: str,
 ):
     from pathlib import Path
+
     from django.conf import settings
+
     from agent_hub.models import AgentWorkflow
     from agent_hub.views import _start_workflow_run, _write_ralph_yml
 
@@ -646,7 +647,7 @@ def api_webhook_receive(request, secret: str):
             sync_back=False,
         )
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "task_id": task.id,
             "task_title": task.title,
             "target_server": target_server.name if target_server else None,

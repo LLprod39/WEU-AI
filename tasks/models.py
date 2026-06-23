@@ -1,9 +1,9 @@
-from django.db import models
-from django.contrib.auth.models import User
-from django.utils import timezone
-from django.core.exceptions import ValidationError
-from django.db import transaction
 import secrets
+
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
+from django.utils import timezone
 
 
 class TaskPriority(models.TextChoices):
@@ -99,12 +99,12 @@ class Task(models.Model):
         related_name='child_tasks',
         verbose_name="Родительская задача"
     )
-    
+
     # AI Assignment
     assigned_to_ai = models.BooleanField(default=False, help_text="Назначена ли задача на ИИ")
     ai_agent_type = models.CharField(
-        max_length=50, 
-        blank=True, 
+        max_length=50,
+        blank=True,
         null=True,
         help_text="Тип агента для выполнения (react, simple, complex, ralph) — используется если recommended_custom_agent не задан"
     )
@@ -131,7 +131,7 @@ class Task(models.Model):
         null=True,
         blank=True
     )
-    
+
     # Server connection
     target_server = models.ForeignKey(
         'servers.Server',
@@ -146,7 +146,7 @@ class Task(models.Model):
         blank=True,
         help_text="Название сервера, упомянутое в описании задачи"
     )
-    
+
     # Timing
     estimated_duration_hours = models.FloatField(
         null=True,
@@ -160,7 +160,7 @@ class Task(models.Model):
     )
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
-    
+
     # Smart execution
     auto_execution_suggested = models.BooleanField(
         default=False,
@@ -170,7 +170,7 @@ class Task(models.Model):
         default=False,
         help_text="Одобрено ли автоматическое выполнение"
     )
-    
+
     # External integration (Jira, GitHub, etc)
     external_system = models.CharField(
         max_length=50,
@@ -262,7 +262,7 @@ class Task(models.Model):
     def is_watching(self, user):
         """Проверить, наблюдает ли пользователь за задачей"""
         return self.watchers.filter(pk=user.pk).exists()
-    
+
     def get_priority_color(self):
         """Get color for priority"""
         colors = {
@@ -271,13 +271,13 @@ class Task(models.Model):
             TaskPriority.LOW: 'green',
         }
         return colors.get(self.priority, 'gray')
-    
+
     def is_overdue(self):
         """Проверка просрочки задачи"""
         if self.due_date and self.status not in ['DONE', 'CANCELLED']:
             return timezone.now() > self.due_date
         return False
-    
+
     def get_progress_percentage(self):
         """Получить процент выполнения на основе подзадач"""
         subtasks = self.subtasks.all()
@@ -334,10 +334,10 @@ class SubTask(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, help_text="Детальное описание подзадачи")
     is_completed = models.BooleanField(default=False)
-    
+
     # Ordering
     order = models.IntegerField(default=0, help_text="Порядок выполнения подзадачи")
-    
+
     # Timing
     estimated_duration_minutes = models.IntegerField(
         null=True,
@@ -352,7 +352,7 @@ class SubTask(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     due_date = models.DateTimeField(null=True, blank=True, help_text="Срок выполнения подзадачи")
-    
+
     # AI execution
     assigned_to_ai = models.BooleanField(default=False)
     execution_status = models.CharField(
@@ -366,7 +366,7 @@ class SubTask(models.Model):
         ],
         default='PENDING'
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
@@ -379,7 +379,7 @@ class SubTask(models.Model):
 
     def __str__(self):
         return self.title
-    
+
     def is_overdue(self):
         """Проверка просрочки подзадачи"""
         if self.due_date and not self.is_completed:
@@ -454,7 +454,7 @@ class TaskExecution(models.Model):
         blank=True,
         related_name='executions'
     )
-    
+
     # Execution details
     agent_type = models.CharField(max_length=50, help_text="Тип агента, выполняющего задачу")
     execution_plan = models.JSONField(
@@ -463,7 +463,7 @@ class TaskExecution(models.Model):
         help_text="План выполнения задачи"
     )
     execution_log = models.TextField(blank=True, help_text="Лог выполнения")
-    
+
     # Status
     status = models.CharField(
         max_length=20,
@@ -478,27 +478,27 @@ class TaskExecution(models.Model):
         ],
         default='PENDING'
     )
-    
+
     # Timing
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     estimated_duration_minutes = models.IntegerField(null=True, blank=True)
     actual_duration_minutes = models.IntegerField(null=True, blank=True)
-    
+
     # Results
     result_summary = models.TextField(blank=True, help_text="Краткое описание результата")
     error_message = models.TextField(blank=True, help_text="Сообщение об ошибке, если есть")
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['task', '-created_at']),
             models.Index(fields=['status', '-created_at']),
         ]
-    
+
     def __str__(self):
         return f"Execution of {self.task.title} - {self.status}"
 
@@ -544,11 +544,11 @@ class TaskNotification(models.Model):
         help_text='Для уведомлений уровня проекта (приглашение и т.д.) — пусто'
     )
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_notifications')
-    
+
     notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()
-    
+
     # Action data
     action_data = models.JSONField(
         null=True,
@@ -560,22 +560,22 @@ class TaskNotification(models.Model):
         blank=True,
         help_text="URL для действия"
     )
-    
+
     # Status
     is_read = models.BooleanField(default=False)
     is_actioned = models.BooleanField(default=False, help_text="Было ли выполнено действие")
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
     actioned_at = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['user', 'is_read', '-created_at']),
             models.Index(fields=['task', '-created_at']),
         ]
-    
+
     def __str__(self):
         return f"{self.notification_type} - {self.title}"
 
@@ -615,25 +615,25 @@ class TaskExecutionSettings(models.Model):
         on_delete=models.CASCADE,
         related_name='task_execution_settings',
     )
-    
+
     # Подтверждение сервера
     require_server_confirmation = models.BooleanField(
         default=True,
         help_text="Требовать подтверждение сервера перед выполнением задачи"
     )
-    
+
     # Автоматическое выполнение
     auto_execute_simple_tasks = models.BooleanField(
         default=False,
         help_text="Автоматически выполнять простые задачи без подтверждения"
     )
-    
+
     # Уточняющие вопросы
     ask_questions_before_execution = models.BooleanField(
         default=True,
         help_text="Задавать уточняющие вопросы перед выполнением, если информации недостаточно"
     )
-    
+
     # Сервер по умолчанию
     default_server = models.ForeignKey(
         'servers.Server',
@@ -643,7 +643,7 @@ class TaskExecutionSettings(models.Model):
         related_name='default_for_users',
         help_text="Сервер по умолчанию для выполнения задач (если не указан другой)"
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -653,7 +653,7 @@ class TaskExecutionSettings(models.Model):
 
     def __str__(self):
         return f"TaskExecutionSettings for {self.user.username}"
-    
+
     @classmethod
     def get_for_user(cls, user):
         """Получить настройки для пользователя, создать если не существуют."""

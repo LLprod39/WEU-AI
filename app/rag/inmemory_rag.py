@@ -3,7 +3,7 @@ InMemory RAG — fallback когда Qdrant недоступен. Требует
 В мини-сборке энкодер отсутствует — available=False.
 """
 import uuid
-from typing import Dict, List
+
 from loguru import logger
 
 try:
@@ -45,7 +45,7 @@ class InMemoryRAG:
             logger.error(f"Error adding text: {e}")
             return None
 
-    def query(self, query_text: str, n_results: int = 3, user_id=None) -> Dict:
+    def query(self, query_text: str, n_results: int = 3, user_id=None) -> dict:
         if not self.available or not self.encoder or np is None or user_id is None:
             return {"documents": [[]], "metadatas": [[]]}
         docs = self._docs_for_user(user_id)
@@ -63,7 +63,7 @@ class InMemoryRAG:
             logger.error(f"Error querying: {e}")
             return {"documents": [[]], "metadatas": [[]]}
 
-    def get_all_documents(self, user_id=None) -> List[Dict]:
+    def get_all_documents(self, user_id=None) -> list[dict]:
         if user_id is None:
             return []
         docs = self._docs_for_user(user_id)
