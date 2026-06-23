@@ -134,14 +134,14 @@
                             </td>
                             <td class="py-3 text-right">
                                 <div class="flex items-center justify-end gap-2">
-                                    <button type="button" onclick="openEditUserModal({{ item.user.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать">
+                                    <button type="button" onclick="openEditUserModal({{ item.user.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать" aria-label="Редактировать">
                                         <span class="material-icons-round text-lg">edit</span>
                                     </button>
-                                    <button type="button" onclick="openPasswordModal({{ item.user.id }}, '{{ item.user.username|escapejs }}')" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Сменить пароль">
+                                    <button type="button" onclick="openPasswordModal({{ item.user.id }}, '{{ item.user.username|escapejs }}')" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-amber-400 transition-colors" title="Сменить пароль" aria-label="Сменить пароль">
                                         <span class="material-icons-round text-lg">key</span>
                                     </button>
                                     {% if not item.user.is_superuser %}
-                                    <button type="button" onclick="deleteUser({{ item.user.id }}, '{{ item.user.username|escapejs }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить">
+                                    <button type="button" onclick="deleteUser({{ item.user.id }}, '{{ item.user.username|escapejs }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить" aria-label="Удалить">
                                         <span class="material-icons-round text-lg">delete</span>
                                     </button>
                                     {% endif %}
@@ -182,10 +182,10 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button type="button" onclick="openEditGroupModal({{ g.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать">
+                            <button type="button" onclick="openEditGroupModal({{ g.id }})" class="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Редактировать" aria-label="Редактировать">
                                 <span class="material-icons-round text-lg">edit</span>
                             </button>
-                            <button type="button" onclick="deleteGroup({{ g.id }}, '{{ g.name|escapejs }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить">
+                            <button type="button" onclick="deleteGroup({{ g.id }}, '{{ g.name|escapejs }}')" class="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors" title="Удалить" aria-label="Удалить">
                                 <span class="material-icons-round text-lg">delete</span>
                             </button>
                         </div>
@@ -195,7 +195,7 @@
                         {% for u in g.user_set.all %}
                         <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 text-gray-300 text-xs group">
                             {{ u.username }}
-                            <button type="button" onclick="removeFromGroup({{ g.id }}, {{ u.id }}, '{{ u.username|escapejs }}')" class="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" title="Удалить из группы">
+                            <button type="button" onclick="removeFromGroup({{ g.id }}, {{ u.id }}, '{{ u.username|escapejs }}')" class="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" title="Удалить из группы" aria-label="Удалить из группы">
                                 <span class="material-icons-round text-sm">close</span>
                             </button>
                         </span>
