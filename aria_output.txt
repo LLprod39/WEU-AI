@@ -1,0 +1,11 @@
+Adding aria-label='Refresh' to icon-only button: <button type="button" id="mobile-refresh-btn" class="mobile-header-btn" onclick="MobileAgents.refresh()"><span class="material-icons-round">refresh</span></button>
+Adding aria-label='Play arrow' to icon-only button: <button type="button" class="mobile-card-action success" onclick="MobileAgents.runWorkflow({{ workflow.id }}, '{{ workflow.name|escapejs }}')"><span class="material-icons-round">play_arrow</span></button>
+Adding aria-label='Add' to icon-only button: <button type="button" class="mobile-fab" onclick="MobileAgents.showQuickMenu()"><span class="material-icons-round">add</span></button>
+Adding aria-label='Close' to icon-only button: <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-workflow')"><span class="material-icons-round">close</span></button>
+Adding aria-label='Close' to icon-only button: <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('create-agent')"><span class="material-icons-round">close</span></button>
+Adding aria-label='Close' to icon-only button: <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-workflow')"><span class="material-icons-round">close</span></button>
+Adding aria-label='Close' to icon-only button: <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('run-agent')"><span class="material-icons-round">close</span></button>
+Adding aria-label='Close' to icon-only button: <button type="button" class="mobile-modal-close" onclick="MobileAgents.hideModal('quick-task')"><span class="material-icons-round">close</span></button>
+Adding aria-label='Arrow back' to icon-only button: <button type="button" class="mobile-modal-back" onclick="MobileAgents.hideModal('logs')"><span class="material-icons-round">arrow_back</span></button>
+Adding aria-label='Stop' to icon-only button: <button type="button" id="logs-stop-btn" class="mobile-header-btn danger hidden" onclick="MobileAgents.stopRun()"><span class="material-icons-round">stop</span></button>
+Adding aria-label='Refresh' to icon-only button: <button type="button" class="mobile-header-btn" onclick="MobileAgents.refreshLogs()"><span class="material-icons-round">refresh</span></button>
