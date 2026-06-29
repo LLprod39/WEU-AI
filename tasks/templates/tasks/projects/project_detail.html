@@ -175,7 +175,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2>Новая задача</h2>
-            <button class="close-btn" onclick="closeCreateTaskModal()">&times;</button>
+            <button class="close-btn" onclick="closeCreateTaskModal()" aria-label="Закрыть" title="Закрыть" type="button">&times;</button>
         </div>
         <form id="createTaskForm" onsubmit="createTask(event)">
             <input type="hidden" name="project_id" value="{{ project.id }}">
@@ -246,7 +246,7 @@
                 <span id="detailTaskKey" class="task-key-large"></span>
                 <h2 id="detailTaskTitle"></h2>
             </div>
-            <button class="close-btn" onclick="closeTaskDetailModal()">&times;</button>
+            <button class="close-btn" onclick="closeTaskDetailModal()" aria-label="Закрыть" title="Закрыть" type="button">&times;</button>
         </div>
         <div id="taskDetailContent" class="task-detail-body">
             <!-- Filled by JS -->
