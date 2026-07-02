@@ -809,7 +809,7 @@
         <div class="terminal-panel">
             <div class="terminal-toolbar">
                 <div class="terminal-toolbar-left">
-                    <a href="{% url 'servers:server_list' %}" class="toolbar-btn" title="Back"><span class="material-icons-round" style="font-size:18px">arrow_back</span></a>
+                    <a href="{% url 'servers:server_list' %}" class="toolbar-btn" title="Back" aria-label="Back to server list"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">arrow_back</span></a>
                     <div id="status-pill" class="status-pill">
                         <span class="status-dot-sm"></span>
                         <span id="status-text">Disconnected</span>
@@ -817,11 +817,11 @@
                     <div id="latency-badge" class="hidden" style="font-size:10px;font-family:monospace;color:#6b7280;background:rgba(255,255,255,.04);padding:3px 7px;border-radius:5px;"></div>
                 </div>
                 <div class="terminal-toolbar-right">
-                    <button class="toolbar-btn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect"><span class="material-icons-round" style="font-size:18px">link</span></button>
-                    <button class="toolbar-btn" onclick="disconnectTerminal()" title="Disconnect"><span class="material-icons-round" style="font-size:18px">link_off</span></button>
-                    <button class="toolbar-btn" onclick="clearTerminal()" title="Clear"><span class="material-icons-round" style="font-size:18px">delete_sweep</span></button>
-                    <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window"><span class="material-icons-round" style="font-size:18px">open_in_new</span></button>
-                    <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant"><span class="material-icons-round" style="font-size:18px">psychology</span></button>
+                    <button class="toolbar-btn" onclick="if(activeTabId){connectTab(activeTabId);}" title="Connect" aria-label="Connect terminal"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">link</span></button>
+                    <button class="toolbar-btn" onclick="disconnectTerminal()" title="Disconnect" aria-label="Disconnect terminal"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">link_off</span></button>
+                    <button class="toolbar-btn" onclick="clearTerminal()" title="Clear" aria-label="Clear terminal"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">delete_sweep</span></button>
+                    <button class="toolbar-btn" onclick="openMinimalWindow()" title="Open in window" aria-label="Open in window"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">open_in_new</span></button>
+                    <button class="toolbar-btn" id="ai-toggle-btn" onclick="toggleAiPanel()" title="AI Assistant" aria-label="Toggle AI Assistant"><span class="material-icons-round" aria-hidden="true" style="font-size:18px">psychology</span></button>
                 </div>
             </div>
 
@@ -852,9 +852,9 @@
                     </div>
                 </div>
                 <div class="aip-header-right">
-                    <button class="aip-hbtn aip-stop-btn" id="aip-stop-btn" onclick="stopAi()" title="Stop AI" style="display:none"><span class="material-icons-round" style="font-size:17px;color:#ef4444">stop_circle</span></button>
-                    <button class="aip-hbtn" onclick="clearAiChat()" title="Clear conversation"><span class="material-icons-round" style="font-size:17px">cleaning_services</span></button>
-                    <button class="aip-hbtn" onclick="toggleAiPanel()" title="Close"><span class="material-icons-round" style="font-size:17px">close</span></button>
+                    <button class="aip-hbtn aip-stop-btn" id="aip-stop-btn" onclick="stopAi()" title="Stop AI" aria-label="Stop AI generation" style="display:none"><span class="material-icons-round" aria-hidden="true" style="font-size:17px;color:#ef4444">stop_circle</span></button>
+                    <button class="aip-hbtn" onclick="clearAiChat()" title="Clear conversation" aria-label="Clear AI conversation"><span class="material-icons-round" aria-hidden="true" style="font-size:17px">cleaning_services</span></button>
+                    <button class="aip-hbtn" onclick="toggleAiPanel()" title="Close" aria-label="Close AI Assistant panel"><span class="material-icons-round" aria-hidden="true" style="font-size:17px">close</span></button>
                 </div>
             </div>
 
