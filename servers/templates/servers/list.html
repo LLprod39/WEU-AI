@@ -683,8 +683,8 @@
     <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden server-modal-panel">
         <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <h2 class="text-lg font-bold text-white">Add Server</h2>
-            <button onclick="closeModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="serverForm" onsubmit="saveServer(event)" class="min-h-0 flex flex-col">
@@ -805,8 +805,8 @@
     <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
         <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <h2 class="text-lg font-bold text-white">New Group</h2>
-            <button onclick="closeGroupModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeGroupModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="groupForm" onsubmit="saveGroup(event)" class="p-6">
@@ -854,8 +854,8 @@
                 <span class="material-icons-round text-amber-400">edit</span>
                 Edit Server
             </h2>
-            <button onclick="closeEditModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeEditModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <form id="editServerForm" onsubmit="saveEditServer(event)" class="min-h-0 flex flex-col">
@@ -1032,8 +1032,8 @@
                 <span class="material-icons-round text-violet-400">public</span>
                 Global Server Context
             </h2>
-            <button onclick="closeGlobalContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeGlobalContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="p-6 overflow-y-auto custom-scrollbar space-y-5">
@@ -1101,8 +1101,8 @@ systemctl status"
                 <span class="material-icons-round text-violet-400">tune</span>
                 Group Context: <span id="group-context-name" class="text-violet-300 ml-1"></span>
             </h2>
-            <button onclick="closeGroupContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeGroupContextModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="p-6 overflow-y-auto custom-scrollbar space-y-5">
@@ -1156,8 +1156,8 @@ truncate"
                 <span class="material-icons-round text-cyan-400">share</span>
                 Share Server Access
             </h2>
-            <button onclick="closeShareModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                <span class="material-icons-round">close</span>
+            <button type="button" onclick="closeShareModal()" class="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors" aria-label="Close" title="Close">
+                <span class="material-icons-round" aria-hidden="true">close</span>
             </button>
         </div>
         <div class="p-6 overflow-y-auto custom-scrollbar space-y-5">
