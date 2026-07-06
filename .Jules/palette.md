@@ -1,0 +1,3 @@
+## 2024-11-20 - Ensure hover-only buttons appear on focus
+**Learning:** Found multiple icon-only utility buttons (e.g. "remove from group", "dismiss") hidden via `opacity-0` that rely purely on a parent group hover (`group-hover:opacity-100`) to become visible. This makes them completely invisible to keyboard-only users navigating via Tab, causing confusion about where focus currently is and missing functionality.
+**Action:** Always add `focus:opacity-100` alongside `opacity-0 group-hover:opacity-100` for interactive elements that are revealed on hover, and ensure proper focus outlines (e.g., `focus-visible:ring-2 focus:outline-none`) are applied to make the focused state distinct.
