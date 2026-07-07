@@ -4,8 +4,8 @@
 {% block header_title %}База знаний{% endblock %}
 
 {% block header_right %}
-<button type="button" id="mobile-kb-add-btn" class="mobile-header-btn">
-    <span class="material-icons-round">add</span>
+<button type="button" id="mobile-kb-add-btn" class="mobile-header-btn" aria-label="Добавить">
+    <span class="material-icons-round" aria-hidden="true">add</span>
 </button>
 {% endblock %}
 
@@ -46,8 +46,8 @@
     </div>
     
     <!-- FAB - Add Document -->
-    <button type="button" class="mobile-fab" id="mobile-kb-fab">
-        <span class="material-icons-round">upload_file</span>
+    <button type="button" class="mobile-fab" id="mobile-kb-fab" aria-label="Загрузить документ">
+        <span class="material-icons-round" aria-hidden="true">upload_file</span>
     </button>
     
     <!-- Add Document Modal -->
@@ -56,8 +56,8 @@
         <div class="mobile-modal-content">
             <div class="mobile-modal-header">
                 <h2 class="text-lg font-semibold">Добавить документ</h2>
-                <button type="button" class="mobile-modal-close" id="mobile-kb-modal-close">
-                    <span class="material-icons-round">close</span>
+                <button type="button" class="mobile-modal-close" id="mobile-kb-modal-close" aria-label="Закрыть">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
                 </button>
             </div>
             <div class="mobile-modal-body">
@@ -374,8 +374,8 @@
                         '<div class="mobile-kb-doc-title">' + self.escapeHtml(doc.source || 'Документ') + '</div>' +
                         '<div class="mobile-kb-doc-meta">' + (doc.text || '').substring(0, 50) + '...</div>' +
                     '</div>' +
-                    '<button type="button" class="mobile-kb-doc-delete" data-id="' + doc.id + '">' +
-                        '<span class="material-icons-round">delete</span>' +
+                    '<button type="button" class="mobile-kb-doc-delete" data-id="' + doc.id + '" aria-label="Удалить документ">' +
+                        '<span class="material-icons-round" aria-hidden="true">delete</span>' +
                     '</button>';
                 
                 item.querySelector('.mobile-kb-doc-delete').addEventListener('click', function(e) {
