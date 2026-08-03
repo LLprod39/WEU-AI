@@ -1,0 +1,3 @@
+## 2024-06-04 - Icon-Only Button Accessibility Pattern
+**Learning:** Found a systemic issue across templates where icon-only `<button>` tags utilizing material icons (inside a `<span>`) lack `aria-label`s on the button element and `aria-hidden="true"` on the inner `<span>`. This makes them invisible or incorrectly read by screen readers.
+**Action:** Adding `aria-label="[Russian context]"` and `<span aria-hidden="true">` across templates (e.g. `core_ui/templates/settings_access.html`, `tasks/templates/tasks/mobile/task_list.html`). Future component creation should enforce accessible icon buttons strictly.
